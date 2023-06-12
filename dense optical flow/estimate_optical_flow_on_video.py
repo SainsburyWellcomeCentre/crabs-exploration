@@ -64,7 +64,7 @@ def run_model_on_video(args):
     # -----------------------------------------
     # initialise video capture
     # -----------------------------------------
-    cap = cv2.VideoCapture(str(args.path))
+    cap = cv2.VideoCapture(str(args.input_data))
 
     nframes = cap.get(cv2.CAP_PROP_FRAME_COUNT)  # 9000
     width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)  # 1920.0
@@ -78,8 +78,15 @@ def run_model_on_video(args):
     # -----------------------------------------
     # initialise video writer
     # -----------------------------------------
+    # create output dir if it doesnt exist
+    videowriter_path = Path(args.output_dir) / Path(
+        Path(args.input_data).stem + '_flow.mp4'
+    )
+    videowriter_path.mkdir(parents=True, exist_ok=True)
+
+    # initialise videowriter
     videowriter = cv2.VideoWriter(
-        f'{Path(args.path).stem}_flow.mp4', 
+        str(videowriter_path), 
         cv2.VideoWriter_fourcc('m', 'p', '4', 'v'), 
         frame_rate, 
         tuple(int(x) for x in (width, height))
@@ -165,27 +172,14 @@ def run_model_on_video(args):
 
 
 if __name__ == '__main__':
-    # # -------------------
-    # # input data
-    # # -------------------
-    # # simulate arg parse
-    # args = {
-    #   'model': 'models/raft-kitti.pth',
-    #   'path': '/content/NINJAV_S001_S001_T003_subclip.mp4',
-    #   'small': False,
-    #   'mixed_precision': False,
-    #   'alternate_corr': False,  
-    #   'step_frames': 10,
-    # }
-
-    # args = dotdict(args)
 
     # ------------------------------------
     # parse command line arguments
     # -------------------
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', help="restore checkpoint")
-    parser.add_argument('--path', help="dataset for evaluation")
+    parser.add_argument('--input_data', help="dataset for evaluation")
+    parser.add_argument('--output_dir', help="directory to save output to")
     parser.add_argument('--small', action='store_true', help='use small model')
     parser.add_argument('--mixed_precision', action='store_true', help='use mixed precision')
     parser.add_argument('--alternate_corr', action='store_true', help='use efficent correlation implementation')

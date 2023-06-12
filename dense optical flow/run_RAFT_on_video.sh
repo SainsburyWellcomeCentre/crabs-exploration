@@ -49,7 +49,8 @@ pip install pathlib
 # -------------------
 # Input data
 INPUT_DATA_PATH=$SCRATCH_DIR/data/NINJAV_S001_S001_T003_subclip.mp4
-
+# output dir
+OUTPUT_DIR=$SCRATCH_DIR/output/
 
 # Download models
 cd $RAFT_REPO_ROOT_DIR 
@@ -63,6 +64,7 @@ cd ..
 STEP_FRAMES=10
 python estimate_optical_flow_on_video.py \
  --model $MODEL_PATH \
- --path $INPUT_DATA_PATH \
+ --input_data $INPUT_DATA_PATH \
+ --output_dir $OUTPUT_DIR \
  --step_frames $STEP_FRAMES
 
