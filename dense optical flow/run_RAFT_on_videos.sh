@@ -20,11 +20,11 @@ module load miniconda
 # -------------------
 # Clone repo
 # -------------------
-SCRATCH_DIR=/ceph/scratch/sminano/crabs_optical_flow
-cd $SCRATCH_DIR
+SCRATCH_CRABS_DIR=/ceph/scratch/sminano/crabs_optical_flow
+cd $SCRATCH_CRABS_DIR
 
 git clone https://github.com/princeton-vl/RAFT.git
-RAFT_REPO_ROOT_DIR=$SCRATCH_DIR/RAFT
+RAFT_REPO_ROOT_DIR=$SCRATCH_CRABS_DIR/RAFT
 
 
 # --------------------------
@@ -49,9 +49,9 @@ pip install pathlib
 # -------------------
 # Input data
 # NINJAV_S001_S001_T003_subclip.mp4
-INPUT_DATA_DIR=$SCRATCH_DIR/data/ 
+INPUT_DATA_DIR=$SCRATCH_CRABS_DIR/data/ 
 # output dir
-OUTPUT_DIR=$SCRATCH_DIR/output/
+OUTPUT_DIR=$SCRATCH_CRABS_DIR/output/
 
 # Download models
 cd $RAFT_REPO_ROOT_DIR 
@@ -63,7 +63,7 @@ MODEL_PATH=$RAFT_REPO_ROOT_DIR/models/raft-kitti.pth
 # run python script
 cd ..
 STEP_FRAMES=10
-python estimate_optical_flow_on_video.py \
+python $SCRATCH_CRABS_DIR/crabs-exploration/dense\ optical\ flow/estimate_optical_flow_on_video.py \
  --model $MODEL_PATH \
  --input_dir $INPUT_DATA_DIR \
  --output_dir $OUTPUT_DIR \
