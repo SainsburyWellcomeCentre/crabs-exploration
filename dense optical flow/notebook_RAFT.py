@@ -331,8 +331,8 @@ with torch.no_grad():
         # output has batch channel on the first dim
         flow_low, flow_up = model(image1, image2, iters=20, test_mode=True)
 
-        # convert output to numpy array (RGB)
-        img = image1[0].permute(1,2,0).cpu().numpy() # BRG ---> RGB
+        # convert output to numpy array and reorder channels
+        img = image1[0].permute(1,2,0).cpu().numpy() # c x h x w ---> h x w x c
         flo = flow_up[0].permute(1,2,0).cpu().numpy()
         
         # map flow to rgb image
@@ -340,7 +340,7 @@ with torch.no_grad():
         # img_flo = np.concatenate([img, flo], axis=1)
         # print(type(flo)) # numpy array
 
-        videowriter.write(flo[:, :, [2,1,0]]) # RGB ---> BRG
+        videowriter.write(flo[:, :, [2,1,0]]) # BRG ---> RGB
 
 cap.release()
 videowriter.release()
