@@ -64,9 +64,9 @@ def run_model_on_video(args):
 
     # for every file in the input data dir
     list_input_videos = sorted(
-        Path(args.input_dir).glob(f'*.{FILE_EXTENSION}')
+        Path(args.input_dir).glob(f'*.{FILE_EXTENSION}'),
+        reverse=True
     )
-    print(list_input_videos)
     for input_file in list_input_videos:
 
         # -----------------------------------------
