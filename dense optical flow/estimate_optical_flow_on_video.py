@@ -78,12 +78,13 @@ def run_model_on_video(args):
     # -----------------------------------------
     # initialise video writer
     # -----------------------------------------
+    output_dir = Path(args.output_dir)
     # create output dir if it doesnt exist
-    videowriter_path = Path(args.output_dir) / Path(
+    output_dir.mkdir(parents=True, exist_ok=True)
+    videowriter_path = output_dir / Path(
         Path(args.input_data).stem + '_flow.mp4'
     )
-    videowriter_path.mkdir(parents=True, exist_ok=True)
-
+   
     # initialise videowriter
     videowriter = cv2.VideoWriter(
         str(videowriter_path), 
