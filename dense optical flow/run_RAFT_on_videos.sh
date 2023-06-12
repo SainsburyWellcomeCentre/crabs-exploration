@@ -63,7 +63,7 @@ MODEL_PATH=$RAFT_REPO_ROOT_DIR/models/raft-kitti.pth
 # run python script
 cd ..
 STEP_FRAMES=10
-python $SCRATCH_CRABS_DIR/crabs-exploration/dense\ optical\ flow/estimate_optical_flow_on_video.py \
+python estimate_optical_flow_on_video.py \
  --model $MODEL_PATH \
  --input_dir $INPUT_DATA_DIR \
  --output_dir $OUTPUT_DIR \
