@@ -4,7 +4,7 @@
 #SBATCH -N 1   # number of nodes
 #SBATCH --mem 12G # memory pool for all cores
 #SBATCH -n 2 # number of cores
-#SBATCH -t 0-23:00 # time (D-HH:MM)
+#SBATCH -t 0-00:00 # time (D-HH:MM)
 #SBATCH --gres gpu:1 # request 1 GPU (of any kind)
 #SBATCH -o slurm.%N.%j.out # write STDOUT
 #SBATCH -e slurm.%N.%j.err # write STDERR
