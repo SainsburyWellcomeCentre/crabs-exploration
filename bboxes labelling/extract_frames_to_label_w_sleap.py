@@ -5,9 +5,9 @@ Example usage:
     python bboxes\ labelling/extract_frames_to_label_w_sleap.py 'crab_sample_data/sample_clips/' --initial_samples 5 --n_components 2 --n_clusters 2 --per_cluster 1 --compute_features_per_video
 
 TODO: can I make it deterministic?
+TODO: add possibility to run on input list of videos? or to pass a 
 '''
 
-# 
 import argparse
 import json
 from datetime import datetime
@@ -29,7 +29,7 @@ def get_sleap_videos_list(
 
     list_video_paths = []
     for ext in list_video_extensions:
-        list_video_paths.extend(Path(video_dir).glob(f'*.{ext}'))
+        list_video_paths.extend(Path(video_dir).glob(f'[!.]*.{ext}'))  # exclude hidden files
 
     list_sleap_videos = [
         Video.from_filename(str(vid_path))
@@ -102,7 +102,7 @@ def extract_frames_to_label(args):
     output_dir_timestamped.mkdir(parents=True, exist_ok=True)
 
     # save extracted frames as json file
-    json_output_file = Path(args.output_path) / 'extracted_frames.json'
+    json_output_file = output_dir_timestamped / 'extracted_frames.json'
     with open(json_output_file, 'w') as js:
         json.dump(
             map_videos_to_extracted_frames, 
@@ -115,19 +115,17 @@ def extract_frames_to_label(args):
     # For every video, extract suggested frames with opencv
     # -------------------------------------------------------
 
-    # create output folder if it doesnt exist
-    Path(args.output_path).mkdir(parents=True, exist_ok=True)
-
     # loop thru videos and extract frames
     for vid_str in map_videos_to_extracted_frames.keys():
         # initialise opencv capture
         cap = cv2.VideoCapture(vid_str)
         
         # check
+        print('---------------------------')
         if cap.isOpened():
-            print(f"{Path(vid_str).stem}")
+            print(f"Processing {Path(vid_str)}")
         else:
-            print(f"{Path(vid_str).stem} skipped....")
+            print(f"Error processing {Path(vid_str)}, skipped....")
             continue
 
         # create video output dir inside timestamped one
@@ -155,7 +153,7 @@ def extract_frames_to_label(args):
                     frame
                 )
                 if img_saved:
-                    print(f"{Path(vid_str).stem}, frame {frame_idx} saved at {file_path}")
+                    print(f"frame {frame_idx} saved at {file_path}")
                 else:
                     print(f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping")
                     continue
@@ -173,7 +171,7 @@ if __name__ == '__main__':
     # TODO: add grayscale option?
     # TODO: read extracted frames from file?
     parser = argparse.ArgumentParser()
-    parser.add_argument('video_dir',   # positional
+    parser.add_argument('video_dir',   # positional, needs first fwd slash!
                         help="path to directory with videos")
     parser.add_argument('--output_path',
                         default='.',  # does this work?
