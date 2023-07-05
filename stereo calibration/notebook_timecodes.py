@@ -207,7 +207,10 @@ for video_path, vid in timecodes_dict.items():
     output_dir_one_camera.mkdir(parents=True, exist_ok=True)
 
     pair_count = 1
-    for frame_idx0 in range(vid["opencv_start_idx"], vid["opencv_start_idx"]+3): #vid["n_frames"]+1):
+    for frame_idx0 in range(
+        vid["opencv_start_idx"], 
+        vid["opencv_start_idx"]+3
+    ):  # vid["n_frames"]+1): ---------
         # print index (0-based)
         print(cap.get(cv2.CAP_PROP_POS_FRAMES))  
 
