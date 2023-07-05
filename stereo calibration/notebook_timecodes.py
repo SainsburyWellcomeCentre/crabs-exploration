@@ -1,9 +1,10 @@
 # %%
 # - timecode
 # - ffmpeg python bindings
+import pathlib as pl
+import cv2
 import ffmpeg
 from timecode import Timecode
-import pathlib as pl
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
@@ -18,10 +19,12 @@ for typ in file_types:
     )
 
 
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Get timecode data for each file (using ffmpeg)
 
-def compute_timecode_vars_per_video(list_paths: list[pl.Path]):
+
+def compute_timecode_params_per_video(list_paths: list[pl.Path]):
     timecodes_dict = {}
     for vid in list_paths:
 
@@ -50,21 +53,26 @@ def compute_timecode_vars_per_video(list_paths: list[pl.Path]):
             break
 
         # check tmcd average frame rate matches r_frame rate from video
-        if (tmcd_stream["avg_frame_rate"] != r_frame_rate_str):
+        if tmcd_stream["avg_frame_rate"] != r_frame_rate_str:
             print(f"ERROR: timecode and video frame rates don't match")
             break
+
+        # instantiate a timecode object for this video
+        tc_video = Timecode(r_frame_rate_str, start_timecode)
 
         # save data
         timecodes_dict[video_path] = {
             "r_frame_rate_str": r_frame_rate_str,
             "n_frames": n_frames,
             "start_timecode": start_timecode,
+            "timecode_object": tc_video,
         }
 
     return timecodes_dict
 
+
 # execute
-timecodes_dict = compute_timecode_vars_per_video(list_paths)
+timecodes_dict = compute_timecode_params_per_video(list_paths)
 
 # NOTES:
 # FFprobe output is a (json) dict w/ two fields:
@@ -94,15 +102,17 @@ timecodes_dict = compute_timecode_vars_per_video(list_paths)
 # ATT!
 # - Setting the framerate will automatically set the :attr:`.drop_frame`
 #   attribute to correct value.
-# - "Frame rates 29.97 and 59.94 are always drop frame" 
+# - "Frame rates 29.97 and 59.94 are always drop frame"
 #   ---> is this a standard thing? Kinda, in the sense that they are non-integer frame rates
 # - I can change the default behaviour w/ force_non_drop_frame (Could be useful? Not for now tho)
-video_path = str(list_paths[0])
-r_frame_rate_str = timecodes_dict[video_path]['r_frame_rate_str']
-n_frames = timecodes_dict[video_path]['n_frames']
-start_timecode = timecodes_dict[video_path]['start_timecode']
+# - for 59.94: 4 frames dropped when turning to the next minute! 
+#   http://www.davidheidelberger.com/2010/06/10/drop-frame-timecode/ 
+video_path = str(list_paths[1])
+n_frames = timecodes_dict[video_path]["n_frames"]
 
-tc_video_1 = Timecode(r_frame_rate_str, start_timecode)
+tc_video_1 = timecodes_dict[video_path][
+    "timecode_object"
+]  # Timecode(r_frame_rate_str, start_timecode)
 
 tc_video_1.frames  # frames elapsed from timecode '23:59:59:<last integer frame from fps>'
 # (so frame 1 corresponds to timecode '00:00:00:00') ---> so like timecode of first frame, in frames?
@@ -133,5 +143,98 @@ for frames_to_add in range(n_frames):
 # - tc_to_frames
 
 # Drop frame?
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Find syncing point
+
+sync_timecode = Timecode(
+    '60000/1001', 
+    max([vid["start_timecode"] for _, vid in timecodes_dict.items()])
+)
+min_timecode = Timecode(
+    '60000/1001', 
+    min([vid["start_timecode"] for _, vid in timecodes_dict.items()])
+)
+
+diff_timecode = sync_timecode - min_timecode
+diff_in_frames = diff_timecode.tc_to_frames(diff_timecode)  # 190 frames, but only if there was no drop right?
+print(diff_in_frames)
+
+for _, vid in timecodes_dict.items():
+    if vid["start_timecode"] == sync_timecode:
+        vid["opencv_start_idx"] = 0  # opencv uses 0-based index for frames in video capture
+    if vid["start_timecode"] == min_timecode:
+        vid["opencv_start_idx"] = diff_in_frames
+
+
+# for vid in timecodes_dict:
+#     tc_video = timecodes_dict[str(vid)]["timecode_object"]
+
+#     diff_timecode = Timecode('60000/1001',sync_timecode) - tc_video
+#     diff_in_frames = diff_timecode.tc_to_frames(diff_timecode)
+
+#     # sync_frame_from_start_vid = (tc_video.tc_to_frames(sync_timecode) - tc_video.frames) + 1
+#     # print(sync_frame_from_start_vid)
+
+# %%%%%%%%%%%%%%%%%%%%%
+# Check difference between frames accounts for frame drop
+timecode_1 = Timecode('60000/1001', '02:26:59;58')
+timecode_2 = Timecode('60000/1001', '02:27:00;04')
+
+diff_timecode = timecode_1 - timecode_2
+diff_in_frames = diff_timecode.tc_to_frames(diff_timecode)  # why this odd syntax? can I avoid it
+print(diff_in_frames) # it seems as it would be 6 frames between them, but because of frame drop it is actually 2!
+# 4 frame number are skipped at the start of every minute
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Extract pairs of frames
+
+for video_path, vid in timecodes_dict.items():
+    # video_path = list(timecodes_dict.keys())[0]
+    print(str(video_path))
+
+    # initialise capture 
+    cap = cv2.VideoCapture(str(video_path))
+    nframes = cap.get(cv2.CAP_PROP_FRAME_COUNT)  # 9000 --- check it matches?
+    print(cap.get(cv2.CAP_PROP_POS_FRAMES))  
+    # check initial video index: this points to the next frame to read and is 0-based
+
+    # set index to desired starting reading frame
+    print(vid["opencv_start_idx"])
+    cap.set(cv2.CAP_PROP_POS_FRAMES, vid["opencv_start_idx"])
+
+    # create output dir
+    output_dir_one_camera = pl.Path('calibration_pairs') / pl.Path(video_path).stem 
+    output_dir_one_camera.mkdir(parents=True, exist_ok=True)
+
+    pair_count = 1
+    for frame_idx0 in range(vid["opencv_start_idx"], vid["opencv_start_idx"]+3): #vid["n_frames"]+1):
+        # print index (0-based)
+        print(cap.get(cv2.CAP_PROP_POS_FRAMES))  
+
+        # read frame
+        success, frame = cap.read()
+
+        # write frame to file
+        if success:
+            file_path = (
+                output_dir_one_camera / 
+                f"frame_{frame_idx0+1}_pair_{pair_count}.png"
+            )
+            # here we are getting the 'next' index right? so name would be 1-based?
+            flag_saved = cv2.imwrite(
+                    str(file_path),
+                    frame
+            )  # save frame as JPEG file 
+
+            if flag_saved:
+                print(f"frame {frame_idx0} saved at {file_path}")
+            else:
+                print(f"ERROR saving {pl.Path(video_path).stem}, frame {frame_idx0}...skipping")
+                continue
+
+            # increase pair count
+            pair_count +=1
+
+
 
 # %%
