@@ -1,13 +1,14 @@
 # %%
 # - timecode
 # - ffmpeg python bindings
+import logging
 from pathlib import Path
+
 import cv2
 import ffmpeg
-from timecode import Timecode
-import logging
-
+import matplotlib.pyplot as plt
 from extract_pairs_of_frames import *
+from timecode import Timecode
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
@@ -32,6 +33,12 @@ for typ in file_types:
         ]
     )
 
+# Chessboard parameters
+# assuming rows < cols?
+chessboard_config = {
+    'rows': 6,  # ATT! THESE ARE INNER POINTS ONLY (i.e., points of intersection of 4 squares, boundaries dont count!)
+    'cols': 9,  # ATT! THESE ARE INNER POINTS ONLY
+}
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Extract timecode params
@@ -63,6 +70,7 @@ for vid_str, vid_dict in timecodes_dict.items():
         vid_dict["n_frames"],
         vid_dict["opencv_start_idx"],
         vid_dict["opencv_end_idx"],
+        chessboard_config,
         output_parent_dir=output_calibration_dir,
     )
 
@@ -115,4 +123,112 @@ for frames_to_add in range(n_frames):
 # Drop frame?
 
 
+# %%%%%%%%%%%
+# Check if chessboard is detected
+video_path_str = list(timecodes_dict.keys())[0]
+# opencv_start_idx = timecodes_dict[video_path_str]['opencv_start_idx']
+opencv_end_idx = timecodes_dict[video_path_str]['opencv_end_idx']
+
+cap = cv2.VideoCapture(video_path_str)
+# there should be one around 13s in for Camera2 video
+frame_w_chessboard_0idx = int(11*59.94) - 1  #int(13*59.94) - 1
+frame_wo_chessboard_0idx = int(3*59.94) - 1
+cap.set(cv2.CAP_PROP_POS_FRAMES, frame_w_chessboard_0idx)
+
+# read frames
+for kk in range(timecodes_dict[video_path_str]["n_frames"]):
+    frame_idx0 = cap.get(cv2.CAP_PROP_POS_FRAMES)
+    print(frame_idx0)
+
+    chessboard_tuple = (chessboard_config['cols'], chessboard_config['rows'])
+    # ---> the order of these is unclear, does it matter? 
+
+    success, frame = cap.read()
+    if success:
+        #---------------
+        # Find the chessboard corners
+        # If desired number of corners are found in the image then ret = true
+        # TODO: append 2d coords of corners?
+        frame_gray = cv2.cvtColor(
+            frame,
+            cv2.COLOR_BGR2GRAY
+        )  # not sure if this actually makes it easieror not
+        # but all examples that I've seen do it
+        
+        # find chessboard
+        # to check flags:
+        # https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html#ga93efa9b0aa890de240ca32b11253dd4a
+        ret, corners = cv2.findChessboardCorners(
+            frame_gray, 
+            chessboard_tuple,  
+            flags=(
+                cv2.CALIB_CB_ADAPTIVE_THRESH + 
+                cv2.CALIB_CB_FAST_CHECK + 
+                cv2.CALIB_CB_NORMALIZE_IMAGE
+            ),
+        ) 
+
+        #----- this should be faster but doesnt work at all for me!!!
+        # checkChessboard is faster if no chessboard is present?
+        # https://shimat.github.io/opencvsharp_2410/html/7b6a746d-3776-3ae7-ab62-4b17f31bab30.htm
+        # but it doesnt work :( it detects chessboards in all of them
+        #
+        # ret = cv2.checkChessboard(
+        #     frame_gray, 
+        #     (chessboard_config['cols'], chessboard_config['rows']), 
+        # ) 
+        #-------------
+     
+        # inspect corners
+        # - corners is a numpy array of size (nrows*ncols, 1, 2)
+        # - why the middle single dimension?? who knows...
+        # - these are pixel coords relative to top left of the image? (size 4096x2160 for Cam2)
+        # - the first corner is the top right of the checkerboard and then goes along columns?
+        #
+        # from the tutorial....
+        # - opencv takes  the bottom left(??) of the checkerboard as the origin (I think)
+        # - This means each frame we use to calibrate gets a separate origin
+
+    
+        if ret:
+            print(
+                "Chessboard detected on"
+                f" {Path(video_path_str).stem}, "
+                f"frame {frame_idx0}"
+            )
+            
+            plt.figure()
+            plt.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)) 
+            # or: frame[:, :, ::-1]) #::-1 changing BGR to RGB
+            # doesnt change the order of the channels it in place
+            nsamples = 2
+            plt.scatter(
+                x=corners[:nsamples,0,0],
+                y=corners[:nsamples,0,1], 
+                s=1,
+                c=range(corners[:nsamples,:,:].shape[0]),
+            )
+
+            # usually people will refine the corners
+            # corners_img = cv2.drawChessboardCorners(
+            #     frame,
+            #     chessboard_tuple,
+            #     corners,
+            #     ret
+            # ) #--- this modifies frame in place OJO! it adds markers for the detected corners
+
+            # cv2.imshow('img', corners_img) #frame_gray)
+            # cv2.waitKey(0)
+            # cv2.destroyAllWindows()
+            # cv2.waitKey(1) # click any key to close while window is active
+            
+            break
+        else:
+            print(
+                "WARNING: No chessboard detected on"
+                f" {Path(video_path_str).stem}, "
+                f"frame {frame_idx0}...skipping"
+            )
+        # print(ret)
+        # print(corners)
 # %%

@@ -240,6 +240,7 @@ def extract_frames_from_video(
     nframes,
     opencv_start_idx,
     opencv_end_idx,
+    chessboard_config,
     output_parent_dir: str = "./calibration_pairs",
 ):
     """Extract frames between selected indices from video,
@@ -275,35 +276,58 @@ def extract_frames_from_video(
     output_dir_one_camera.mkdir(parents=True, exist_ok=True)
 
     # extract frames between start index and end index
+    # if a chessboard pattern is detected
     pair_count = 0  # for consistency, pair_count is also 0-based
     for frame_idx0 in range(opencv_start_idx, opencv_end_idx + 1):
 
         # read frame
         success, frame = cap.read()
 
-        # write frame to file
+        # if frame is read successfully 
         if success:
-            # filepath
-            file_path = (
-                output_dir_one_camera
-                / f"frame{frame_idx0:05d}_pair{pair_count:03d}.png"
+            #---------------
+            # Find the chessboard corners
+            # If desired number of corners are found in the image then ret = true
+            # TODO: append 2d coords of corners?
+            frame_gray = cv2.cvtColor(
+                frame,
+                cv2.COLOR_BGR2GRAY
             )
+          
+            ret, corners = cv2.findChessboardCorners(
+                frame_gray, 
+                (chessboard_config['rows'], chessboard_config['cols']), 
+                None)  # cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE)
+            # -------------
+            if ret:
+                # filepath
+                file_path = (
+                    output_dir_one_camera
+                    / f"frame{frame_idx0:05d}_pair{pair_count:03d}.png"
+                )
 
-            # write to file
-            flag_saved = cv2.imwrite(str(file_path), frame)
+                # write to file
+                flag_saved = cv2.imwrite(str(file_path), frame)
 
-            # check if saved correctly
-            if flag_saved:
-                logging.info(f"frame {frame_idx0} saved at {file_path}")
+                # check if saved correctly
+                if flag_saved:
+                    logging.info(f"frame {frame_idx0} saved at {file_path}")
+                else:
+                    logging.warning(
+                        f"ERROR saving {Path(video_path_str).stem}, "
+                        f"frame {frame_idx0}...skipping"
+                    )
+                    continue
+
+                # increase pair count -------> review this!
+                pair_count += 1
+
             else:
                 logging.warning(
-                    f"ERROR saving {Path(video_path_str).stem}, "
-                    f"frame {frame_idx0}...skipping"
-                )
-                continue
-
-            # increase pair count
-            pair_count += 1
+                        "WARNING: No chessboard detected on"
+                        f" {Path(video_path_str).stem}, "
+                        f"frame {frame_idx0}...skipping"
+                    )
 
 
 # ----------
@@ -369,5 +393,6 @@ if __name__ == "__main__":
             vid_dict["n_frames"],
             vid_dict["opencv_start_idx"],
             vid_dict["opencv_end_idx"],
+            chessboard_config,
             output_parent_dir=args.output_calibration_dir,
         )
