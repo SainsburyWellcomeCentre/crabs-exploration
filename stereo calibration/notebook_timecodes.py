@@ -11,7 +11,15 @@ from timecode import Timecode
 videos_parent_dir = pl.Path(
     "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/crab_courtyard/"
 )
-file_types = ("**/*.MOV", "**/*.mp4", "**/*.avi")
+
+# On file types and timecode
+#  - MPEG1/2 timecode is extracted from the GOP, and is available in the video 
+#    stream details (-show_streams, see timecode).
+#  - MOV timecode is extracted from tmcd track, so is available in the tmcd 
+#    stream metadata (-show_streams, see TAG:timecode).
+#  - DV, GXF and AVI timecodes are available in format metadata 
+#    (-show_format, see TAG:timecode).
+file_types = ("**/*.MOV")  #, "**/*.mp4", "**/*.avi")
 list_paths = []
 for typ in file_types:
     list_paths.extend(
@@ -23,8 +31,58 @@ for typ in file_types:
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Get timecode data for each file (using ffmpeg)
 
+def compute_timecode_params_per_video(
+        list_paths: list[pl.Path]
+):
+    """Compute timecode parameters per video
 
-def compute_timecode_params_per_video(list_paths: list[pl.Path]):
+    We assume the timecode data is logged in the timecode stream,
+    since we are expecting MOV files.
+    
+    On file types and timecode info (from ffprobe docs):
+    - MPEG1/2 timecode is extracted from the GOP, and is available in the video 
+      stream details (-show_streams, see timecode).
+    - MOV timecode is extracted from tmcd track, so is available in the tmcd 
+      stream metadata (-show_streams, see TAG:timecode).
+    - DV, GXF and AVI timecodes are available in format metadata 
+      (-show_format, see TAG:timecode).
+
+    FFprobe output is a (json) dict w/ two fields:
+    - 'format', holds container-level info (i.e., info that applies to all streams)
+    - 'streams', holding a list of dicts, one per stream
+
+    Frame rate metrics:
+    - r_frame_rate: the lowest common multiple of all the frame rates in the stream
+    - avg_frame_rate: total # frames / total duration
+    https://video.stackexchange.com/questions/20789/ffmpeg-default-output-frame-rate?newreg=e797b27b58a241dc9af8734dc8e14dc4
+
+    The container has 3 streams:
+    - codec_type: audio
+      no frame rate, 
+      nb_frames = number of frames in **audio** stream (ok?)
+    - codec_type: video
+      frame rate as a fraction, 
+      nb_frames = total number of frames
+      (extracted from metadata, not computed by ffmpeg directly decoding every frame)
+    - codec_type: 'data'
+      'codec_tag_string': 'tmcd', nb_frames = 1
+       the timecode stream also contains r_frame_rate and avg_frame_rate
+
+    Parameters
+    ----------
+    list_paths : list[Path]
+       list of Paths to video files to extract timecode from
+
+    Returns
+    -------
+    dict
+        a dictionary with an entry for each video file that maps to a dictionary
+        with the following keys:
+            - r_frame_rate_str: ffprobe's r_frame_rate, expressed as a string fraction
+            - n_frames: total number of frames
+            - start_timecode: timecode of the first frame in the video (wrt origin 00:00:00:00)
+
+    """
     timecodes_dict = {}
     for vid in list_paths:
 
@@ -74,28 +132,6 @@ def compute_timecode_params_per_video(list_paths: list[pl.Path]):
 # execute
 timecodes_dict = compute_timecode_params_per_video(list_paths)
 
-# NOTES:
-# FFprobe output is a (json) dict w/ two fields:
-# - 'format', holds container-level info (i.e., info that applies to all streams)
-# - 'streams', holding a list of dicts, one per stream
-
-# Frame rate metrics:
-# - r_frame_rate:
-#   - the lowest common multiple of all the frame rates in the stream?
-#   - use this one?
-# - avg_frame_rate: total # frames / total duration
-# https://video.stackexchange.com/questions/20789/ffmpeg-default-output-frame-rate?newreg=e797b27b58a241dc9af8734dc8e14dc4
-
-# The container has 3 streams:
-# - codec_type: audio
-#       --> no frame rate, nb_frames = number of frames in **audio** stream (right?)
-# - codec_type: video
-#       --> frame rate as a fraction, nb_frames = total number of frames
-#           (from metadata, not by ffmpeg directly decoding every frame)
-# - codec_type: 'data'
-#       --> 'codec_tag_string': 'tmcd', nb_frames = 1 OJO!
-#       --> the timecode stream also contains r_frame_rate and avg_frame_rate
-#       --> maybe double-check it matches video?
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Print timecodes for every frame in a sample video
