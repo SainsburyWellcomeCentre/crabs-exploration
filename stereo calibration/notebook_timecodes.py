@@ -37,22 +37,32 @@ for typ in file_types:
 # Extract timecode params
 timecodes_dict = compute_timecode_params_per_video(list_paths)
 
+# NOTE!
+# (timecode_v1['start_timecode'] - timecode_v1[ky0]['end_timecode']).frames = nframes-1
+# - timecodes are frame labels
+# - subtraction of timecodes is commutative 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Compute syncing timecode: the max start timecode across all videos
-sync_timecode = compute_synching_timecode(timecodes_dict)
+# Compute syncing timecodes: the max start timecode across all videos
+# and the min end timecode
+max_start_timecode, min_end_timecode = compute_synching_timecodes(timecodes_dict)
 
-# %%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Compute opencv start index per video:
-timecodes_dict = compute_opencv_start_idx(timecodes_dict, sync_timecode)
+timecodes_dict = compute_opencv_start_idx(
+    timecodes_dict, 
+    max_start_timecode, 
+    min_end_timecode
+)
 
-# %%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Extract frames with opencv and save to directory
 for vid_str, vid_dict in timecodes_dict.items():
     extract_frames_from_video(
         vid_str,
         vid_dict["n_frames"],
         vid_dict["opencv_start_idx"],
+        vid_dict["opencv_end_idx"],
         output_parent_dir=output_calibration_dir,
     )
 
@@ -71,7 +81,7 @@ video_path = str(list_paths[1])
 n_frames = timecodes_dict[video_path]["n_frames"]
 
 tc_video_1 = timecodes_dict[video_path][
-    "timecode_object"
+    "start_timecode"
 ]  # Timecode(r_frame_rate_str, start_timecode)
 
 tc_video_1.frames  # frames elapsed from timecode '23:59:59:<last integer frame from fps>'
