@@ -9,6 +9,8 @@
 There are very nice recommendations on the arrangement of the cameras in the [StereoMorph docs](https://aaronolsen.github.io/tutorials/stereomorph/arranging_cameras_photography.html)
 - As much FOV overlap as possible? --- see StereoMorph
 - Remember! We are calibrating the cameras for a specific relative position of the cameras, zoom and focus levels!
+    - From the [choosing cameras section](https://aaronolsen.github.io/tutorials/stereomorph/choosing_cameras_general.html) > "the resulting calibration is specific to that particular arrangement of the cameras (their position and orientation). The cameras can move if they are rigidly attached to some support system and the support system itself is moved. However, the relative position and orientation of the cameras relative to one another must remain fixed to collect accurate 3D data. Additionally, the calibration is specific to the particular zoom and focus, so these must also remain fixed.
+    - 
 - Set the cameras to the smallest aperture
 
 ### 1. Design of the checkerboard
@@ -67,3 +69,4 @@ For a calibration frame to be useful, the checkerboard must fulfill the followin
 - [^2]: https://docs.opencv.org/4.x/d4/d94/tutorial_camera_calibration.html
 
 - [^3]: https://github.com/TemugeB/python_stereo_camera_calibrate#procedure
+
