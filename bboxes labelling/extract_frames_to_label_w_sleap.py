@@ -2,10 +2,16 @@
 A script to extract frames for labelling using SLEAP's algorith,
 
 Example usage:
-    python bboxes\ labelling/extract_frames_to_label_w_sleap.py 'crab_sample_data/sample_clips/' --initial_samples 5 --n_components 2 --n_clusters 2 --per_cluster 1 --compute_features_per_video
+    python bboxes\ labelling/extract_frames_to_label_w_sleap.py 
+    'crab_sample_data/sample_clips/' 
+    --initial_samples 5 
+    --n_components 2 
+    --n_clusters 2 
+    --per_cluster 1 
+    --compute_features_per_video
 
 TODO: can I make it deterministic?
-TODO: add possibility to run on input list of videos? or to pass a 
+TODO: check https://github.com/talmolab/sleap-io/tree/main/sleap_io
 '''
 
 import argparse
@@ -23,13 +29,26 @@ from sleap.info.feature_suggestions import (FeatureSuggestionPipeline,
 # Utils
 # -----------------
 def get_sleap_videos_list(
-    video_dir: str,
+    list_video_locations: list[str],  
     list_video_extensions: list = ['mp4']
 ):
-
+    # split locations between files and directories
     list_video_paths = []
-    for ext in list_video_extensions:
-        list_video_paths.extend(Path(video_dir).glob(f'[!.]*.{ext}'))  # exclude hidden files
+    for loc in list_video_locations:
+        location_path = Path(loc)
+
+        # if dir: look for files with any of the relevant extensions 
+        # (only one level in)
+        if location_path.is_dir():
+            for ext in list_video_extensions:
+                list_video_paths.extend(location_path.glob(f'[!.]*.{ext}'))  
+                # exclude hidden files
+        # if file has the relevant extension: append directly to list?
+        elif location_path.is_file() and (
+            location_path.suffix[1:] in list_video_extensions
+            # suffix includes dot
+        ):
+            list_video_paths.append(location_path)
 
     list_sleap_videos = [
         Video.from_filename(str(vid_path))
@@ -66,7 +85,7 @@ def extract_frames_to_label(args):
     # -------------------------------------------------------
     # read videos as sleap Video instances
     list_sleap_videos = get_sleap_videos_list(
-        args.video_dir,
+        args.list_video_locations,
         args.video_extensions
     )
 
@@ -171,8 +190,9 @@ if __name__ == '__main__':
     # TODO: add grayscale option?
     # TODO: read extracted frames from file?
     parser = argparse.ArgumentParser()
-    parser.add_argument('video_dir',   # positional, needs first fwd slash!
-                        help="path to directory with videos")
+    parser.add_argument('list_video_locations',   # positional, needs first fwd slash!
+                        nargs='*',
+                        help="list of paths to directories with videos, or to specific video files")
     parser.add_argument('--output_path',
                         default='.',  # does this work?
                         help=(
