@@ -167,9 +167,9 @@ def extract_frames_to_label(args):
 
         # create video output dir inside timestamped one
         video_output_dir = (
-            output_dir_timestamped /   # timestamp
-            Path(vid_str).parent.stem /  # parent dir of input video
-            Path(vid_str).stem  # video name
+            output_dir_timestamped  #/   # timestamp
+            # Path(vid_str).parent.stem /  # parent dir of input video
+            # Path(vid_str).stem  # video name
         )
         video_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -187,7 +187,9 @@ def extract_frames_to_label(args):
 
             else:
                 file_path = video_output_dir / Path(
-                    f'frame_{frame_idx:06d}.png'
+                    f"{Path(vid_str).parent.stem}_"
+                    f"{Path(vid_str).stem}_"
+                    f"frame_{frame_idx:06d}.png"
                 )
                 img_saved = cv2.imwrite(
                     str(file_path),
