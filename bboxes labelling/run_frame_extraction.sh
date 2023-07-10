@@ -38,7 +38,7 @@ SCRIPT_DIR=$SCRATCH_PERSONAL_DIR/crabs-exploration/"bboxes labelling"
 python "$SCRIPT_DIR"/extract_frames_to_label_w_sleap.py \
  $INPUT_DIR/camera1 $INPUT_DIR/camera2/NINJAV_S001_S001_T001.MOV  $INPUT_DIR/camera2/NINJAV_S001_S001_T002.MOV \
  --output_path $OUTPUT_DIR \
- --video_extensions 'MOV' \
+ --video_extensions MOV \
  --initial_samples 300 \
  --n_components 5 \
  --n_clusters 5 \
