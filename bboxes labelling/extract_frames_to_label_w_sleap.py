@@ -25,6 +25,7 @@ from sleap import Video
 from sleap.info.feature_suggestions import (FeatureSuggestionPipeline,
                                             ParallelFeaturePipeline)
 
+import logging
 
 # ------------------
 # Utils
@@ -51,10 +52,25 @@ def get_sleap_videos_list(
         ):
             list_video_paths.append(location_path)
 
-    list_sleap_videos = [
-        Video.from_filename(str(vid_path))
-        for vid_path in list_video_paths
-    ]
+    # transform list of videos to sleap videos,
+    # filtering out those that opencv cannot open
+    # TODO is there a better way to do this?
+    list_sleap_videos = []
+    for vid_path in list_video_paths:
+        cap = cv2.VideoCapture(str(vid_path))
+        if cap.isOpened():
+            list_sleap_videos.append(
+                Video.from_filename(str(vid_path))
+            )
+            cap.release()
+
+    # print warning if list is empty
+    if not list_sleap_videos:
+        logging.warning(
+            "List of videos is empty \n" 
+            f"\t locations:{list_video_locations}\n "
+            f"\t extensions:{list_video_extensions})\n"
+        )
 
     return list_sleap_videos
 
@@ -142,11 +158,11 @@ def extract_frames_to_label(args):
         cap = cv2.VideoCapture(vid_str)
         
         # check
-        print('---------------------------')
+        logging.info('---------------------------')
         if cap.isOpened():
-            print(f"Processing {Path(vid_str)}")
+            logging.info(f"Processing {Path(vid_str)}")
         else:
-            print(f"Error processing {Path(vid_str)}, skipped....")
+            logging.info(f"Error processing {Path(vid_str)}, skipped....")
             continue
 
         # create video output dir inside timestamped one
@@ -178,9 +194,9 @@ def extract_frames_to_label(args):
                     frame
                 )
                 if img_saved:
-                    print(f"frame {frame_idx} saved at {file_path}")
+                    logging.info(f"frame {frame_idx} saved at {file_path}")
                 else:
-                    print(f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping")
+                    logging.info(f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping")
                     continue
 
 
