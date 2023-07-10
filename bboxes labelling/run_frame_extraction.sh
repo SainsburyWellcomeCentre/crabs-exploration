@@ -14,31 +14,19 @@
 # ---------------------
 # Load required modules
 # ----------------------
-# Option 1
-# module load cuda/11.8
-# module load miniconda
-# conda activate extract-frames  # ----> environment as defined in sleap installation
-
-# Option 2:
 module load SLEAP
 
 # ---------------------
 # Define environment variables
 # ----------------------
-SCRATCH_PERSONAL_DIR=/ceph/scratch/sminano
-INPUT_DIR=$SCRATCH_PERSONAL_DIR/crabs_sample/videos_inference  #--------- CHANGE
-OUTPUT_DIR=$SCRATCH_PERSONAL_DIR/crabs_bbox_labels
+# input/output dirs
+INPUT_DIR=/ceph/zoo/raw/CrabField/ramalhete_2021
+OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels
 
-# --------------------------
-# Set up conda environment
-# ---------------------------
-# conda activate extract-frames
-# TODO: re-creates it everytime?
-# use create -p instead?
-# conda create --name extract-frames python=3.7
-# conda activate extract-frames
-# conda install -c sleap -c nvidia -c conda-forge sleap
-# conda install -c conda-forge opencv
+# script location
+# assumes repo located at '/ceph/scratch/sminano'
+SCRATCH_PERSONAL_DIR=/ceph/scratch/sminano
+SCRIPT_DIR=$SCRATCH_PERSONAL_DIR/crabs-exploration/"bboxes labelling"
 
 # TODO: set NUMEXPR_MAX_THREADS?
 # NumExpr detected 40 cores but "NUMEXPR_MAX_THREADS" not set, 
@@ -47,9 +35,8 @@ OUTPUT_DIR=$SCRATCH_PERSONAL_DIR/crabs_bbox_labels
 # -------------------
 # Run python script
 # -------------------
-cd $OUTPUT_DIR
-python extract_frames_to_label_w_sleap.py \
- $INPUT_DIR \
+python $SCRIPT_DIR/extract_frames_to_label_w_sleap.py \
+ $INPUT_DIR/camera1 $INPUT_DIR/camera2/NINJAV_S001_S001_T001.MOV  $INPUT_DIR/camera2/NINJAV_S001_S001_T002.MOV\
  --output_path $OUTPUT_DIR \
  --video_extensions 'MOV' \
  --initial_samples 300 \

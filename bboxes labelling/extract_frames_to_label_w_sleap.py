@@ -2,10 +2,17 @@
 A script to extract frames for labelling using SLEAP's algorith,
 
 Example usage:
-    python bboxes\ labelling/extract_frames_to_label_w_sleap.py 'crab_sample_data/sample_clips/' --initial_samples 5 --n_components 2 --n_clusters 2 --per_cluster 1 --compute_features_per_video
+    python bboxes\ labelling/extract_frames_to_label_w_sleap.py 
+    'crab_sample_data/sample_clips/' 
+    --initial_samples 5 
+    --n_components 2 
+    --n_clusters 2 
+    --per_cluster 1 
+    --compute_features_per_video
 
 TODO: can I make it deterministic?
-TODO: add possibility to run on input list of videos? or to pass a 
+TODO: check https://github.com/talmolab/sleap-io/tree/main/sleap_io
+TODO: change it to copy directory structure from input?
 '''
 
 import argparse
@@ -18,23 +25,52 @@ from sleap import Video
 from sleap.info.feature_suggestions import (FeatureSuggestionPipeline,
                                             ParallelFeaturePipeline)
 
+import logging
 
 # ------------------
 # Utils
 # -----------------
 def get_sleap_videos_list(
-    video_dir: str,
+    list_video_locations: list[str],  
     list_video_extensions: list = ['mp4']
 ):
-
+    # split locations between files and directories
     list_video_paths = []
-    for ext in list_video_extensions:
-        list_video_paths.extend(Path(video_dir).glob(f'[!.]*.{ext}'))  # exclude hidden files
+    for loc in list_video_locations:
+        location_path = Path(loc)
 
-    list_sleap_videos = [
-        Video.from_filename(str(vid_path))
-        for vid_path in list_video_paths
-    ]
+        # if dir: look for files with any of the relevant extensions 
+        # (only one level in)
+        if location_path.is_dir():
+            for ext in list_video_extensions:
+                list_video_paths.extend(location_path.glob(f'[!.]*.{ext}'))  
+                # exclude hidden files
+        # if file has the relevant extension: append directly to list?
+        elif location_path.is_file() and (
+            location_path.suffix[1:] in list_video_extensions
+            # suffix includes dot
+        ):
+            list_video_paths.append(location_path)
+
+    # transform list of videos to sleap videos,
+    # filtering out those that opencv cannot open
+    # TODO is there a better way to do this?
+    list_sleap_videos = []
+    for vid_path in list_video_paths:
+        cap = cv2.VideoCapture(str(vid_path))
+        if cap.isOpened():
+            list_sleap_videos.append(
+                Video.from_filename(str(vid_path))
+            )
+            cap.release()
+
+    # print warning if list is empty
+    if not list_sleap_videos:
+        logging.warning(
+            "List of videos is empty \n" 
+            f"\t locations:{list_video_locations}\n "
+            f"\t extensions:{list_video_extensions})\n"
+        )
 
     return list_sleap_videos
 
@@ -66,7 +102,7 @@ def extract_frames_to_label(args):
     # -------------------------------------------------------
     # read videos as sleap Video instances
     list_sleap_videos = get_sleap_videos_list(
-        args.video_dir,
+        args.list_video_locations,
         args.video_extensions
     )
 
@@ -88,6 +124,7 @@ def extract_frames_to_label(args):
         parallel=args.compute_features_per_video,
     )
 
+    # sleap frames are 0-indexed (right?)
     map_videos_to_extracted_frames = get_map_videos_to_extracted_frames(
         list_sleap_videos,
         suggestions
@@ -98,7 +135,7 @@ def extract_frames_to_label(args):
     # ----------------------
     # create timestamp folder inside output folder if it doesnt exist
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir_timestamped = Path(args.output_path) / f'{timestamp}'
+    output_dir_timestamped = Path(args.output_path) / f'{timestamp}' 
     output_dir_timestamped.mkdir(parents=True, exist_ok=True)
 
     # save extracted frames as json file
@@ -112,7 +149,7 @@ def extract_frames_to_label(args):
     )
 
     # -------------------------------------------------------
-    # For every video, extract suggested frames with opencv
+    # Extract suggested frames with opencv
     # -------------------------------------------------------
 
     # loop thru videos and extract frames
@@ -121,15 +158,19 @@ def extract_frames_to_label(args):
         cap = cv2.VideoCapture(vid_str)
         
         # check
-        print('---------------------------')
+        logging.info('---------------------------')
         if cap.isOpened():
-            print(f"Processing {Path(vid_str)}")
+            logging.info(f"Processing {Path(vid_str)}")
         else:
-            print(f"Error processing {Path(vid_str)}, skipped....")
+            logging.info(f"Error processing {Path(vid_str)}, skipped....")
             continue
 
         # create video output dir inside timestamped one
-        video_output_dir = output_dir_timestamped / Path(vid_str).stem
+        video_output_dir = (
+            output_dir_timestamped  #/   # timestamp
+            # Path(vid_str).parent.stem /  # parent dir of input video
+            # Path(vid_str).stem  # video name
+        )
         video_output_dir.mkdir(parents=True, exist_ok=True)
 
         # go to the selected frames
@@ -146,16 +187,18 @@ def extract_frames_to_label(args):
 
             else:
                 file_path = video_output_dir / Path(
-                    f'frame_{frame_idx:06d}.png'
+                    f"{Path(vid_str).parent.stem}_"
+                    f"{Path(vid_str).stem}_"
+                    f"frame_{frame_idx:06d}.png"
                 )
                 img_saved = cv2.imwrite(
                     str(file_path),
                     frame
                 )
                 if img_saved:
-                    print(f"frame {frame_idx} saved at {file_path}")
+                    logging.info(f"frame {frame_idx} saved at {file_path}")
                 else:
-                    print(f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping")
+                    logging.info(f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping")
                     continue
 
 
@@ -171,8 +214,9 @@ if __name__ == '__main__':
     # TODO: add grayscale option?
     # TODO: read extracted frames from file?
     parser = argparse.ArgumentParser()
-    parser.add_argument('video_dir',   # positional, needs first fwd slash!
-                        help="path to directory with videos")
+    parser.add_argument('list_video_locations',   # positional, needs first fwd slash!
+                        nargs='*',
+                        help="list of paths to directories with videos, or to specific video files")
     parser.add_argument('--output_path',
                         default='.',  # does this work?
                         help=(
@@ -193,7 +237,7 @@ if __name__ == '__main__':
                         type=str,
                         default='stride',
                         choices=['random', 'stride'],
-                        help='method to sample initial frames')   #ok?
+                        help='method to sample initial frames')  # ok?
     parser.add_argument('--scale', 
                         type=float, 
                         nargs='?', 
