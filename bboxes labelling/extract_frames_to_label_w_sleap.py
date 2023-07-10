@@ -12,6 +12,7 @@ Example usage:
 
 TODO: can I make it deterministic?
 TODO: check https://github.com/talmolab/sleap-io/tree/main/sleap_io
+TODO: change it to copy directory structure from input?
 '''
 
 import argparse
@@ -107,6 +108,7 @@ def extract_frames_to_label(args):
         parallel=args.compute_features_per_video,
     )
 
+    # sleap frames are 0-indexed (right?)
     map_videos_to_extracted_frames = get_map_videos_to_extracted_frames(
         list_sleap_videos,
         suggestions
@@ -117,7 +119,7 @@ def extract_frames_to_label(args):
     # ----------------------
     # create timestamp folder inside output folder if it doesnt exist
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir_timestamped = Path(args.output_path) / f'{timestamp}'
+    output_dir_timestamped = Path(args.output_path) / f'{timestamp}' 
     output_dir_timestamped.mkdir(parents=True, exist_ok=True)
 
     # save extracted frames as json file
@@ -131,7 +133,7 @@ def extract_frames_to_label(args):
     )
 
     # -------------------------------------------------------
-    # For every video, extract suggested frames with opencv
+    # Extract suggested frames with opencv
     # -------------------------------------------------------
 
     # loop thru videos and extract frames
@@ -148,7 +150,11 @@ def extract_frames_to_label(args):
             continue
 
         # create video output dir inside timestamped one
-        video_output_dir = output_dir_timestamped / Path(vid_str).stem
+        video_output_dir = (
+            output_dir_timestamped /   # timestamp
+            Path(vid_str).parent.stem /  # parent dir of input video
+            Path(vid_str).stem  # video name
+        )
         video_output_dir.mkdir(parents=True, exist_ok=True)
 
         # go to the selected frames
@@ -213,7 +219,7 @@ if __name__ == '__main__':
                         type=str,
                         default='stride',
                         choices=['random', 'stride'],
-                        help='method to sample initial frames')   #ok?
+                        help='method to sample initial frames')  # ok?
     parser.add_argument('--scale', 
                         type=float, 
                         nargs='?', 
