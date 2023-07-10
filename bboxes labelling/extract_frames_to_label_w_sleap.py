@@ -27,12 +27,13 @@ from sleap.info.feature_suggestions import (FeatureSuggestionPipeline,
 
 import logging
 
+
 # ------------------
 # Utils
 # -----------------
 def get_sleap_videos_list(
-    list_video_locations: list[str],  
-    list_video_extensions: list = ['mp4']
+    list_video_locations,  # : list[str],  Python 3.9 and above
+    list_video_extensions=['mp4']  # list[str] = ['mp4'] Python 3.9 and above
 ):
     # split locations between files and directories
     list_video_paths = []
