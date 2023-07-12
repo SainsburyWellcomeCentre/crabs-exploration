@@ -65,13 +65,13 @@ There are very nice recommendations on the arrangement of the cameras in the [St
 For a calibration frame to be useful, the checkerboard must fulfill the following criteria:
 
 - Keep the orientation of the checkboard within 90deg (conservatively 30 deg [^1]) of the "original"/default position
-    - *Why?* The algorithm takes the bottom (right?) corner of the board as the origin, and then traverses the rest of corners from there. If in some frames the board is rotated beyond 30 deg, the origin may be detected at a different physical corner, and all the corners may be traversd in a different order.
+    - *Why?* The algorithm takes the bottom (right?) corner of the board as the origin, and then traverses the rest of corners from there. If in some frames the board is rotated beyond 30 deg, the origin may be detected at a different physical corner, and all the corners may be traversed in a different order.
 
 - Cover several distances, and within each distance, cover (all parts of the image view)/(of the FOV overlap) [^1]
     - We want to cover as much as possible of the calibration space (or the space where we want to collect data in)
     - *Why?*: 
         > "If you only photograph the checkerboard in one area of the calibration volume, reconstruction errors could be relatively higher in other areas. Similarly, if you only photograph the checkerboard at a particular angle (e.g. 45 degrees), you won't have good sampling of points along each dimension of the space (since a checkerboard is a flat surface it can only sample two dimensions at any one time). This can causes reconstruction errors to be higher along particular dimensions than along others." (from [here](https://aaronolsen.github.io/tutorials/stereomorph/calibration_general.html))
-    - Note however that if at some distance the calibration pattern is too small, we may not be able to detect the corners reliably and the calibration may be poor. To fix this we may need a larger board (or move cameras closer to the area of interest) 
+    - Note however that if at some distance the calibration pattern is too small, we may not be able to detect the corners reliably and the calibration may be poor. To fix this we may need a larger board (or move cameras closer to the area of interest before calibrating) 
 
 - For a calibration frame to be useful, the checkerboard must be fully visible in both cameras
     - *Why?* Since the algorithm first tries to search for the outer corners of the board, it will fail if the board is only partially visible. This may be avoidable using an alternative algorithm, but the approach [doesn't seem 100% robust](https://github.com/opencv/opencv/issues/15712#issuecomment-1493344373), so it's probably a good idea to be conservative here and keep it fully visible at all times.
