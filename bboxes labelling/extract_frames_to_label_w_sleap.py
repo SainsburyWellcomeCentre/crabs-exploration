@@ -1,4 +1,4 @@
-'''
+"""
 A script to extract frames for labelling using SLEAP's algorith,
 
 Example usage:
@@ -13,7 +13,7 @@ Example usage:
 TODO: can I make it deterministic?
 TODO: check https://github.com/talmolab/sleap-io/tree/main/sleap_io
 TODO: change it to copy directory structure from input?
-'''
+"""
 
 import argparse
 import json
@@ -22,32 +22,36 @@ from pathlib import Path
 
 import cv2
 from sleap import Video
-from sleap.info.feature_suggestions import (FeatureSuggestionPipeline,
-                                            ParallelFeaturePipeline)
+from sleap.info.feature_suggestions import (
+    FeatureSuggestionPipeline,
+    ParallelFeaturePipeline,
+)
 
 import logging
+
 
 # ------------------
 # Utils
 # -----------------
 def get_sleap_videos_list(
-    list_video_locations: list[str],  
-    list_video_extensions: list = ['mp4']
+    list_video_locations,  # : list[str],  Python 3.9 and above
+    list_video_extensions=["mp4"],  # list[str] = ['mp4'] Python 3.9 and above
 ):
     # split locations between files and directories
     list_video_paths = []
     for loc in list_video_locations:
         location_path = Path(loc)
 
-        # if dir: look for files with any of the relevant extensions 
+        # if dir: look for files with any of the relevant extensions
         # (only one level in)
         if location_path.is_dir():
             for ext in list_video_extensions:
-                list_video_paths.extend(location_path.glob(f'[!.]*.{ext}'))  
+                list_video_paths.extend(location_path.glob(f"[!.]*.{ext}"))
                 # exclude hidden files
         # if file has the relevant extension: append directly to list?
         elif location_path.is_file() and (
-            location_path.suffix[1:] in list_video_extensions
+            location_path.suffix[1:]
+            in list_video_extensions
             # suffix includes dot
         ):
             list_video_paths.append(location_path)
@@ -59,15 +63,13 @@ def get_sleap_videos_list(
     for vid_path in list_video_paths:
         cap = cv2.VideoCapture(str(vid_path))
         if cap.isOpened():
-            list_sleap_videos.append(
-                Video.from_filename(str(vid_path))
-            )
+            list_sleap_videos.append(Video.from_filename(str(vid_path)))
             cap.release()
 
     # print warning if list is empty
     if not list_sleap_videos:
         logging.warning(
-            "List of videos is empty \n" 
+            "List of videos is empty \n"
             f"\t locations:{list_video_locations}\n "
             f"\t extensions:{list_video_extensions})\n"
         )
@@ -75,10 +77,7 @@ def get_sleap_videos_list(
     return list_sleap_videos
 
 
-def get_map_videos_to_extracted_frames(
-    list_sleap_videos,
-    suggestions
-):
+def get_map_videos_to_extracted_frames(list_sleap_videos, suggestions):
     map_videos_to_extracted_frames = {}
     for vid in list_sleap_videos:
         vid_str = vid.backend.filename
@@ -101,52 +100,54 @@ def extract_frames_to_label(args):
     # Run frame extraction pipeline from SLEAP
     # -------------------------------------------------------
     # read videos as sleap Video instances
+    print(args.list_video_locations)
     list_sleap_videos = get_sleap_videos_list(
-        args.list_video_locations,
-        args.video_extensions
+        args.list_video_locations, args.video_extensions
     )
+    print(list_sleap_videos)
 
     # define the pipeline
     pipeline = FeatureSuggestionPipeline(
-        per_video=args.initial_samples,  
-        sample_method=args.sample_method, 
-        scale=args.scale, 
-        feature_type=args.feature_type,  
-        n_components=args.n_components,  
-        n_clusters=args.n_clusters, 
+        per_video=args.initial_samples,
+        sample_method=args.sample_method,
+        scale=args.scale,
+        feature_type=args.feature_type,
+        n_components=args.n_components,
+        n_clusters=args.n_clusters,
         per_cluster=args.per_cluster,
     )
 
     # run the pipeline (per video, if args.compute_features_per_video=True)
+    print("Run feature pipeline")
     suggestions = ParallelFeaturePipeline.run(
-        pipeline, 
-        list_sleap_videos, 
+        pipeline,
+        list_sleap_videos,
         parallel=args.compute_features_per_video,
     )
 
     # sleap frames are 0-indexed (right?)
     map_videos_to_extracted_frames = get_map_videos_to_extracted_frames(
-        list_sleap_videos,
-        suggestions
+        list_sleap_videos, suggestions
     )
 
     # --------------------
     # Prepare output data
     # ----------------------
     # create timestamp folder inside output folder if it doesnt exist
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir_timestamped = Path(args.output_path) / f'{timestamp}' 
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir_timestamped = Path(args.output_path) / f"{timestamp}"
     output_dir_timestamped.mkdir(parents=True, exist_ok=True)
 
     # save extracted frames as json file
-    json_output_file = output_dir_timestamped / 'extracted_frames.json'
-    with open(json_output_file, 'w') as js:
+    json_output_file = output_dir_timestamped / "extracted_frames.json"
+    with open(json_output_file, "w") as js:
         json.dump(
-            map_videos_to_extracted_frames, 
+            map_videos_to_extracted_frames,
             js,
-            sort_keys=True, 
+            sort_keys=True,
             indent=4,
-    )
+        )
+    print("json with extracted frames saved")
 
     # -------------------------------------------------------
     # Extract suggested frames with opencv
@@ -156,9 +157,9 @@ def extract_frames_to_label(args):
     for vid_str in map_videos_to_extracted_frames.keys():
         # initialise opencv capture
         cap = cv2.VideoCapture(vid_str)
-        
+
         # check
-        logging.info('---------------------------')
+        logging.info("---------------------------")
         if cap.isOpened():
             logging.info(f"Processing {Path(vid_str)}")
         else:
@@ -167,7 +168,7 @@ def extract_frames_to_label(args):
 
         # create video output dir inside timestamped one
         video_output_dir = (
-            output_dir_timestamped  #/   # timestamp
+            output_dir_timestamped  # /   # timestamp
             # Path(vid_str).parent.stem /  # parent dir of input video
             # Path(vid_str).stem  # video name
         )
@@ -191,22 +192,20 @@ def extract_frames_to_label(args):
                     f"{Path(vid_str).stem}_"
                     f"frame_{frame_idx:06d}.png"
                 )
-                img_saved = cv2.imwrite(
-                    str(file_path),
-                    frame
-                )
+                img_saved = cv2.imwrite(str(file_path), frame)
                 if img_saved:
                     logging.info(f"frame {frame_idx} saved at {file_path}")
                 else:
-                    logging.info(f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping")
+                    logging.info(
+                        f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping"
+                    )
                     continue
-
 
         # close capture
         cap.release()
 
 
-if __name__ == '__main__':    
+if __name__ == "__main__":
     # ------------------------------------
     # parse command line arguments
     # ------------------------------
@@ -214,65 +213,86 @@ if __name__ == '__main__':
     # TODO: add grayscale option?
     # TODO: read extracted frames from file?
     parser = argparse.ArgumentParser()
-    parser.add_argument('list_video_locations',   # positional, needs first fwd slash!
-                        nargs='*',
-                        help="list of paths to directories with videos, or to specific video files")
-    parser.add_argument('--output_path',
-                        default='.',  # does this work?
-                        help=(
-                            "path to directory in which to store extracted" 
-                            " frames (by default, the current directory)"
-                        )
-                        )
-    parser.add_argument('--video_extensions', 
-                        nargs='*',
-                        default=['mp4'],
-                        help="extensions to search for when looking for video files")
-    parser.add_argument('--initial_samples', 
-                        type=int, 
-                        nargs='?', 
-                        default=200, 
-                        help='initial number of frames to extract per video')
-    parser.add_argument('--sample_method',
-                        type=str,
-                        default='stride',
-                        choices=['random', 'stride'],
-                        help='method to sample initial frames')  # ok?
-    parser.add_argument('--scale', 
-                        type=float, 
-                        nargs='?', 
-                        default=1.0, 
-                        help='factor to apply to the images prior to PCA and k-means clustering')  # help ok?
-    parser.add_argument('--feature_type', 
-                        type=str,
-                        nargs='?',
-                        default='raw',
-                        choices=['raw', 'brisk', 'hog'],
-                        help='type of input feature') 
-    parser.add_argument('--n_components', 
-                        type=int,
-                        nargs='?',
-                        default=5,
-                        help='number of PCA components')
-    parser.add_argument('--n_clusters', 
-                        type=int, 
-                        nargs='?', 
-                        default=5, 
-                        help='number of k-means clusters')
-    parser.add_argument('--per_cluster', 
-                        type=int, 
-                        nargs='?', 
-                        default=5, 
-                        help='number of frames to sample per cluster')
-    parser.add_argument('--compute_features_per_video', 
-                        type=bool, 
-                        nargs='?', 
-                        const=True,
-                        help='whether to compute the (PCA?) features per video, or across all videos')
-    # parser.add_argument('--random_seed', 
-    #                     type=int, 
+    parser.add_argument(
+        "list_video_locations",  # positional, needs first fwd slash!
+        nargs="*",
+        help="list of paths to directories with videos, or to specific video files",
+    )
+    parser.add_argument(
+        "--output_path",
+        default=".",  # does this work?
+        help=(
+            "path to directory in which to store extracted"
+            " frames (by default, the current directory)"
+        ),
+    )
+    parser.add_argument(
+        "--video_extensions",
+        nargs="*",
+        default=["mp4"],
+        help="extensions to search for when looking for video files",
+    )
+    parser.add_argument(
+        "--initial_samples",
+        type=int,
+        nargs="?",
+        default=200,
+        help="initial number of frames to extract per video",
+    )
+    parser.add_argument(
+        "--sample_method",
+        type=str,
+        default="stride",
+        choices=["random", "stride"],
+        help="method to sample initial frames",
+    )  # ok?
+    parser.add_argument(
+        "--scale",
+        type=float,
+        nargs="?",
+        default=1.0,
+        help="factor to apply to the images prior to PCA and k-means clustering",
+    )  # help ok?
+    parser.add_argument(
+        "--feature_type",
+        type=str,
+        nargs="?",
+        default="raw",
+        choices=["raw", "brisk", "hog"],
+        help="type of input feature",
+    )
+    parser.add_argument(
+        "--n_components",
+        type=int,
+        nargs="?",
+        default=5,
+        help="number of PCA components",
+    )
+    parser.add_argument(
+        "--n_clusters",
+        type=int,
+        nargs="?",
+        default=5,
+        help="number of k-means clusters",
+    )
+    parser.add_argument(
+        "--per_cluster",
+        type=int,
+        nargs="?",
+        default=5,
+        help="number of frames to sample per cluster",
+    )
+    parser.add_argument(
+        "--compute_features_per_video",
+        type=bool,
+        nargs="?",
+        const=True,
+        help="whether to compute the (PCA?) features per video, or across all videos",
+    )
+    # parser.add_argument('--random_seed',
+    #                     type=int,
     #                     nargs='?',
-    #                     default=42, 
+    #                     default=42,
     #                     help='random seed')
     args = parser.parse_args()
 
