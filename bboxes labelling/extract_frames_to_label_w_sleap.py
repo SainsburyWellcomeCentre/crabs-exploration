@@ -172,13 +172,17 @@ def extract_frames_to_label(args):
 
         if args.foreground_channel:
             bg_sub = cv2.createBackgroundSubtractorMOG2()
-
-        # go to the selected frames
-        for frame_idx in map_videos_to_extracted_frames[vid_str]:
-            # read frame
-            # OJO in opencv, frames are 0-index, and I *think* in sleap too?
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        
+        frame_idx = 0
+        print(map_videos_to_extracted_frames[vid_str])
+        while True:
+            # print(frame_idx)
+            # Read a frame from the video stream
             success, frame = cap.read()
+
+            if not success:
+                print("End of video stream.")
+                break
 
             if args.foreground_channel:
                 fg_mask = bg_sub.apply(frame)
@@ -186,35 +190,51 @@ def extract_frames_to_label(args):
                 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
                 fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
 
-            # save to file
-            if not success or frame is None:
-                raise KeyError(f"Unable to load frame {frame_idx} from {vid_str}.")
+                # if args.difference_channel:
 
-            else:
-                file_path = video_output_dir / Path(
-                    f"{Path(vid_str).parent.stem}_"
-                    f"{Path(vid_str).stem}_"
-                    f"frame_{frame_idx:06d}.png"
-                )
-                img_saved = cv2.imwrite(str(file_path), frame)
-                if args.foreground_channel:
-                    file_path_fg = video_output_dir / Path(
+            
+            # go to the selected frames
+            if frame_idx in map_videos_to_extracted_frames[vid_str]:
+            # for frame_idx in map_videos_to_extracted_frames[vid_str]:
+                # read frame
+                # OJO in opencv, frames are 0-index, and I *think* in sleap too?
+                print(frame_idx)
+                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                # success, frame = cap.read()
+
+                # save to file
+                if not success or frame is None:
+                    raise KeyError(f"Unable to load frame {frame_idx} from {vid_str}.")
+
+                else:
+                    file_path = video_output_dir / Path(
                         f"{Path(vid_str).parent.stem}_"
                         f"{Path(vid_str).stem}_"
-                        f"frame_{frame_idx:06d}_fg.png"
+                        f"frame_{frame_idx:06d}.png"
                     )
-                    cv2.imwrite(str(file_path_fg) + "_fg.png", fg_mask)
+                    img_saved = cv2.imwrite(str(file_path), frame)
+                    if args.foreground_channel:
+                        file_path_fg = video_output_dir / Path(
+                            f"{Path(vid_str).parent.stem}_"
+                            f"{Path(vid_str).stem}_"
+                            f"frame_{frame_idx:06d}_fg.png"
+                        )
+                        cv2.imwrite(str(file_path_fg) + "_fg.png", fg_mask)
 
-                if img_saved:
-                    logging.info(f"frame {frame_idx} saved at {file_path}")
-                else:
-                    logging.info(
-                        f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping"
-                    )
-                    continue
+                    if img_saved:
+                        logging.info(f"frame {frame_idx} saved at {file_path}")
+                    else:
+                        logging.info(
+                            f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping"
+                        )
+                        continue
+            frame_idx += 1
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
 
         # close capture
         cap.release()
+        cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
