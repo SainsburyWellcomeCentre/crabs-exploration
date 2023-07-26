@@ -29,6 +29,9 @@ from sleap.info.feature_suggestions import (
 
 import logging
 
+def accumulate_frames(background_model, new_frame, alpha=0.01):
+    # Accumulate the new frame to update the background model
+    return cv2.addWeighted(background_model, 1 - alpha, new_frame, alpha, 0)
 
 # ------------------
 # Utils
@@ -172,9 +175,18 @@ def extract_frames_to_label(args):
 
         if args.foreground_channel:
             bg_sub = cv2.createBackgroundSubtractorMOG2()
+
+        if args.difference_channel:
+            # Initialise the background model - use the first frame as the initial background
+            ret, bg_model = cap.read()
+
+            if not ret:
+                print("Unable to read the first frame.")
+                return
         
         frame_idx = 0
         print(map_videos_to_extracted_frames[vid_str])
+
         while True:
             # print(frame_idx)
             # Read a frame from the video stream
@@ -186,11 +198,22 @@ def extract_frames_to_label(args):
 
             if args.foreground_channel:
                 fg_mask = bg_sub.apply(frame)
-                # optional - apply morphological operation to refine the mask
-                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-                fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
 
-                # if args.difference_channel:
+                # optional - apply morphological operation to refine the mask
+                # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+                # fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_CLOSE, kernel)
+
+            if args.difference_channel:
+                # Update the background model using accumulation
+                alpha = 0.1  # value between 0 to 1 - smaller value is suitable for very little movement
+                background_model = accumulate_frames(bg_model, frame, alpha)
+
+                # Compute the absolute difference between the new frame and the background model
+                frame_diff = cv2.absdiff(frame, background_model)
+
+                # optional - apply morphological operation to refine the mask
+                # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+                # frame_diff = cv2.morphologyEx(frame_diff, cv2.MORPH_CLOSE, kernel)
 
             
             # go to the selected frames
@@ -213,6 +236,7 @@ def extract_frames_to_label(args):
                         f"frame_{frame_idx:06d}.png"
                     )
                     img_saved = cv2.imwrite(str(file_path), frame)
+                    
                     if args.foreground_channel:
                         file_path_fg = video_output_dir / Path(
                             f"{Path(vid_str).parent.stem}_"
@@ -220,6 +244,14 @@ def extract_frames_to_label(args):
                             f"frame_{frame_idx:06d}_fg.png"
                         )
                         cv2.imwrite(str(file_path_fg) + "_fg.png", fg_mask)
+
+                    if args.difference_channel:
+                        file_path_fd = video_output_dir / Path(
+                            f"{Path(vid_str).parent.stem}_"
+                            f"{Path(vid_str).stem}_"
+                            f"frame_{frame_idx:06d}_fd.png"
+                        )
+                        cv2.imwrite(str(file_path_fd) + "_fd.png", frame_diff)
 
                     if img_saved:
                         logging.info(f"frame {frame_idx} saved at {file_path}")
