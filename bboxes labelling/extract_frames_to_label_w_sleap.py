@@ -105,7 +105,6 @@ def extract_frames_to_label(args):
     list_sleap_videos = get_sleap_videos_list(
         args.list_video_locations, args.video_extensions
     )
-    print(list_sleap_videos)
 
     # define the pipeline
     pipeline = FeatureSuggestionPipeline(
@@ -185,10 +184,7 @@ def extract_frames_to_label(args):
                 return
         
         frame_idx = 0
-        print(map_videos_to_extracted_frames[vid_str])
-
         while True:
-            # print(frame_idx)
             # Read a frame from the video stream
             success, frame = cap.read()
 
@@ -221,7 +217,6 @@ def extract_frames_to_label(args):
             # for frame_idx in map_videos_to_extracted_frames[vid_str]:
                 # read frame
                 # OJO in opencv, frames are 0-index, and I *think* in sleap too?
-                print(frame_idx)
                 cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
                 # success, frame = cap.read()
 
@@ -238,20 +233,10 @@ def extract_frames_to_label(args):
                     img_saved = cv2.imwrite(str(file_path), frame)
                     
                     if args.foreground_channel:
-                        file_path_fg = video_output_dir / Path(
-                            f"{Path(vid_str).parent.stem}_"
-                            f"{Path(vid_str).stem}_"
-                            f"frame_{frame_idx:06d}_fg.png"
-                        )
-                        cv2.imwrite(str(file_path_fg) + "_fg.png", fg_mask)
+                        cv2.imwrite("fg_" + str(file_path), fg_mask)
 
                     if args.difference_channel:
-                        file_path_fd = video_output_dir / Path(
-                            f"{Path(vid_str).parent.stem}_"
-                            f"{Path(vid_str).stem}_"
-                            f"frame_{frame_idx:06d}_fd.png"
-                        )
-                        cv2.imwrite(str(file_path_fd) + "_fd.png", frame_diff)
+                        cv2.imwrite("fd_" + str(file_path), frame_diff)
 
                     if img_saved:
                         logging.info(f"frame {frame_idx} saved at {file_path}")
@@ -375,5 +360,4 @@ if __name__ == "__main__":
     # ------------------------
     # run frame extraction
     # ------------------------
-    print(args)
     extract_frames_to_label(args)
