@@ -1,3 +1,7 @@
 crab_sample_data/
 *.mp4
 .DS_Store
+stereo calibration/check_chessboard_cells_size/*
+*.MOV
+*.slp
+*/__pycache__/*
