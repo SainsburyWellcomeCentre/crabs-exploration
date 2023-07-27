@@ -4,21 +4,29 @@
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 from sleap import Video
-from sleap.info.feature_suggestions import FeatureSuggestionPipeline, ParallelFeaturePipeline
+from sleap.info.feature_suggestions import (
+    FeatureSuggestionPipeline,
+    ParallelFeaturePipeline,
+)
 
 import cv2
 from pathlib import Path
 
 from datetime import datetime
 import json
-import random
+
+# import random
+
 # import argparse
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data --- arg parser?
-video_dir = '/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/crab_sample_data/sample_clips'
-output_path = Path('/Users/sofia/Desktop/tmp/')
-list_video_extensions = ['mp4']
+video_dir = (
+    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/"
+    "crab_sample_data/sample_clips"
+)
+output_path = Path("/Users/sofia/Desktop/tmp/")
+list_video_extensions = ["mp4"]
 random_seed = 42
 
 # also pass pipeline params as CLI inputs?
@@ -33,13 +41,12 @@ random_seed = 42
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Read videos as sleap Video instances
-list_video_paths = []
+list_video_paths: list[Path] = []
 for ext in list_video_extensions:
-    list_video_paths.extend(Path(video_dir).glob(f'*.{ext}'))
+    list_video_paths.extend(Path(video_dir).glob(f"*.{ext}"))
 
 list_sleap_videos = [
-    Video.from_filename(str(vid_path))
-    for vid_path in list_video_paths
+    Video.from_filename(str(vid_path)) for vid_path in list_video_paths
 ]
 
 
@@ -54,28 +61,34 @@ pipeline = FeatureSuggestionPipeline(
     sample_method="stride",
     scale=1.0,
     feature_type="raw",
-    brisk_threshold=80,  #?
+    brisk_threshold=80,  # ?
     n_components=3,
     n_clusters=3,
     per_cluster=1,
 )
 
 suggestions = ParallelFeaturePipeline.run(
-    pipeline, 
-    list_sleap_videos, 
-    parallel=False #------if True, I get an error in notebook:  https://stackoverflow.com/questions/65859890/python-multiprocessing-with-m1-mac
+    pipeline,
+    list_sleap_videos,
+    parallel=False,
+    # if parallel=True,
+    # I get an error in notebook:
+    # https://stackoverflow.com/questions/65859890/python-multiprocessing-with-m1-mac
 )
 
 
-print(suggestions)  
-# list of suggestions per frame (is it deterministic for the params above?) -- check with GUI
+print(suggestions)
+# list of suggestions per frame (is it deterministic for the params above?)
+#  -- check with GUI
 # each element of list is a SuggestionFrame object with
 # - .video: video frame belongs to: suggestions[0].video.backend.filename
 # - .frame_idx: frame index suggestions[0].frame_idx
 # - .group: cluster?
 
-# TODO: how to request features per video? - https://github.com/talmolab/sleap/blob/1a0404c0ffae7b248eb360562b0bb95a42a287b6/sleap/gui/suggestions.py#L159
-# TODO: are frames 0-indexed? (from sleap code it looks like yes, but in the GUI they are 1-indexed)
+# TODO: how to request features per video?
+# https://github.com/talmolab/sleap/blob/1a0404c0ffae7b248eb360562b0bb95a42a287b6/sleap/gui/suggestions.py#L159
+# TODO: are frames 0-indexed?
+# (from sleap code it looks like yes, but in the GUI they are 1-indexed)
 # TODO: how to make frame extraction deterministic?
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Prepare output dir
@@ -91,22 +104,22 @@ for vid in list_sleap_videos:
         ]
     )
 output_path.mkdir(parents=True, exist_ok=True)
-timestamp = datetime.now().strftime('%Y%m%d_%-H%M%-S')
-json_output_file = output_path / f'frame_extraction_{timestamp}.json'
-with open(json_output_file, 'w') as js:
+timestamp = datetime.now().strftime("%Y%m%d_%-H%M%-S")
+json_output_file = output_path / f"frame_extraction_{timestamp}.json"
+with open(json_output_file, "w") as js:
     json.dump(
-        map_videos_to_extracted_frames, 
+        map_videos_to_extracted_frames,
         js,
-        sort_keys=True, 
+        sort_keys=True,
         indent=4,
-)
+    )
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Extract suggested frames with opencv
-# OJO in opencv frames are 0-indexed!      
+# OJO in opencv frames are 0-indexed!
 for vid_str in map_videos_to_extracted_frames.keys():
     # initialise opencv capture
     cap = cv2.VideoCapture(vid_str)
-    
+
     # check
     if cap.isOpened():
         print(f"{Path(vid_str).stem}")
@@ -114,35 +127,33 @@ for vid_str in map_videos_to_extracted_frames.keys():
         print(f"{Path(vid_str).stem} skipped....")
         continue
 
-    # create output dir 
+    # create output dir
     Path(output_path / Path(vid_str).stem).mkdir(parents=True, exist_ok=True)
 
     # go to specified frames
     for frame_idx in map_videos_to_extracted_frames[vid_str]:
-
         # read frame
         # OJO in opencv, frames are 0-index, and I *think* in sleap too?
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx-1)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx - 1)
         success, frame = cap.read()
 
         # save to file
         if not success or frame is None:
-            raise KeyError(f"Unable to load frame {frame_idx} from {self}.")
+            raise KeyError(f"Unable to load frame {frame_idx} from {vid_str}.")
 
         else:
-            file_path = output_path / Path(vid_str).stem / Path(
-                f'frame_{frame_idx:06d}.png'
+            file_path = (
+                output_path / Path(vid_str).stem / Path(f"frame_{frame_idx:06d}.png")
             )
-            img_saved = cv2.imwrite(
-                str(file_path),
-                frame
-            )
+            img_saved = cv2.imwrite(str(file_path), frame)
             if img_saved:
                 print(f"{Path(vid_str).stem}, frame {frame_idx} saved")
             else:
-                print(f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping")
+                print(
+                    f"ERROR saving {Path(vid_str).stem}, "
+                    f"frame {frame_idx}...skipping"
+                )
                 continue
-
 
     # close capture
     cap.release()
