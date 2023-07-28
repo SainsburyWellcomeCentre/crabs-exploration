@@ -3,21 +3,16 @@
 # https://github.com/talmolab/sleap/blob/81b43425e98ab43a155eb2f3a46910d51e73ca61/sleap/info/feature_suggestions.py#L550
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+import json
+from datetime import datetime
+from pathlib import Path
+
+import cv2
 from sleap import Video
 from sleap.info.feature_suggestions import (
     FeatureSuggestionPipeline,
     ParallelFeaturePipeline,
 )
-
-import cv2
-from pathlib import Path
-
-from datetime import datetime
-import json
-
-# import random
-
-# import argparse
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data --- arg parser?
@@ -32,11 +27,6 @@ random_seed = 42
 # also pass pipeline params as CLI inputs?
 # initial_samples_per_video
 # sample_method
-# feature_type="raw",
-# brisk_threshold=80,  #?
-# n_components=5,
-# n_clusters=5,
-# per_cluster=5,
 # add grayscale option?
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -101,7 +91,7 @@ for vid in list_sleap_videos:
             sugg.frame_idx
             for sugg in suggestions
             if sugg.video.backend.filename == vid_str
-        ]
+        ],
     )
 output_path.mkdir(parents=True, exist_ok=True)
 timestamp = datetime.now().strftime("%Y%m%d_%-H%M%-S")
@@ -116,7 +106,7 @@ with open(json_output_file, "w") as js:
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Extract suggested frames with opencv
 # OJO in opencv frames are 0-indexed!
-for vid_str in map_videos_to_extracted_frames.keys():
+for vid_str in map_videos_to_extracted_frames:
     # initialise opencv capture
     cap = cv2.VideoCapture(vid_str)
 
@@ -139,7 +129,8 @@ for vid_str in map_videos_to_extracted_frames.keys():
 
         # save to file
         if not success or frame is None:
-            raise KeyError(f"Unable to load frame {frame_idx} from {vid_str}.")
+            msg = f"Unable to load frame {frame_idx} from {vid_str}."
+            raise KeyError(msg)
 
         else:
             file_path = (
@@ -151,7 +142,7 @@ for vid_str in map_videos_to_extracted_frames.keys():
             else:
                 print(
                     f"ERROR saving {Path(vid_str).stem}, "
-                    f"frame {frame_idx}...skipping"
+                    f"frame {frame_idx}...skipping",
                 )
                 continue
 

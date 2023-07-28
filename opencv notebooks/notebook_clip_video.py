@@ -1,13 +1,13 @@
 # %%
-import cv2
 import pathlib as pl
 
+import cv2
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Save a clip of selected file
 
 video_file = pl.Path(
-    "/Volumes/zoo/raw/CrabField/ramalhete_Sep21/cam2/NINJAV_S001_S001_T004.MOV"
+    "/Volumes/zoo/raw/CrabField/ramalhete_Sep21/cam2/NINJAV_S001_S001_T004.MOV",
 )
 
 clip_suffix = "out_domain_sample"
@@ -35,7 +35,6 @@ videowriter = cv2.VideoWriter(
 print(cap.get(cv2.CAP_PROP_POS_FRAMES))  # ensure we start at 0
 
 # %%%%%%%%%%%%%%%%%%%
-# clip_length_in_s = 6*60
 
 print(cap.get(cv2.CAP_PROP_POS_FRAMES))  # ensure we start at 0
 print(end_frame)

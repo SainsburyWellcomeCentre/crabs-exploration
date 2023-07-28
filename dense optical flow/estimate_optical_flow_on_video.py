@@ -1,5 +1,5 @@
-import sys
 import argparse
+import sys
 from pathlib import Path
 
 import cv2
@@ -29,8 +29,9 @@ FILE_EXTENSION = "mp4"
 # aux class and fns
 # -------------------
 class dotdict(dict):
-    """dot.notation access to dictionary attributes
-    # https://stackoverflow.com/questions/2352181/how-to-use-a-dot-to-access-members-of-dictionary
+    """
+    dot.notation access to dictionary attributes
+    # https://stackoverflow.com/questions/2352181/how-to-use-a-dot-to-access-members-of-dictionary.
     """
 
     __getattr__ = dict.get
@@ -41,7 +42,7 @@ class dotdict(dict):
 def opencv_cap_to_torch_tensor(opencv_cap_frame):
     # opencv cap returns numpy array of size (h, w, channel)
     img = np.array(opencv_cap_frame).astype(
-        np.uint8
+        np.uint8,
     )  # TODO: it is already np.array do I need to make it np.unit8?
     img = torch.from_numpy(img).permute(2, 0, 1).float()
     return img[None].to(DEVICE)
@@ -66,7 +67,8 @@ def run_model_on_video(args):
 
     # for every file in the input data dir
     list_input_videos = sorted(
-        Path(args.input_dir).glob(f"*.{FILE_EXTENSION}"), reverse=True
+        Path(args.input_dir).glob(f"*.{FILE_EXTENSION}"),
+        reverse=True,
     )
     for input_file in list_input_videos:
         # -----------------------------------------
@@ -131,7 +133,7 @@ def run_model_on_video(args):
                     # if at least one of them is not successfully read, exit
                     if not any([success_frame_1, success_frame_2]):
                         print(
-                            "At least one frame was not read correctly. " "Exiting ..."
+                            "At least one frame was not read correctly. Exiting ...",
                         )
                         break
 
@@ -171,7 +173,7 @@ def run_model_on_video(args):
             else:
                 print(
                     "Starting frame index different from 0,"
-                    " closing without reading..."
+                    " closing without reading...",
                 )
 
             # -----------------------------------------
@@ -188,12 +190,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", help="restore checkpoint")
     parser.add_argument(
-        "--input_dir", help="directory with input videos for evaluation"
+        "--input_dir",
+        help="directory with input videos for evaluation",
     )
     parser.add_argument("--output_dir", help="directory to save output to")
     parser.add_argument("--small", action="store_true", help="use small model")
     parser.add_argument(
-        "--mixed_precision", action="store_true", help="use mixed precision"
+        "--mixed_precision",
+        action="store_true",
+        help="use mixed precision",
     )
     parser.add_argument(
         "--alternate_corr",

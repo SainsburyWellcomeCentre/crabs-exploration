@@ -7,20 +7,17 @@
 # FFMPEG-python looks useful for cropping
 #   - https://github.com/kkroening/ffmpeg-python
 # %%
-import cv2
 import pathlib as pl
+
+import cv2
 
 # %%%%%%%%%%%%%%%%%%%%%%
 # Data
 ######################
-# video_path = (
 #   '/Users/sofia/Documents_local/project_Zoo_crabs/'
 #   'crab_sample_data/NINJAV_S001_S001_T001.MOV'
-# )
-# video_path = (
 #   '/Users/sofia/Documents_local/project_Zoo_crabs'
 #   '/crab_sample_data/NINJAV_S001_S001_T003_subclip.mp4'
-# )
 # 6min clip ---> 25 Hz
 
 videos_parent_dir = pl.Path("/Volumes/zoo/raw/CrabField/ramalhete_Sep21")
@@ -28,7 +25,7 @@ file_types = ("**/*.MOV", "**/*.mp4", "**/*.avi")
 list_paths = []
 for typ in file_types:
     list_paths.extend(
-        [p for p in list(videos_parent_dir.glob(typ)) if not p.name.startswith("._")]
+        [p for p in list(videos_parent_dir.glob(typ)) if not p.name.startswith("._")],
     )
 
 
@@ -67,7 +64,6 @@ for p in list_paths:
 
     if flag_save_sample_frames:
         # save frame at 50% of the total length
-        # cap.set(cv2.CAP_PROP_POS_FRAMES, int(nframes / 2))
         # ---> this didnt seem to change it?
         total_ms = (
             cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS)
@@ -79,20 +75,19 @@ for p in list_paths:
             file_path = "sample_frames" / pl.Path(
                 "_".join((p.parts[-2], p.stem))
                 + "_"
-                + f"frame{int(cap.get(cv2.CAP_PROP_POS_FRAMES))}.png"
+                + f"frame{int(cap.get(cv2.CAP_PROP_POS_FRAMES))}.png",
             )
             cv2.imwrite(str(file_path), frame)  # save frame as JPEG file
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Print video properties
 ###########################
-k0 = list(map_file_to_props.keys())[0]
+k0 = next(iter(map_file_to_props.keys()))
 inner_keys = map_file_to_props[k0].keys()
 
 for ik in inner_keys:
     for k in sorted(map_file_to_props.keys()):
         print(f"{k}, {ik}: {map_file_to_props[k][ik]}")
-        # print(f"{map_file_to_props[k][ik]},")
 print("-----")
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -137,15 +132,12 @@ cv2.destroyAllWindows()
 
 # %%%%%%%%%%%
 # # Current number of frames and elapsed time are 0 when opened
-# print(cap.get(cv2.CAP_PROP_POS_FRAMES))
-# print(cap.get(cv2.CAP_PROP_POS_MSEC))
 
 
 # %%%%%%%%%%%%%%%%%%%
 # Read method
 
 # select midframe
-# cap.set(cv2.CAP_PROP_POS_FRAMES)
 
 # check
 print(cap.get(cv2.CAP_PROP_POS_FRAMES))
@@ -158,10 +150,6 @@ print(cap.get(cv2.CAP_PROP_POS_MSEC))
 ) = cap.read()  # returns a tuple:
 # bool indicating if the frame was successfully read or not and ndarray,
 # the array of the image.
-
-# print(ret)
-# print(type(frame))  # numpy array
-# print(frame.shape)  # 3 channels
 
 
 # see here
