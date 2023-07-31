@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 
 #SBATCH -p gpu # partition
 #SBATCH -N 1   # number of nodes
@@ -9,7 +9,7 @@
 #SBATCH -o slurm.%N.%j.out # write STDOUT
 #SBATCH -e slurm.%N.%j.err # write STDERR
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=s.minano@ucl.ac.uk  
+#SBATCH --mail-user=s.minano@ucl.ac.uk
 
 # ---------------------
 # Load required modules
@@ -29,7 +29,7 @@ SCRATCH_PERSONAL_DIR=/ceph/scratch/sminano
 SCRIPT_DIR=$SCRATCH_PERSONAL_DIR/crabs-exploration/"bboxes labelling"
 
 # TODO: set NUMEXPR_MAX_THREADS?
-# NumExpr detected 40 cores but "NUMEXPR_MAX_THREADS" not set, 
+# NumExpr detected 40 cores but "NUMEXPR_MAX_THREADS" not set,
 # so enforcing safe limit of 8.
 
 # -------------------

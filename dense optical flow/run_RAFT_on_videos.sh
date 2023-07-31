@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 
 #SBATCH -p gpu # partition
 #SBATCH -N 1   # number of nodes
@@ -9,7 +9,7 @@
 #SBATCH -o slurm.%N.%j.out # write STDOUT
 #SBATCH -e slurm.%N.%j.err # write STDERR
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=s.minano@ucl.ac.uk  
+#SBATCH --mail-user=s.minano@ucl.ac.uk
 
 # ---------------------
 # Load required modules
@@ -49,12 +49,12 @@ pip install pathlib
 # -------------------
 # Input data
 # NINJAV_S001_S001_T003_subclip.mp4
-INPUT_DATA_DIR=$SCRATCH_CRABS_DIR/data/ 
+INPUT_DATA_DIR=$SCRATCH_CRABS_DIR/data/
 # output dir
 OUTPUT_DIR=$SCRATCH_CRABS_DIR/output/
 
 # Download models
-cd $RAFT_REPO_ROOT_DIR 
+cd $RAFT_REPO_ROOT_DIR
 ./download_models.sh
 MODEL_PATH=$RAFT_REPO_ROOT_DIR/models/raft-kitti.pth
 
@@ -68,4 +68,3 @@ python estimate_optical_flow_on_video.py \
  --input_dir $INPUT_DATA_DIR \
  --output_dir $OUTPUT_DIR \
  --step_frames $STEP_FRAMES
-
