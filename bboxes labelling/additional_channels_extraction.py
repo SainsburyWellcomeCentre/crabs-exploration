@@ -58,7 +58,7 @@ def get_frames(args):
 
             # average of all the frames after blurring
             mean_blurred_frame = blurred_frames.mean(axis=0)
-            # mean subtraction -- remove the overall brightness and 
+            # mean subtraction -- remove the overall brightness and
             # contrast differences caused by variations in the original frames
             blurred_frames -= mean_blurred_frame
             # normalised the frame
@@ -66,7 +66,6 @@ def get_frames(args):
             blurred_frames /= mean_normalization_value
             blurred_frames += 1
             blurred_frames /= 2
-
             delta = 1
 
             # detecting motion by finding the differences between frame
@@ -90,9 +89,7 @@ def get_frames(args):
                     frame_image = (frame_image * 255).astype(np.uint8)
                     out_fp = os.path.join(args.out_dir, file_name)
                     Image.fromarray(frame_image).save(out_fp, quality=95)
-
             del frames
-
         cap.release()
 
 
