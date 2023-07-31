@@ -34,7 +34,6 @@ def get_frames(args):
             continue
 
         cap = cv2.VideoCapture(vid_file)
-        frame_data = []
         n_frame = 0
 
         while True:
@@ -59,7 +58,8 @@ def get_frames(args):
 
             # average of all the frames after blurring
             mean_blurred_frame = blurred_frames.mean(axis=0)
-            # mean subtraction -- remove the overall brightness and contrast differences caused by variations in the original frames
+            # mean subtraction -- remove the overall brightness and 
+            # contrast differences caused by variations in the original frames
             blurred_frames -= mean_blurred_frame
             # normalised the frame
             mean_normalization_value = np.max(np.abs(blurred_frames))
