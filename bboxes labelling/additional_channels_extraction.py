@@ -13,16 +13,17 @@ def compute_stacked_inputs(args) -> None:
     Function to compute grayscale, background subtracted and motion signal frame based
 
     Args:
-        args (argparse.Namespace): An object containing the parsed command-line arguments.
+        args (argparse.Namespace): An object containing
+        the parsed command-line arguments.
 
     Returns:
         None
-    
+
     References:
         https://github.com/visipedia/caltech-fish-counting
 
     """
-    
+
     frame_dict = read_json_file(args.json_path)
 
     # Set batch size (number of frames per batch)
@@ -47,10 +48,9 @@ def compute_stacked_inputs(args) -> None:
                     break
 
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                
                 frame_data.append(frame)
                 n_frame += 1
-                
+
             if not frame_data:
                 break
 
@@ -61,9 +61,7 @@ def compute_stacked_inputs(args) -> None:
 
             for i in range(frames.shape[0]):
                 blurred_frames[i] = cv2.GaussianBlur(
-                    blurred_frames[i],
-                    args.kernel_size,
-                    args.sigmax
+                    blurred_frames[i], args.kernel_size, args.sigmax
                 )
 
             # average of all the frames after blurring
@@ -72,7 +70,9 @@ def compute_stacked_inputs(args) -> None:
             # normalised the frame
             blurred_frames_mean = blurred_frames.mean(axis=0)
             norm_factor = np.max(np.abs(blurred_frames))
-            background_subtraction = ((blurred_frames - blurred_frames_mean) / norm_factor + 1) / 2
+            background_subtraction = (
+                (blurred_frames - blurred_frames_mean) / norm_factor + 1
+            ) / 2
 
             # detecting motion by finding the differences between frame
             # set the delta : frame[i+delta] - frame[i]
@@ -88,7 +88,8 @@ def compute_stacked_inputs(args) -> None:
                             frames[i] / 255,  # grayscale original frame
                             background_subtraction[i],  # foreground mask
                             np.abs(
-                                background_subtraction[i + args.delta] - background_subtraction[i]
+                                background_subtraction[i + args.delta]
+                                - background_subtraction[i]
                             ),  # motion mask
                         ]
                     ).astype(np.float32)
@@ -123,28 +124,29 @@ def argument_parser() -> argparse.Namespace:
         help="Output location for converted frames.",
     )
     parser.add_argument(
-        '--kernel_size', 
-        nargs=2, 
-        type=int, 
+        "--kernel_size",
+        nargs=2,
+        type=int,
         default=[5, 5],
-        help='Kernel size for the Gaussian blur (default: 5 5)'
+        help="Kernel size for the Gaussian blur (default: 5 5)",
     )
     parser.add_argument(
-        '--sigmax', 
-        type=int, 
+        "--sigmax",
+        type=int,
         default=0,
-        help='Standard deviation in the X direction of the Gaussian kernel'
+        help="Standard deviation in the X direction of the Gaussian kernel",
     )
     parser.add_argument(
-        '--delta', 
-        type=int, 
+        "--delta",
+        type=int,
         default=10,
-        help='The value how many frame differences we compute'
+        help="The value how many frame differences we compute",
     )
+    args = parser.parse_args()
+    return args
 
-    return parser
 
 if __name__ == "__main__":
-    args = argument_parser().parse_args()
+    args = argument_parser()
 
     compute_stacked_inputs(args)
