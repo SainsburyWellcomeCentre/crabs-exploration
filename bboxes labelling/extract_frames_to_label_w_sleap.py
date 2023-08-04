@@ -21,6 +21,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+import sys
 
 import cv2
 from sleap import Video
@@ -96,11 +97,12 @@ def get_list_of_sleap_videos(
 
     # Print warning if list is empty
     if not list_sleap_videos:
-        logging.warning(
+        logging.error(
             "List of videos is empty. Please review: \n"
             f"\t input video locations:{list_video_locations}\n "
             f"\t input video extensions:{list_video_extensions})\n",
         )
+        sys.exit(1)
 
     return list_sleap_videos
 
