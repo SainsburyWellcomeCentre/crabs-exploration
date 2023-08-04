@@ -3,24 +3,23 @@
 # https://github.com/talmolab/sleap/blob/81b43425e98ab43a155eb2f3a46910d51e73ca61/sleap/info/feature_suggestions.py#L550
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+import json
+from datetime import datetime
+from pathlib import Path
+
+import cv2
 from sleap import Video
 from sleap.info.feature_suggestions import (
     FeatureSuggestionPipeline,
     ParallelFeaturePipeline,
 )
 
-import cv2
-from pathlib import Path
-
-from datetime import datetime
-import json
-import random
-
-# import argparse
-
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data --- arg parser?
-video_dir = "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/crab_sample_data/sample_clips"
+video_dir = (
+    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/"
+    "crab_sample_data/sample_clips"
+)
 output_path = Path("/Users/sofia/Desktop/tmp/")
 list_video_extensions = ["mp4"]
 random_seed = 42
@@ -28,16 +27,11 @@ random_seed = 42
 # also pass pipeline params as CLI inputs?
 # initial_samples_per_video
 # sample_method
-# feature_type="raw",
-# brisk_threshold=80,  #?
-# n_components=5,
-# n_clusters=5,
-# per_cluster=5,
 # add grayscale option?
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Read videos as sleap Video instances
-list_video_paths = []
+list_video_paths: list[Path] = []
 for ext in list_video_extensions:
     list_video_paths.extend(Path(video_dir).glob(f"*.{ext}"))
 
@@ -66,19 +60,25 @@ pipeline = FeatureSuggestionPipeline(
 suggestions = ParallelFeaturePipeline.run(
     pipeline,
     list_sleap_videos,
-    parallel=False,  # ------if True, I get an error in notebook:  https://stackoverflow.com/questions/65859890/python-multiprocessing-with-m1-mac
+    parallel=False,
+    # if parallel=True,
+    # I get an error in notebook:
+    # https://stackoverflow.com/questions/65859890/python-multiprocessing-with-m1-mac
 )
 
 
 print(suggestions)
-# list of suggestions per frame (is it deterministic for the params above?) -- check with GUI
+# list of suggestions per frame (is it deterministic for the params above?)
+#  -- check with GUI
 # each element of list is a SuggestionFrame object with
 # - .video: video frame belongs to: suggestions[0].video.backend.filename
 # - .frame_idx: frame index suggestions[0].frame_idx
 # - .group: cluster?
 
-# TODO: how to request features per video? - https://github.com/talmolab/sleap/blob/1a0404c0ffae7b248eb360562b0bb95a42a287b6/sleap/gui/suggestions.py#L159
-# TODO: are frames 0-indexed? (from sleap code it looks like yes, but in the GUI they are 1-indexed)
+# TODO: how to request features per video?
+# https://github.com/talmolab/sleap/blob/1a0404c0ffae7b248eb360562b0bb95a42a287b6/sleap/gui/suggestions.py#L159
+# TODO: are frames 0-indexed?
+# (from sleap code it looks like yes, but in the GUI they are 1-indexed)
 # TODO: how to make frame extraction deterministic?
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Prepare output dir
@@ -91,7 +91,7 @@ for vid in list_sleap_videos:
             sugg.frame_idx
             for sugg in suggestions
             if sugg.video.backend.filename == vid_str
-        ]
+        ],
     )
 output_path.mkdir(parents=True, exist_ok=True)
 timestamp = datetime.now().strftime("%Y%m%d_%-H%M%-S")
@@ -106,7 +106,7 @@ with open(json_output_file, "w") as js:
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Extract suggested frames with opencv
 # OJO in opencv frames are 0-indexed!
-for vid_str in map_videos_to_extracted_frames.keys():
+for vid_str in map_videos_to_extracted_frames:
     # initialise opencv capture
     cap = cv2.VideoCapture(vid_str)
 
@@ -122,7 +122,6 @@ for vid_str in map_videos_to_extracted_frames.keys():
 
     # go to specified frames
     for frame_idx in map_videos_to_extracted_frames[vid_str]:
-
         # read frame
         # OJO in opencv, frames are 0-index, and I *think* in sleap too?
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx - 1)
@@ -130,7 +129,8 @@ for vid_str in map_videos_to_extracted_frames.keys():
 
         # save to file
         if not success or frame is None:
-            raise KeyError(f"Unable to load frame {frame_idx} from {self}.")
+            msg = f"Unable to load frame {frame_idx} from {vid_str}."
+            raise KeyError(msg)
 
         else:
             file_path = (
@@ -141,7 +141,8 @@ for vid_str in map_videos_to_extracted_frames.keys():
                 print(f"{Path(vid_str).stem}, frame {frame_idx} saved")
             else:
                 print(
-                    f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping"
+                    f"ERROR saving {Path(vid_str).stem}, "
+                    f"frame {frame_idx}...skipping",
                 )
                 continue
 

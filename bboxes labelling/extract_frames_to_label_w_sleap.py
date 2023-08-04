@@ -1,13 +1,13 @@
-"""
-A script to extract frames for labelling using SLEAP's algorith,
+r"""
+A script to extract frames for labelling using SLEAP's algorith,.
 
 Example usage:
-    python bboxes\ labelling/extract_frames_to_label_w_sleap.py 
-    'crab_sample_data/sample_clips/' 
-    --initial_samples 5 
-    --n_components 2 
-    --n_clusters 2 
-    --per_cluster 1 
+    python bboxes\ labelling/extract_frames_to_label_w_sleap.py
+    'crab_sample_data/sample_clips/'
+    --initial_samples 5
+    --n_components 2
+    --n_clusters 2
+    --per_cluster 1
     --compute_features_per_video
 
 TODO: can I make it deterministic?
@@ -17,6 +17,7 @@ TODO: change it to copy directory structure from input?
 
 import argparse
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -26,8 +27,6 @@ from sleap.info.feature_suggestions import (
     FeatureSuggestionPipeline,
     ParallelFeaturePipeline,
 )
-
-import logging
 
 
 # ------------------
@@ -71,7 +70,7 @@ def get_sleap_videos_list(
         logging.warning(
             "List of videos is empty \n"
             f"\t locations:{list_video_locations}\n "
-            f"\t extensions:{list_video_extensions})\n"
+            f"\t extensions:{list_video_extensions})\n",
         )
 
     return list_sleap_videos
@@ -86,7 +85,7 @@ def get_map_videos_to_extracted_frames(list_sleap_videos, suggestions):
                 sugg.frame_idx
                 for sugg in suggestions
                 if sugg.video.backend.filename == vid_str
-            ]
+            ],
         )
     return map_videos_to_extracted_frames
 
@@ -95,14 +94,14 @@ def get_map_videos_to_extracted_frames(list_sleap_videos, suggestions):
 # main
 # -----------------
 def extract_frames_to_label(args):
-
     # -------------------------------------------------------
     # Run frame extraction pipeline from SLEAP
     # -------------------------------------------------------
     # read videos as sleap Video instances
     print(args.list_video_locations)
     list_sleap_videos = get_sleap_videos_list(
-        args.list_video_locations, args.video_extensions
+        args.list_video_locations,
+        args.video_extensions,
     )
     print(list_sleap_videos)
 
@@ -127,7 +126,8 @@ def extract_frames_to_label(args):
 
     # sleap frames are 0-indexed (right?)
     map_videos_to_extracted_frames = get_map_videos_to_extracted_frames(
-        list_sleap_videos, suggestions
+        list_sleap_videos,
+        suggestions,
     )
 
     # --------------------
@@ -154,7 +154,7 @@ def extract_frames_to_label(args):
     # -------------------------------------------------------
 
     # loop thru videos and extract frames
-    for vid_str in map_videos_to_extracted_frames.keys():
+    for vid_str in map_videos_to_extracted_frames:
         # initialise opencv capture
         cap = cv2.VideoCapture(vid_str)
 
@@ -170,13 +170,11 @@ def extract_frames_to_label(args):
         video_output_dir = (
             output_dir_timestamped  # /   # timestamp
             # Path(vid_str).parent.stem /  # parent dir of input video
-            # Path(vid_str).stem  # video name
         )
         video_output_dir.mkdir(parents=True, exist_ok=True)
 
         # go to the selected frames
         for frame_idx in map_videos_to_extracted_frames[vid_str]:
-
             # read frame
             # OJO in opencv, frames are 0-index, and I *think* in sleap too?
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
@@ -184,20 +182,22 @@ def extract_frames_to_label(args):
 
             # save to file
             if not success or frame is None:
-                raise KeyError(f"Unable to load frame {frame_idx} from {vid_str}.")
+                msg = f"Unable to load frame {frame_idx} from {vid_str}."
+                raise KeyError(msg)
 
             else:
                 file_path = video_output_dir / Path(
                     f"{Path(vid_str).parent.stem}_"
                     f"{Path(vid_str).stem}_"
-                    f"frame_{frame_idx:06d}.png"
+                    f"frame_{frame_idx:06d}.png",
                 )
                 img_saved = cv2.imwrite(str(file_path), frame)
                 if img_saved:
                     logging.info(f"frame {frame_idx} saved at {file_path}")
                 else:
                     logging.info(
-                        f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}...skipping"
+                        f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}"
+                        "...skipping"
                     )
                     continue
 

@@ -1,7 +1,10 @@
-crab_sample_data/
+data/
 *.mp4
 .DS_Store
 stereo calibration/check_chessboard_cells_size/*
+pose_estimation_4k/animal_size/*
+pose_estimation_4k/top_down_model_230713/*
+**/__pycache__/**
+
 *.MOV
 *.slp
-*/__pycache__/*
