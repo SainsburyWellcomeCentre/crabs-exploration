@@ -29,6 +29,8 @@ from sleap.info.feature_suggestions import (
     ParallelFeaturePipeline,
 )
 
+import pprint
+
 
 def get_list_of_sleap_videos(
     list_video_locations,
@@ -220,7 +222,7 @@ def compute_suggested_sleap_frames(
     pipeline_attrs = {
         k: getattr(pipeline, k) for k in dir(pipeline) if not k.startswith("_")
     }
-    logging.info(f"{pipeline_attrs}")
+    logging.info(pprint.pformat(pipeline_attrs))
     logging.info("---------------------------")
 
     # Run the pipeline and compute  suggested frames for labelling
@@ -516,6 +518,9 @@ def argument_parser():
 if __name__ == "__main__":
     # parse input arguments
     args = argument_parser()
+    logging.info("---------------------------")
+    logging.info("CLI arguments:")
+    logging.info(pprint.pformat(vars(args)))
 
     # run frame extraction
     compute_and_extract_frames_to_label(args)
