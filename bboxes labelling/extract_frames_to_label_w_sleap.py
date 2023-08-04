@@ -12,7 +12,8 @@ Example usage:
 
 TODO: can I make it deterministic?
 TODO: check https://github.com/talmolab/sleap-io/tree/main/sleap_io
-TODO: change it to copy directory structure from input?
+TODO: change it to copy directory structure from input? See
+https://www.geeksforgeeks.org/python-copy-directory-structure-without-files/
 """
 
 import argparse
@@ -29,54 +30,100 @@ from sleap.info.feature_suggestions import (
 )
 
 
-# ------------------
-# Utils
-# -----------------
-def get_sleap_videos_list(
-    list_video_locations,  # : list[str],  Python 3.9 and above
-    list_video_extensions=["mp4"],  # list[str] = ['mp4'] Python 3.9 and above
+def get_list_of_sleap_videos(
+    list_video_locations,
+    list_video_extensions=["mp4"],
 ):
-    # split locations between files and directories
+    """Generate list of SLEAP videos from the
+    locations and extensions provided.
+
+    The locations can be expressed as paths to files or
+    as the parent directories of a set of videos.
+
+    Parameters
+    ----------
+    list_video_locations : list[str]
+        list of video locations. These may be paths to video files or
+        paths to their parent directories (only one level deep is searched).
+
+    list_video_extensions : list[str]
+        list of video extensions to look for in the directories.
+        By default, mp4 videos.
+
+    Returns
+    -------
+    list_sleap_videos : list[sleap.io.video.Video]
+        list of SLEAP videos
+    """
+
+    # Compute list of video paths
     list_video_paths = []
     for loc in list_video_locations:
         location_path = Path(loc)
 
-        # if dir: look for files with any of the relevant extensions
+        # If the path is a directory:
+        # look for files with any of the relevant extensions
         # (only one level in)
         if location_path.is_dir():
             for ext in list_video_extensions:
-                list_video_paths.extend(location_path.glob(f"[!.]*.{ext}"))
-                # exclude hidden files
-        # if file has the relevant extension: append directly to list?
+                list_video_paths.extend(
+                    location_path.glob(f"[!.]*.{ext}")
+                )  # exclude hidden files
+
+        # If the path is a file with the relevant extension:
+        # append path directly to list
         elif location_path.is_file() and (
-            location_path.suffix[1:]
-            in list_video_extensions
-            # suffix includes dot
+            location_path.suffix[1:] in list_video_extensions  # suffix includes dot
         ):
             list_video_paths.append(location_path)
 
-    # transform list of videos to sleap videos,
-    # filtering out those that opencv cannot open
-    # TODO is there a better way to do this?
+    # Transform list of video paths to list of SLEAP videos
     list_sleap_videos = []
     for vid_path in list_video_paths:
+        # check if opencv can open the videos
+        # before adding them to the list
         cap = cv2.VideoCapture(str(vid_path))
         if cap.isOpened():
             list_sleap_videos.append(Video.from_filename(str(vid_path)))
             cap.release()
+        else:
+            logging.warning(
+                f"Video at {str(vid_path)} could not"
+                " be opened by OpenCV. Skipping..."
+            )
 
-    # print warning if list is empty
+    # Print warning if list is empty
     if not list_sleap_videos:
         logging.warning(
-            "List of videos is empty \n"
-            f"\t locations:{list_video_locations}\n "
-            f"\t extensions:{list_video_extensions})\n",
+            "List of videos is empty. Please review: \n"
+            f"\t input video locations:{list_video_locations}\n "
+            f"\t input video extensions:{list_video_extensions})\n",
         )
 
     return list_sleap_videos
 
 
 def get_map_videos_to_extracted_frames(list_sleap_videos, suggestions):
+    """Compute dictionary that maps videos to
+    their frame indices selected for labelling
+
+    Parameters
+    ----------
+    list_sleap_videos : list[sleap.io.video.Video]
+        list of SLEAP videos from which to extract frames
+
+    suggestions : list[SuggestionFrame]
+        a list of SuggestionFrame elements, describing
+        the frames selected for labelling
+
+    Returns
+    -------
+    map_videos_to_extracted_frames : dict
+        dictionary that maps each video path to a list
+        of frames indices extracted for labelling.
+        The frame indices are sorted in ascending order.
+
+    """
     map_videos_to_extracted_frames = {}
     for vid in list_sleap_videos:
         vid_str = vid.backend.filename
@@ -90,101 +137,180 @@ def get_map_videos_to_extracted_frames(list_sleap_videos, suggestions):
     return map_videos_to_extracted_frames
 
 
-# ------------------
-# main
-# -----------------
-def extract_frames_to_label(args):
-    # -------------------------------------------------------
-    # Run frame extraction pipeline from SLEAP
-    # -------------------------------------------------------
-    # read videos as sleap Video instances
-    print(args.list_video_locations)
-    list_sleap_videos = get_sleap_videos_list(
-        args.list_video_locations,
-        args.video_extensions,
-    )
-    print(list_sleap_videos)
+def compute_suggested_sleap_frames(
+    list_video_locations,
+    video_extensions=["mp4"],
+    initial_samples=200,
+    sample_method="stride",
+    scale=1.0,
+    feature_type="raw",
+    n_components=5,
+    n_clusters=5,
+    per_cluster=5,
+    compute_features_per_video=True,
+):
+    """Compute suggested frames for labelling using SLEAP's
+    FeatureSuggestionPipeline.
 
-    # define the pipeline
+    See https://sleap.ai/guides/gui.html#labeling-suggestions
+
+    Parameters
+    ----------
+    list_video_locations : list[str]
+        list of video locations. These may be paths to video files or
+        paths to their parent directories (only one level deep is searched).
+    video_extensions : list[str]
+        list of video extensions to look for in the directories.
+        Default: ["mp4"]
+    initial_samples : int
+        initial number of frames to extract per video
+        Default: 200
+    sample_method : str
+        method to sample initial samples.
+        It can be "random" or "stride".
+        Default: "stride"
+    scale : float
+        factor to apply to the images prior to PCA and k-means clustering
+        Default: 1.0
+    feature_type : str
+        type of input feature.
+        It can be ["raw", "brisk", "hog"].
+        Default: raw
+    n_components : int
+        number of PCA components.
+        Default: 5
+    n_clusters : int
+        number of k-means clusters.
+        Default: 5
+    per_cluster : int
+        number of frames to sample per cluster.
+        Default: 5
+    compute_features_per_video : bool
+        whether to do per-video pipeline parallelization for
+        feature suggestions.
+        Default: True
+
+    Returns
+    -------
+    map_videos_to_extracted_frames : dict
+        dictionary that maps each video path to a list
+        of frames indices extracted for labelling.
+        The frame indices are sorted in ascending order.
+    """
+
+    # Transform list of input videos to list of SLEAP Video instances
+    list_sleap_videos = get_list_of_sleap_videos(
+        list_video_locations,
+        video_extensions,
+    )
+    logging.info("List of SLEAP videos successfully created")
+
+    # Define the frame extraction pipeline
     pipeline = FeatureSuggestionPipeline(
-        per_video=args.initial_samples,
-        sample_method=args.sample_method,
-        scale=args.scale,
-        feature_type=args.feature_type,
-        n_components=args.n_components,
-        n_clusters=args.n_clusters,
-        per_cluster=args.per_cluster,
+        per_video=initial_samples,
+        sample_method=sample_method,
+        scale=scale,
+        feature_type=feature_type,
+        n_components=n_components,
+        n_clusters=n_clusters,
+        per_cluster=per_cluster,
     )
+    logging.info("---------------------------")
+    logging.info("Defintion of FeatureSuggestionPipeline:")
+    pipeline_attrs = {
+        k: getattr(pipeline, k) for k in dir(pipeline) if not k.startswith("_")
+    }
+    logging.info(f"{pipeline_attrs}")
+    logging.info("---------------------------")
 
-    # run the pipeline (per video, if args.compute_features_per_video=True)
-    print("Run feature pipeline")
+    # Run the pipeline and compute  suggested frames for labelling
+    # (if compute_features_per_video=True, it is run per video)
     suggestions = ParallelFeaturePipeline.run(
         pipeline,
         list_sleap_videos,
-        parallel=args.compute_features_per_video,
+        parallel=compute_features_per_video,
     )
+    logging.info(f"Total labelling suggestions generated: {len(suggestions)}")
 
-    # sleap frames are 0-indexed (right?)
+    # Compute dictionary that maps video paths to their frames' indices
+    # suggested for labelling
     map_videos_to_extracted_frames = get_map_videos_to_extracted_frames(
         list_sleap_videos,
         suggestions,
     )
 
-    # --------------------
-    # Prepare output data
-    # ----------------------
-    # create timestamp folder inside output folder if it doesnt exist
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir_timestamped = Path(args.output_path) / f"{timestamp}"
-    output_dir_timestamped.mkdir(parents=True, exist_ok=True)
+    return map_videos_to_extracted_frames
 
-    # save extracted frames as json file
-    json_output_file = output_dir_timestamped / "extracted_frames.json"
-    with open(json_output_file, "w") as js:
-        json.dump(
-            map_videos_to_extracted_frames,
-            js,
-            sort_keys=True,
-            indent=4,
-        )
-    print("json with extracted frames saved")
 
-    # -------------------------------------------------------
-    # Extract suggested frames with opencv
-    # -------------------------------------------------------
+def extract_frames_to_label_from_video(
+    map_videos_to_extracted_frames,
+    output_dir_timestamped,
+    flag_parent_dir_subdir_in_output=False,
+):
+    """Extract suggested frames for labelling from
+    corresponding videos using OpenCV.
 
-    # loop thru videos and extract frames
+    The png files for each frame are named with
+    the following format:
+    <video_parent_dir>_<video_filename>_frame_<frame_idx>.png
+
+    Parameters
+    ----------
+    map_videos_to_extracted_frames : dict
+        dictionary that maps each video path to a list
+        of frames indices extracted for labelling.
+        The frame indices are sorted in ascending order.
+
+    output_dir_timestamped : pathlib.Path
+        path to output directory
+
+    flag_parent_dir_subdir_in_output : bool
+        if True, a subdirectory is created under 'output_dir_timestamped'
+        whose name matches the video's parent directory name
+
+    Raises
+    ------
+    KeyError
+        If a frame from a video is not correctly read by openCV
+    """
+
     for vid_str in map_videos_to_extracted_frames:
-        # initialise opencv capture
+        # Initialise video capture
         cap = cv2.VideoCapture(vid_str)
 
-        # check
+        # Check if video capture is opened correctly
         logging.info("---------------------------")
         if cap.isOpened():
-            logging.info(f"Processing {Path(vid_str)}")
+            logging.info(f"Processing video {Path(vid_str)}")
         else:
             logging.info(f"Error processing {Path(vid_str)}, skipped....")
             continue
 
-        # create video output dir inside timestamped one
-        video_output_dir = (
-            output_dir_timestamped  # /   # timestamp
-            # Path(vid_str).parent.stem /  # parent dir of input video
-        )
-        video_output_dir.mkdir(parents=True, exist_ok=True)
+        # If required: create video output dir inside timestamped one
+        if flag_parent_dir_subdir_in_output:
+            video_output_dir = (
+                output_dir_timestamped
+                / Path(vid_str).parent.stem  # timestamp  # parent dir of input video
+            )
+            video_output_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            video_output_dir = output_dir_timestamped
 
-        # go to the selected frames
+        # Go to the selected frames in the video
         for frame_idx in map_videos_to_extracted_frames[vid_str]:
-            # read frame
-            # OJO in opencv, frames are 0-index, and I *think* in sleap too?
+            # Read frame
+            # TODO: are sleap suggested frame numbers indices (i.e. 0-based)
+            # or frame numbers (1-based)
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             success, frame = cap.read()
 
-            # save to file
+            # If not read successfully: throw error
             if not success or frame is None:
                 msg = f"Unable to load frame {frame_idx} from {vid_str}."
                 raise KeyError(msg)
 
+            # If read successfully: save to file
+            # file naming format: parentdir_videoname_frame_XXX.png
             else:
                 file_path = video_output_dir / Path(
                     f"{Path(vid_str).parent.stem}_"
@@ -201,14 +327,99 @@ def extract_frames_to_label(args):
                     )
                     continue
 
-        # close capture
+        # close video capture
         cap.release()
 
 
-if __name__ == "__main__":
-    # ------------------------------------
-    # parse command line arguments
-    # ------------------------------
+def compute_and_extract_frames_to_label(args):
+    """Compute suggested frames to label and
+    extract them as png files.
+
+    We use SLEAP's image feature method to select
+    the frames for labelling and export them as png
+    files in the desired directory.
+    We also output to the same location the list of
+    frame indices selected per video as a json file.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        data structure holding parsed input arguments.
+        It includes the following attributes:
+            'list_video_locations',
+            'output_path',
+            'video_extensions',
+            'initial_samples',
+            'sample_method',
+            'scale',
+            'feature_type',
+            'n_components', '
+            n_clusters',
+            'per_cluster',
+            'compute_features_per_video'
+    """
+
+    # Compute list of suggested frames using SLEAP
+    map_videos_to_extracted_frames = compute_suggested_sleap_frames(
+        args.list_video_locations,
+        args.video_extensions,
+        args.initial_samples,
+        args.sample_method,
+        args.scale,
+        args.feature_type,
+        args.n_components,
+        args.n_clusters,
+        args.per_cluster,
+        args.compute_features_per_video,
+    )
+
+    # Create timestamp folder inside output folder, if it doesnt exist
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir_timestamped = Path(args.output_path) / f"{timestamp}"
+    output_dir_timestamped.mkdir(parents=True, exist_ok=True)
+
+    # Save the set of videos and corresponding
+    # extracted frames' indices as json file
+    json_output_file = output_dir_timestamped / "extracted_frames.json"
+    with open(json_output_file, "w") as js:
+        json.dump(
+            map_videos_to_extracted_frames,
+            js,
+            sort_keys=True,
+            indent=4,
+        )
+    logging.info(f"json file with extracted frames saved at {json_output_file}")
+
+    # Save suggested frames as png files
+    # (extraction with opencv)
+    extract_frames_to_label_from_video(
+        map_videos_to_extracted_frames,
+        output_dir_timestamped,
+        flag_parent_dir_subdir_in_output=False,
+    )
+
+
+def argument_parser():
+    """Generate data structure holding
+    parsed command-line input arguments
+
+    Returns
+    -------
+    args: argparse.Namespace
+        data structure holding parsed input arguments.
+        It includes the following attributes:
+            'list_video_locations',
+            'output_path',
+            'video_extensions',
+            'initial_samples',
+            'sample_method',
+            'scale',
+            'feature_type',
+            'n_components', '
+            n_clusters',
+            'per_cluster',
+            'compute_features_per_video'
+    """
 
     # TODO: add grayscale option?
     # TODO: read extracted frames from file?
@@ -289,14 +500,22 @@ if __name__ == "__main__":
         const=True,
         help="whether to compute the (PCA?) features per video, or across all videos",
     )
+
+    # TODO: add random seed, to make it deterministic?
     # parser.add_argument('--random_seed',
     #                     type=int,
     #                     nargs='?',
     #                     default=42,
     #                     help='random seed')
+
     args = parser.parse_args()
 
-    # ------------------------
+    return args
+
+
+if __name__ == "__main__":
+    # parse input arguments
+    args = argument_parser()
+
     # run frame extraction
-    # ------------------------
-    extract_frames_to_label(args)
+    compute_and_extract_frames_to_label(args)
