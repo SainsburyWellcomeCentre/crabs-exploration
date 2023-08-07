@@ -31,7 +31,8 @@ def apply_transform(frame: np.array, kernel_size: list, sigmax: int) -> np.array
 
 def compute_stacked_inputs(args: argparse.Namespace) -> None:
     """
-    Function to compute grayscale, background subtracted and motion signal frame based
+    Function to compute the frame input to stacked inputs consist of
+    grayscale, background subtracted and motion signal
 
     Args:
         args (argparse.Namespace): An object containing
@@ -80,7 +81,7 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
             mean_blurred_frame += blurred_frame
 
             # accumulate max absolute values
-            max_abs_blurred_frame = max_abs_blurred_frame = np.maximum(
+            max_abs_blurred_frame = np.maximum(
                 max_abs_blurred_frame, abs(blurred_frame)
             )
 
@@ -127,12 +128,12 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
             _, blurred_frame_delta = apply_transform(
                 frame_delta, args.kernel_size, args.sigmax
             )
-            # compute the background subtracted for frame frame_idx + delta
+            # compute the background subtracted for frame_idx + delta
             background_subtracted_frame_delta = (
                 ((blurred_frame_delta - mean_blurred_frame) / max_abs_blurred_frame) + 1
             ) / 2
 
-            # compute the motion channel for frame frame_idx
+            # compute the motion channel for frame_idx
             motion_frame = np.abs(
                 background_subtracted_frame_delta - background_subtracted_frame
             )
@@ -161,12 +162,12 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
 
 def argument_parser() -> argparse.Namespace:
     """
-    Parse command-line arguments for your script.
+    Parse command-line arguments for the script.
 
     Returns:
         argparse.Namespace: An object containing the parsed command-line arguments.
                             The attributes of this object correspond to the defined
-                            command-line arguments in your script.
+                            command-line arguments in the script.
     """
 
     parser = argparse.ArgumentParser()
@@ -198,7 +199,7 @@ def argument_parser() -> argparse.Namespace:
     parser.add_argument(
         "--delta",
         type=int,
-        default=10,
+        default=100,
         help="The value how many frame differences we compute",
     )
     args = parser.parse_args()
