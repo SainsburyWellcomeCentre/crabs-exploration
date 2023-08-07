@@ -13,13 +13,21 @@ def apply_grayscale_and_blur(
 ) -> np.array:
     """Convert the frame to grayscale and apply Gaussian blurring
 
-    Args:
-        frame (np.array): frame array read from the video capture
-        kernel_size (list): kernel size for GaussianBlur
-        sigmax (_type_): Standard deviation in the X direction of the Gaussian kernel
+    Parameters
+    ----------
+    frame : np.array
+        frame array read from the video capture
+    kernel_size : list
+        kernel size for GaussianBlur
+    sigmax : int
+        Standard deviation in the X direction of the Gaussian kernel
 
-    Returns:
-        np.array: converted frame to grayscale and blurred frame
+    Returns
+    -------
+    gray_frame : np.array
+        grayscaled input frame
+    blurred_frame : np.array
+        Gaussian-blurred grayscaled input frame
     """
 
     # convert the frame to grayscale frame
@@ -31,6 +39,22 @@ def apply_grayscale_and_blur(
 
 
 def compute_mean_and_max_abs_blurred_frame(cap, kernel_size, sigmax):
+    """_summary_
+
+    Parameters
+    ----------
+    cap : _type_
+        _description_
+    kernel_size : _type_
+        _description_
+    sigmax : _type_
+        _description_
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     frame_counter = 0
 
     # get image size
@@ -52,6 +76,7 @@ def compute_mean_and_max_abs_blurred_frame(cap, kernel_size, sigmax):
 
         # apply transformations to the frame
         _, blurred_frame = apply_grayscale_and_blur(frame, kernel_size, sigmax)
+
         # accumulate blurred frames
         mean_blurred_frame += blurred_frame
 
@@ -70,6 +95,22 @@ def compute_mean_and_max_abs_blurred_frame(cap, kernel_size, sigmax):
 def compute_background_subtracted_frame(
     blurred_frame, mean_blurred_frame, max_abs_blurred_frame
 ):
+    """_summary_
+
+    Parameters
+    ----------
+    blurred_frame : _type_
+        _description_
+    mean_blurred_frame : _type_
+        _description_
+    max_abs_blurred_frame : _type_
+        _description_
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     background_subtracted_frame = (
         ((blurred_frame - mean_blurred_frame) / max_abs_blurred_frame) + 1
     ) / 2
@@ -80,6 +121,24 @@ def compute_background_subtracted_frame(
 def compute_motion_frame(
     frame_delta, background_subtracted_frame, mean_blurred_frame, max_abs_blurred_frame
 ):
+    """_summary_
+
+    Parameters
+    ----------
+    frame_delta : _type_
+        _description_
+    background_subtracted_frame : _type_
+        _description_
+    mean_blurred_frame : _type_
+        _description_
+    max_abs_blurred_frame : _type_
+        _description_
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     # compute the blurred frame frame_idx+delta
     _, blurred_frame_delta = apply_grayscale_and_blur(
         frame_delta, args.kernel_size, args.sigmax
@@ -98,18 +157,21 @@ def compute_motion_frame(
 
 
 def compute_stacked_inputs(args: argparse.Namespace) -> None:
-    """
-    Function to compute the frame input to stacked inputs consist of
+    """Compute the stacked inputs consist of
     grayscale, background subtracted and motion signal
 
-    Args:
-        args (argparse.Namespace): An object containing
-        the parsed command-line arguments.
+    Parameters
+    ----------
+    args : argparse.Namespace
+        An object containing the parsed command-line arguments.
 
-    References:
+    Notes
+    ----------
+        This implementation follows the one at
         https://github.com/visipedia/caltech-fish-counting
 
     """
+
     # get video files and their frame indices
     frame_dict = read_json_file(args.json_path)
 
@@ -190,13 +252,14 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
 
 
 def argument_parser() -> argparse.Namespace:
-    """
-    Parse command-line arguments for the script.
+    """Parse command-line arguments for the script.
 
-    Returns:
-        argparse.Namespace: An object containing the parsed command-line arguments.
-                            The attributes of this object correspond to the defined
-                            command-line arguments in the script.
+    Returns
+    -------
+    argparse.Namespace
+        An object containing the parsed command-line arguments.
+        The attributes of this object correspond to the defined
+        command-line arguments in the script.
     """
 
     parser = argparse.ArgumentParser()
