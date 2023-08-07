@@ -2,7 +2,7 @@
 
 #SBATCH -p gpu # partition
 #SBATCH -N 1   # number of nodes
-#SBATCH --mem 32G # memory pool for all cores
+#SBATCH --mem 64G # memory pool for all cores
 #SBATCH -n 2 # number of cores
 #SBATCH -t 3-00:00 # time (D-HH:MM)
 #SBATCH --gres gpu:1 # request 1 GPU (of any kind)
