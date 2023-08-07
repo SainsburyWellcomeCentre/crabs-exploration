@@ -235,15 +235,6 @@ def compute_suggested_sleap_frames(
     )
     logging.info(f"Total labelling suggestions generated: {len(suggestions)}")
 
-    # alternative?
-    # suggestions = []
-    # for vid in list_sleap_videos:
-    #     suggestions_vid = FeatureSuggestionPipeline.run(
-    #         pipeline,
-    #         vid,
-    #     )
-    #     suggestions.extend(suggestions_vid)
-
     # Compute dictionary that maps video paths to their frames' indices
     # suggested for labelling
     map_videos_to_extracted_frames = get_map_videos_to_extracted_frames(
@@ -256,7 +247,7 @@ def compute_suggested_sleap_frames(
 
 def extract_frames_to_label_from_video(
     map_videos_to_extracted_frames,
-    output_dir_timestamped,
+    output_subdir_path,
     flag_parent_dir_subdir_in_output=False,
 ):
     """Extract suggested frames for labelling from
@@ -273,11 +264,11 @@ def extract_frames_to_label_from_video(
         of frames indices extracted for labelling.
         The frame indices are sorted in ascending order.
 
-    output_dir_timestamped : pathlib.Path
-        path to output directory
+    output_subdir_path : pathlib.Path
+        path to output subdirectory
 
     flag_parent_dir_subdir_in_output : bool
-        if True, a subdirectory is created under 'output_dir_timestamped'
+        if True, a subdirectory is created under 'output_subdir_path'
         whose name matches the video's parent directory name
 
     Raises
@@ -301,12 +292,12 @@ def extract_frames_to_label_from_video(
         # If required: create video output dir inside timestamped one
         if flag_parent_dir_subdir_in_output:
             video_output_dir = (
-                output_dir_timestamped
+                output_subdir_path
                 / Path(vid_str).parent.stem  # timestamp  # parent dir of input video
             )
             video_output_dir.mkdir(parents=True, exist_ok=True)
         else:
-            video_output_dir = output_dir_timestamped
+            video_output_dir = output_subdir_path
 
         # Go to the selected frames in the video
         for frame_idx in map_videos_to_extracted_frames[vid_str]:
@@ -385,28 +376,52 @@ def compute_and_extract_frames_to_label(args):
         args.compute_features_per_video,
     )
 
-    # Create timestamp folder inside output folder, if it doesnt exist
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir_timestamped = Path(args.output_path) / f"{timestamp}"
-    output_dir_timestamped.mkdir(parents=True, exist_ok=True)
+    # Create target subdirectory inside the output folder, if it doesnt exist.
+    # If no output subdirectory name is provided, create one whose name
+    # is the current timestamp in the format YYYYMMDD_HHMMSS
+    if args.output_subdir == "":
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_subdir_path = Path(args.output_path) / f"{timestamp}"
+    else:
+        output_subdir_path = Path(args.output_path) / args.output_subdir
+    output_subdir_path.mkdir(parents=True, exist_ok=True)
 
     # Save the set of videos and corresponding
     # extracted frames' indices as json file
-    json_output_file = output_dir_timestamped / "extracted_frames.json"
-    with open(json_output_file, "w") as js:
-        json.dump(
-            map_videos_to_extracted_frames,
-            js,
-            sort_keys=True,
-            indent=4,
+    json_output_file = output_subdir_path / "extracted_frames.json"
+    # if json file exists: append
+    if json_output_file.is_file():
+        with open(json_output_file) as js:
+            map_pre = json.load(js)
+            map_pre.update(map_videos_to_extracted_frames)
+        with open(json_output_file, "w") as js:
+            json.dump(
+                map_pre,
+                js,
+                sort_keys=True,
+                indent=4,
+            )
+        logging.info(
+            "Existing json file with extracted frames " f"updated at {json_output_file}"
         )
-    logging.info(f"json file with extracted frames saved at {json_output_file}")
+    # else: start a new file
+    else:
+        with open(json_output_file, "w") as js:
+            json.dump(
+                map_videos_to_extracted_frames,
+                js,
+                sort_keys=True,
+                indent=4,
+            )
+        logging.info(
+            "New json file with extracted frames " f"saved at {json_output_file}"
+        )
 
     # Save suggested frames as png files
     # (extraction with opencv)
     extract_frames_to_label_from_video(
         map_videos_to_extracted_frames,
-        output_dir_timestamped,
+        output_subdir_path,
         flag_parent_dir_subdir_in_output=False,
     )
 
@@ -447,6 +462,15 @@ def argument_parser():
         help=(
             "path to directory in which to store extracted"
             " frames (by default, the current directory)"
+        ),
+    )
+    parser.add_argument(
+        "--output_subdir",
+        default="",
+        help=(
+            "name of output subdirectory in which to put"
+            " extracted frames (by default, timestamp in the"
+            " format YYYMMDD_HHMMSS)"
         ),
     )
     parser.add_argument(

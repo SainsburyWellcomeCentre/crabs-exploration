@@ -40,6 +40,7 @@ python "$SCRIPT_DIR"/extract_frames_to_label_w_sleap.py \
  $INPUT_DIR/camera2/NINJAV_S001_S001_T001.MOV \
  $INPUT_DIR/camera2/NINJAV_S001_S001_T002.MOV \
  --output_path $OUTPUT_DIR \
+ --output_subdir "20230807_combined" \
  --video_extensions MOV \
  --initial_samples 300 \
  --scale 0.75 \
