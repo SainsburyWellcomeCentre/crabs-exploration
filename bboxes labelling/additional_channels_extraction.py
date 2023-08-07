@@ -8,9 +8,10 @@ from pathlib import Path
 from utils import read_json_file
 
 
-def apply_transform(frame: np.array, kernel_size: list, sigmax: int) -> np.array:
-    """Function to apply transformation to the frame.
-    Convert the frame to grayscale and apply Gaussian blurring
+def apply_grayscale_and_blur(
+    frame: np.array, kernel_size: list, sigmax: int
+) -> np.array:
+    """Convert the frame to grayscale and apply Gaussian blurring
 
     Args:
         frame (np.array): frame array read from the video capture
@@ -29,6 +30,73 @@ def apply_transform(frame: np.array, kernel_size: list, sigmax: int) -> np.array
     return gray_frame, blurred_frame
 
 
+def compute_mean_and_max_abs_blurred_frame(cap, kernel_size, sigmax):
+    frame_counter = 0
+
+    # get image size
+    width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+    height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+
+    # initialise array for mean blurred frame
+    mean_blurred_frame = np.zeros((int(height), int(width)))
+
+    # initialise array for max_abs_blurred_frame
+    max_abs_blurred_frame = np.zeros((int(height), int(width)))
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            # Break the loop if no more frames to read
+            print(f"Cannot read the frame{frame_counter}. Exiting...")
+            break
+
+        # apply transformations to the frame
+        _, blurred_frame = apply_grayscale_and_blur(frame, kernel_size, sigmax)
+        # accumulate blurred frames
+        mean_blurred_frame += blurred_frame
+
+        # accumulate max absolute values
+        max_abs_blurred_frame = np.maximum(max_abs_blurred_frame, abs(blurred_frame))
+
+        # update frame counter
+        frame_counter += 1
+
+    # compute the mean
+    mean_blurred_frame = mean_blurred_frame / frame_counter
+
+    return mean_blurred_frame, max_abs_blurred_frame
+
+
+def compute_background_subtracted_frame(
+    blurred_frame, mean_blurred_frame, max_abs_blurred_frame
+):
+    background_subtracted_frame = (
+        ((blurred_frame - mean_blurred_frame) / max_abs_blurred_frame) + 1
+    ) / 2
+
+    return background_subtracted_frame
+
+
+def compute_motion_frame(
+    frame_delta, background_subtracted_frame, mean_blurred_frame, max_abs_blurred_frame
+):
+    # compute the blurred frame frame_idx+delta
+    _, blurred_frame_delta = apply_grayscale_and_blur(
+        frame_delta, args.kernel_size, args.sigmax
+    )
+    # compute the background subtracted for frame_idx + delta
+    background_subtracted_frame_delta = compute_background_subtracted_frame(
+        blurred_frame_delta, mean_blurred_frame, max_abs_blurred_frame
+    )
+
+    # compute the motion channel for frame_idx
+    motion_frame = np.abs(
+        background_subtracted_frame_delta - background_subtracted_frame
+    )
+
+    return motion_frame
+
+
 def compute_stacked_inputs(args: argparse.Namespace) -> None:
     """
     Function to compute the frame input to stacked inputs consist of
@@ -42,7 +110,6 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
         https://github.com/visipedia/caltech-fish-counting
 
     """
-
     # get video files and their frame indices
     frame_dict = read_json_file(args.json_path)
 
@@ -50,92 +117,54 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
         if not os.path.exists(vid_file):
             print(f"Video path not found: {vid_file}. Skip video")
             continue
-
         print(vid_file)
+
         # Initialise video capture
         cap = cv2.VideoCapture(vid_file)
 
-        frame_counter = 0
+        # Compute mean and max frames for this video
+        (
+            mean_blurred_frame,
+            max_abs_blurred_frame,
+        ) = compute_mean_and_max_abs_blurred_frame(cap, args.kernel_size, args.sigmax)
 
-        # get image size
-        width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-        height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-
-        # initialise array for mean blurred frame
-        mean_blurred_frame = np.zeros((int(height), int(width)))
-
-        # initialise array for max_abs_blurred_frame
-        max_abs_blurred_frame = np.zeros((int(height), int(width)))
-
-        while True:
-            ret, frame = cap.read()
-
-            if not ret:
-                # Break the loop if no more frames to read
-                print(f"Cannot read the frame{frame_counter}. Exiting...")
-                break
-
-            # apply transformations to the frame
-            _, blurred_frame = apply_transform(frame, args.kernel_size, args.sigmax)
-            # accumulate blurred frames
-            mean_blurred_frame += blurred_frame
-
-            # accumulate max absolute values
-            max_abs_blurred_frame = np.maximum(
-                max_abs_blurred_frame, abs(blurred_frame)
-            )
-
-            # update frame counter
-            frame_counter += 1
-
-        # compute the mean
-        mean_blurred_frame = mean_blurred_frame / frame_counter
         # save the mean
         cv2.imwrite(f"{Path(vid_file).stem}_mean.jpg", mean_blurred_frame)
 
-        # for every frame extracted for labelling
+        # Compute channels for every frame extracted for labelling
         for frame_idx in list_frame_indices:
-            # read the frame from the video
+            # read the frame f from the video
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
-
             if not ret:
                 # Break the loop if no more frames to read
                 print(f"Cannot read frame{frame_idx}. Exiting...")
                 break
 
             # apply transformations to the frame
-            gray_frame, blurred_frame = apply_transform(
+            gray_frame, blurred_frame = apply_grayscale_and_blur(
                 frame, args.kernel_size, args.sigmax
             )
 
             # compute the background subtracted frame
-            background_subtracted_frame = (
-                ((blurred_frame - mean_blurred_frame) / max_abs_blurred_frame) + 1
-            ) / 2
+            background_subtracted_frame = compute_background_subtracted_frame(
+                blurred_frame, mean_blurred_frame, max_abs_blurred_frame
+            )
 
-            # compute the motion frame
-            # read frame f-delta, the frame delta frames before the current one
-            # TODO: how to deal with frame_idx - delta < 0.
+            # read frame f+delta, the frame delta after before the current one
             cap.set(cv2.CAP_PROP_POS_FRAMES, (frame_idx + args.delta))
             success_delta, frame_delta = cap.read()
-
             if not success_delta:
                 # Break the loop if no more frames to read
                 print(f"Cannot read frame{frame_idx}+{args.delta}. Exiting...")
                 break
 
-            _, blurred_frame_delta = apply_transform(
-                frame_delta, args.kernel_size, args.sigmax
-            )
-            # compute the background subtracted for frame_idx + delta
-            background_subtracted_frame_delta = (
-                ((blurred_frame_delta - mean_blurred_frame) / max_abs_blurred_frame) + 1
-            ) / 2
-
-            # compute the motion channel for frame_idx
-            motion_frame = np.abs(
-                background_subtracted_frame_delta - background_subtracted_frame
+            # compute motion channel
+            motion_frame = compute_motion_frame(
+                frame_delta,
+                background_subtracted_frame,
+                mean_blurred_frame,
+                max_abs_blurred_frame,
             )
 
             # stack the three channels
