@@ -19,9 +19,10 @@ https://www.geeksforgeeks.org/python-copy-directory-structure-without-files/
 import argparse
 import json
 import logging
+import pprint
+import sys
 from datetime import datetime
 from pathlib import Path
-import sys
 
 import cv2
 from sleap import Video
@@ -29,8 +30,6 @@ from sleap.info.feature_suggestions import (
     FeatureSuggestionPipeline,
     ParallelFeaturePipeline,
 )
-
-import pprint
 
 
 def get_list_of_sleap_videos(
@@ -235,6 +234,15 @@ def compute_suggested_sleap_frames(
         parallel=compute_features_per_video,
     )
     logging.info(f"Total labelling suggestions generated: {len(suggestions)}")
+
+    # alternative?
+    # suggestions = []
+    # for vid in list_sleap_videos:
+    #     suggestions_vid = FeatureSuggestionPipeline.run(
+    #         pipeline,
+    #         vid,
+    #     )
+    #     suggestions.extend(suggestions_vid)
 
     # Compute dictionary that maps video paths to their frames' indices
     # suggested for labelling
