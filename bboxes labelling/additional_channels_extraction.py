@@ -39,21 +39,24 @@ def apply_grayscale_and_blur(
 
 
 def compute_mean_and_max_abs_blurred_frame(cap, kernel_size, sigmax):
-    """_summary_
+    """Compute the mean blurred frame and the maximum absolute-value
+    blurred frame for a video capture cap
 
     Parameters
     ----------
     cap : _type_
-        _description_
-    kernel_size : _type_
-        _description_
-    sigmax : _type_
-        _description_
+        OpenCV VideoCapture object
+    kernel_size : list
+        kernel size for GaussianBlur
+    sigmax : int
+        Standard deviation in the X direction of the Gaussian kernel
 
     Returns
     -------
-    _type_
-        _description_
+    mean_blurred_frame : np.array
+        mean of all blurred frames in the video
+    max_abs_blurred_frame : np.array
+        pixelwise max absolute value across all blurred frames in the video
     """
     frame_counter = 0
 
@@ -95,21 +98,24 @@ def compute_mean_and_max_abs_blurred_frame(cap, kernel_size, sigmax):
 def compute_background_subtracted_frame(
     blurred_frame, mean_blurred_frame, max_abs_blurred_frame
 ):
-    """_summary_
+    """Compute the background subtracted frame for the
+    input blurred frame, given the mean and max absolute frames of
+    its corresponding video
 
     Parameters
     ----------
-    blurred_frame : _type_
-        _description_
-    mean_blurred_frame : _type_
-        _description_
-    max_abs_blurred_frame : _type_
-        _description_
+    blurred_frame : np.array
+        Gaussian-blurred grayscaled input frame
+    mean_blurred_frame : np.array
+        mean of all blurred frames in the video
+    max_abs_blurred_frame : np.array
+        pixelwise max absolute value across all blurred frames in the video
 
     Returns
     -------
-    _type_
-        _description_
+    background_subtracted_frame : np.array
+        normalised difference between the blurred frame f and
+        the mean blurred frame
     """
     background_subtracted_frame = (
         ((blurred_frame - mean_blurred_frame) / max_abs_blurred_frame) + 1
@@ -125,19 +131,22 @@ def compute_motion_frame(
 
     Parameters
     ----------
-    frame_delta : _type_
-        _description_
-    background_subtracted_frame : _type_
-        _description_
-    mean_blurred_frame : _type_
-        _description_
-    max_abs_blurred_frame : _type_
-        _description_
+    frame_delta : int
+        difference in number of frames used to compute the motion
+        channel is computed
+    background_subtracted_frame : np.array
+        normalised difference between the blurred frame f and
+        the mean blurred frame
+    mean_blurred_frame : np.array
+        mean of all blurred frames in the video
+    max_abs_blurred_frame : np.array
+        pixelwise max absolute value across all blurred frames in the video
 
     Returns
     -------
-    _type_
-        _description_
+    motion_frame : np.array
+        absolute difference between the background subtracted frame f
+        and the background subtracted frame f+delta
     """
     # compute the blurred frame frame_idx+delta
     _, blurred_frame_delta = apply_grayscale_and_blur(
@@ -166,7 +175,7 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
         An object containing the parsed command-line arguments.
 
     Notes
-    ----------
+    -----
         This implementation follows the one at
         https://github.com/visipedia/caltech-fish-counting
 
