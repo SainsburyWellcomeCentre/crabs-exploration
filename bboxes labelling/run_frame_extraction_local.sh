@@ -9,8 +9,7 @@ DATA_DIR=/Volumes/zoo/raw/CrabField/ramalhete_2021
 # Run python script
 # -------------------
 python $CRABS_REPO_DIR"/bboxes labelling/extract_frames_to_label_w_sleap.py" \
- $CRABS_REPO_DIR/data/crab_sample_data/cam1/NINJAV_S001_S001_T001.MOV \
- $CRABS_REPO_DIR/data/crab_sample_data/cam2/NINJAV_S001_S001_T003.MOV \
+ $DATA_DIR/camera2/NINJAV_S001_S001_T001.MOV \
  --output_path $OUTPUT_DIR \
  --video_extensions MOV \
  --initial_samples 300 \
