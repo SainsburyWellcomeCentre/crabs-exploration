@@ -6,8 +6,8 @@
 #SBATCH -n 2 # number of cores
 #SBATCH -t 3-00:00 # time (D-HH:MM)
 #SBATCH --gres gpu:1 # request 1 GPU (of any kind)
-#SBATCH -o slurm_array_%A-%a.out
-#SBATCH -e slurm_array_%A-%a.err
+#SBATCH -o slurm_array.%N.%A-%a.out
+#SBATCH -e slurm_array.%N.%A-%a.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
 #SBATCH --array=0-1%4
