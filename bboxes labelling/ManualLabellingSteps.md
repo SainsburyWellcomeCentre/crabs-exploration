@@ -58,6 +58,9 @@ Steps derived from meeting Sofia & Nik on 7/7/23
      - Adjust their location by clicking and then dragging each box's centre
      - Adjust their size by clicking and then dragging one of their corners
    - You can also copy the bounding boxes to several previous or next frames (click the "Paste-n icon" on the top bar and read the instructions)
+   - Some convenient shortcuts:
+     - Press `b` to toggle the boxes visibility
+     - Press `l` to toggle the visibility of the boxes' IDs
 
 5. Add a dropdown attribute to all annotations
 
@@ -133,6 +136,7 @@ Steps derived from meeting Sofia & Nik on 7/7/23
    - Launch the VIA application
    - Click "Project" > "Load" and select the VIA project json file
    - We found that the images are not correctly located when loading an old file, even if the "Default Path" for the project is correctly set. To locate the images, click on the highlighted link to the "browser's file select" and re-load the files :(
+   - After re-loading, it may seem like the project name has changed in the UI. However when we save the project as a json file the original name applies.
 
 ## Formats
 
