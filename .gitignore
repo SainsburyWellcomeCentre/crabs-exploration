@@ -2,9 +2,12 @@ data/
 *.mp4
 .DS_Store
 stereo calibration/check_chessboard_cells_size/*
-pose_estimation_4k/animal_size/*
-pose_estimation_4k/top_down_model_230713/*
+pose estimation/animal_size_4k/*
+pose estimation/top_down_model_4k_230713/*
 **/__pycache__/**
 
 *.MOV
 *.slp
+bboxes labelling/notebook_sleap_extract_frames.py
+bboxes labelling/annotations
+tests/output/
