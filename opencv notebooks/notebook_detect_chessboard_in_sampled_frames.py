@@ -1,20 +1,25 @@
 """ Extract frames in calibration video
 
-I want to see if when the checkerboard is far the cells are spatially resolvable.
-I found examples of cases in which I don't think this will work --maybe I can verify with opencv fns
 """
 
 # %%
 import cv2
 from pathlib import Path
-import timecode
+
+# import timecode
 import ffmpeg
 from timecode import Timecode
+
 # %%
-video_path_str = "/Volumes/zoo/raw/CrabField/swc-courtyard_2023/Camera2/NINJAV_S001_S001_T011.MOV"
+video_path_str = (
+    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/"
+    "stereo calibration/check_chessboard_prelim_230809/"
+    "NINJAV__cam1_S001_S001_T001_1.mp4"
+)
 video_path = Path(video_path_str)
 video_output_dir = Path(
-    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/stereo calibration/check_chessboard_cells_size/input"
+    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration"
+    "/stereo calibration/check_chessboard_prelim_230809"
 )
 
 
@@ -22,11 +27,11 @@ video_output_dir = Path(
 # QT_start_timecode = start_timecode*2 - 1
 QT_timecodes_to_extract = [
     "04:53:27:24",
-    "04:54:07:19", 
-    "04:54:21:15", 
-    "04:54:30:08", 
+    "04:54:07:19",
+    "04:54:21:15",
+    "04:54:30:08",
     "04:55:07:29",
-    "04:55:12:13", #---- none of these are detected
+    "04:55:12:13",  # ---- none of these are detected
     "04:53:52:07",
     "04:53:43:01",
     "04:54:37:30",
@@ -37,13 +42,15 @@ QT_timecodes_to_extract = [
     "04:55:50:24",
 ]
 
+# (i.e., points of intersection of 4 squares, boundaries dont count!)
 chessboard_config = {
-    'rows': 6,  # ATT! THESE ARE INNER POINTS ONLY (i.e., points of intersection of 4 squares, boundaries dont count!)
-    'cols': 9,  # ATT! THESE ARE INNER POINTS ONLY
+    "rows": 6,  # ATT! THESE ARE INNER POINTS ONLY
+    "cols": 9,  # ATT! THESE ARE INNER POINTS ONLY
 }
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Extract frame idcs from timecodes --- not useful bc QT doesn't actually show timecodes
+# Extract frame idcs from timecodes
+# --- not useful bc QT doesn't actually show timecodes
 
 ffprobe_json = ffmpeg.probe(video_path_str)
 
@@ -59,11 +66,8 @@ for s in ffprobe_json["streams"]:
 r_frame_rate_str = video_stream["r_frame_rate"]
 
 # get start timecode
-start_timecode = Timecode(
-    r_frame_rate_str,
-    tmcd_stream["tags"]["timecode"]
-)
-QT_start_timecode = start_timecode*2 - 1
+start_timecode = Timecode(r_frame_rate_str, tmcd_stream["tags"]["timecode"])
+QT_start_timecode = start_timecode * 2 - 1
 
 frame_idcs_to_extract = []
 for tc in QT_timecodes_to_extract:
@@ -87,7 +91,7 @@ for tc in QT_timecodes_to_extract:
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # create video capture object
 cap = cv2.VideoCapture(video_path_str)
-print(cap.isOpened()) 
+print(cap.isOpened())
 
 
 # get video params
@@ -114,18 +118,13 @@ for f_idx in frame_idcs_to_extract:
 
     else:
         file_path = video_output_dir / Path(
-            f"{video_path.parent.stem}_"
-            f"{video_path.stem}_"
-            f"frame_{f_idx:06d}.png"
+            f"{video_path.parent.stem}_" f"{video_path.stem}_" f"frame_{f_idx:06d}.png"
         )
-        img_saved = cv2.imwrite(
-            str(file_path),
-            frame
-        )
+        img_saved = cv2.imwrite(str(file_path), frame)
         if img_saved:
             print(f"frame {f_idx} saved at {file_path}")
         else:
-            print(f"ERROR saving {(video_path).stem}, frame {f_idx}...skipping")
+            print(f"ERROR saving {(video_path).stem}, " "frame {f_idx}...skipping")
             continue
 
 
@@ -133,57 +132,69 @@ for f_idx in frame_idcs_to_extract:
 cap.release()
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%
 # try to detect checkerboard corners in extracted frames
-list_frames = [f for f in video_output_dir.glob('*.png')]
-for file in list_frames:
+# -------
+video_output_dir = Path(
+    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/"
+    "stereo calibration/"
+    "check_chessboard_prelim_ramalhete23/2023-8-8_resolution-test"
+)
+detected_frames_subdir = video_output_dir.parent / "detected"
+# -------
+list_frames = [f for f in video_output_dir.glob("*.png") if not f.name.startswith("._")]
 
+# (i.e., points of intersection of 4 squares, boundaries dont count!)
+chessboard_config = {
+    "rows": 5,  # ATT! THESE ARE INNER POINTS ONLY
+    "cols": 8,  # ATT! THESE ARE INNER POINTS ONLY
+}
+
+
+for file in list_frames:
     # read file
-    img = cv2.imread(str(file))  # size_og = (img_og.shape[1], img_og.shape[0]) # we want width, height!
-  
+    img = cv2.imread(
+        str(file)
+    )  # size_og = (img_og.shape[1], img_og.shape[0]) # we want width, height!
+
     # make grayscale
-    img_gray = cv2.cvtColor(
-        img,
-        cv2.COLOR_BGR2GRAY
-    )
-    
+    img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
     # try to detect chessboard corners
     ret, corners = cv2.findChessboardCorners(
-        img_gray, 
-        (chessboard_config['rows'], chessboard_config['cols']), 
-        cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE
+        img_gray,
+        (chessboard_config["rows"], chessboard_config["cols"]),
+        cv2.CALIB_CB_ADAPTIVE_THRESH
+        + cv2.CALIB_CB_FAST_CHECK
+        + cv2.CALIB_CB_NORMALIZE_IMAGE,
     )
-   
+
     # save with corners if detected, or the og image otherwise
     if ret:
-        # add them to the image
+        # add detected corners to the image
+        # this modifies the frame 'img' in place OJO!
         corners_img = cv2.drawChessboardCorners(
-            img,
-            (chessboard_config['rows'], chessboard_config['cols']),
-            corners,
-            ret
-        )  #--- this modifies frame in place OJO! it adds markers for the detected corners
-        
+            img, (chessboard_config["rows"], chessboard_config["cols"]), corners, ret
+        )
+        print(f"Checkerboard detected for {file.stem}.png")
+
         file_path = (
-            video_output_dir.parent / "detected"
+            detected_frames_subdir  # video_output_dir.parent / "detected"
             / f"{file.stem}_checkerboard.png"
         )
     else:
         corners_img = img
         print(f"Checkerboard not detected for {file.stem}.png")
-        
+
         file_path = (
-            video_output_dir.parent / "detected"
+            detected_frames_subdir  # video_output_dir.parent / "detected"
             / f"{file.stem}_no_checkerboard.png"
         )
 
-    # save and check
+    # save
     flag_saved = cv2.imwrite(str(file_path), corners_img)
     if flag_saved:
         print(f"{file_path.stem} saved")
     else:
-        print(
-            f"ERROR saving {file_path.stem} "
-            "...skipping"
-        )
+        print(f"ERROR saving {file_path.stem} " "...skipping")
         continue
-        
+
 # %%
