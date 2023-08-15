@@ -1,62 +1,68 @@
 # Run frame extraction in the SWC cluster
 
-0- Connect to the SWC VPN
+0. Connect to the SWC VPN
 
-1- Connect to the SWC HPC
+1. Connect to the SWC HPC
 
-```
-ssh hpc-gw1
-```
+   ```
+   ssh hpc-gw1
+   ```
 
-It may ask for your password twice
+   It may ask for your password twice
 
-2- Move to scratch and git clone this repo
+2. Move to scratch and git clone this repo
 
-```
-cd /ceph/scratch/sminano
-git clone https://github.com/sfmig/crabs-exploration.git
-```
+   ```
+   cd /ceph/scratch/sminano
+   git clone https://github.com/sfmig/crabs-exploration.git
+   ```
 
-If already cloned, pull force to overwrite any local files:
+   If the repo has already been cloned, `cd` to the repo directory and pull force to overwrite any local files:
 
-```
-git fetch --all
-git reset --hard origin/main
-```
+   ```
+   git fetch --all
+   git reset --hard origin/main
+   ```
 
-alternatively:
+   alternatively, to pull a specific branch:
 
-```
-git reset --hard origin/<branch-name>
-```
+   ```
+   git reset --hard origin/<branch-name>
+   ```
 
-3- Launch job with sbatch from `/Volumes/scratch/sminano/crabs-exploration/bboxes labelling`
+3. Edit bash script if required
 
-```
-cd /Volumes/scratch/sminano/crabs-exploration/bboxes labelling
-sbatch run_frame_extraction_array.sh
-```
+- The job array bash script should be at `/ceph/scratch/sminano/crabs-exploration/bboxes labelling\run_frame_extraction_array.sh`
+- Change the list of input videos (one video per job in the array)
+- ATTENTION!
+  Check that the number of jobs in the array (`#SBATCH --array=0-1`) matches the number of videos to process
 
-ATTENTION!
-Check that the number of jobs in the array (`#SBATCH --array=0-1`) matches the number of videos to process
+4. Launch the array job with `sbatch` command from `/ceph/scratch/sminano/crabs-exploration/bboxes labelling`
 
-5- Check status of running jobs
+   ```
+   cd /Volumes/scratch/sminano/crabs-exploration/bboxes labelling
+   sbatch run_frame_extraction_array.sh
+   ```
 
-```
-squeue -u sminano
-```
+5. Check status of running jobs
 
-To show details of the latest jobs (included completed or cancelled jobs)
+   ```
+   squeue -u sminano
+   ```
 
-```
-sacct -X -u sminano
-```
+   To show details of the latest jobs (included completed or cancelled jobs)
 
-To check specific jobs by ID
+   ```
+   sacct -X -u sminano
+   ```
 
-```
-sacct -X -j 3813494,3813184
-```
+   To check specific jobs by ID
+
+   ```
+   sacct -X -j 3813494,3813184
+   ```
+
+---
 
 Notes:
 
