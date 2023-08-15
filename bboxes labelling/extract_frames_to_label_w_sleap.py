@@ -36,10 +36,10 @@ def get_list_of_sleap_videos(
     list_video_locations,
     list_video_extensions=["mp4"],
 ):
-    """Generate list of SLEAP videos from the
-    locations and extensions provided.
+    """Generate list of SLEAP videos.
 
-    The locations can be expressed as paths to files or
+    The locations in which we look for videos
+    can be expressed as paths to files or
     as the parent directories of a set of videos.
 
     Parameters
@@ -75,7 +75,9 @@ def get_list_of_sleap_videos(
         # If the path is a file with the relevant extension:
         # append path directly to list
         elif location_path.is_file() and (
-            location_path.suffix[1:] in list_video_extensions  # suffix includes dot
+            location_path.suffix[1:]
+            in list_video_extensions
+            # suffix includes dot
         ):
             list_video_paths.append(location_path)
 
@@ -356,8 +358,8 @@ def compute_and_extract_frames_to_label(args):
             'sample_method',
             'scale',
             'feature_type',
-            'n_components', '
-            n_clusters',
+            'n_components',
+            'n_clusters',
             'per_cluster',
             'compute_features_per_video'
     """
@@ -402,7 +404,7 @@ def compute_and_extract_frames_to_label(args):
                 indent=4,
             )
         logging.info(
-            "Existing json file with extracted frames " f"updated at {json_output_file}"
+            "Existing json file with extracted frames updated at {json_output_file}"
         )
     # else: start a new file
     else:
@@ -413,9 +415,7 @@ def compute_and_extract_frames_to_label(args):
                 sort_keys=True,
                 indent=4,
             )
-        logging.info(
-            "New json file with extracted frames " f"saved at {json_output_file}"
-        )
+        logging.info("New json file with extracted frames saved at {json_output_file}")
 
     # Save suggested frames as png files
     # (extraction with opencv)
