@@ -23,6 +23,7 @@ import pprint
 import sys
 from datetime import datetime
 from pathlib import Path
+import copy
 
 import cv2
 from sleap import Video
@@ -34,7 +35,7 @@ from sleap.info.feature_suggestions import (
 
 def get_list_of_sleap_videos(
     list_video_locations,
-    list_video_extensions=["mp4"],
+    list_video_extensions_in=["mp4"],
 ):
     """Generate list of SLEAP videos.
 
@@ -48,7 +49,7 @@ def get_list_of_sleap_videos(
         list of video locations. These may be paths to video files or
         paths to their parent directories (only one level deep is searched).
 
-    list_video_extensions : list[str]
+    list_video_extensions_in : list[str]
         list of video extensions to look for in the directories.
         By default, mp4 videos.
 
@@ -57,6 +58,14 @@ def get_list_of_sleap_videos(
     list_sleap_videos : list[sleap.io.video.Video]
         list of SLEAP videos
     """
+
+    # Make list of extensions case insensitive
+    list_video_extensions = copy.deepcopy(list_video_extensions_in)
+    for ext in list_video_extensions_in:
+        if ext.isupper():
+            list_video_extensions.append(ext.lower())
+        elif ext.islower():
+            list_video_extensions.append(ext.upper())
 
     # Compute list of video paths
     list_video_paths = []
