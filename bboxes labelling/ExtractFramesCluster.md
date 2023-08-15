@@ -33,9 +33,11 @@
 3. Edit bash script if required
 
 - The job array bash script should be at `/ceph/scratch/sminano/crabs-exploration/bboxes labelling\run_frame_extraction_array.sh`
-- Change the list of input videos (one video per job in the array)
-- ATTENTION!
-  Check that the number of jobs in the array (`#SBATCH --array=0-1`) matches the number of videos to process
+- Things to likely edit:
+  - the list of input videos (one video per job in the array)
+  - the name of the output directory that will hold the extracted frames (`OUTPUT_SUBDIR`)
+  - ATTENTION!
+    Check that the number of jobs in the array (`#SBATCH --array=0-1`) matches the number of videos to process
 
 4. Launch the array job with `sbatch` command from `/ceph/scratch/sminano/crabs-exploration/bboxes labelling`
 
