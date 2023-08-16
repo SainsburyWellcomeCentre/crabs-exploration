@@ -17,13 +17,13 @@ https://www.geeksforgeeks.org/python-copy-directory-structure-without-files/
 """
 
 import argparse
+import copy
 import json
 import logging
 import pprint
 import sys
 from datetime import datetime
 from pathlib import Path
-import copy
 
 import cv2
 from sleap import Video
@@ -37,7 +37,8 @@ def get_list_of_sleap_videos(
     list_video_locations,
     list_video_extensions_in=["mp4"],
 ):
-    """Generate list of SLEAP videos.
+    """
+    Generate list of SLEAP videos.
 
     The locations in which we look for videos
     can be expressed as paths to files or
@@ -58,7 +59,6 @@ def get_list_of_sleap_videos(
     list_sleap_videos : list[sleap.io.video.Video]
         list of SLEAP videos
     """
-
     # Make list of extensions case insensitive
     list_video_extensions = copy.deepcopy(list_video_extensions_in)
     for ext in list_video_extensions_in:
@@ -78,7 +78,7 @@ def get_list_of_sleap_videos(
         if location_path.is_dir():
             for ext in list_video_extensions:
                 list_video_paths.extend(
-                    location_path.glob(f"[!.]*.{ext}")
+                    location_path.glob(f"[!.]*.{ext}"),
                 )  # exclude hidden files
 
         # If the path is a file with the relevant extension:
@@ -101,8 +101,7 @@ def get_list_of_sleap_videos(
             cap.release()
         else:
             logging.warning(
-                f"Video at {str(vid_path)} could not"
-                " be opened by OpenCV. Skipping..."
+                f"Video at {vid_path!s} could not" " be opened by OpenCV. Skipping...",
             )
 
     # Print warning if list is empty
@@ -118,8 +117,9 @@ def get_list_of_sleap_videos(
 
 
 def get_map_videos_to_extracted_frames(list_sleap_videos, suggestions):
-    """Compute dictionary that maps videos to
-    their frame indices selected for labelling
+    """
+    Compute dictionary that maps videos to
+    their frame indices selected for labelling.
 
     Parameters
     ----------
@@ -163,7 +163,8 @@ def compute_suggested_sleap_frames(
     per_cluster=5,
     compute_features_per_video=True,
 ):
-    """Compute suggested frames for labelling using SLEAP's
+    """
+    Compute suggested frames for labelling using SLEAP's
     FeatureSuggestionPipeline.
 
     See https://sleap.ai/guides/gui.html#labeling-suggestions
@@ -211,7 +212,6 @@ def compute_suggested_sleap_frames(
         of frames indices extracted for labelling.
         The frame indices are sorted in ascending order.
     """
-
     # Transform list of input videos to list of SLEAP Video instances
     list_sleap_videos = get_list_of_sleap_videos(
         list_video_locations,
@@ -248,12 +248,10 @@ def compute_suggested_sleap_frames(
 
     # Compute dictionary that maps video paths to their frames' indices
     # suggested for labelling
-    map_videos_to_extracted_frames = get_map_videos_to_extracted_frames(
+    return get_map_videos_to_extracted_frames(
         list_sleap_videos,
         suggestions,
     )
-
-    return map_videos_to_extracted_frames
 
 
 def extract_frames_to_label_from_video(
@@ -261,7 +259,8 @@ def extract_frames_to_label_from_video(
     output_subdir_path,
     flag_parent_dir_subdir_in_output=False,
 ):
-    """Extract suggested frames for labelling from
+    """
+    Extract suggested frames for labelling from
     corresponding videos using OpenCV.
 
     The png files for each frame are named with
@@ -287,7 +286,6 @@ def extract_frames_to_label_from_video(
     KeyError
         If a frame from a video is not correctly read by openCV
     """
-
     for vid_str in map_videos_to_extracted_frames:
         # Initialise video capture
         cap = cv2.VideoCapture(vid_str)
@@ -337,7 +335,7 @@ def extract_frames_to_label_from_video(
                 else:
                     logging.info(
                         f"ERROR saving {Path(vid_str).stem}, frame {frame_idx}"
-                        "...skipping"
+                        "...skipping",
                     )
                     continue
 
@@ -346,7 +344,8 @@ def extract_frames_to_label_from_video(
 
 
 def compute_and_extract_frames_to_label(args):
-    """Compute suggested frames to label and
+    """
+    Compute suggested frames to label and
     extract them as png files.
 
     We use SLEAP's image feature method to select
@@ -372,7 +371,6 @@ def compute_and_extract_frames_to_label(args):
             'per_cluster',
             'compute_features_per_video'
     """
-
     # Compute list of suggested frames using SLEAP
     map_videos_to_extracted_frames = compute_suggested_sleap_frames(
         args.list_video_locations,
@@ -413,7 +411,7 @@ def compute_and_extract_frames_to_label(args):
                 indent=4,
             )
         logging.info(
-            "Existing json file with extracted frames updated at {json_output_file}"
+            "Existing json file with extracted frames updated at {json_output_file}",
         )
     # else: start a new file
     else:
@@ -436,8 +434,9 @@ def compute_and_extract_frames_to_label(args):
 
 
 def argument_parser():
-    """Generate data structure holding
-    parsed command-line input arguments
+    """
+    Generate data structure holding
+    parsed command-line input arguments.
 
     Returns
     -------
@@ -456,7 +455,6 @@ def argument_parser():
             'per_cluster',
             'compute_features_per_video'
     """
-
     # TODO: add grayscale option?
     # TODO: read extracted frames from file?
     parser = argparse.ArgumentParser()
@@ -548,14 +546,9 @@ def argument_parser():
 
     # TODO: add random seed, to make it deterministic?
     # parser.add_argument('--random_seed',
-    #                     type=int,
-    #                     nargs='?',
-    #                     default=42,
     #                     help='random seed')
 
-    args = parser.parse_args()
-
-    return args
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
