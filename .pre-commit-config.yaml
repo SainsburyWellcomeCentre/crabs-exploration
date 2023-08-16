@@ -3,16 +3,16 @@ repos:
     rev: v0.0.280
     hooks:
       - id: ruff
-        # args: ["--config", "pyproject.toml"]
+        args: ["--config", "pyproject.toml"]
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.1
     hooks:
       - id: forbid-tabs
-  # - repo: https://github.com/pappasam/toml-sort
-  #   rev: v0.23.1
-  #   hooks:
-  #     - id: toml-sort-fix
-  #       exclude: "{{cookiecutter.project_slug}}/pyproject.toml"
+  - repo: https://github.com/pappasam/toml-sort
+    rev: v0.23.1
+    hooks:
+      - id: toml-sort-fix
+        exclude: "crabs-exploration/pyproject.toml"
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.4.1
     hooks:
@@ -21,7 +21,7 @@ repos:
     rev: v3.0.0-alpha.9-for-vscode
     hooks:
       - id: prettier
-        exclude: "{{cookiecutter.project_slug}}/.github/workflows/tests.yml"
+        exclude: "crabs-exploration/.github/workflows/tests.yml"
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.4.0
     hooks:

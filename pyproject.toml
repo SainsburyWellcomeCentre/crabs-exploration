@@ -1,24 +1,14 @@
 # [build-system]
 # build-backend = "setuptools.build_meta"
 # requires = [
-#     "setuptools",
-#     "setuptools-scm",
+# "setuptools",
+# "setuptools-scm",
 # ]
 
 [project]
-name = "crabs-exploration"
 authors = [
-    {email = "s.minano@ucl.ac.uk", name = "Sofia Minano"},
     {email = "n.aznan@ucl.ac.uk", name = "Nik Khadijah Nik Aznan"},
-]
-description = "exploring the crabs field data"
-readme = "README.md"
-requires-python = ">=3.9.0"
-dynamic = [
-    "version",
-]
-license.file = "LICENCE.md"
-dependencies = [
+    {email = "s.minano@ucl.ac.uk", name = "Sofia Minano"},
 ]
 classifiers = [
     "Operating System :: POSIX",
@@ -26,9 +16,15 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Typing :: Typed",
 ]
+dependencies = [
+]
+description = "exploring the crabs field data"
+dynamic = [
+    "version",
+]
 keywords = [
 ]
-
+name = "crabs-exploration"
 optional-dependencies = {dev = [
     "black",
     "build",
@@ -38,26 +34,10 @@ optional-dependencies = {dev = [
     "tox>=4",
     "twine",
 ]}
-
-
+readme = "README.md"
+requires-python = ">=3.9.0"
+license.file = "LICENCE.md"
 urls.homepage = "https://github.com/sfmig/crabs-exploration"
-
-# [tool.coverage]
-# report = {skip_covered = true, sort = "cover"}
-# run = {branch = true, parallel = true, source = [
-#     "{{ cookiecutter.project_slug }}",
-# ]}
-# paths.source = [
-#     "src",
-#     ".tox*/*/lib/python*/site-packages",
-# ]
-
-# [tool.mypy]
-# explicit_package_bases = true
-# plugins = [
-#     # "numpy.typing.mypy_plugin",
-#     # "pydantic.mypy",
-# ]
 
 [tool.pytest.ini_options]
 addopts = "--color=yes -v"
@@ -67,69 +47,57 @@ testpaths = [
 
 [tool.ruff]
 fix = true
-force-exclude = true
-ignore = [
-    "D203", # no-blank-line-before-class
-    "D212", # multi-line-summary-first-line
-    "D417", # argument description in docstring (unreliable)
-]
+# force-exclude = true
+# ignore = [
+# "D203", # no-blank-line-before-class
+# "D212", # multi-line-summary-first-line
+# "D417", # argument description in docstring (unreliable)
+# ]
 per-file-ignores = {"test_*" = [
     "S101",
 ]}
-select = [
-    "A",
-    "ARG",
-    "B",
-    "BLE",
-    "C",
-    "COM",
-    "D",
-    "DJ",
-    "DTZ",
-    "E",
-    "EM",
-    "ERA",
-    "EXE",
-    "F",
-    "FBT",
-    "I",
-    "ICN",
-    "ISC",
-    "N",
-    "NPY",
-    "PD",
-    "PGH",
-    "PIE",
-    "PL",
-    "PT",
-    "PTH",
-    "PYI",
-    "Q",
-    "RET",
-    "RSE",
-    "RUF",
-    "S",
-    "SIM",
-    "T",
-    "TCH",
-    "TID",
-    "UP",
-    "W",
-    "YTT",
-]
+# select = [
+# "A",
+# "ARG",
+# "B",
+# "BLE",
+# "C",
+# "COM",
+# "D",
+# "DJ",
+# "DTZ",
+# "E",
+# "EM",
+# "ERA",
+# "EXE",
+# "F",
+# "FBT",
+# "I",
+# "ICN",
+# "ISC",
+# "N",
+# "NPY",
+# "PD",
+# "PGH",
+# "PIE",
+# "PL",
+# "PT",
+# "PTH",
+# "PYI",
+# "Q",
+# "RET",
+# "RSE",
+# "RUF",
+# "S",
+# "SIM",
+# "T",
+# "TCH",
+# "TID",
+# "UP",
+# "W",
+# "YTT",
+# ]
 target-version = "py39"
-# isort.known-first-party = [
-#     "{{ cookiecutter.project_slug | replace('-', '_') }}",
-# ]
-# mccabe.max-complexity = 18
-# pep8-naming.classmethod-decorators = [
-#     "classmethod",
-#     "pydantic.validator",
-# ]
-
-# [tool.setuptools_scm]
-# local_scheme = "no-local-version"
-# write_to = "src/{{ cookiecutter.project_slug }}/_version.py"
 
 [tool.tomlsort]
 all = true
