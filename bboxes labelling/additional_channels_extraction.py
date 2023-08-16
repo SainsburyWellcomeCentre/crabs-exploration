@@ -162,6 +162,11 @@ def compute_motion_frame(
         background_subtracted_frame_delta - background_subtracted_frame
     )
 
+    motion_frame = (motion_frame * 255).astype(np.uint8)
+    motion_frame = cv2.threshold(motion_frame, args.threshold, 255, cv2.THRESH_BINARY)[
+        1
+    ]
+
     return motion_frame
 
 
@@ -238,6 +243,11 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
                 max_abs_blurred_frame,
             )
 
+            gray_frame = (gray_frame * 255).astype(np.uint8)
+            background_subtracted_frame = (background_subtracted_frame * 255).astype(
+                np.uint8
+            )
+
             # stack the three channels
             final_frame = np.dstack(
                 [
@@ -245,8 +255,7 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
                     background_subtracted_frame,  # background-subtracted
                     motion_frame,  # motion signal
                 ]
-            ).astype(np.float32)
-            final_frame = (final_frame * 255).astype(np.uint8)
+            )
 
             # save final frame as file
             file_name = (
@@ -256,6 +265,16 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
             )
             out_fp = os.path.join(args.out_dir, file_name)
             Image.fromarray(final_frame).save(out_fp, quality=95)
+
+            # save final frame as file
+            file_name_motion = (
+                f"{Path(vid_file).parent.stem}_"
+                f"{Path(vid_file).stem}_"
+                f"frame_motion_{frame_idx:06d}.png"
+            )
+
+            out_fp = os.path.join(args.out_dir, file_name_motion)
+            Image.fromarray(motion_frame).save(out_fp, quality=95)
 
         cap.release()
 
@@ -288,7 +307,7 @@ def argument_parser() -> argparse.Namespace:
         "--kernel_size",
         nargs=2,
         type=int,
-        default=[5, 5],
+        default=[3, 3],
         help="Kernel size for the Gaussian blur (default: 5 5)",
     )
     parser.add_argument(
@@ -302,6 +321,12 @@ def argument_parser() -> argparse.Namespace:
         type=int,
         default=100,
         help="The value how many frame differences we compute",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=int,
+        default=25,
+        help="The threshold value for the binarisation of an image ",
     )
     args = parser.parse_args()
     return args
