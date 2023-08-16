@@ -1,13 +1,19 @@
-data/
-*.mp4
 .DS_Store
-stereo calibration/check_chessboard_cells_size/*
-pose estimation/animal_size_4k/*
-pose estimation/top_down_model_4k_230713/*
 **/__pycache__/**
 
 *.MOV
 *.slp
-bboxes labelling/notebook_sleap_extract_frames.py
-bboxes labelling/annotations
-tests/output/
+*.layout
+*.json
+*.png
+*.mp4
+
+/data/
+/bboxes_labelling/annotations
+/stereo calibration/check_chessboard_cells_size/*
+/pose estimation/animal_size_4k/*
+/pose estimation/top_down_model_4k_230713/*
+
+/tests/output/
+# include mp4 files in tests/data dir
+!/tests/data/*.mp4

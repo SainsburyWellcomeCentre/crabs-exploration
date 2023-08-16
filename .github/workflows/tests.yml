@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9"]
+        os: [ubuntu-latest]
+        # # Include one windows and macos run
+        # include:
+        # - os: macos-latest
+        #   python-version: "3.9"
+        # - os: windows-latest
+        #   python-version: "3.9"
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
+
+      - name: Cache tox
+        uses: actions/cache@v3
+        with:
+          path: .tox
+          key: tox-${{ '{{' }}hashFiles('pyproject.toml') {{ '}}' }}
+
+      - name: Set up python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9" # ${{ '{{' }} matrix.python-version {{ '}}' }}
+          cache: "pip"
+          cache-dependency-path: "pyproject.toml"
+
+      - name: Install dependencies
+        run: python -m pip install tox tox-gh-actions
+
+      - name: Test with tox
+        run: tox
