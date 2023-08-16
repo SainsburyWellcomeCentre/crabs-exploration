@@ -17,6 +17,8 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
+    "opencv-python",
+    "sleap",
 ]
 description = "exploring the crabs field data"
 dynamic = [
