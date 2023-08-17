@@ -6,6 +6,7 @@ import torchvision
 import yaml
 
 from _utils import create_dataloader, get_transform, save_model
+from _model import create_faster_rcnn, train_faster_rcnn, valid_model
 
 # select device (whether GPU or CPU)
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -61,73 +62,31 @@ class Dectector_Train:
         self.train_dataloader = create_dataloader(self.train_dataset, self.config["batch_size"])
         self.valid_dataloader = create_dataloader(self.valid_dataset, self.config["batch_size"])
 
-    def _valid_model(self, trained_model: nn.Module) -> None:
-        """Validate the trained model on validation dataset
-        
-        Parameters
-        ----------
-        trained_model : nn.Module
-            Trained model from the training loop.
-        """
-        trained_model.eval()
-        trained_model.to(device)
-
-        total_correct_boxes = 0
-        total_gt_boxes = 0
-
-        with torch.no_grad():
-            for imgs, annotations in self.valid_dataloader:
-                imgs = list(img.to(device) for img in imgs)
-                targets = [{k: v.to(device) for k, v in t.items()} for t in annotations]
-
-                detections = self.model(imgs, targets)
-                for target, detection in zip(targets, detections):
-                    gt_boxes = target["boxes"]
-                    pred_boxes = detection["boxes"]
-
-                    # compare predicted boxes to ground truth boxes
-                    ious = torchvision.ops.box_iou(pred_boxes, gt_boxes)
-                    correct_boxes = (ious > 0.5).sum().item()
-                    total_correct_boxes += correct_boxes
-                    total_gt_boxes += len(gt_boxes)
-
-        average_precision = total_correct_boxes / total_gt_boxes
-        print(f"Average Precision: {average_precision:.4f}")
-
     def train_model(self) -> None:
         """Train the model using the provided configuration"""
 
         self._load_dataset()
         
         # create model
-        if self.model_name == "faster_rcnn":
-            from _models import create_faster_rcnn
-
-            self.model = create_faster_rcnn(num_classes=self.config["num_classes"], coco_model=True)
-            self.model.to(device)
-
-        elif self.model_name == "yolov5":
-            from _models import create_yolov5
-
-            num_classes = 1
-            self.model = create_yolov5(num_classes, self.class_map)
+        self.model = create_faster_rcnn(num_classes=self.config["num_classes"], coco_model=True)
+        self.model.to(device)
 
         optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=self.config["learning_rate"], weight_decay=0.0005
+            self.model.parameters(), lr=self.config["learning_rate"], weight_decay=self.config["wdecay"]
         )
 
         print(f"Training {self.model_name}...")
 
-        if self.model_name == "faster_rcnn":
-            from _models import train_faster_rcnn
-            trained_model = train_faster_rcnn(
-                self.config["num_epochs"], self.model, self.train_dataloader, optimizer
-                )
+        trained_model = train_faster_rcnn(
+            self.config["num_epochs"], self.model, self.train_dataloader, optimizer
+            )
 
         if self.config["save"]:
             save_model(trained_model)
 
-        self._valid_model(trained_model)
+        trained_model.eval()
+        trained_model.to(device)
+        valid_model(trained_model)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -97,7 +97,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         labels = torch.ones((num_objs,), dtype=torch.int64)
         # Tensorise img_id
         img_id = torch.tensor([img_id])
-        # Size of bbox (Rectangular)
+        # Size of bbox (Rectangulargit stat)
         areas = []
         for i in range(num_objs):
             areas.append(coco_annotation[i]["area"])
