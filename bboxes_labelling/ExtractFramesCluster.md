@@ -32,17 +32,17 @@
 
 3. Edit bash script if required
 
-- The job array bash script should be at `/ceph/scratch/sminano/crabs-exploration/bboxes labelling\run_frame_extraction_array.sh`
+- The job array bash script should be at `/ceph/scratch/sminano/crabs-exploration/bboxes_labelling\run_frame_extraction_array.sh`
 - Things to likely edit:
   - the list of input videos (one video per job in the array)
   - the name of the output directory that will hold the extracted frames (`OUTPUT_SUBDIR`)
   - ATTENTION!
     Check that the number of jobs in the array (`#SBATCH --array=0-1`) matches the number of videos to process
 
-4. Launch the array job with `sbatch` command from `/ceph/scratch/sminano/crabs-exploration/bboxes labelling`
+4. Launch the array job with `sbatch` command from `/ceph/scratch/sminano/crabs-exploration/bboxes_labelling`
 
    ```
-   cd /Volumes/scratch/sminano/crabs-exploration/bboxes labelling
+   cd /Volumes/scratch/sminano/crabs-exploration/bboxes_labelling
    sbatch run_frame_extraction_array.sh
    ```
 
@@ -58,6 +58,12 @@
    sacct -X -u sminano
    ```
 
+   To specify columns to display use `--format` (e.g., `Elapsed`)
+
+   ```
+   sacct -X --format="JobID, JobName, Partition, Account, State, Elapsed" -u sminano
+   ```
+
    To check specific jobs by ID
 
    ```
@@ -66,12 +72,16 @@
 
 ---
 
-Notes:
+### Notes:
 
-- For a new bash script, it is often a good idea to try each of the steps with an interactive node first! To request a GPU one:
+- For a new bash script, it is often a good idea to try each of the steps with an interactive node first!
+
+  To request a GPU one:
+
   ```
   srun -p gpu --gres=gpu:1 --pty bash -i
   ```
+
 - To cancel a job
   ```
   scancel <jobID>
