@@ -65,9 +65,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         """
 
         img_id = self.ids[index]
-        # List: get annotation id from coco
         ann_ids = self.coco.getAnnIds(imgIds=img_id)
-        # Dictionary: target coco_annotation file for an image
         coco_annotation = self.coco.loadAnns(ann_ids)
 
         # If there are no annotations, skip this frame (unlabeled frame)
@@ -76,10 +74,8 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
 
         img_info = self.coco.loadImgs(ids=img_id)[0]
         img_path = os.path.join(self.data_dir, img_info["file_name"])
-        # open the input image
         img = Image.open(img_path).convert("RGB")
 
-        # number of objects in the image
         num_objs = len(coco_annotation)
 
         # Bounding boxes for objects
@@ -93,16 +89,13 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
             ymax = ymin + coco_annotation[i]["bbox"][3]
             boxes.append([xmin, ymin, xmax, ymax])
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        # Labels (In my case, I only one class: target class or background)
         labels = torch.ones((num_objs,), dtype=torch.int64)
-        # Tensorise img_id
         img_id = torch.tensor([img_id])
-        # Size of bbox (Rectangulargit stat)
+        
         areas = []
         for i in range(num_objs):
             areas.append(coco_annotation[i]["area"])
         areas = torch.as_tensor(areas, dtype=torch.float32)
-        # Iscrowd
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
         # Annotation is in dictionary format
@@ -148,7 +141,7 @@ def collate_fn(batch):
 def create_dataloader(my_dataset, batch_size):
     # own DataLoader
     data_loader = torch.utils.data.DataLoader(
-        my_dataset, batch_size=batch_size, shuffle=True, num_workers=4, collate_fn=collate_fn
+        my_dataset, batch_size=batch_size, shuffle=True, num_workers=4, collate_fn=collate_fn, pin_memory=True
     )
     return data_loader
 
@@ -160,7 +153,16 @@ def save_model(model) -> None:
     print("Model Saved")
 
 
-def get_transform():
+def get_train_transform():
+    # TODO: testing with different transforms
+    custom_transforms = []
+    custom_transforms.append(transforms.Resize((1080, 1920)))
+    custom_transforms.append(transforms.ColorJitter(brightness=0.5, hue=0.3))
+    custom_transforms.append(transforms.ToTensor())
+
+    return transforms.Compose(custom_transforms)
+
+def get_test_transform():
     # TODO: testing with different transforms
     custom_transforms = []
     custom_transforms.append(transforms.ToTensor())

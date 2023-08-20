@@ -1,15 +1,14 @@
 import argparse
 
 import torch
-import torch.nn as nn
-import torchvision
 import yaml
 
-from _utils import create_dataloader, get_transform, save_model
-from _model import create_faster_rcnn, train_faster_rcnn, valid_model
+from _utils import create_dataloader, get_train_transform, save_model
+from _models import create_faster_rcnn, train_faster_rcnn
 
 # select device (whether GPU or CPU)
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+# device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+device = "cpu"
 
 
 class Dectector_Train:
@@ -29,6 +28,7 @@ class Dectector_Train:
     model_name : str
         The model use to train the detector.
     """
+
     def __init__(self, args: argparse.Namespace) -> None:
         self.config_file = args.config_file
         self.main_dir = args.main_dir
@@ -45,48 +45,47 @@ class Dectector_Train:
         """Load images and annotation file for training"""
 
         self.train_data = f"{self.main_dir}/images/train/"
-        self.train_label = f"{self.main_dir}/labels/train/train.json"
-        self.valid_data = f"{self.main_dir}/images/validation/"
-        self.valid_label = f"{self.main_dir}/labels/validation/validation.json"
+        self.train_label = f"{self.main_dir}/labels/train.json"
 
         if self.model_name == "faster_rcnn":
             from _utils import myFasterRCNNDataset
 
             self.train_dataset = myFasterRCNNDataset(
-                self.train_data, self.train_label, transforms=get_transform()
-            )
-            self.valid_dataset = myFasterRCNNDataset(
-                self.valid_data, self.valid_label, transforms=get_transform()
+                self.train_data, self.train_label, transforms=get_train_transform()
             )
 
-        self.train_dataloader = create_dataloader(self.train_dataset, self.config["batch_size"])
-        self.valid_dataloader = create_dataloader(self.valid_dataset, self.config["batch_size"])
+        print(self.config["batch_size"])
+
+        self.train_dataloader = create_dataloader(
+            self.train_dataset, self.config["batch_size"]
+        )
 
     def train_model(self) -> None:
         """Train the model using the provided configuration"""
 
         self._load_dataset()
-        
+
         # create model
-        self.model = create_faster_rcnn(num_classes=self.config["num_classes"], coco_model=True)
+        self.model = create_faster_rcnn(
+            num_classes=self.config["num_classes"], coco_model=True
+        )
         self.model.to(device)
 
         optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=self.config["learning_rate"], weight_decay=self.config["wdecay"]
+            self.model.parameters(),
+            lr=self.config["learning_rate"],
+            weight_decay=self.config["wdecay"],
         )
 
         print(f"Training {self.model_name}...")
 
         trained_model = train_faster_rcnn(
             self.config["num_epochs"], self.model, self.train_dataloader, optimizer
-            )
+        )
 
         if self.config["save"]:
             save_model(trained_model)
 
-        trained_model.eval()
-        trained_model.to(device)
-        valid_model(trained_model)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

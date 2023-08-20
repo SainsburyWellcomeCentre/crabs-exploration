@@ -1,8 +1,7 @@
-num_epochs: 1
-learning_rate: 0.0001
-dropout_level: 0.3
-wdecay: 0.005
-batch_size: 4
+num_epochs: 150
+learning_rate: 0.00001
+wdecay: 0.00005
+batch_size: 1
 num_classes: 2
 image_stack: False
 Sort: False
