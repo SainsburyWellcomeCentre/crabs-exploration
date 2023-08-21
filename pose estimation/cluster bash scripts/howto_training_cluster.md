@@ -95,8 +95,6 @@
    scontrol show jobid -dd <jobid>
    ```
 
-7. To ru
-
 ---
 
 Inference
