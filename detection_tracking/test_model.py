@@ -1,20 +1,11 @@
 import torch
-import torchvision
 import argparse
 import os
-import cv2
-from PIL import Image
-import torchvision.transforms as transforms
-import numpy as np
 from _utils import create_dataloader, get_test_transform
 from _utils import myFasterRCNNDataset
-from sort import *
-import numpy as np
-
 
 # select device (whether GPU or CPU)
-# device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-device = "cpu"
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
 class Detector_Test:
@@ -29,9 +20,7 @@ class Detector_Test:
         # Load the pretrain subject predictor
         # TODO:deal with different model
         self.trained_model = torch.load(
-            self.args.model_dir,
-            map_location=torch.device('cpu')
-
+            self.args.model_dir, map_location=torch.device("cpu")
         )
 
     def _load_dataset(self) -> None:

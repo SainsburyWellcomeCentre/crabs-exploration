@@ -1,10 +1,11 @@
+import cv2
 import torch
-import torchvision
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 import torch.nn as nn
-from torch.utils.data import DataLoader
 import torch.optim as optim
+import torchvision
 from _utils import coco_category
+from torch.utils.data import DataLoader
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 
 def create_faster_rcnn(num_classes: int, coco_model: bool = True) -> nn.Module:
@@ -64,8 +65,8 @@ def train_faster_rcnn(
     """
 
     # select device (whether GPU or CPU)
-    # device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    device = "cpu"
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
     model.train()
     for epoch in range(num_epochs):
         print(epoch)

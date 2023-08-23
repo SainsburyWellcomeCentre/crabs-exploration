@@ -1,13 +1,15 @@
 import os
+import datetime
 
 import torch
+import torchvision.transforms as transforms
 from PIL import Image
 from pycocotools.coco import COCO
-import torchvision.transforms as transforms
 
 
 class myFasterRCNNDataset(torch.utils.data.Dataset):
-    """Custom Pytorch dataset class for Faster RCNN object detection using COCO-style annotation.
+    """Custom Pytorch dataset class for Faster RCNN object detection
+    using COCO-style annotation.
 
     Args
     ----------
@@ -32,8 +34,9 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
     Returns
     ----------
     tuple : A tuple containing an image tensor and a dictionary of annotations
-    
+
     """
+
     def __init__(self, data_dir, annotation, transforms=None):
         self.data_dir = data_dir
         self.coco = COCO(annotation)
@@ -41,27 +44,27 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         self.ids = list(sorted(self.coco.imgs.keys()))
 
     def __getitem__(self, index):
-        """Get the image and associated annotations at the specified index.         
+        """Get the image and associated annotations at the specified index.
 
         Args
         ----------
         index : str
-            Index of the sample to retrieve.         
+            Index of the sample to retrieve.
 
         Returns
-        ----------        
-        tuple: A tuple containing the image tensor and a dictionary of annotations.                     
+        ----------
+        tuple: A tuple containing the image tensor and a dictionary of annotations.
 
         Note
-        ----------       
-        The annotations dictionary contains the following keys:             
-            - 'image': The image tensor.             
-            - 'annotations': A dictionary containing object annotations with keys:                 
-            - 'boxes': Bounding box coordinates (xmin, ymin, xmax, ymax).                 
-            - 'labels': Class labels for each object.                 
-            - 'image_id': Image ID.                 
-            - 'area': Area of each object.                 
-        -    'iscrowd': Flag indicating whether the object is a crowd.         
+        ----------
+        The annotations dictionary contains the following keys:
+            - 'image': The image tensor.
+            - 'annotations': A dictionary containing object annotations with keys:
+            - 'boxes': Bounding box coordinates (xmin, ymin, xmax, ymax).
+            - 'labels': Class labels for each object.
+            - 'image_id': Image ID.
+            - 'area': Area of each object.
+        -    'iscrowd': Flag indicating whether the object is a crowd.
         """
 
         img_id = self.ids[index]
@@ -91,7 +94,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
         labels = torch.ones((num_objs,), dtype=torch.int64)
         img_id = torch.tensor([img_id])
-        
+
         areas = []
         for i in range(num_objs):
             areas.append(coco_annotation[i]["area"])
@@ -105,7 +108,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         my_annotation["image_id"] = img_id
         my_annotation["area"] = areas
         my_annotation["iscrowd"] = iscrowd
-        
+
         if self.transforms is not None:
             img = self.transforms(img)
 
@@ -120,6 +123,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         """
         return len(self.ids)
 
+
 def coco_category():
     COCO_INSTANCE_CATEGORY_NAMES = [
         "__background__",
@@ -127,9 +131,42 @@ def coco_category():
     ]
     return COCO_INSTANCE_CATEGORY_NAMES
 
-# collate_fn needs for batch
+
 def collate_fn(batch):
-    # Filter out None values
+    """
+    Collates a batch of samples into a structured format.
+
+    This function takes a list of samples, where each sample can be any data structure.
+    It filters out any `None` values from the batch and then groups the
+    remaining samples into a structured format. The structured format
+    is a tuple of lists, where each list contains the elements from the
+    corresponding position in the samples.
+
+    Parameters
+    ----------
+    batch : list
+        A list of samples, where each sample can be any data structure.
+
+    Returns
+    -------
+    collated : Optional[Tuple[List[Any]]]
+        A tuple of lists, where each list contains the elements from the corresponding
+        position in the samples. If the input batch is empty or contains only `None`
+        values, the function returns `None`.
+
+    Notes
+    -----
+    This function is useful for collating samples before passing them into a data loader
+    or a batching process.
+
+    Examples
+    --------
+    >>> sample1 = (1, 'a')
+    >>> sample2 = (2, 'b')
+    >>> sample3 = None
+    >>> collate_fn([sample1, sample2, sample3])
+    ((1, 2), ('a', 'b'))
+    """
     batch = [sample for sample in batch if sample is not None]
 
     if len(batch) == 0:
@@ -138,32 +175,125 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def create_dataloader(my_dataset, batch_size):
-    # own DataLoader
+def create_dataloader(
+    my_dataset: torch.utils.data.Dataset, batch_size: int
+) -> torch.utils.data.DataLoader:
+    """
+    Creates a customized DataLoader for a given dataset.
+
+    This function constructs a DataLoader using the provided dataset and batch size.
+    It also applies shuffling to the data, employs multiple worker processes for
+    data loading, uses a custom collate function to process batches, and enables
+    pinning memory for optimized data transfer to GPU.
+
+    Parameters
+    ----------
+    my_dataset : torch.utils.data.Dataset
+        The dataset containing the samples to be loaded.
+
+    batch_size : int
+        The number of samples in each batch.
+
+    Returns
+    -------
+    data_loader : torch.utils.data.DataLoader
+        A DataLoader configured with the specified settings for loading data
+        from the provided dataset.
+
+    Notes
+    -----
+    This function provides a convenient way to create a DataLoader with custom settings
+    tailored for specific data loading needs.
+
+    Examples
+    --------
+    >>> my_dataset = CustomDataset()
+    >>> data_loader = create_dataloader(my_dataset, batch_size=32)
+    >>> for batch in data_loader:
+    ...     # Training loop or batch processing
+    """
     data_loader = torch.utils.data.DataLoader(
-        my_dataset, batch_size=batch_size, shuffle=True, num_workers=4, collate_fn=collate_fn, pin_memory=True
+        my_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=4,
+        collate_fn=collate_fn,
+        pin_memory=True,
     )
     return data_loader
 
 
-def save_model(model) -> None:
-    """Save the model and embeddings"""
+def save_model(model: torch.nn.Module):
+    """
+    Save the model and embeddings.
 
-    torch.save(model, "pretrain_fasterrcnn_model.pt")
+    Parameters
+    ----------
+    model : torch.nn.Module
+        The PyTorch model to be saved.
+
+    Returns
+    -------
+    None
+        This function does not return anything.
+
+    Notes
+    -----
+    This function saves the provided PyTorch model to a file with a unique
+    filename based on the current date and time. The filename format is
+    'model_<timestamp>.pt'.
+
+    """
+    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"model_{current_time}.pt"
+    torch.save(model, filename)
     print("Model Saved")
 
 
-def get_train_transform():
+def get_train_transform() -> transforms.Compose:
+    """
+    Get a composed transformation for training data.
+
+    Returns
+    -------
+    transforms.Compose
+        A composed transformation that includes the specified operations.
+
+    Notes
+    -----
+    This function returns a composed transformation for use with training data.
+    The following transforms are applied in sequence:
+    2. Apply color jittering with brightness adjustment (0.5) and hue (0.3).
+    3. Convert the image to a PyTorch tensor.
+
+    Examples
+    --------
+    >>> train_transform = get_train_transform()
+    >>> dataset = MyDataset(transform=train_transform)
+    """
     # TODO: testing with different transforms
-    custom_transforms = []
-    custom_transforms.append(transforms.Resize((1080, 1920)))
-    custom_transforms.append(transforms.ColorJitter(brightness=0.5, hue=0.3))
-    custom_transforms.append(transforms.ToTensor())
+    custom_transforms = [
+        transforms.ColorJitter(brightness=0.5, hue=0.3),
+        transforms.ToTensor(),
+    ]
 
     return transforms.Compose(custom_transforms)
 
-def get_test_transform():
-    # TODO: testing with different transforms
+
+def get_test_transform() -> transforms.Compose:
+    """
+    Get a composed transformation for test data.
+
+    Returns
+    -------
+    transforms.Compose
+        A composed transformation that includes the specified operations.
+
+    Examples
+    --------
+    >>> test_transform = get_test_transform()
+    >>> dataset = MyDataset(transform=test_transform)
+    """
     custom_transforms = []
     custom_transforms.append(transforms.ToTensor())
 

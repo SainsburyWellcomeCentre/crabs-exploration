@@ -1,14 +1,13 @@
 import argparse
 
 import torch
-import yaml
+import yaml  # type: ignore
 
 from _utils import create_dataloader, get_train_transform, save_model
 from _models import create_faster_rcnn, train_faster_rcnn
 
 # select device (whether GPU or CPU)
-# device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-device = "cpu"
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
 class Dectector_Train:
@@ -39,7 +38,7 @@ class Dectector_Train:
         """Load a YAML file describing the training setup"""
 
         with open(self.config_file, "r") as f:
-            self.config = yaml.safe_load(f)
+            self.config = yaml.safe_load(f)  # type: dict
 
     def _load_dataset(self) -> None:
         """Load images and annotation file for training"""

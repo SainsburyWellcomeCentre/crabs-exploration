@@ -2,15 +2,12 @@ import torch
 import torchvision
 import cv2
 from _utils import coco_category
-import numpy as np
-from sort import *
+from sort import Sort
 import numpy as np
 
 
 def test_tracking(valid_dataloader, trained_model, score_threshold) -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    total_correct_boxes = 0
-    total_gt_boxes = 0
 
     coco_list = coco_category()
 
@@ -21,7 +18,6 @@ def test_tracking(valid_dataloader, trained_model, score_threshold) -> None:
         for imgs, annotations in valid_dataloader:
             imgs_id += 1
             imgs = list(img.to(device) for img in imgs)
-            targets = [{k: v.to(device) for k, v in t.items()} for t in annotations]
 
             detections = trained_model(imgs, annotations)
 
@@ -111,8 +107,7 @@ def test_tracking(valid_dataloader, trained_model, score_threshold) -> None:
 
 
 def test_detection(valid_dataloader, trained_model, score_threshold) -> None:
-    # device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    device = "cpu"
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     total_correct_boxes = 0
     total_gt_boxes = 0
