@@ -1,9 +1,30 @@
 import numpy as np
 import cv2
 from _utils import coco_category
+from sort import Sort
 
 
-def inference_tracking(frame, prediction, pred_score, score_threshold, sort_crab):
+def inference_tracking(
+    frame: np.ndarray,
+    prediction: list,
+    pred_score: list,
+    score_threshold: float,
+    sort_crab: Sort,
+) -> np.ndarray:
+    """
+    Perform object tracking inference on a frame using prediction results.
+
+    Args:
+        frame (np.ndarray): The input frame as a NumPy array.
+        prediction (list): List containing prediction results.
+        pred_score (list): List of prediction scores.
+        score_threshold (float): The confidence threshold for detection scores.
+        sort_crab (Sort): An instance of the sorting algorithm used for tracking.
+
+    Returns:
+        np.ndarray: The input frame with tracking bounding boxes and IDs drawn on it.
+    """
+
     coco_list = coco_category()
 
     if pred_score:
@@ -67,7 +88,25 @@ def inference_tracking(frame, prediction, pred_score, score_threshold, sort_crab
     return frame
 
 
-def inference_detection(frame, prediction, pred_score, score_threshold):
+def inference_detection(
+    frame: np.ndarray,
+    prediction: list,
+    pred_score: list,
+    score_threshold: float,
+) -> np.ndarray:
+    """
+    Perform object detection inference on a frame using prediction results.
+
+    Args:
+        frame (np.ndarray): The input frame as a NumPy array.
+        prediction (list): List containing prediction results.
+        pred_score (list): List of prediction scores.
+        score_threshold (float): The confidence threshold for detection scores.
+
+    Returns:
+        np.ndarray: The input frame with tracking bounding boxes and IDs drawn on it.
+    """
+
     coco_list = coco_category()
 
     if pred_score:

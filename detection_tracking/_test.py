@@ -1,21 +1,36 @@
+import cv2
+import numpy as np
 import torch
 import torchvision
-import cv2
 from _utils import coco_category
 from sort import Sort
-import numpy as np
 
 
-def test_tracking(valid_dataloader, trained_model, score_threshold) -> None:
+def test_tracking(
+    test_dataloader: torch.utils.data.DataLoader,
+    trained_model,
+    score_threshold: float,
+    sort_crab: Sort,
+) -> None:
+    """
+    Test object tracking on a dataset using a trained model.
+
+    Args:
+        test_dataloader (torch.utils.data.DataLoader): DataLoader for the test dataset.
+        trained_model: The trained object detection model.
+        score_threshold (float): The confidence threshold for detection scores.
+        sort_crab (Sort): An instance of the sorting algorithm used for tracking.
+
+    Returns:
+        None
+    """
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     coco_list = coco_category()
 
-    sort_crab = Sort()
-
     with torch.no_grad():
         imgs_id = 0
-        for imgs, annotations in valid_dataloader:
+        for imgs, annotations in test_dataloader:
             imgs_id += 1
             imgs = list(img.to(device) for img in imgs)
 
@@ -106,7 +121,21 @@ def test_tracking(valid_dataloader, trained_model, score_threshold) -> None:
                 cv2.imwrite(f"imgs{imgs_id}.jpg", image_with_boxes)
 
 
-def test_detection(valid_dataloader, trained_model, score_threshold) -> None:
+def test_detection(
+    test_dataloader: torch.utils.data.DataLoader, trained_model, score_threshold: float
+) -> None:
+    """
+    Test object detection on a dataset using a trained model.
+
+    Args:
+        test_dataloader (torch.utils.data.DataLoader): DataLoader for the test dataset.
+        trained_model: The trained object detection model.
+        score_threshold (float): The confidence threshold for detection scores.
+
+    Returns:
+        None
+    """
+
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     total_correct_boxes = 0
@@ -116,7 +145,7 @@ def test_detection(valid_dataloader, trained_model, score_threshold) -> None:
 
     with torch.no_grad():
         imgs_id = 0
-        for imgs, annotations in valid_dataloader:
+        for imgs, annotations in test_dataloader:
             imgs_id += 1
             imgs = list(img.to(device) for img in imgs)
             targets = [{k: v.to(device) for k, v in t.items()} for t in annotations]
