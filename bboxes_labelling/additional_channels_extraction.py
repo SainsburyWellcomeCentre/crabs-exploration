@@ -1,17 +1,20 @@
-import os
 import argparse
+import os
+from pathlib import Path
+
 import cv2
 import numpy as np
 from PIL import Image
-from pathlib import Path
-
 from utils import read_json_file
 
 
 def apply_grayscale_and_blur(
-    frame: np.array, kernel_size: list, sigmax: int
+    frame: np.array,
+    kernel_size: list,
+    sigmax: int,
 ) -> np.array:
-    """Convert the frame to grayscale and apply Gaussian blurring
+    """
+    Convert the frame to grayscale and apply Gaussian blurring.
 
     Parameters
     ----------
@@ -29,7 +32,6 @@ def apply_grayscale_and_blur(
     blurred_frame : np.array
         Gaussian-blurred grayscaled input frame
     """
-
     # convert the frame to grayscale frame
     gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     # apply Gaussian blurring
@@ -39,8 +41,9 @@ def apply_grayscale_and_blur(
 
 
 def compute_mean_and_max_abs_blurred_frame(cap, kernel_size, sigmax):
-    """Compute the mean blurred frame and the maximum absolute-value
-    blurred frame for a video capture cap
+    """
+    Compute the mean blurred frame and the maximum absolute-value
+    blurred frame for a video capture cap.
 
     Parameters
     ----------
@@ -96,11 +99,14 @@ def compute_mean_and_max_abs_blurred_frame(cap, kernel_size, sigmax):
 
 
 def compute_background_subtracted_frame(
-    blurred_frame, mean_blurred_frame, max_abs_blurred_frame
+    blurred_frame,
+    mean_blurred_frame,
+    max_abs_blurred_frame,
 ):
-    """Compute the background subtracted frame for the
+    """
+    Compute the background subtracted frame for the
     input blurred frame, given the mean and max absolute frames of
-    its corresponding video
+    its corresponding video.
 
     Parameters
     ----------
@@ -117,17 +123,17 @@ def compute_background_subtracted_frame(
         normalised difference between the blurred frame f and
         the mean blurred frame
     """
-    background_subtracted_frame = (
-        ((blurred_frame - mean_blurred_frame) / max_abs_blurred_frame) + 1
-    ) / 2
-
-    return background_subtracted_frame
+    return (((blurred_frame - mean_blurred_frame) / max_abs_blurred_frame) + 1) / 2
 
 
 def compute_motion_frame(
-    frame_delta, background_subtracted_frame, mean_blurred_frame, max_abs_blurred_frame
+    frame_delta,
+    background_subtracted_frame,
+    mean_blurred_frame,
+    max_abs_blurred_frame,
 ):
-    """_summary_
+    """
+    _summary_.
 
     Parameters
     ----------
@@ -150,24 +156,27 @@ def compute_motion_frame(
     """
     # compute the blurred frame frame_idx+delta
     _, blurred_frame_delta = apply_grayscale_and_blur(
-        frame_delta, args.kernel_size, args.sigmax
+        frame_delta,
+        args.kernel_size,
+        args.sigmax,
     )
     # compute the background subtracted for frame_idx + delta
     background_subtracted_frame_delta = compute_background_subtracted_frame(
-        blurred_frame_delta, mean_blurred_frame, max_abs_blurred_frame
+        blurred_frame_delta,
+        mean_blurred_frame,
+        max_abs_blurred_frame,
     )
 
     # compute the motion channel for frame_idx
-    motion_frame = np.abs(
-        background_subtracted_frame_delta - background_subtracted_frame
+    return np.abs(
+        background_subtracted_frame_delta - background_subtracted_frame,
     )
-
-    return motion_frame
 
 
 def compute_stacked_inputs(args: argparse.Namespace) -> None:
-    """Compute the stacked inputs consist of
-    grayscale, background subtracted and motion signal
+    """
+    Compute the stacked inputs consist of
+    grayscale, background subtracted and motion signal.
 
     Parameters
     ----------
@@ -180,7 +189,6 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
         https://github.com/visipedia/caltech-fish-counting
 
     """
-
     # get video files and their frame indices
     frame_dict = read_json_file(args.json_path)
 
@@ -214,12 +222,16 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
 
             # apply transformations to the frame
             gray_frame, blurred_frame = apply_grayscale_and_blur(
-                frame, args.kernel_size, args.sigmax
+                frame,
+                args.kernel_size,
+                args.sigmax,
             )
 
             # compute the background subtracted frame
             background_subtracted_frame = compute_background_subtracted_frame(
-                blurred_frame, mean_blurred_frame, max_abs_blurred_frame
+                blurred_frame,
+                mean_blurred_frame,
+                max_abs_blurred_frame,
             )
 
             # read frame f+delta, the frame delta after before the current one
@@ -244,7 +256,7 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
                     gray_frame,  # original grayscaled image
                     background_subtracted_frame,  # background-subtracted
                     motion_frame,  # motion signal
-                ]
+                ],
             ).astype(np.float32)
             final_frame = (final_frame * 255).astype(np.uint8)
 
@@ -261,7 +273,8 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
 
 
 def argument_parser() -> argparse.Namespace:
-    """Parse command-line arguments for the script.
+    """
+    Parse command-line arguments for the script.
 
     Returns
     -------
@@ -270,7 +283,6 @@ def argument_parser() -> argparse.Namespace:
         The attributes of this object correspond to the defined
         command-line arguments in the script.
     """
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--json_path",
@@ -303,8 +315,7 @@ def argument_parser() -> argparse.Namespace:
         default=100,
         help="The value how many frame differences we compute",
     )
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 if __name__ == "__main__":

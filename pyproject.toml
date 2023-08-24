@@ -1,0 +1,125 @@
+# [build-system]
+# build-backend = "setuptools.build_meta"
+# requires = [
+# "setuptools",
+# "setuptools-scm",
+# ]
+
+[project]
+authors = [
+    {email = "n.aznan@ucl.ac.uk", name = "Nik Khadijah Nik Aznan"},
+    {email = "s.minano@ucl.ac.uk", name = "Sofia Minano"},
+]
+classifiers = [
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Typing :: Typed",
+]
+dependencies = [
+    "opencv-python",
+    "sleap",
+]
+description = "exploring the crabs field data"
+dynamic = [
+    "version",
+]
+keywords = [
+]
+name = "crabs-exploration"
+optional-dependencies = {dev = [
+    "black",
+    "build",
+    "mypy",
+    "pre-commit",
+    "ruff",
+    "tox>=4",
+    "twine",
+]}
+readme = "README.md"
+requires-python = ">=3.9.0"
+license.file = "LICENCE.md"
+urls.homepage = "https://github.com/sfmig/crabs-exploration"
+
+[tool.pytest.ini_options]
+addopts = "--color=yes -v"
+testpaths = [
+    "tests",
+]
+
+[tool.ruff]
+fix = true
+# force-exclude = true
+# ignore = [
+# "D203", # no-blank-line-before-class
+# "D212", # multi-line-summary-first-line
+# "D417", # argument description in docstring (unreliable)
+# ]
+per-file-ignores = {"test_*" = [
+    "S101",
+]}
+# select = [
+# "A",
+# "ARG",
+# "B",
+# "BLE",
+# "C",
+# "COM",
+# "D",
+# "DJ",
+# "DTZ",
+# "E",
+# "EM",
+# "ERA",
+# "EXE",
+# "F",
+# "FBT",
+# "I",
+# "ICN",
+# "ISC",
+# "N",
+# "NPY",
+# "PD",
+# "PGH",
+# "PIE",
+# "PL",
+# "PT",
+# "PTH",
+# "PYI",
+# "Q",
+# "RET",
+# "RSE",
+# "RUF",
+# "S",
+# "SIM",
+# "T",
+# "TCH",
+# "TID",
+# "UP",
+# "W",
+# "YTT",
+# ]
+target-version = "py39"
+
+[tool.tomlsort]
+all = true
+spaces_indent_inline_array = 4
+trailing_comma_inline_array = true
+overrides."project.classifiers".inline_arrays = false
+overrides."tool.coverage.paths.source".inline_arrays = false
+
+[tool.tox]
+legacy_tox_ini = """
+    [gh-actions]
+    python = 3.9: py39
+
+    [testenv]
+    commands =
+        pytest --cov
+    deps =
+        pytest
+        pytest-cov
+
+    [tox]
+    env_list = py39
+"""

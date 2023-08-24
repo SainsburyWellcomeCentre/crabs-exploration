@@ -1,32 +1,44 @@
 # %%
-import pathlib as pl
+from pathlib import Path
 
 import cv2
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Save a clip of selected file
 
-video_file = pl.Path(
-    "/Volumes/zoo/raw/CrabField/ramalhete_Sep21/cam2/NINJAV_S001_S001_T004.MOV",
+input_video_file = Path(
+    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/tests/data/"
+    "NINJAV_S001_S001_T003_subclip.mp4",
 )
 
-clip_suffix = "out_domain_sample"
+clip_suffix = "p1_05s"
 
-frame_rate = 25
-size = (1920, 1080)
-# frames are considered 0-indexed here! (in sleap viewer they are 1-indexed)
-# I split this video cam2_NINJAV_S001_S001_T003_subclip in two parts:
-# part 1: 0 - 7201
-# part 2: 7211 - 9000
-start_frame = 0  # part 1: 0; part 2: 7211
-end_frame = 22500  # part 1: 7201; part 2: 9000
+output_dir = (
+    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/tests/data"
+)
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Get video params
+cap = cv2.VideoCapture(str(input_video_file))
+print(cap.isOpened())
+
+# get video params
+nframes = cap.get(cv2.CAP_PROP_FRAME_COUNT)  # 9000
+width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)  # 1920.0
+height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)  # 1080.0
+frame_rate = cap.get(cv2.CAP_PROP_FPS)  # 25fps
+
+size = (int(width), int(height))
+
+start_frame = 0  # 10*frame_rate
+end_frame = start_frame + 0.5 * frame_rate  # 22500
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # initialise capture and videowriter
-cap = cv2.VideoCapture(str(video_file))
+# cap = cv2.VideoCapture(str(video_file))
 fourcc = cv2.VideoWriter_fourcc("m", "p", "4", "v")
 videowriter = cv2.VideoWriter(
-    "_".join((video_file.parts[-2], video_file.stem)) + f"_{clip_suffix}.mp4",
+    str(output_dir / Path(input_video_file.stem + f"_{clip_suffix}.mp4")),
     fourcc,
     frame_rate,
     size,
