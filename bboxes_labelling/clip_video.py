@@ -4,7 +4,9 @@ from pathlib import Path
 from datetime import datetime
 
 
-def real_time_to_frame_number(real_time: datetime, video_fps: float, start_real_time: datetime) -> int:
+def real_time_to_frame_number(
+    real_time: datetime, video_fps: float, start_real_time: datetime
+) -> int:
     """
     Convert a real-time timestamp to the corresponding frame number in a video.
 
@@ -20,9 +22,13 @@ def real_time_to_frame_number(real_time: datetime, video_fps: float, start_real_
     total_seconds = time_difference.total_seconds()
     return int(total_seconds * video_fps)
 
-def create_clip(input_file: str, start_frame: int, end_frame: int, output_file: str) -> None:
+
+def create_clip(
+    input_file: str, start_frame: int, end_frame: int, output_file: str
+) -> None:
     """
-    Create a video clip from the input video file, starting from a specific frame and ending at another frame.
+    Create a video clip from the input video file, starting from a specific frame
+    and ending at another frame.
 
     Parameters:
         input_file (str): Path to the input video file.
@@ -74,16 +80,16 @@ def argument_parser() -> argparse.Namespace:
         help="Location of video file.",
     )
     parser.add_argument(
-        "--start_time", 
-        type=str, 
+        "--start_time",
+        type=str,
         default="12:00:00",
-        help="Start time in the format 'HH:MM:SS'."
+        help="Start time in the format 'HH:MM:SS'.",
     )
     parser.add_argument(
-        "--event_time", 
-        type=str, 
+        "--event_time",
+        type=str,
         default="12:01:00",
-        help="Event time in the format 'HH:MM:SS'."
+        help="Event time in the format 'HH:MM:SS'.",
     )
     parser.add_argument(
         "--end_time",
