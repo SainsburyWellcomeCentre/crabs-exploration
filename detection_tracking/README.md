@@ -6,23 +6,24 @@
 
     .
     ├── ...
-    ├── dataset                    
+    ├── dataset
     │   ├── images
     │   │   ├── train
-    │   │   ├── test    
+    │   │   ├── test
     │   ├── labels
     │   │   ├── train.json
-    │   │   ├── test.json       
+    │   │   ├── test.json
     └── ...
 
 ### Requirement
 
-```pip install -r requirements.txt``` 
+`pip install -r requirements.txt`
 
 ### How to use
 
-To run the training, run: 
-``` 
+To run the training, run:
+
+```
 python train_model.py --main_dir <../dataset>
 ```
 

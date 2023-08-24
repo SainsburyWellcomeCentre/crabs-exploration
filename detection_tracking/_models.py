@@ -1,9 +1,7 @@
-import cv2
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision
-from _utils import coco_category
 from torch.utils.data import DataLoader
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
@@ -69,7 +67,7 @@ def train_faster_rcnn(
 
     model.train()
     for epoch in range(num_epochs):
-        print(epoch)
+        print(f"Epoch: {epoch}")
         i = 0
         for imgs, annotations in train_dataloader:
             i += 1

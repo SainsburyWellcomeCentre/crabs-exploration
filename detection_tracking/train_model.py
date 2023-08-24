@@ -53,8 +53,6 @@ class Dectector_Train:
                 self.train_data, self.train_label, transforms=get_train_transform()
             )
 
-        print(self.config["batch_size"])
-
         self.train_dataloader = create_dataloader(
             self.train_dataset, self.config["batch_size"]
         )
