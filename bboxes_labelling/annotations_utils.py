@@ -1,11 +1,11 @@
 import json
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 
 
 def read_json_file(file_path):
-    """_summary_
+    """_summary_.
 
     Parameters
     ----------
@@ -30,7 +30,7 @@ def read_json_file(file_path):
 
 def combine_all_via_jsons(
     list_json_files: list,
-    json_out_filename="VIA_JSON_combined.json",
+    json_out_filename: str = "VIA_JSON_combined.json",
     json_out_dir: Optional[str] = None,
     via_default_dir: Optional[str] = None,
     via_project_name: Optional[str] = None,
@@ -115,83 +115,58 @@ def combine_all_via_jsons(
     return str(json_out_fullpath)
 
 
-#
-# # Example usage
-# if __name__ == "__main__":
-#     import datetime
-
-#     from convert_coco import coco_conversion
-
-#     # Combine VIA JSON files into one
-#     list_json_files = Path("/Users/sofia/Desktop/crabs_annotations_backup/NW").glob(
-#         "**/*"
-#     )
-
-#     list_VIA_files = [
-#         x
-#         for x in list_json_files
-#         if x.is_file() and str(x).endswith(".json") and "coco" not in str(x).lower()
-#     ]
-#     list_VIA_files.sort()
-#     timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
-
-#     json_out_fullpath = combine_all_via_jsons(
-#         list_VIA_files[0:2],
-#         json_out_filename=f"VIA_JSON_combined_{timestamp_str}.json",
-#         via_default_dir="/Volumes/zoo/users/sminano/crabs_bboxes_labels/
-# 20230816_ramalhete2023_day2_combined",
-#         via_project_name="Aug2023_combined",
-#     )
-
-#     # Convert combined VIA JSON to COCO
-#     COCO_out_fullpath = coco_conversion(
-#         json_out_fullpath,
-#         coco_json_out_filename=f"COCO_converted_{timestamp_str}.json",
-#     )
-
-
 def coco_conversion(
     json_file_path: str,
-    coco_categories: list = [{"id": 1, "name": "crab", "supercategory": "animal"}],
+    coco_category_ID: int = 1,
+    coco_category_name: str = "crab",
+    coco_supercategory_name: str = "animal",
+    coco_out_filename: Optional[str] = None,
+    coco_out_dir: Optional[str] = None,
 ) -> str:
-    """Convert annotation data in a VIA-JSON format to COCO format.
+    """Convert annotation data for one category from VIA-JSON format to COCO.
+
+    This function takes annotation data in a VIA JSON format and converts it
+    into COCO format, which is widely used for object detection datasets.
+    It assumes that:
+    - the input JSON data has a specific structure (VIA-format) that includes
+    image metadata and regions of interest,
+    - that all annotations are of the same COCO category, and
+    - that 'iscrowd' = 0 for all annotations.
 
     Parameters
     ----------
     json_file_path : str
-        _description_
-    coco_categories : _type_, optional
-        _description_, by default
-        [ {"id": 1, "name": "crab", "supercategory": "animal"} ]
+        Path to the VIA-JSON file containing the annotation data.
+    coco_categories : list, optional
+        List of dictionaries with the COCO categories
+    coco_out_filename : str, optional
+        Name of the COCO output file. If None (default), the input VIA JSON
+        filename is used with the suffix '_coco_gen'
+    coco_out_dir : str, optional
+        Name of the output directory where to store the COCO file.
+        If None (default), the file is saved at the same location as the
+        input VIA JSON file.
+
 
     Returns
     -------
-    _type_
-        _description_
+    str
+        path to the COCO json file. By default, the file
     """
-    # Convert annotation data in a VIA-JSON format to COCO format.
-
-    # Parameters:
-    #     json_file (str): Path to the input VIA-JSON file containing annotation data.
-    #     coco_categories (list): List of dictionaries with the categories
-    # in the dataset --- can this be derived from JSON?
-
-    # Returns:
-    #     None
-
-    # This function takes annotation data in a VIA JSON format and converts it
-    # into COCO format, which is widely used for object detection datasets.
-
-    # Note:
-    #     The function assumes that the input JSON data has a specific structure
-    #     (VIA-format) that includes image metadata and regions of interest.
-
     # Load the annotation data in VIA JSON format
     with open(json_file_path, "r") as json_file:
         annotation_data = json.load(json_file)
 
     # Create COCO format data structures
-    coco_data: Dict[str, Any] = {
+    # we assume all annotations are of the same category
+    coco_categories = [
+        {
+            "id": coco_category_ID,
+            "name": coco_category_name,
+            "supercategory": coco_supercategory_name,
+        }
+    ]
+    coco_data: dict[str, Any] = {
         "info": {},
         "licenses": [],
         "categories": coco_categories,
@@ -202,12 +177,12 @@ def coco_conversion(
     # Iterate through each image and annotation from VIA JSON
     image_id = 1
     annotation_id = 1
-    for image_filename, image_info in annotation_data["_via_img_metadata"].items():
-        image_data: Dict[str, Any] = {
+    for image_info in annotation_data["_via_img_metadata"].values():
+        image_data = {
             "id": image_id,
             "width": 0,  # Set the image width here --- can we get from JSON?
             "height": 0,  # Set the image height here --- can we get from JSON?
-            "file_name": image_info["filename"],
+            "file_name": image_info["filename"],  # image_filename #
         }
         coco_data["images"].append(image_data)
 
@@ -222,7 +197,7 @@ def coco_conversion(
             annotation_data = {
                 "id": annotation_id,
                 "image_id": image_id,
-                "category_id": 1,
+                "category_id": coco_category_ID,
                 "bbox": [x, y, width, height],
                 "area": width * height,
                 "iscrowd": 0,
@@ -230,41 +205,17 @@ def coco_conversion(
             coco_data["annotations"].append(annotation_data)
             annotation_id += 1
 
+        # update image_id
         image_id += 1
 
     # Export the annotation data in COCO format to a JSON file
-    new_file_name = f"{json_file_path.split('.')[0]}_coco_regen.json"
-    with open(new_file_name, "w") as f:
+    if not coco_out_filename:
+        coco_out_filename = Path(json_file_path).stem + "_coco_gen.json"
+    if not coco_out_dir:
+        coco_out_dir = str(Path(json_file_path).parent)
+    coco_out_fullpath = Path(coco_out_dir) / coco_out_filename
+
+    with open(coco_out_fullpath, "w") as f:
         json.dump(coco_data, f)
 
-    return new_file_name
-
-
-# def argument_parser() -> argparse.Namespace:
-#     """
-#     Parse command-line arguments for the script.
-
-#     Returns
-#     -------
-#     argparse.Namespace
-#         An object containing the parsed command-line arguments.
-#         The attributes of this object correspond to the defined
-#         command-line arguments in the script.
-#     """
-#     parser = argparse.ArgumentParser()
-
-#     parser.add_argument(
-#         "--json_path",
-#         type=str,
-#         required=True,
-#         help="Path for the json saved from VIA",
-#     )
-
-#     # ADD coco categories
-#     return parser.parse_args()
-
-
-# if __name__ == "__main__":
-#     args = argument_parser()
-
-#     coco_conversion(args.json_path)
+    return str(coco_out_fullpath)

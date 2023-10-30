@@ -1,5 +1,3 @@
-# Test
-
 import datetime
 import os
 from pathlib import Path
@@ -7,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from bboxes_labelling.annotations_utils import (
+    coco_conversion,
     combine_all_via_jsons,
     read_json_file,
 )
@@ -38,33 +37,33 @@ def via_json_2():
     return str(Path("tests/data/COCO_VIA_JSONS/VIA_JSON_2.json").resolve())
 
 
-@pytest.fixture()
-def via_default_dir():
-    """_summary_.
+# @pytest.fixture()
+# def via_default_dir():
+#     """_summary_.
 
-    Returns
-    -------
-    _type_
-        _description_
-    """
-    # Return path to VIA project directory
-    return "/sample/VIA/project/directory"
-
-
-@pytest.fixture()
-def via_project_name():
-    """_summary_.
-
-    Returns
-    -------
-    _type_
-        _description_
-    """
-    # Return VIA project name
-    return "TEST"
+#     Returns
+#     -------
+#     _type_
+#         _description_
+#     """
+#     # Return path to VIA project directory
+#     return "/sample/VIA/project/directory"
 
 
-def test_via_json_combine(via_json_1, via_json_2, tmpdir):
+# @pytest.fixture()
+# def via_project_name():
+#     """_summary_.
+
+#     Returns
+#     -------
+#     _type_
+#         _description_
+#     """
+#     # Return VIA project name
+#     return "TEST"
+
+
+def test_via_json_combine(via_json_1: str, via_json_2: str, tmpdir):
     """_summary_.
 
     Returns
@@ -129,9 +128,10 @@ def test_via_json_combine(via_json_1, via_json_2, tmpdir):
         )
 
 
-def test_via_json_combine_default_dir(via_json_1, via_json_2, via_default_dir, tmpdir):
+def test_via_json_combine_default_dir(via_json_1: str, via_json_2: str, tmpdir):
     # Check if the combination of 2 VIA JSON files has the specified default
     # dir
+    via_default_dir = "/sample/VIA/project/directory"
 
     # combine JSONs 1 and 2
     timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
@@ -140,7 +140,6 @@ def test_via_json_combine_default_dir(via_json_1, via_json_2, via_default_dir, t
         json_out_filename=f"VIA_JSON_combined_{timestamp_str}.json",
         json_out_dir=tmpdir,
         via_default_dir=via_default_dir,
-        # via_project_name=via_project_name,
     )
     # read combination as dict
     via_json_combined_dict = read_json_file(via_json_combined)
@@ -156,13 +155,14 @@ def test_via_json_combine_default_dir(via_json_1, via_json_2, via_default_dir, t
 
 
 def test_via_json_combine_project_name(
-    via_json_1,
-    via_json_2,
+    via_json_1: str,
+    via_json_2: str,
     via_project_name,
     tmpdir,
 ):
     # Check if the combination of 2 VIA JSON files has the specified project
     # name
+    via_project_name = "TEST"
 
     # combine JSONs 1 and 2
     timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
@@ -181,5 +181,99 @@ def test_via_json_combine_project_name(
     )
 
 
-# def test_coco_generated_from_via_json():
-#     # Check if the COCO file generated from the VIA JSON contains the same data
+# TODO: parametrise?
+def test_coco_generated_from_via_json(via_json_1: str, tmpdir):
+    # Check if the COCO file generated from the VIA JSON contains the same data
+    coco_category_ID = 1
+    coco_category_name = "crab"
+    coco_supercategory_name = "animal"
+
+    # Convert via_json_1 to COCO
+    coco_out_fullpath = coco_conversion(
+        via_json_1,
+        coco_out_dir=tmpdir,
+    )
+
+    # Load dicts
+    via_json_1_dict = read_json_file(via_json_1)
+    coco_json_1_dict = read_json_file(coco_out_fullpath)
+
+    # Compare categories
+    # we expect one category for all annotations
+    assert len(coco_json_1_dict["categories"]) == 1
+    assert coco_json_1_dict["categories"][0]["id"] == coco_category_ID
+    assert coco_json_1_dict["categories"][0]["name"] == coco_category_name
+    assert coco_json_1_dict["categories"][0]["supercategory"] == coco_supercategory_name
+
+    # Compare images' IDs and filenames
+    # We assume keys in metadata list are sorted in increasing image ID
+    # (ID starts from 1)
+    list_keys_via_img_metadata = list(
+        via_json_1_dict["_via_img_metadata"].keys(),
+    )  # keys will be in insertion order,
+    # see https://docs.python.org/3/tutorial/datastructures.html#dictionaries
+    for img_dict in coco_json_1_dict["images"]:
+        ky_in_via_img_metadata = list_keys_via_img_metadata[img_dict["id"] - 1]
+
+        # Check key in VIA image metadata matches filename
+        assert (
+            Path(ky_in_via_img_metadata).stem
+            == Path(
+                img_dict["file_name"],
+            ).stem
+        )
+
+        # Check filename for that key matches too
+        assert (
+            img_dict["file_name"]
+            == via_json_1_dict["_via_img_metadata"][ky_in_via_img_metadata]["filename"]
+        )
+
+    img_id_previous_image = 1
+    ann_idx_per_img = 0
+    for annotation_dict in coco_json_1_dict["annotations"]:
+        # Note:
+        # - img_id and annotation_id are in increasing order
+        #   in coco_json_1_dict["annotations"]
+        # - img_id and annotation_id start from 1
+
+        # Get image id for this annotation from COCO
+        img_id = annotation_dict["image_id"]
+
+        # Get image info from VIA using the "image_id" from the COCO annotation
+        ky_in_via_img_metadata = list_keys_via_img_metadata[img_id - 1]
+        img_dict_in_via = via_json_1_dict["_via_img_metadata"][ky_in_via_img_metadata]
+
+        # Reset annotation index per image if image_id changes
+        if img_id_previous_image != img_id:
+            ann_idx_per_img = 0
+            img_id_previous_image = img_id
+
+        # Get shape of this annotation from VIA
+        reg = img_dict_in_via["regions"][ann_idx_per_img]
+        w_from_via = reg["shape_attributes"]["width"]
+        h_from_via = reg["shape_attributes"]["height"]
+        bbox_from_via = [
+            reg["shape_attributes"]["x"],
+            reg["shape_attributes"]["y"],
+            w_from_via,
+            h_from_via,
+        ]
+
+        # Check key in VIA image metadata matches filename derived from
+        # COCO annotation
+        img_name = coco_json_1_dict["images"][img_id - 1]["file_name"]
+        assert Path(ky_in_via_img_metadata).stem == Path(img_name).stem
+
+        # Check annotations are all the same category
+        assert annotation_dict["category_id"] == 1
+
+        # Check annotations are all "iscrowd"=0
+        assert annotation_dict["iscrowd"] == 0
+
+        # Check bounding box shape and area matches
+        assert annotation_dict["bbox"] == bbox_from_via
+        assert annotation_dict["area"] == w_from_via * h_from_via
+
+        # Update annotation index for next iteration
+        ann_idx_per_img += 1
