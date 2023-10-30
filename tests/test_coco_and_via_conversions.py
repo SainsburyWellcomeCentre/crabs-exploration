@@ -1,40 +1,77 @@
 # Test
 
+import datetime
+import os
 from pathlib import Path
 
 import pytest
-import datetime
-import os
 
-from bboxes_labelling.combine_VIA_jsons import combine_all_via_jsons
-from bboxes_labelling.utils import read_json_file
+from bboxes_labelling.annotations_utils import (
+    combine_all_via_jsons,
+    read_json_file,
+)
 
 
 @pytest.fixture()
 def via_json_1():
+    """_summary_.
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     # Return path to sample VIA (Visual Image Annotator) JSON file 1
     return str(Path("tests/data/COCO_VIA_JSONS/VIA_JSON_1.json").resolve())
 
 
 @pytest.fixture()
 def via_json_2():
+    """_summary_.
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     # Return path to sample VIA JSON file 2
     return str(Path("tests/data/COCO_VIA_JSONS/VIA_JSON_2.json").resolve())
 
 
 @pytest.fixture()
 def via_default_dir():
+    """_summary_.
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     # Return path to VIA project directory
     return "/sample/VIA/project/directory"
 
 
 @pytest.fixture()
 def via_project_name():
+    """_summary_.
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     # Return VIA project name
     return "TEST"
 
 
 def test_via_json_combine(via_json_1, via_json_2, tmpdir):
+    """_summary_.
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     # Check if the combination of 2 VIA JSON files has the same data
     # as the separate JSONS
 
@@ -79,7 +116,7 @@ def test_via_json_combine(via_json_1, via_json_2, tmpdir):
     # Check the number of images in the combined JSON is the sum of the number
     # of images in JSON 1 and JSON 2
     assert len(via_json_1_dict["_via_img_metadata"].keys()) + len(
-        via_json_2_dict["_via_img_metadata"].keys()
+        via_json_2_dict["_via_img_metadata"].keys(),
     ) == len(via_json_combined_dict["_via_img_metadata"].keys())
 
     # Check image IDs from VIA_JSON_1 and 2 exist in combined
@@ -88,7 +125,7 @@ def test_via_json_combine(via_json_1, via_json_2, tmpdir):
         via_json_2_dict["_via_image_id_list"],
     ]:
         assert all(
-            [x in via_json_combined_dict["_via_image_id_list"] for x in img_id_list]
+            [x in via_json_combined_dict["_via_image_id_list"] for x in img_id_list],
         )
 
 
@@ -119,7 +156,10 @@ def test_via_json_combine_default_dir(via_json_1, via_json_2, via_default_dir, t
 
 
 def test_via_json_combine_project_name(
-    via_json_1, via_json_2, via_project_name, tmpdir
+    via_json_1,
+    via_json_2,
+    via_project_name,
+    tmpdir,
 ):
     # Check if the combination of 2 VIA JSON files has the specified project
     # name
@@ -139,3 +179,7 @@ def test_via_json_combine_project_name(
     assert (
         via_json_combined_dict["_via_settings"]["project"]["name"] == via_project_name
     )
+
+
+# def test_coco_generated_from_via_json():
+#     # Check if the COCO file generated from the VIA JSON contains the same data
