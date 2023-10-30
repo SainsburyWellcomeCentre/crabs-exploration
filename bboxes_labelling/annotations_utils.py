@@ -1,31 +1,34 @@
 import json
 import os
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any, Optional
 
 
-def read_json_file(file_path):
-    """_summary_.
+def read_json_file(
+    file_path: str,
+) -> dict:
+    """Read JSON file as dict.
 
     Parameters
     ----------
-    file_path : _type_
-        _description_
+    file_path : str
+        Path to the JSON file
 
     Returns
     -------
-    _type_
-        _description_
+    Optional[dict]
+        Dictionary with the JSON data
     """
     try:
         with open(file_path) as file:
             return json.load(file)
-    except FileNotFoundError:
-        print(f"File not found: {file_path}")
-        return None
-    except json.JSONDecodeError:
-        print(f"Error decoding JSON data from file: {file_path}")
-        return None
+    except FileNotFoundError as not_found_error:
+        msg = f"File not found: {file_path}"
+        raise ValueError(msg) from not_found_error
+
+    except json.JSONDecodeError as decode_error:
+        msg = f"Error decoding JSON data from file: {file_path}"
+        raise ValueError(msg) from decode_error
 
 
 def combine_all_via_jsons(
@@ -35,11 +38,17 @@ def combine_all_via_jsons(
     via_default_dir: Optional[str] = None,
     via_project_name: Optional[str] = None,
 ) -> str:
-    """Combine the input VIA JSON files into one.
+    """Combine all the input VIA JSON files into one.
 
     A VIA JSON file is a json file specific to the VIA tool
-    that defines the annotations and visualisation settings
+    that defines the annotations and also the visualisation settings
     for the tool.
+
+    Some attributes of the combined VIA JSON file are taken from
+    the first input VIA JSON file:
+    - _via_settings,
+    - _via_attributes, and
+    - _via_data_format_version
 
     Parameters
     ----------
@@ -51,7 +60,7 @@ def combine_all_via_jsons(
         parent directory to the combined VIA JSON file. If None, the parent
         directory of the first VIA JSON file in list_json_files is used.
     via_default_dir : Optional[str], optional
-        The default directory in which to look for images in the VIA project.
+        The default directory in which to look for images for the VIA project.
         If None, the value specified in the first VIA JSON file is used.
         A full path is required.
     via_project_name : Optional[str], optional
@@ -63,19 +72,17 @@ def combine_all_via_jsons(
     json_out_fullpath: str
         full path to the combined VIA JSON file
     """
-    # initialise data structures for the combined VIA JSON file
+    # Initialise data structures for the combined VIA JSON file
     via_data_combined = {}
     dict_of_via_img_metadata = {}
     list_of_via_img_id_list = []
 
-    # loop thru input VIA JSON files
+    # loop through the input VIA JSON files
     for k, js_path in enumerate(list_json_files):
         # open VIA JSON file
         via_data = read_json_file(js_path)
-        # with open(js_path, "r") as js:
-        #     via_data = json.load(js)
 
-        # take some attributes from the first element of the list
+        # take some attributes from the first VIA JSON file
         if k == 0:
             via_data_combined["_via_settings"] = via_data["_via_settings"]
             via_data_combined["_via_attributes"] = via_data["_via_attributes"]
@@ -89,22 +96,31 @@ def combine_all_via_jsons(
         # append list of images' IDs
         list_of_via_img_id_list.extend(via_data["_via_image_id_list"])
 
-    # add data to VIA dictionary
+    # add data to combined VIA dictionary
     via_data_combined["_via_img_metadata"] = dict_of_via_img_metadata
     via_data_combined["_via_image_id_list"] = list_of_via_img_id_list
 
-    # Optionally: change _via_settings > core > default_filepath
+    # If required: change _via_settings > core > default_filepath
     if via_default_dir:
-        # check if trailing slash is present and add it if not
+        # check if trailing slash is present in the directory path
+        # and add it if not
         if not via_default_dir.endswith(os.sep):
             via_default_dir = f"{via_default_dir}{os.sep}"
+        # check path is a full path
+        if Path(via_default_dir) != Path(via_default_dir).resolve():
+            msg = "Default VIA directory is not a fullpath"
+            raise ValueError(msg)
+
+        # assign directory path to the VIA combined dictionary
         via_data_combined["_via_settings"]["core"]["default_filepath"] = via_default_dir
 
-    # Optionally: change _via_settings > project > name
+    # If required: change _via_settings > project > name
     if via_project_name:
         via_data_combined["_via_settings"]["project"]["name"] = via_project_name
 
     # Save the VIA combined data as a new JSON file
+    # if no output directory is passed, use the parent directory
+    # of the first VIA JSON file in the list
     if not json_out_dir:
         json_out_dir = str(Path(list_json_files[0]).parent)
     json_out_fullpath = Path(json_out_dir) / json_out_filename
@@ -115,7 +131,7 @@ def combine_all_via_jsons(
     return str(json_out_fullpath)
 
 
-def coco_conversion(
+def convert_via_json_to_coco(
     json_file_path: str,
     coco_category_ID: int = 1,
     coco_category_name: str = "crab",
@@ -137,8 +153,12 @@ def coco_conversion(
     ----------
     json_file_path : str
         Path to the VIA-JSON file containing the annotation data.
-    coco_categories : list, optional
-        List of dictionaries with the COCO categories
+    coco_category_ID : int, optional
+        category ID of all the annotations
+    coco_category_name : str, optional
+        category name of all the annotations
+    coco_supercategory_name : str, optional
+        supercategory for all the annotations
     coco_out_filename : str, optional
         Name of the COCO output file. If None (default), the input VIA JSON
         filename is used with the suffix '_coco_gen'
@@ -147,24 +167,22 @@ def coco_conversion(
         If None (default), the file is saved at the same location as the
         input VIA JSON file.
 
-
     Returns
     -------
     str
         path to the COCO json file. By default, the file
     """
     # Load the annotation data in VIA JSON format
-    with open(json_file_path, "r") as json_file:
+    with open(json_file_path) as json_file:
         annotation_data = json.load(json_file)
 
-    # Create COCO format data structures
-    # we assume all annotations are of the same category
+    # Create data structure for COCO format
     coco_categories = [
         {
             "id": coco_category_ID,
             "name": coco_category_name,
             "supercategory": coco_supercategory_name,
-        }
+        },
     ]
     coco_data: dict[str, Any] = {
         "info": {},
@@ -180,9 +198,9 @@ def coco_conversion(
     for image_info in annotation_data["_via_img_metadata"].values():
         image_data = {
             "id": image_id,
-            "width": 0,  # Set the image width here --- can we get from JSON?
-            "height": 0,  # Set the image height here --- can we get from JSON?
-            "file_name": image_info["filename"],  # image_filename #
+            "width": 0,  # TODO: find how we can get this (not available in JSON)
+            "height": 0,  # TODO: find how we can get this (not available in JSON)
+            "file_name": image_info["filename"],
         }
         coco_data["images"].append(image_data)
 
@@ -209,8 +227,10 @@ def coco_conversion(
         image_id += 1
 
     # Export the annotation data in COCO format to a JSON file
+    # if no filename provided: use VIA JSON filename + "_coco_gen.json"
     if not coco_out_filename:
         coco_out_filename = Path(json_file_path).stem + "_coco_gen.json"
+    # if no output directory provided: use VIA JSON parent directory
     if not coco_out_dir:
         coco_out_dir = str(Path(json_file_path).parent)
     coco_out_fullpath = Path(coco_out_dir) / coco_out_filename
