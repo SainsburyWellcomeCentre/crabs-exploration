@@ -156,6 +156,39 @@ def test_via_json_combine_default_dir(
     )
 
 
+def test_via_json_combine_non_full_default_dir(
+    via_json_1: str,
+    via_json_2: str,
+    tmp_path: Path,
+) -> None:
+    """Test combination of VIA JSON files adding a non-full VIA directory.
+
+    Check if the combination of 2 VIA JSON files has the specified default
+    VIA directory.
+
+    Parameters
+    ----------
+    via_json_1 : str
+        path to a sample VIA JSON file 1.
+    via_json_2 : str
+        path to a sample VIA JSON file 2.
+    tmp_path : Path
+        Pytest fixture providing a temporary directory path
+    """
+    # Set default directory as a non-full path
+    via_default_dir = tmp_path.stem
+
+    # Combine JSONs 1 and 2
+    timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+    with pytest.raises(ValueError):
+        combine_all_via_jsons(
+            [via_json_1, via_json_2],
+            json_out_filename=f"VIA_JSON_combined_{timestamp_str}.json",
+            json_out_dir=str(tmp_path),
+            via_default_dir=via_default_dir,
+        )
+
+
 def test_via_json_combine_project_name(
     via_json_1: str,
     via_json_2: str,
