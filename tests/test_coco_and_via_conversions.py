@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from bboxes_labelling.annotations_utils import (
-    combine_all_via_jsons,
+    combine_multiple_via_jsons,
     convert_via_json_to_coco,
     read_json_file,
 )
@@ -65,7 +65,7 @@ def test_via_json_combine(
 
     # combine JSONs 1 and 2
     timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
-    via_json_combined = combine_all_via_jsons(
+    via_json_combined = combine_multiple_via_jsons(
         [via_json_1, via_json_2],
         json_out_filename=f"VIA_JSON_combined_{timestamp_str}.json",
         json_out_dir=str(tmp_path),
@@ -137,7 +137,7 @@ def test_via_json_combine_default_dir(
 
     # Combine JSONs 1 and 2
     timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
-    via_json_combined = combine_all_via_jsons(
+    via_json_combined = combine_multiple_via_jsons(
         [via_json_1, via_json_2],
         json_out_filename=f"VIA_JSON_combined_{timestamp_str}.json",
         json_out_dir=str(tmp_path),
@@ -181,7 +181,7 @@ def test_via_json_combine_non_full_default_dir(
     # Combine JSONs 1 and 2
     timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
     with pytest.raises(ValueError):
-        combine_all_via_jsons(
+        combine_multiple_via_jsons(
             [via_json_1, via_json_2],
             json_out_filename=f"VIA_JSON_combined_{timestamp_str}.json",
             json_out_dir=str(tmp_path),
@@ -213,7 +213,7 @@ def test_via_json_combine_project_name(
 
     # Combine JSONs 1 and 2
     timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
-    via_json_combined = combine_all_via_jsons(
+    via_json_combined = combine_multiple_via_jsons(
         [via_json_1, via_json_2],
         json_out_filename=f"VIA_JSON_combined_{timestamp_str}.json",
         json_out_dir=str(tmp_path),
