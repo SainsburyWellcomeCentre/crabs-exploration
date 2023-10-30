@@ -31,7 +31,7 @@ def read_json_file(
         raise ValueError(msg) from decode_error
 
 
-def combine_all_via_jsons(
+def combine_multiple_via_jsons(
     list_json_files: list,
     json_out_filename: str = "VIA_JSON_combined.json",
     json_out_dir: Optional[str] = None,
