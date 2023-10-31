@@ -18,7 +18,7 @@ classifiers = [
 ]
 dependencies = [
     "opencv-python",
-    "sleap",
+    "sleap[pypi]==1.3.3",
 ]
 description = "exploring the crabs field data"
 dynamic = [
@@ -30,7 +30,6 @@ name = "crabs-exploration"
 optional-dependencies = {dev = [
     "black",
     "build",
-    "cattrs",
     "mypy",
     "pre-commit",
     "pytest",
@@ -51,56 +50,56 @@ testpaths = [
 
 [tool.ruff]
 fix = true
-# force-exclude = true
-# ignore = [
-# "D203", # no-blank-line-before-class
-# "D212", # multi-line-summary-first-line
-# "D417", # argument description in docstring (unreliable)
-# ]
+force-exclude = true
+ignore = [
+    "D203", # no-blank-line-before-class
+    "D212", # multi-line-summary-first-line
+    "D417", # argument description in docstring (unreliable)
+]
 per-file-ignores = {"test_*" = [
     "S101",
 ]}
-# select = [
-# "A",
-# "ARG",
-# "B",
-# "BLE",
-# "C",
-# "COM",
-# "D",
-# "DJ",
-# "DTZ",
-# "E",
-# "EM",
-# "ERA",
-# "EXE",
-# "F",
-# "FBT",
-# "I",
-# "ICN",
-# "ISC",
-# "N",
-# "NPY",
-# "PD",
-# "PGH",
-# "PIE",
-# "PL",
-# "PT",
-# "PTH",
-# "PYI",
-# "Q",
-# "RET",
-# "RSE",
-# "RUF",
-# "S",
-# "SIM",
-# "T",
-# "TCH",
-# "TID",
-# "UP",
-# "W",
-# "YTT",
-# ]
+select = [
+    "A",
+    "ARG",
+    "B",
+    "BLE",
+    "C",
+    "COM",
+    "D",
+    "DJ",
+    "DTZ",
+    "E",
+    "EM",
+    "ERA",
+    "EXE",
+    "F",
+    "FBT",
+    "I",
+    "ICN",
+    "ISC",
+    "N",
+    "NPY",
+    "PD",
+    "PGH",
+    "PIE",
+    "PL",
+    "PT",
+    "PTH",
+    "PYI",
+    "Q",
+    "RET",
+    "RSE",
+    "RUF",
+    "S",
+    "SIM",
+    "T",
+    "TCH",
+    "TID",
+    "UP",
+    "W",
+    "YTT",
+]
 target-version = "py39"
 
 [tool.tomlsort]
