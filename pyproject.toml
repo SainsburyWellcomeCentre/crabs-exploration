@@ -30,6 +30,7 @@ name = "crabs-exploration"
 optional-dependencies = {dev = [
     "black",
     "build",
+    "cattrs",
     "mypy",
     "pre-commit",
     "pytest",
