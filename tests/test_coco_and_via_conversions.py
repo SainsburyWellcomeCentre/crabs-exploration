@@ -13,7 +13,8 @@ from bboxes_labelling.annotations_utils import (
 
 @pytest.fixture()
 def via_json_1() -> str:
-    """Return path to a sample VIA JSON file.
+    """
+    Return path to a sample VIA JSON file.
 
     Returns
     -------
@@ -26,7 +27,8 @@ def via_json_1() -> str:
 
 @pytest.fixture()
 def via_json_2() -> str:
-    """Return path to a sample VIA JSON file.
+    """
+    Return path to a sample VIA JSON file.
 
     Returns
     -------
@@ -42,7 +44,8 @@ def test_via_json_combine(
     via_json_2: str,
     tmp_path: Path,
 ) -> None:
-    """Test combination of VIA JSON files.
+    """
+    Test combination of VIA JSON files.
 
     Check if the combination of 2 VIA JSON files has the same data as the
     individual JSONS.
@@ -109,7 +112,7 @@ def test_via_json_combine(
         via_json_2_dict["_via_image_id_list"],
     ]:
         assert all(
-            [x in via_json_combined_dict["_via_image_id_list"] for x in img_id_list],
+            x in via_json_combined_dict["_via_image_id_list"] for x in img_id_list
         )
 
 
@@ -118,7 +121,8 @@ def test_via_json_combine_default_dir(
     via_json_2: str,
     tmp_path: Path,
 ) -> None:
-    """Test combination of VIA JSON files adding a default VIA directory.
+    """
+    Test combination of VIA JSON files adding a default VIA directory.
 
     Check if the combination of 2 VIA JSON files has the specified default
     VIA directory.
@@ -161,7 +165,8 @@ def test_via_json_combine_non_full_default_dir(
     via_json_2: str,
     tmp_path: Path,
 ) -> None:
-    """Test combination of VIA JSON files adding a non-full VIA directory.
+    """
+    Test combination of VIA JSON files adding a non-full VIA directory.
 
     Check if the combination of 2 VIA JSON files has the specified default
     VIA directory.
@@ -194,13 +199,15 @@ def test_via_json_combine_project_name(
     via_json_2: str,
     tmp_path: Path,
 ) -> None:
-    """Test combination of VIA JSON files adding a VIA project name.
+    """
+    Test combination of VIA JSON files adding a VIA project name.
 
     Check if the combination of 2 VIA JSON files has the specified project
     name.
 
     Parameters
     ----------
+
     via_json_1 : str
         path to a sample VIA JSON file 1.
     via_json_2 : str
@@ -237,7 +244,8 @@ def test_coco_generated_from_via_json(
     tmp_path: Path,
     request: pytest.FixtureRequest,
 ) -> None:
-    """Test COCO file generated from VIA JSON is correct.
+    """
+    Test COCO file generated from VIA JSON is correct.
 
     Check if the COCO file generated from the VIA JSON contains the same data.
     We assume all annotations are the same COCO category.
