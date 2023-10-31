@@ -13,8 +13,7 @@ from bboxes_labelling.annotations_utils import (
 
 @pytest.fixture()
 def via_json_1() -> str:
-    """
-    Return path to a sample VIA JSON file.
+    """Return path to a sample VIA JSON file.
 
     Returns
     -------
@@ -22,13 +21,14 @@ def via_json_1() -> str:
         path to a sample VIA JSON file 1.
     """
     # Return path to sample VIA (Visual Image Annotator) JSON file 1
-    return str(Path("tests/data/COCO_VIA_JSONS/VIA_JSON_1.json").resolve())
+    return str(
+        Path(__file__).resolve().parent / "data" / "COCO_VIA_JSONS/VIA_JSON_1.json",
+    )
 
 
 @pytest.fixture()
 def via_json_2() -> str:
-    """
-    Return path to a sample VIA JSON file.
+    """Return path to a sample VIA JSON file.
 
     Returns
     -------
@@ -36,7 +36,9 @@ def via_json_2() -> str:
         path to a sample VIA JSON file 2.
     """
     # Return path to sample VIA JSON file 2
-    return str(Path("tests/data/COCO_VIA_JSONS/VIA_JSON_2.json").resolve())
+    return str(
+        Path(__file__).resolve().parent / "data" / "COCO_VIA_JSONS/VIA_JSON_2.json",
+    )
 
 
 def test_via_json_combine(
@@ -44,8 +46,7 @@ def test_via_json_combine(
     via_json_2: str,
     tmp_path: Path,
 ) -> None:
-    """
-    Test combination of VIA JSON files.
+    """Test combination of VIA JSON files.
 
     Check if the combination of 2 VIA JSON files has the same data as the
     individual JSONS.
@@ -67,7 +68,9 @@ def test_via_json_combine(
     via_json_2_dict = read_json_file(via_json_2)
 
     # combine JSONs 1 and 2
-    timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+    timestamp_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+        "%d%m%Y_%H%M%S"
+    )
     via_json_combined = combine_multiple_via_jsons(
         [via_json_1, via_json_2],
         json_out_filename=f"VIA_JSON_combined_{timestamp_str}.json",
@@ -121,8 +124,7 @@ def test_via_json_combine_default_dir(
     via_json_2: str,
     tmp_path: Path,
 ) -> None:
-    """
-    Test combination of VIA JSON files adding a default VIA directory.
+    """Test combination of VIA JSON files adding a default VIA directory.
 
     Check if the combination of 2 VIA JSON files has the specified default
     VIA directory.
@@ -140,7 +142,9 @@ def test_via_json_combine_default_dir(
     via_default_dir = "/sample/VIA/project/directory"
 
     # Combine JSONs 1 and 2
-    timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+    timestamp_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+        "%d%m%Y_%H%M%S"
+    )
     via_json_combined = combine_multiple_via_jsons(
         [via_json_1, via_json_2],
         json_out_filename=f"VIA_JSON_combined_{timestamp_str}.json",
@@ -165,8 +169,7 @@ def test_via_json_combine_non_full_default_dir(
     via_json_2: str,
     tmp_path: Path,
 ) -> None:
-    """
-    Test combination of VIA JSON files adding a non-full VIA directory.
+    """Test combination of VIA JSON files adding a non-full VIA directory.
 
     Check if the combination of 2 VIA JSON files has the specified default
     VIA directory.
@@ -184,7 +187,9 @@ def test_via_json_combine_non_full_default_dir(
     via_default_dir = tmp_path.stem
 
     # Combine JSONs 1 and 2
-    timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+    timestamp_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+        "%d%m%Y_%H%M%S"
+    )
     with pytest.raises(ValueError):
         combine_multiple_via_jsons(
             [via_json_1, via_json_2],
@@ -199,15 +204,13 @@ def test_via_json_combine_project_name(
     via_json_2: str,
     tmp_path: Path,
 ) -> None:
-    """
-    Test combination of VIA JSON files adding a VIA project name.
+    """Test combination of VIA JSON files adding a VIA project name.
 
     Check if the combination of 2 VIA JSON files has the specified project
     name.
 
     Parameters
     ----------
-
     via_json_1 : str
         path to a sample VIA JSON file 1.
     via_json_2 : str
@@ -219,7 +222,9 @@ def test_via_json_combine_project_name(
     via_project_name = "TEST"
 
     # Combine JSONs 1 and 2
-    timestamp_str = datetime.datetime.now().strftime("%d%m%Y_%H%M%S")
+    timestamp_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+        "%d%m%Y_%H%M%S"
+    )
     via_json_combined = combine_multiple_via_jsons(
         [via_json_1, via_json_2],
         json_out_filename=f"VIA_JSON_combined_{timestamp_str}.json",
@@ -244,8 +249,7 @@ def test_coco_generated_from_via_json(
     tmp_path: Path,
     request: pytest.FixtureRequest,
 ) -> None:
-    """
-    Test COCO file generated from VIA JSON is correct.
+    """Test COCO file generated from VIA JSON is correct.
 
     Check if the COCO file generated from the VIA JSON contains the same data.
     We assume all annotations are the same COCO category.
