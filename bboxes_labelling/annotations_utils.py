@@ -7,7 +7,8 @@ from typing import Any, Optional
 def read_json_file(
     file_path: str,
 ) -> dict:
-    """Read JSON file as dict.
+    """
+    Read JSON file as dict.
 
     Parameters
     ----------
@@ -38,7 +39,8 @@ def combine_multiple_via_jsons(
     via_default_dir: Optional[str] = None,
     via_project_name: Optional[str] = None,
 ) -> str:
-    """Combine all the input VIA JSON files into one.
+    """
+    Combine all the input VIA JSON files into one.
 
     A VIA JSON file is a json file specific to the VIA tool
     that defines the annotations and also the visualisation settings
@@ -139,7 +141,8 @@ def convert_via_json_to_coco(
     coco_out_filename: Optional[str] = None,
     coco_out_dir: Optional[str] = None,
 ) -> str:
-    """Convert annotation data for one category from VIA-JSON format to COCO.
+    """
+    Convert annotation data for one category from VIA-JSON format to COCO.
 
     This function takes annotation data in a VIA JSON format and converts it
     into COCO format, which is widely used for object detection datasets.
