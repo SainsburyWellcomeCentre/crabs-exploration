@@ -24,9 +24,7 @@ def main(
     )
 
     # Convert to COCO
-    coco_out_fullpath = convert_via_json_to_coco(json_out_fullpath)
-
-    return coco_out_fullpath
+    return convert_via_json_to_coco(json_out_fullpath)
 
 
 if __name__ == "__main__":
