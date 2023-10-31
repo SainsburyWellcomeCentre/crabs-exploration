@@ -5,7 +5,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image
-from utils import read_json_file
+
+from bboxes_labelling.annotations_utils import read_json_file
 
 
 def apply_grayscale_and_blur(

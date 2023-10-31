@@ -14,6 +14,6 @@
 /pose estimation/animal_size_4k/*
 /pose estimation/top_down_model_4k_230713/*
 
-/tests/output/
 # include mp4 files in tests/data dir
-!/tests/data/*.mp4
+!/tests/data/**/*.mp4
+!/tests/data/**/*.json
