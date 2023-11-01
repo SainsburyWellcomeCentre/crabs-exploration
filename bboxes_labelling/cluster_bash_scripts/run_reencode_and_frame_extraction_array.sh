@@ -77,13 +77,28 @@ SCRIPT_DIR=$SCRATCH_PERSONAL_DIR/crabs-exploration/bboxes_labelling
 # -------------------
 for i in {1..${SLURM_ARRAY_TASK_COUNT}}
 do
+    # Input video
     SAMPLE=${INPUT_DATA_LIST[${SLURM_ARRAY_TASK_ID}]}
+    echo "Input video: $SAMPLE"
 
-    # reencode video?
+    # Reencode video?
+    # reencode input videos following SLEAP's recommendations
+    # https://sleap.ai/help.html#does-my-data-need-to-be-in-a-particular-format
+    filename_no_ext="$(basename "$SAMPLE" | sed 's/\(.*\)\..*/\1/')" # filename without extension
+    REENCODED_VIDEO_PATH="$OUTPUT_DIR/$OUTPUT_SUBDIR/$filename_no_ext"_re.mp4
 
-    # run frame extraction algorithm
+    ffmpeg -y -i "$SAMPLE" \
+    -c:v libx264 \
+    -pix_fmt yuv420p \
+    -preset superfast \
+    -crf 15 \
+    $REENCODED_VIDEO_PATH
+    echo "Reencoded video: $REENCODED_VIDEO_PATH"
+    echo "--------"
+
+    # Run frame extraction algorithm on reencoded video
     python $SCRIPT_DIR/extract_frames_to_label_w_sleap.py \
-    $SAMPLE \
+    $REENCODED_VIDEO_PATH \
     --output_path $OUTPUT_DIR \
     --output_subdir $OUTPUT_SUBDIR \
     --video_extensions $PARAM_VIDEO_EXT \
@@ -94,6 +109,15 @@ do
     --per_cluster $PARAM_PER_CLUSTER \
     --compute_features_per_video
 
+    echo "Frames extracted from video: $REENCODED_VIDEO_PATH"
+    echo "--------"
+
+
+    # # Delete reencoded video?
+    # rm $REENCODED_VIDEO_NAME
+    # echo "Deleted reencoded video: $REENCODED_VIDEO_NAME"
+    # echo "--------"
+
     # Move logs for this job to subdir with extracted frames 
     # TODO: ideally these are moved also if frame extraction fails
     mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err /$LOG_DIR
@@ -101,3 +125,21 @@ do
 done
 
 
+# # reencode input videos following SLEAP's recommendations
+# # https://sleap.ai/help.html#does-my-data-need-to-be-in-a-particular-format
+# for i in {1..${SLURM_ARRAY_TASK_COUNT}}
+# do
+#     FILEPATH=${INPUT_DATA_LIST[${SLURM_ARRAY_TASK_ID}]}
+#     filename_no_ext="$(basename "$FILEPATH" | sed 's/\(.*\)\..*/\1/')" # filename without extension
+#     echo "Input video: $FILEPATH"
+
+#     ffmpeg -y -i "$FILEPATH" \
+#     -c:v libx264 \
+#     -pix_fmt yuv420p \
+#     -preset superfast \
+#     -crf 15 \
+#     "$OUTPUT_DIR/$OUTPUT_SUBDIR/$filename_no_ext.mp4"
+
+#     echo "Reencoded video: $OUTPUT_DIR/$OUTPUT_SUBDIR/$filename_no_ext.mp4"
+#     echo "---"
+# done
