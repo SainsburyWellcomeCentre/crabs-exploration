@@ -29,25 +29,31 @@ module load SLEAP
 # # TODO: have list here?
 # INPUT_DATA_LIST=($(<input.list))
 INPUT_DATA_LIST=(
-    "/ceph/scratch/sminano/crabs_sample/videos_inference/cam2_NINJAV_S001_S001_T004_out_domain_sample.mp4"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/04.09.2023-Day1/04.09.2023-02-Left.MOV"
 )
 
 # ----------------------
 # Output data location
 # ----------------------
+# location of extracted frames
 OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels
-OUTPUT_SUBDIR="TEST_logs"
+OUTPUT_SUBDIR="Sep2023_day1_reencoded"
 
-# SLURM logs dir
+# location of SLURM logs
 LOG_DIR=$OUTPUT_DIR/$OUTPUT_SUBDIR/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
 # can I set SLURM logs location here?
 # srun -e slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err
 
+# location of reencoded videos
+REENCODED_VIDEOS_DIR=/ceph/zoo/users/sminano/crabs_reencoded_videos
+REENCODED_VIDEOS_SUBDIR=$REENCODED_VIDEOS_DIR/$OUTPUT_SUBDIR 
+mkdir -p $REENCODED_VIDEOS_SUBDIR # create if it doesnt exist
+
 # ---------------------------------
 # Frame extraction parameters
 # -----------------------------------
-PARAM_VIDEO_EXT=mp4  #MOV--------------
+PARAM_VIDEO_EXT=MOV
 PARAM_INI_SAMPLES=500
 PARAM_SCALE=0.5
 PARAM_N_COMPONENTS=5
@@ -80,13 +86,18 @@ do
     # Input video
     SAMPLE=${INPUT_DATA_LIST[${SLURM_ARRAY_TASK_ID}]}
     echo "Input video: $SAMPLE"
+    echo "--------"
 
-    # Reencode video?
-    # reencode input videos following SLEAP's recommendations
+    # Reencode video
+    echo "Rencoding ...."
+    # following SLEAP's recommendations
     # https://sleap.ai/help.html#does-my-data-need-to-be-in-a-particular-format
     filename_no_ext="$(basename "$SAMPLE" | sed 's/\(.*\)\..*/\1/')" # filename without extension
-    REENCODED_VIDEO_PATH="$OUTPUT_DIR/$OUTPUT_SUBDIR/$filename_no_ext"_re.mp4
 
+    # path to reencoded video
+    REENCODED_VIDEO_PATH="$REENCODED_VIDEOS_SUBDIR/$filename_no_ext"_RE.mp4
+
+    ffmpeg -version
     ffmpeg -y -i "$SAMPLE" \
     -c:v libx264 \
     -pix_fmt yuv420p \
@@ -112,34 +123,14 @@ do
     echo "Frames extracted from video: $REENCODED_VIDEO_PATH"
     echo "--------"
 
-
-    # # Delete reencoded video?
-    # rm $REENCODED_VIDEO_NAME
-    # echo "Deleted reencoded video: $REENCODED_VIDEO_NAME"
-    # echo "--------"
+    # copy .err file to go with reencoded video too
+    # TODO: make a nicer log, and not dependant on whether frame extract is OK!
+    cp slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err /$REENCODED_VIDEOS_SUBDIR
 
     # Move logs for this job to subdir with extracted frames 
     # TODO: ideally these are moved also if frame extraction fails
     mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err /$LOG_DIR
     mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.out /$LOG_DIR
+
+    
 done
-
-
-# # reencode input videos following SLEAP's recommendations
-# # https://sleap.ai/help.html#does-my-data-need-to-be-in-a-particular-format
-# for i in {1..${SLURM_ARRAY_TASK_COUNT}}
-# do
-#     FILEPATH=${INPUT_DATA_LIST[${SLURM_ARRAY_TASK_ID}]}
-#     filename_no_ext="$(basename "$FILEPATH" | sed 's/\(.*\)\..*/\1/')" # filename without extension
-#     echo "Input video: $FILEPATH"
-
-#     ffmpeg -y -i "$FILEPATH" \
-#     -c:v libx264 \
-#     -pix_fmt yuv420p \
-#     -preset superfast \
-#     -crf 15 \
-#     "$OUTPUT_DIR/$OUTPUT_SUBDIR/$filename_no_ext.mp4"
-
-#     echo "Reencoded video: $OUTPUT_DIR/$OUTPUT_SUBDIR/$filename_no_ext.mp4"
-#     echo "---"
-# done
