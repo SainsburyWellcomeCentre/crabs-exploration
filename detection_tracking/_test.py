@@ -111,8 +111,8 @@ def test_tracking(valid_dataloader, trained_model, score_threshold) -> None:
 
 
 def test_detection(valid_dataloader, trained_model, score_threshold) -> None:
-    # device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    device = "cpu"
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    # device = "cpu"
 
     total_correct_boxes = 0
     total_gt_boxes = 0
@@ -122,6 +122,7 @@ def test_detection(valid_dataloader, trained_model, score_threshold) -> None:
     with torch.no_grad():
         imgs_id = 0
         for imgs, annotations in valid_dataloader:
+            # print(imgs)
             imgs_id += 1
             imgs = list(img.to(device) for img in imgs)
             targets = [{k: v.to(device) for k, v in t.items()} for t in annotations]
@@ -159,7 +160,7 @@ def test_detection(valid_dataloader, trained_model, score_threshold) -> None:
 
                         pred_boxes = pred_boxes[: pred_t + 1]
                         pred_class = pred_class[: pred_t + 1]
-
+                        print(len(pred_boxes))
                         for i in range(len(pred_boxes)):
                             if (pred_class[i]) == "crab" and pred_score[
                                 i
@@ -192,6 +193,7 @@ def test_detection(valid_dataloader, trained_model, score_threshold) -> None:
                                     thickness=2,
                                 )
 
+                        print(len(target_boxes))
                         for i in range(len(target_boxes)):
                             cv2.rectangle(
                                 image_with_boxes,

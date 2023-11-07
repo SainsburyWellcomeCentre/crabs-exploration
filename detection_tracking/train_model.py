@@ -1,14 +1,35 @@
 import argparse
 
 import torch
+import mlflow
 import yaml
+from pathlib import Path
+from datetime import datetime
 
 from _utils import create_dataloader, get_train_transform, save_model
 from _models import create_faster_rcnn, train_faster_rcnn
 
 # select device (whether GPU or CPU)
-# device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-device = "cpu"
+device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+# # Create experiment directory
+# MODEL_REGISTRY = Path("experiments")
+# Path(MODEL_REGISTRY).mkdir(exist_ok=True)
+# # Set tracking URI
+# mlflow.set_tracking_uri("file://" + str(MODEL_REGISTRY.absolute()))
+# # set experiment
+# mlflow.set_experiment(experiment_name="baseline")
+
+# EXPERIMENT_NAME = "baseline"
+# RUN_NAME = f"run_{datetime.today()}"
+# print(EXPERIMENT_NAME)
+
+# try:
+#     EXPERIMENT_ID = mlflow.get_experiment_by_name(EXPERIMENT_NAME).experiment_id
+#     print(EXPERIMENT_ID)
+# except:
+#     EXPERIMENT_ID = mlflow.create_experiment(EXPERIMENT_NAME)
+#     print(EXPERIMENT_ID)
 
 
 class Dectector_Train:
@@ -80,7 +101,7 @@ class Dectector_Train:
         print(f"Training {self.model_name}...")
 
         trained_model = train_faster_rcnn(
-            self.config["num_epochs"], self.model, self.train_dataloader, optimizer
+            self.config, self.model, self.train_dataloader, optimizer
         )
 
         if self.config["save"]:
@@ -109,5 +130,6 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    print(args)
     trainer = Dectector_Train(args)
     trainer.train_model()

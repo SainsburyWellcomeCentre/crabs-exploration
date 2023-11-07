@@ -1,9 +1,18 @@
+import os
+import pickle
+import tempfile
+import time
+from datetime import datetime
+
+import mlflow
 import torch
-import torchvision
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 import torch.nn as nn
-from torch.utils.data import DataLoader
 import torch.optim as optim
+import torchvision
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+
 from _utils import coco_category
 
 
@@ -39,7 +48,7 @@ def create_faster_rcnn(num_classes: int, coco_model: bool = True) -> nn.Module:
 
 
 def train_faster_rcnn(
-    num_epochs: int,
+    config,
     model: nn.Module,
     train_dataloader: DataLoader,
     optimizer: optim.Optimizer,
@@ -48,8 +57,8 @@ def train_faster_rcnn(
 
     Parameters
     ----------
-    num_epochs : int
-        number of total epochs for the training
+    config 
+        config including hyperparameters
     model: nn.Module
         the created model for the training
     train_dataloader: DataLoader
@@ -64,25 +73,80 @@ def train_faster_rcnn(
     """
 
     # select device (whether GPU or CPU)
-    # device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    device = "cpu"
-    model.train()
-    for epoch in range(num_epochs):
-        print(epoch)
-        i = 0
-        for imgs, annotations in train_dataloader:
-            i += 1
-            imgs = list(img.to(device) for img in imgs)
-            annotations = [{k: v.to(device) for k, v in t.items()} for t in annotations]
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    
+    # setup tensorboard stuff
+    layout = {
+        "Multi": {
+            "recon_loss": ["Multiline", ["recon_loss/train", "recon_loss/validation"]],
+            "pred_loss": ["Multiline", ["pred_loss/train", "pred_loss/validation"]],
+        },
+    }
+    writer = SummaryWriter(f"/tmp/tensorboard/{int(time.time())}")
+    writer.add_custom_scalars(layout)
 
-            loss_dict = model(imgs, annotations)
-            losses = sum(loss for loss in loss_dict.values())
 
-            optimizer.zero_grad()
-            losses.backward()
-            optimizer.step()
+    def log_scalar(name, value, epoch):
+        """Log a scalar value to both MLflow and TensorBoard"""
+        writer.add_scalar(name, value, epoch)
+        mlflow.log_metric(name, value)
 
-            print(f"Iteration: {i}/{len(train_dataloader)}, Loss: {losses}")
+    EXPERIMENT_NAME = "baseline"
+    RUN_NAME = f"run_{datetime.today()}"
+    print(EXPERIMENT_NAME)
+
+    try:
+        EXPERIMENT_ID = mlflow.get_experiment_by_name(EXPERIMENT_NAME).experiment_id
+        print(EXPERIMENT_ID)
+    except:
+        EXPERIMENT_ID = mlflow.create_experiment(EXPERIMENT_NAME)
+        print(EXPERIMENT_ID)
+
+    with mlflow.start_run(experiment_id=EXPERIMENT_ID, run_name=RUN_NAME):
+        mlflow.log_params(config)
+        mlflow.log_param("n_epoch", config["num_epochs"])
+
+        # # Create a SummaryWriter to write TensorBoard events locally
+        output_dir = dirpath = tempfile.mkdtemp()
+                   
+        for epoch in range(config["num_epochs"]):
+            print(epoch)
+            model.train()
+            i = 0
+            for batch_idx, (imgs, annotations) in enumerate(train_dataloader):
+                i += 1
+                imgs = list(img.to(device) for img in imgs)
+                annotations = [{k: v.to(device) for k, v in t.items()} for t in annotations]
+
+                loss_dict = model(imgs, annotations)
+                losses = sum(loss for loss in loss_dict.values())
+
+                optimizer.zero_grad()
+                losses.backward()
+                optimizer.step()
+
+                print(f"Iteration: {i}/{len(train_dataloader)}, Loss: {losses}")
+
+            log_scalar("total_loss/train", losses, epoch)
+        
+        # Upload the TensorBoard event logs as a run artifact
+        print("Uploading TensorBoard events as a run artifact...")
+        mlflow.log_artifacts(output_dir, artifact_path="events")
+        print(
+            "\nLaunch TensorBoard with:\n\ntensorboard --logdir=%s"
+            % os.path.join(mlflow.get_artifact_uri(), "events")
+        )
+
+        # Log the model as an artifact of the MLflow run.
+        print("\nLogging the trained model as a run artifact...")
+        mlflow.pytorch.log_model(
+            model, artifact_path="pytorch-model", pickle_module=pickle
+        )
+        print(
+            "\nThe model is logged at:\n%s"
+            % os.path.join(mlflow.get_artifact_uri(), "pytorch-model")
+        )
+    writer.close()
 
     return model
 

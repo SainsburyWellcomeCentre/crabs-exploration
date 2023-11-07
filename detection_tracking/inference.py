@@ -14,14 +14,14 @@ from pathlib import Path
 
 # select device (whether GPU or CPU)
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-device = "cpu"
+# device = "cpu"
 # sort_crab = Sort()
 
 
 class Detector_Test:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-        self.vid_dir = args.vid_dir
+        # self.vid_dir = args.vid_dir
         self.score_threshold = args.score_threshold
         self.sort_crab = Sort()
 
@@ -49,6 +49,7 @@ class Detector_Test:
         img = transform(frame)
         img = img.to(device)
         # print(img.shape)
+        frame = np.array(frame)
 
         img = img.unsqueeze(0)
         prediction = self.trained_model(img)
@@ -69,11 +70,14 @@ class Detector_Test:
                 ]
                 pred_boxes = [
                     [(i[0], i[1]), (i[2], i[3])]
-                    for i in list(prediction[0]["boxes"].detach().cpu().detach().numpy())
+                    for i in list(
+                        prediction[0]["boxes"].detach().cpu().detach().numpy()
+                    )
                 ]
 
                 pred_boxes = pred_boxes[: pred_t + 1]
                 pred_class = pred_class[: pred_t + 1]
+                print(len(pred_boxes))
 
                 for i in range(len(pred_boxes)):
                     if (pred_class[i]) == "crab" and pred_score[
@@ -144,7 +148,7 @@ class Detector_Test:
         #         else:
         #             pred_sort = np.empty((0, 5))
         #     else:
-        #         pred_sort = np.empty((0, 5))        
+        #         pred_sort = np.empty((0, 5))
         # else:
         #     pred_sort = np.empty((0, 5))
         # # print(pred_sort.shape)
@@ -175,48 +179,54 @@ class Detector_Test:
     def _load_video(self) -> None:
         """Load images and annotation file for training"""
 
-        print(self.vid_dir)
-        try:
-            video = cv2.VideoCapture(self.vid_dir)
+        # print(self.vid_dir)
+        # try:
+        #     video = cv2.VideoCapture(self.vid_dir)
 
-            if not video.isOpened():
-                raise Exception("Error opening video file")
+        #     if not video.isOpened():
+        #         raise Exception("Error opening video file")
 
-            frame_width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-            frame_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            cap_fps = video.get(cv2.CAP_PROP_FPS)
+        #     frame_width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
+        #     frame_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        #     cap_fps = video.get(cv2.CAP_PROP_FPS)
 
-            output_file = "output_video.mp4"
-            output_codec = cv2.VideoWriter_fourcc(*"mp4v")
-            out = cv2.VideoWriter(
-                output_file, output_codec, cap_fps, (frame_width, frame_height)
-            )
-            frame_id = 0
+        #     output_file = "output_video.mp4"
+        #     output_codec = cv2.VideoWriter_fourcc(*"mp4v")
+        #     out = cv2.VideoWriter(
+        #         output_file, output_codec, cap_fps, (frame_width, frame_height)
+        #     )
+        #     frame_id = 0
 
-            video_file = (
-                f"{Path(self.vid_dir).parent.stem}_" f"{Path(self.vid_dir).stem}_"
-            )
-            while video.isOpened():
-                ret, frame = video.read()
+        #     video_file = (
+        #         f"{Path(self.vid_dir).parent.stem}_" f"{Path(self.vid_dir).stem}_"
+        #     )
+        #     while video.isOpened():
+        #         ret, frame = video.read()
 
-                if not ret:
-                    # Break the loop if no more frames to read
-                    break
+        #         if not ret:
+        #             # Break the loop if no more frames to read
+        #             break
 
-                # print(frame.shape)
+        #         # print(frame.shape)
 
-                frame_out = self.__inference(frame, video_file, frame_id)
-                frame_id += 1
-                out.write(frame_out)
-                # cv2.imshow("frame", frame_out)
+        #         frame_out = self.__inference(frame, video_file, frame_id)
+        #         frame_id += 1
+        #         out.write(frame_out)
+        #         # cv2.imshow("frame", frame_out)
 
-            video.release()
-            out.release()
-            cv2.destroyAllWindows()
+        #     video.release()
+        #     out.release()
+        #     cv2.destroyAllWindows()
 
-        except:
-            print("Could not open video file")
-            raise
+        # except:
+        #     print("Could not open video file")
+        #     raise
+
+        img_path = "09.08_09.08.2023-02-Right_frame_141760.png"
+        image = Image.open(img_path)
+        print(type(image))
+        frame_out = self.__inference(image, img_path, 0)
+        cv2.imwrite("frame.png", frame_out)
 
     def inference_model(self) -> None:
         self._load_pretrain_model()
@@ -232,12 +242,12 @@ if __name__ == "__main__":
         required=True,
         help="location of trained model",
     )
-    parser.add_argument(
-        "--vid_dir",
-        type=str,
-        required=True,
-        help="location of images and coco annotation",
-    )
+    # parser.add_argument(
+    #     "--vid_dir",
+    #     type=str,
+    #     required=True,
+    #     help="location of images and coco annotation",
+    # )
     parser.add_argument(
         "--save",
         type=bool,

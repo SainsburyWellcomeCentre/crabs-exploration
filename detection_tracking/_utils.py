@@ -32,8 +32,9 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
     Returns
     ----------
     tuple : A tuple containing an image tensor and a dictionary of annotations
-    
+
     """
+
     def __init__(self, data_dir, annotation, transforms=None):
         self.data_dir = data_dir
         self.coco = COCO(annotation)
@@ -41,27 +42,27 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         self.ids = list(sorted(self.coco.imgs.keys()))
 
     def __getitem__(self, index):
-        """Get the image and associated annotations at the specified index.         
+        """Get the image and associated annotations at the specified index.
 
         Args
         ----------
         index : str
-            Index of the sample to retrieve.         
+            Index of the sample to retrieve.
 
         Returns
-        ----------        
-        tuple: A tuple containing the image tensor and a dictionary of annotations.                     
+        ----------
+        tuple: A tuple containing the image tensor and a dictionary of annotations.
 
         Note
-        ----------       
-        The annotations dictionary contains the following keys:             
-            - 'image': The image tensor.             
-            - 'annotations': A dictionary containing object annotations with keys:                 
-            - 'boxes': Bounding box coordinates (xmin, ymin, xmax, ymax).                 
-            - 'labels': Class labels for each object.                 
-            - 'image_id': Image ID.                 
-            - 'area': Area of each object.                 
-        -    'iscrowd': Flag indicating whether the object is a crowd.         
+        ----------
+        The annotations dictionary contains the following keys:
+            - 'image': The image tensor.
+            - 'annotations': A dictionary containing object annotations with keys:
+            - 'boxes': Bounding box coordinates (xmin, ymin, xmax, ymax).
+            - 'labels': Class labels for each object.
+            - 'image_id': Image ID.
+            - 'area': Area of each object.
+        -    'iscrowd': Flag indicating whether the object is a crowd.
         """
 
         img_id = self.ids[index]
@@ -91,7 +92,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
         labels = torch.ones((num_objs,), dtype=torch.int64)
         img_id = torch.tensor([img_id])
-        
+
         areas = []
         for i in range(num_objs):
             areas.append(coco_annotation[i]["area"])
@@ -105,7 +106,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         my_annotation["image_id"] = img_id
         my_annotation["area"] = areas
         my_annotation["iscrowd"] = iscrowd
-        
+
         if self.transforms is not None:
             img = self.transforms(img)
 
@@ -120,12 +121,14 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         """
         return len(self.ids)
 
+
 def coco_category():
     COCO_INSTANCE_CATEGORY_NAMES = [
         "__background__",
         "crab",
     ]
     return COCO_INSTANCE_CATEGORY_NAMES
+
 
 # collate_fn needs for batch
 def collate_fn(batch):
@@ -141,7 +144,11 @@ def collate_fn(batch):
 def create_dataloader(my_dataset, batch_size):
     # own DataLoader
     data_loader = torch.utils.data.DataLoader(
-        my_dataset, batch_size=batch_size, shuffle=True, num_workers=4, collate_fn=collate_fn, pin_memory=True
+        my_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=4,
+        collate_fn=collate_fn,
     )
     return data_loader
 
@@ -156,11 +163,12 @@ def save_model(model) -> None:
 def get_train_transform():
     # TODO: testing with different transforms
     custom_transforms = []
-    custom_transforms.append(transforms.Resize((1080, 1920)))
+    # custom_transforms.append(transforms.Resize((1080, 1920)))
     custom_transforms.append(transforms.ColorJitter(brightness=0.5, hue=0.3))
     custom_transforms.append(transforms.ToTensor())
 
     return transforms.Compose(custom_transforms)
+
 
 def get_test_transform():
     # TODO: testing with different transforms
