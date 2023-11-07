@@ -1,52 +1,98 @@
-import torch
-import torchvision
 import argparse
 import os
-import cv2
-from PIL import Image
-import torchvision.transforms as transforms
-import numpy as np
-from _utils import create_dataloader, get_test_transform
-from _utils import myFasterRCNNDataset
-from sort import *
-import numpy as np
 
+import torch
+from _utils import create_dataloader, get_test_transform, myFasterRCNNDataset
+from sort import Sort
 
 # select device (whether GPU or CPU)
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+<<<<<<< HEAD
 # device = "cpu"
+=======
+>>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
 
 
 class Detector_Test:
+    """
+    A class for testing object detection models using pre-trained classification.
+
+    Args:
+        args (argparse.Namespace): Command-line arguments containing
+        configuration settings.
+
+    Attributes:
+        args (argparse.Namespace): The command-line arguments provided.
+        main_dir (str): The main directory path.
+        score_threshold (float): The confidence threshold for detection scores.
+        sort_crab (Sort): An instance of the sorting algorithm used for tracking.
+        trained_model: The pre-trained subject classification model.
+        test_data (str): The path to the directory containing test images.
+        test_label (str): The path to the test annotation JSON file.
+        test_dataset: An instance of myFasterRCNNDataset for test data.
+        test_dataloader: The DataLoader for the test dataset.
+
+    Methods:
+        _load_pretrain_model(self) -> None:
+            Load the pre-trained subject classification model.
+
+        _load_dataset(self) -> None:
+            Load images and annotation file for testing.
+
+        test_model(self) -> None:
+            Test the pre-trained model on the test dataset.
+
+    """
+
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.main_dir = args.main_dir
         self.score_threshold = args.score_threshold
+        self.sort_crab = Sort()
 
     def _load_pretrain_model(self) -> None:
-        """Load the pretrain subject classification model"""
-
-        # Load the pretrain subject predictor
-        # TODO:deal with different model
+        """
+        Load the pre-trained subject classification model.
+        """
+        # Load the pre-trained subject predictor
+        # TODO: deal with different model
         self.trained_model = torch.load(
+<<<<<<< HEAD
             self.args.model_dir,
             # map_location=torch.device('cpu')
+=======
+            self.args.model_dir, map_location=torch.device("cpu")
+>>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
         )
 
     def _load_dataset(self) -> None:
-        """Load images and annotation file for training"""
+        """
+        Load images and annotation file for testing.
+        """
+        self.test_data = f"{self.main_dir}/images/test/"
+        self.test_label = f"{self.main_dir}/labels/test.json"
 
-        self.valid_data = f"{self.main_dir}/images/test/"
-        self.valid_label = f"{self.main_dir}/labels/test.json"
-
-        self.valid_dataset = myFasterRCNNDataset(
-            self.valid_data, self.valid_label, transforms=get_test_transform()
+        self.test_dataset = myFasterRCNNDataset(
+            self.test_data, self.test_label, transforms=get_test_transform()
         )
 
+<<<<<<< HEAD
         self.valid_dataloader = create_dataloader(self.valid_dataset, 2)
         print(len(self.valid_dataloader))
+=======
+        self.test_dataloader = create_dataloader(self.test_dataset, 1)
+>>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
 
     def test_model(self) -> None:
+        """
+        Test the pre-trained model on the testation dataset.
+
+        If 'sort' is False, object detection is tested via 'test_detection' function.
+        If 'sort' is True, object tracking is tested via 'test_tracking' function.
+
+        Returns:
+            None
+        """
         self._load_pretrain_model()
         self.trained_model.eval()
         self._load_dataset()
@@ -55,13 +101,16 @@ class Detector_Test:
             from _test import test_detection
 
             test_detection(
-                self.valid_dataloader, self.trained_model, self.score_threshold
+                self.test_dataloader, self.trained_model, self.score_threshold
             )
         else:
             from _test import test_tracking
 
             test_tracking(
-                self.valid_dataloader, self.trained_model, self.score_threshold
+                self.test_dataloader,
+                self.trained_model,
+                self.score_threshold,
+                self.sort_crab,
             )
 
 

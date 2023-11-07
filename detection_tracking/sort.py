@@ -1,37 +1,39 @@
 """
-    SORT: A Simple, Online and Realtime Tracker
-    Copyright (C) 2016-2020 Alex Bewley alex@bewley.ai
+SORT: A Simple, Online and Realtime Tracker
+Copyright (C) 2016-2020 Alex Bewley alex@bewley.ai
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+
 from __future__ import print_function
 
 import os
-import numpy as np
+
 import matplotlib
+import numpy as np
 
-matplotlib.use("TkAgg")
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-from skimage import io
-
+import argparse
 import glob
 import time
-import argparse
+
+import matplotlib.patches as patches
+import matplotlib.pyplot as plt
 from filterpy.kalman import KalmanFilter
+from skimage import io
 
 np.random.seed(0)
+matplotlib.use("TkAgg")
 
 
 def linear_assignment(cost_matrix):
@@ -91,7 +93,7 @@ def convert_x_to_bbox(x, score=None):
     """
     w = np.sqrt(x[2] * x[3])
     h = x[2] / w
-    if score == None:
+    if score is None:
         return np.array(
             [x[0] - w / 2.0, x[1] - h / 2.0, x[0] + w / 2.0, x[1] + h / 2.0]
         ).reshape((1, 4))
@@ -103,7 +105,8 @@ def convert_x_to_bbox(x, score=None):
 
 class KalmanBoxTracker(object):
     """
-    This class represents the internal state of individual tracked objects observed as bbox.
+    This class represents the internal state of individual tracked objects
+    observed as bbox.
     """
 
     count = 0
@@ -245,11 +248,14 @@ class Sort(object):
     def update(self, dets=np.empty((0, 5))):
         """
         Params:
-          dets - a numpy array of detections in the format [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
-        Requires: this method must be called once for each frame even with empty detections (use np.empty((0, 5)) for frames without detections).
+          dets - a numpy array of detections in the format
+          [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
+        Requires: this method must be called once for each frame even with
+        empty detections (use np.empty((0, 5)) for frames without detections).
         Returns the a similar array, where the last column is the object ID.
 
-        NOTE: The number of objects returned may differ from the number of detections provided.
+        NOTE: The number of objects returned may differ from the number of
+        detections provided.
         """
         self.frame_count += 1
         # get predicted locations from existing trackers.
@@ -311,7 +317,8 @@ def parse_args():
     )
     parser.add_argument(
         "--max_age",
-        help="Maximum number of frames to keep alive a track without associated detections.",
+        help="""Maximum number of frames to keep alive a track without
+            associated detections.""",
         type=int,
         default=1,
     )
@@ -339,8 +346,12 @@ if __name__ == "__main__":
     if display:
         if not os.path.exists("mot_benchmark"):
             print(
-                "\n\tERROR: mot_benchmark link not found!\n\n    Create a symbolic link to the MOT benchmark\n    (https://motchallenge.net/data/2D_MOT_2015/#download). E.g.:\n\n    $ ln -s /path/to/MOT2015_challenge/2DMOT2015 mot_benchmark\n\n"
+                "\n\tERROR: mot_benchmark link not found!\n\n"
+                "    Create a symbolic link to the MOT benchmark\n"
+                "    (https://motchallenge.net/data/2D_MOT_2015/#download). E.g.:\n\n"
+                "    $ ln -s /path/to/MOT2015_challenge/2DMOT2015 mot_benchmark\n\n"
             )
+
             exit()
         plt.ion()
         fig = plt.figure()

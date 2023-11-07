@@ -1,10 +1,14 @@
 import argparse
 
 import torch
+<<<<<<< HEAD
 import mlflow
 import yaml
 from pathlib import Path
 from datetime import datetime
+=======
+import yaml  # type: ignore
+>>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
 
 from _utils import create_dataloader, get_train_transform, save_model
 from _models import create_faster_rcnn, train_faster_rcnn
@@ -60,7 +64,7 @@ class Dectector_Train:
         """Load a YAML file describing the training setup"""
 
         with open(self.config_file, "r") as f:
-            self.config = yaml.safe_load(f)
+            self.config = yaml.safe_load(f)  # type: dict
 
     def _load_dataset(self) -> None:
         """Load images and annotation file for training"""
@@ -74,8 +78,6 @@ class Dectector_Train:
             self.train_dataset = myFasterRCNNDataset(
                 self.train_data, self.train_label, transforms=get_train_transform()
             )
-
-        print(self.config["batch_size"])
 
         self.train_dataloader = create_dataloader(
             self.train_dataset, self.config["batch_size"]
