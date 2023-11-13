@@ -10,7 +10,7 @@
 #SBATCH -e slurm_array.%N.%A-%a.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-0%5
+#SBATCH --array=0-11%5
 
 #-------
 # NOTE!!
@@ -25,11 +25,22 @@ module load SLEAP
 # ----------------------
 # Input data
 # ----------------------
-# INPUT_DIR=/ceph/zoo/raw/CrabField/ramalhete_2021
-# # TODO: have list here?
+# INPUT_DIR=/ceph/zoo/raw/CrabField/ramalhete_2023
+# # TODO: have list here? change to directory?
 # INPUT_DATA_LIST=($(<input.list))
 INPUT_DATA_LIST=(
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/04.09.2023-Day1/04.09.2023-02-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-01-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-01-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-02-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-02-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-03-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-03-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-04-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-04-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-05-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-05-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-06-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-06-Right.MOV"
 )
 
 # ----------------------
@@ -37,12 +48,12 @@ INPUT_DATA_LIST=(
 # ----------------------
 # location of extracted frames
 OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels
-OUTPUT_SUBDIR="Sep2023_day1_reencoded"
+OUTPUT_SUBDIR="Sep2023_day2_reencoded"
 
 # location of SLURM logs
 LOG_DIR=$OUTPUT_DIR/$OUTPUT_SUBDIR/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
-# can I set SLURM logs location here?
+# TODO: an I set SLURM logs location here?
 # srun -e slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err
 
 # location of reencoded videos
@@ -53,12 +64,12 @@ mkdir -p $REENCODED_VIDEOS_SUBDIR # create if it doesnt exist
 # ---------------------------------
 # Frame extraction parameters
 # -----------------------------------
-PARAM_VIDEO_EXT=MOV
+PARAM_VIDEO_EXT=mp4  # extension of the video frames are extracted from! TODO: derive video extension if not provided?
 PARAM_INI_SAMPLES=500
 PARAM_SCALE=0.5
 PARAM_N_COMPONENTS=5
 PARAM_N_CLUSTERS=5
-PARAM_PER_CLUSTER=10
+PARAM_PER_CLUSTER=4
 
 
 # ---------------------------
@@ -89,15 +100,15 @@ do
     echo "--------"
 
     # Reencode video
-    echo "Rencoding ...."
     # following SLEAP's recommendations
     # https://sleap.ai/help.html#does-my-data-need-to-be-in-a-particular-format
-    filename_no_ext="$(basename "$SAMPLE" | sed 's/\(.*\)\..*/\1/')" # filename without extension
+    echo "Rencoding ...."
 
     # path to reencoded video
+    filename_no_ext="$(basename "$SAMPLE" | sed 's/\(.*\)\..*/\1/')" # filename without extension
     REENCODED_VIDEO_PATH="$REENCODED_VIDEOS_SUBDIR/$filename_no_ext"_RE.mp4
 
-    ffmpeg -version
+    ffmpeg -version  # print version to logs
     ffmpeg -y -i "$SAMPLE" \
     -c:v libx264 \
     -pix_fmt yuv420p \
@@ -125,10 +136,16 @@ do
 
     # copy .err file to go with reencoded video too
     # TODO: make a nicer log, and not dependant on whether frame extract is OK!
-    cp slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err /$REENCODED_VIDEOS_SUBDIR
+    # filename: keep only job ID and name of reencoded video
+    # TODO replace by for loop in {err, out}
+    cp slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err \
+    /$REENCODED_VIDEOS_SUBDIR/slurm_array."$filename_no_ext"_RE.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err
+    cp slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.out \
+    /$REENCODED_VIDEOS_SUBDIR/slurm_array."$filename_no_ext"_RE.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.out
 
     # Move logs for this job to subdir with extracted frames 
-    # TODO: ideally these are moved also if frame extraction fails
+    # TODO: ideally these are moved also if frame extraction fails!
+    # TODO replace by for loop in {err, out}
     mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err /$LOG_DIR
     mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.out /$LOG_DIR
 
