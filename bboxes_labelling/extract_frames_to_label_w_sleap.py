@@ -325,7 +325,7 @@ def extract_frames_to_label_from_video(
             # file naming format: parentdir_videoname_frame_XXX.png
             else:
                 file_path = video_output_dir / Path(
-                    f"{Path(vid_str).parent.stem}_"
+                    # f"{Path(vid_str).parent.stem}_" #----
                     f"{Path(vid_str).stem}_"
                     f"frame_{frame_idx:06d}.png",
                 )
