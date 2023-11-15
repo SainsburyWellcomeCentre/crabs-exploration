@@ -1,39 +1,19 @@
 import argparse
 
 import torch
-<<<<<<< HEAD
-import mlflow
-import yaml
-from pathlib import Path
-from datetime import datetime
-=======
 import yaml  # type: ignore
->>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
+import json
 
-from _utils import create_dataloader, get_train_transform, save_model
+from _utils import (
+    create_dataloader,
+    get_train_transform,
+    save_model,
+    myFasterRCNNDataset,
+)
 from _models import create_faster_rcnn, train_faster_rcnn
 
 # select device (whether GPU or CPU)
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
-# # Create experiment directory
-# MODEL_REGISTRY = Path("experiments")
-# Path(MODEL_REGISTRY).mkdir(exist_ok=True)
-# # Set tracking URI
-# mlflow.set_tracking_uri("file://" + str(MODEL_REGISTRY.absolute()))
-# # set experiment
-# mlflow.set_experiment(experiment_name="baseline")
-
-# EXPERIMENT_NAME = "baseline"
-# RUN_NAME = f"run_{datetime.today()}"
-# print(EXPERIMENT_NAME)
-
-# try:
-#     EXPERIMENT_ID = mlflow.get_experiment_by_name(EXPERIMENT_NAME).experiment_id
-#     print(EXPERIMENT_ID)
-# except:
-#     EXPERIMENT_ID = mlflow.create_experiment(EXPERIMENT_NAME)
-#     print(EXPERIMENT_ID)
 
 
 class Dectector_Train:
@@ -65,19 +45,36 @@ class Dectector_Train:
 
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)  # type: dict
+        print(self.config)
 
     def _load_dataset(self) -> None:
         """Load images and annotation file for training"""
 
-        self.train_data = f"{self.main_dir}/images/train/"
-        self.train_label = f"{self.main_dir}/labels/train.json"
+        self.annotation = f"{self.main_dir}/annotations/VIA_JSON_combined_coco_gen.json"
 
-        if self.model_name == "faster_rcnn":
-            from _utils import myFasterRCNNDataset
+        with open(self.annotation) as json_file:
+            coco_data = json.load(json_file)
 
-            self.train_dataset = myFasterRCNNDataset(
-                self.train_data, self.train_label, transforms=get_train_transform()
-            )
+        self.train_file_paths = []
+        for image_info in coco_data["images"]:
+            image_id = image_info["id"]
+            image_id -= 1
+            image_file = image_info["file_name"]
+            video_file = image_file.split("_")[1]
+
+            if video_file == "09.08.2023-03-Left":
+                continue
+
+            # taking the first 40 frames as training data
+            if image_id % 50 < 40:
+                self.train_file_paths.append(image_file)
+
+        self.train_dataset = myFasterRCNNDataset(
+            self.main_dir,
+            self.train_file_paths,
+            self.annotation,
+            transforms=get_train_transform(),
+        )
 
         self.train_dataloader = create_dataloader(
             self.train_dataset, self.config["batch_size"]
@@ -132,6 +129,5 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    print(args)
     trainer = Dectector_Train(args)
     trainer.train_model()

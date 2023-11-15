@@ -1,16 +1,13 @@
 import argparse
 import os
+import json
 
 import torch
 from _utils import create_dataloader, get_test_transform, myFasterRCNNDataset
-from sort import Sort
+
 
 # select device (whether GPU or CPU)
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-<<<<<<< HEAD
-# device = "cpu"
-=======
->>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
 
 
 class Detector_Test:
@@ -48,7 +45,7 @@ class Detector_Test:
         self.args = args
         self.main_dir = args.main_dir
         self.score_threshold = args.score_threshold
-        self.sort_crab = Sort()
+        # self.sort_crab = Sort()
 
     def _load_pretrain_model(self) -> None:
         """
@@ -57,31 +54,42 @@ class Detector_Test:
         # Load the pre-trained subject predictor
         # TODO: deal with different model
         self.trained_model = torch.load(
-<<<<<<< HEAD
             self.args.model_dir,
             # map_location=torch.device('cpu')
-=======
-            self.args.model_dir, map_location=torch.device("cpu")
->>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
         )
 
     def _load_dataset(self) -> None:
-        """
-        Load images and annotation file for testing.
-        """
-        self.test_data = f"{self.main_dir}/images/test/"
-        self.test_label = f"{self.main_dir}/labels/test.json"
+        """Load images and annotation file for training"""
+
+        self.annotation = f"{self.main_dir}/annotations/VIA_JSON_combined_coco_gen.json"
+
+        with open(self.annotation) as json_file:
+            coco_data = json.load(json_file)
+
+        self.test_file_paths = []
+        for image_info in coco_data["images"]:
+            image_id = image_info["id"]
+            image_id -= 1
+            image_file = image_info["file_name"]
+            video_file = image_file.split("_")[1]
+
+            if video_file == "09.08.2023-03-Left":
+                continue
+
+            # taking the first 40 frames as training data
+            if image_id % 50 < 40:
+                continue
+            else:
+                self.test_file_paths.append(image_file)
 
         self.test_dataset = myFasterRCNNDataset(
-            self.test_data, self.test_label, transforms=get_test_transform()
+            self.main_dir,
+            self.test_file_paths,
+            self.annotation,
+            transforms=get_test_transform(),
         )
 
-<<<<<<< HEAD
-        self.valid_dataloader = create_dataloader(self.valid_dataset, 2)
-        print(len(self.valid_dataloader))
-=======
         self.test_dataloader = create_dataloader(self.test_dataset, 1)
->>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
 
     def test_model(self) -> None:
         """
@@ -102,15 +110,6 @@ class Detector_Test:
 
             test_detection(
                 self.test_dataloader, self.trained_model, self.score_threshold
-            )
-        else:
-            from _test import test_tracking
-
-            test_tracking(
-                self.test_dataloader,
-                self.trained_model,
-                self.score_threshold,
-                self.sort_crab,
             )
 
 

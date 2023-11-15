@@ -7,6 +7,11 @@ from PIL import Image
 from pycocotools.coco import COCO
 
 
+# Define a function to get the full file path from the file name
+def get_file_path(main_dir, file_name):
+    return os.path.join(main_dir, "images", file_name)
+
+
 class myFasterRCNNDataset(torch.utils.data.Dataset):
     """Custom Pytorch dataset class for Faster RCNN object detection
     using COCO-style annotation.
@@ -21,6 +26,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         A function to apply to the images
 
     Attributes
+
     ----------
     data_dir : str
         Path to the directory containing image data.
@@ -37,8 +43,9 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
 
     """
 
-    def __init__(self, data_dir, annotation, transforms=None):
-        self.data_dir = data_dir
+    def __init__(self, main_dir, train_file_paths, annotation, transforms=None):
+        self.main_dir = main_dir
+        self.file_paths = train_file_paths
         self.coco = COCO(annotation)
         self.transforms = transforms
         self.ids = list(sorted(self.coco.imgs.keys()))
@@ -67,17 +74,23 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         -    'iscrowd': Flag indicating whether the object is a crowd.
         """
 
-        img_id = self.ids[index]
+        file_name = self.file_paths[index]
+        file_path = get_file_path(self.main_dir, file_name)
+        img = Image.open(file_path).convert("RGB")
+
+        # Get the image ID based on the file name
+        img_id = [
+            img_info["id"]
+            for img_info in self.coco.imgs.values()
+            if img_info["file_name"] == file_name
+        ][0]
+
+        # Get the annotations for the image
         ann_ids = self.coco.getAnnIds(imgIds=img_id)
         coco_annotation = self.coco.loadAnns(ann_ids)
 
-        # If there are no annotations, skip this frame (unlabeled frame)
         if not coco_annotation:
             return None
-
-        img_info = self.coco.loadImgs(ids=img_id)[0]
-        img_path = os.path.join(self.data_dir, img_info["file_name"])
-        img = Image.open(img_path).convert("RGB")
 
         num_objs = len(coco_annotation)
 
@@ -98,6 +111,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         areas = []
         for i in range(num_objs):
             areas.append(coco_annotation[i]["area"])
+
         areas = torch.as_tensor(areas, dtype=torch.float32)
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
@@ -121,7 +135,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
         ----------
             int: The number of samples in the dataset
         """
-        return len(self.ids)
+        return len(self.file_paths)
 
 
 def coco_category():
@@ -132,10 +146,7 @@ def coco_category():
     return COCO_INSTANCE_CATEGORY_NAMES
 
 
-<<<<<<< HEAD
 # collate_fn needs for batch
-=======
->>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
 def collate_fn(batch):
     """
     Collates a batch of samples into a structured format.
@@ -222,10 +233,6 @@ def create_dataloader(
         shuffle=True,
         num_workers=4,
         collate_fn=collate_fn,
-<<<<<<< HEAD
-=======
-        pin_memory=True,
->>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
     )
     return data_loader
 
@@ -252,7 +259,7 @@ def save_model(model: torch.nn.Module):
 
     """
     current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"model_{current_time}.pt"
+    filename = f"model/model_{current_time}.pt"
     torch.save(model, filename)
     print("Model Saved")
 
@@ -279,40 +286,16 @@ def get_train_transform() -> transforms.Compose:
     >>> dataset = MyDataset(transform=train_transform)
     """
     # TODO: testing with different transforms
-<<<<<<< HEAD
     custom_transforms = []
     # custom_transforms.append(transforms.Resize((1080, 1920)))
     custom_transforms.append(transforms.ColorJitter(brightness=0.5, hue=0.3))
     custom_transforms.append(transforms.ToTensor())
-=======
-    custom_transforms = [
-        transforms.ColorJitter(brightness=0.5, hue=0.3),
-        transforms.ToTensor(),
-    ]
->>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
 
     return transforms.Compose(custom_transforms)
 
 
-<<<<<<< HEAD
 def get_test_transform():
     # TODO: testing with different transforms
-=======
-def get_test_transform() -> transforms.Compose:
-    """
-    Get a composed transformation for test data.
-
-    Returns
-    -------
-    transforms.Compose
-        A composed transformation that includes the specified operations.
-
-    Examples
-    --------
-    >>> test_transform = get_test_transform()
-    >>> dataset = MyDataset(transform=test_transform)
-    """
->>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
     custom_transforms = []
     custom_transforms.append(transforms.ToTensor())
 

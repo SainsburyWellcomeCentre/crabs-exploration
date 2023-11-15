@@ -1,8 +1,9 @@
 import cv2
-import numpy as np
 import torch
 import torchvision
 from _utils import coco_category
+import numpy as np
+
 from sort import Sort
 
 
@@ -121,11 +122,6 @@ def test_tracking(
                 cv2.imwrite(f"imgs{imgs_id}.jpg", image_with_boxes)
 
 
-<<<<<<< HEAD
-def test_detection(valid_dataloader, trained_model, score_threshold) -> None:
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    # device = "cpu"
-=======
 def test_detection(
     test_dataloader: torch.utils.data.DataLoader, trained_model, score_threshold: float
 ) -> None:
@@ -142,7 +138,6 @@ def test_detection(
     """
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
->>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
 
     total_correct_boxes = 0
     total_gt_boxes = 0
@@ -151,12 +146,8 @@ def test_detection(
 
     with torch.no_grad():
         imgs_id = 0
-<<<<<<< HEAD
-        for imgs, annotations in valid_dataloader:
-            # print(imgs)
-=======
         for imgs, annotations in test_dataloader:
->>>>>>> 71b4bca93fd75a603e7df54162be0265b36de17c
+            # print(imgs)
             imgs_id += 1
             imgs = list(img.to(device) for img in imgs)
             targets = [{k: v.to(device) for k, v in t.items()} for t in annotations]
@@ -243,7 +234,7 @@ def test_detection(
                                 2,
                             )
 
-                        cv2.imwrite(f"imgs{imgs_id}.jpg", image_with_boxes)
+                        cv2.imwrite(f"/result/imgs{imgs_id}.jpg", image_with_boxes)
 
             for target, detection in zip(targets, detections):
                 gt_boxes = target["boxes"]

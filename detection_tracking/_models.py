@@ -13,8 +13,6 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
-from _utils import coco_category
-
 
 def create_faster_rcnn(num_classes: int, coco_model: bool = True) -> nn.Module:
     """Create faster rcnn model for the training
@@ -57,7 +55,7 @@ def train_faster_rcnn(
 
     Parameters
     ----------
-    config 
+    config
         config including hyperparameters
     model: nn.Module
         the created model for the training
@@ -74,7 +72,7 @@ def train_faster_rcnn(
 
     # select device (whether GPU or CPU)
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    
+
     # setup tensorboard stuff
     layout = {
         "Multi": {
@@ -84,7 +82,6 @@ def train_faster_rcnn(
     }
     writer = SummaryWriter(f"/tmp/tensorboard/{int(time.time())}")
     writer.add_custom_scalars(layout)
-
 
     def log_scalar(name, value, epoch):
         """Log a scalar value to both MLflow and TensorBoard"""
@@ -98,7 +95,7 @@ def train_faster_rcnn(
     try:
         EXPERIMENT_ID = mlflow.get_experiment_by_name(EXPERIMENT_NAME).experiment_id
         print(EXPERIMENT_ID)
-    except:
+    except mlflow.exception.MlflowException:
         EXPERIMENT_ID = mlflow.create_experiment(EXPERIMENT_NAME)
         print(EXPERIMENT_ID)
 
@@ -107,8 +104,8 @@ def train_faster_rcnn(
         mlflow.log_param("n_epoch", config["num_epochs"])
 
         # # Create a SummaryWriter to write TensorBoard events locally
-        output_dir = dirpath = tempfile.mkdtemp()
-                   
+        output_dir = tempfile.mkdtemp()
+
         for epoch in range(config["num_epochs"]):
             print(epoch)
             model.train()
@@ -116,7 +113,9 @@ def train_faster_rcnn(
             for batch_idx, (imgs, annotations) in enumerate(train_dataloader):
                 i += 1
                 imgs = list(img.to(device) for img in imgs)
-                annotations = [{k: v.to(device) for k, v in t.items()} for t in annotations]
+                annotations = [
+                    {k: v.to(device) for k, v in t.items()} for t in annotations
+                ]
 
                 loss_dict = model(imgs, annotations)
                 losses = sum(loss for loss in loss_dict.values())
@@ -128,7 +127,7 @@ def train_faster_rcnn(
                 print(f"Iteration: {i}/{len(train_dataloader)}, Loss: {losses}")
 
             log_scalar("total_loss/train", losses, epoch)
-        
+
         # Upload the TensorBoard event logs as a run artifact
         print("Uploading TensorBoard events as a run artifact...")
         mlflow.log_artifacts(output_dir, artifact_path="events")
