@@ -29,31 +29,32 @@ module load SLEAP
 # # TODO: have list here? change to directory?
 # INPUT_DATA_LIST=($(<input.list))
 INPUT_DATA_LIST=(
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-01-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-01-Right.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-02-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-02-Right.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-03-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-03-Right.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-04-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-04-Right.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-05-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-05-Right.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-06-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/05.09.2023-Day2/05.09.2023-06-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-01-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-01-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-02-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-02-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-03-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-03-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-04-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-04-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-05-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-05-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-06-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-06-Right.MOV"
 )
 
 # ----------------------
 # Output data location
 # ----------------------
 # location of extracted frames
+# TODO: derive subdir name from parent dir
 OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels
-OUTPUT_SUBDIR="Sep2023_day2_reencoded"
+OUTPUT_SUBDIR="Sep2023_day3_reencoded"
 
 # location of SLURM logs
 LOG_DIR=$OUTPUT_DIR/$OUTPUT_SUBDIR/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
-# TODO: an I set SLURM logs location here?
+# TODO: can I set SLURM logs location here?
 # srun -e slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err
 
 # location of reencoded videos
