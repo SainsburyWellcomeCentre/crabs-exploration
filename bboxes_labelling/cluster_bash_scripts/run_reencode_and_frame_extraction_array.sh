@@ -139,13 +139,17 @@ do
     # TODO: make a nicer log, and not dependant on whether frame extract is OK!
     # filename: {reencoded video name}.{slurm_array}.{slurm_job_id} 
     for ext in err out
+    do
         cp slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$ext \
         /$REENCODED_VIDEOS_SUBDIR/"$filename_no_ext"_RE.slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$ext
+    done
 
     # Move logs for this job to subdir with extracted frames 
     # TODO: ideally these are moved also if frame extraction fails!
     for ext in err out
+    do
         mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$ext /$LOG_DIR
+    done
 
     
 done
