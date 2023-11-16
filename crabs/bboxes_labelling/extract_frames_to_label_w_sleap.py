@@ -554,7 +554,7 @@ def argument_parser():
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def main():
     # parse input arguments
     args = argument_parser()
     logging.info("---------------------------")
@@ -563,3 +563,7 @@ if __name__ == "__main__":
 
     # run frame extraction
     compute_and_extract_frames_to_label(args)
+
+
+if __name__ == "__main__":
+    main()

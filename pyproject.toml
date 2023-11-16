@@ -48,6 +48,14 @@ dev = [
   "setuptools_scm",
 ]
 
+[project.scripts]
+# reencode-videos = "crabs."
+extract-frames = "crabs.bboxes_labelling.extract_frames_to_label_w_sleap:main"
+# combine-and-format-annotations
+# verify-videos-and-extract-samples
+# train-models
+# evaluate-models
+
 [build-system]
 requires = [
     "setuptools>=45",
