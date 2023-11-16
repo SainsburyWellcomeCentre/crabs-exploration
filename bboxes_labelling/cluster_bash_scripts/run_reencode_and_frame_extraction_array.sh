@@ -10,7 +10,7 @@
 #SBATCH -e slurm_array.%N.%A-%a.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-11%5
+#SBATCH --array=0-2%5
 
 #-------
 # NOTE!!
@@ -29,18 +29,9 @@ module load SLEAP
 # # TODO: have list here? change to directory?
 # INPUT_DATA_LIST=($(<input.list))
 INPUT_DATA_LIST=(
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-01-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-01-Right.MOV"
     "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-02-Left.MOV"
     "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-02-Right.MOV"
     "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-03-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-03-Right.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-04-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-04-Right.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-05-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-05-Right.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-06-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-06-Right.MOV"
 )
 
 # ----------------------
