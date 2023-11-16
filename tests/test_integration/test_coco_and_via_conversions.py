@@ -4,11 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from bboxes_labelling.annotations_utils import (
-    combine_multiple_via_jsons,
-    convert_via_json_to_coco,
-    read_json_file,
-)
+import pdb
+
+from crabs.bboxes_labelling.annotations_utils import (
+    combine_multiple_via_jsons, convert_via_json_to_coco, read_json_file)
 
 
 @pytest.fixture()
@@ -22,7 +21,7 @@ def via_json_1() -> str:
     """
     # Return path to sample VIA (Visual Image Annotator) JSON file 1
     return str(
-        Path(__file__).resolve().parent / "data" / "COCO_VIA_JSONS/VIA_JSON_1.json",
+        Path(__file__).resolve().parents[1] / "data" / "COCO_VIA_JSONS/VIA_JSON_1.json",
     )
 
 
@@ -37,7 +36,7 @@ def via_json_2() -> str:
     """
     # Return path to sample VIA JSON file 2
     return str(
-        Path(__file__).resolve().parent / "data" / "COCO_VIA_JSONS/VIA_JSON_2.json",
+        Path(__file__).resolve().parents[1] / "data" / "COCO_VIA_JSONS/VIA_JSON_2.json",
     )
 
 
@@ -267,7 +266,8 @@ def test_coco_generated_from_via_json(
     coco_category_ID = 1
     coco_category_name = "crab"
     coco_supercategory_name = "animal"
-
+    pdb.set_trace()
+    
     # Convert via_json_file to COCO
     coco_out_fullpath = convert_via_json_to_coco(
         request.getfixturevalue(via_json_file),
@@ -328,6 +328,7 @@ def test_coco_generated_from_via_json(
         reg = img_dict_in_via["regions"][ann_idx_per_img]
         w_from_via = reg["shape_attributes"]["width"]
         h_from_via = reg["shape_attributes"]["height"]
+        pdb.set_trace()
         bbox_from_via = [
             reg["shape_attributes"]["x"],
             reg["shape_attributes"]["y"],
@@ -351,4 +352,5 @@ def test_coco_generated_from_via_json(
         assert annotation_dict["area"] == w_from_via * h_from_via
 
         # Update annotation index for next iteration
+        ann_idx_per_img += 1
         ann_idx_per_img += 1
