@@ -4,9 +4,11 @@ from pathlib import Path
 
 import pytest
 
-
 from crabs.bboxes_labelling.annotations_utils import (
-    combine_multiple_via_jsons, convert_via_json_to_coco, read_json_file)
+    combine_multiple_via_jsons,
+    convert_via_json_to_coco,
+    read_json_file,
+)
 
 
 @pytest.fixture()
@@ -20,7 +22,9 @@ def via_json_1() -> str:
     """
     # Return path to sample VIA (Visual Image Annotator) JSON file 1
     return str(
-        Path(__file__).resolve().parents[1] / "data" / "COCO_VIA_JSONS/VIA_JSON_1.json",
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "COCO_VIA_JSONS/VIA_JSON_1.json",
     )
 
 
@@ -35,7 +39,9 @@ def via_json_2() -> str:
     """
     # Return path to sample VIA JSON file 2
     return str(
-        Path(__file__).resolve().parents[1] / "data" / "COCO_VIA_JSONS/VIA_JSON_2.json",
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "COCO_VIA_JSONS/VIA_JSON_2.json",
     )
 
 
@@ -79,10 +85,14 @@ def test_via_json_combine(
 
     # check values taken from the first file to combine:
     # VIA settings
-    assert via_json_combined_dict["_via_settings"] == via_json_1_dict["_via_settings"]
+    assert (
+        via_json_combined_dict["_via_settings"]
+        == via_json_1_dict["_via_settings"]
+    )
     # VIA attributes
     assert (
-        via_json_combined_dict["_via_attributes"] == via_json_1_dict["_via_attributes"]
+        via_json_combined_dict["_via_attributes"]
+        == via_json_1_dict["_via_attributes"]
     )
     # data format version
     assert (
@@ -98,7 +108,8 @@ def test_via_json_combine(
     ]:
         for ky in img_metadata_dict:
             assert (
-                img_metadata_dict[ky] == via_json_combined_dict["_via_img_metadata"][ky]
+                img_metadata_dict[ky]
+                == via_json_combined_dict["_via_img_metadata"][ky]
             )
 
     # Check the number of images in the combined JSON is the sum of the number
@@ -113,7 +124,8 @@ def test_via_json_combine(
         via_json_2_dict["_via_image_id_list"],
     ]:
         assert all(
-            x in via_json_combined_dict["_via_image_id_list"] for x in img_id_list
+            x in via_json_combined_dict["_via_image_id_list"]
+            for x in img_id_list
         )
 
 
@@ -234,7 +246,8 @@ def test_via_json_combine_project_name(
 
     # check project name is as specified
     assert (
-        via_json_combined_dict["_via_settings"]["project"]["name"] == via_project_name
+        via_json_combined_dict["_via_settings"]["project"]["name"]
+        == via_project_name
     )
 
 
@@ -265,7 +278,7 @@ def test_coco_generated_from_via_json(
     coco_category_ID = 1
     coco_category_name = "crab"
     coco_supercategory_name = "animal"
-    
+
     # Convert via_json_file to COCO
     coco_out_fullpath = convert_via_json_to_coco(
         request.getfixturevalue(via_json_file),
@@ -280,7 +293,10 @@ def test_coco_generated_from_via_json(
     assert len(coco_json_dict["categories"]) == 1
     assert coco_json_dict["categories"][0]["id"] == coco_category_ID
     assert coco_json_dict["categories"][0]["name"] == coco_category_name
-    assert coco_json_dict["categories"][0]["supercategory"] == coco_supercategory_name
+    assert (
+        coco_json_dict["categories"][0]["supercategory"]
+        == coco_supercategory_name
+    )
 
     # We assume keys in VIA's metadata list are sorted in increasing image ID
     # (ID starts from 1)
@@ -294,12 +310,17 @@ def test_coco_generated_from_via_json(
         ky_in_via_img_metadata = list_keys_via_img_metadata[img_dict["id"] - 1]
 
         # Check key in VIA image metadata matches COCO filename
-        assert Path(img_dict["file_name"]).stem == Path(ky_in_via_img_metadata).stem
+        assert (
+            Path(img_dict["file_name"]).stem
+            == Path(ky_in_via_img_metadata).stem
+        )
 
         # Check VIA filename matches COCO filename
         assert (
             img_dict["file_name"]
-            == via_json_dict["_via_img_metadata"][ky_in_via_img_metadata]["filename"]
+            == via_json_dict["_via_img_metadata"][ky_in_via_img_metadata][
+                "filename"
+            ]
         )
 
     # Compare annotations between VIA JSON and COCO file
@@ -315,7 +336,9 @@ def test_coco_generated_from_via_json(
 
         # Get image info from VIA using the "image_id" from the COCO annotation
         ky_in_via_img_metadata = list_keys_via_img_metadata[img_id - 1]
-        img_dict_in_via = via_json_dict["_via_img_metadata"][ky_in_via_img_metadata]
+        img_dict_in_via = via_json_dict["_via_img_metadata"][
+            ky_in_via_img_metadata
+        ]
 
         # Reset annotation index per image if image_id changes
         if img_id_previous_image != img_id:

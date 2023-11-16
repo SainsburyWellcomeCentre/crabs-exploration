@@ -2,8 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import \
-    get_list_of_sleap_videos
+from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
+    get_list_of_sleap_videos,
+)
 
 
 @pytest.fixture(autouse=True, scope="class")
