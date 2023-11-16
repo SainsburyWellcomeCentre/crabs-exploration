@@ -96,5 +96,6 @@ venv/
 /pose estimation/top_down_model_4k_230713/*
 
 # include mp4 files in tests/data dir
+# TODO: move videos for testing to GIN?
 !/tests/data/**/*.mp4
 !/tests/data/**/*.json
