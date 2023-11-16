@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-import pdb
 
 from crabs.bboxes_labelling.annotations_utils import (
     combine_multiple_via_jsons, convert_via_json_to_coco, read_json_file)
@@ -266,7 +265,6 @@ def test_coco_generated_from_via_json(
     coco_category_ID = 1
     coco_category_name = "crab"
     coco_supercategory_name = "animal"
-    pdb.set_trace()
     
     # Convert via_json_file to COCO
     coco_out_fullpath = convert_via_json_to_coco(
@@ -328,7 +326,7 @@ def test_coco_generated_from_via_json(
         reg = img_dict_in_via["regions"][ann_idx_per_img]
         w_from_via = reg["shape_attributes"]["width"]
         h_from_via = reg["shape_attributes"]["height"]
-        pdb.set_trace()
+
         bbox_from_via = [
             reg["shape_attributes"]["x"],
             reg["shape_attributes"]["y"],
@@ -352,5 +350,4 @@ def test_coco_generated_from_via_json(
         assert annotation_dict["area"] == w_from_via * h_from_via
 
         # Update annotation index for next iteration
-        ann_idx_per_img += 1
         ann_idx_per_img += 1
