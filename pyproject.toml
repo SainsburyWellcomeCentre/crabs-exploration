@@ -34,7 +34,7 @@ dev = [
   "pytest",
   "pytest-cov",
   "coverage",
-  "tox", # >=4 ? 
+  "tox", # >=4 ?
   "black",
   "mypy",
   "pre-commit",
@@ -85,6 +85,9 @@ line-length = 79
 exclude = ["__init__.py","build",".eggs"]
 select = ["I", "E", "F"]
 fix = true
+ignore = [
+    'E501', # line too long: should be handled by black
+]
 # force-exclude = true
 # ignore = [
 #     "D203", # no-blank-line-before-class
