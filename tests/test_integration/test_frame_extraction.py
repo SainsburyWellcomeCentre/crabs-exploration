@@ -9,7 +9,7 @@ from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
 
 @pytest.fixture(autouse=True, scope="class")
 def input_video_dir():
-    return Path(__file__).parent / "data" / "clips"
+    return Path(__file__).parents[1] / "data" / "clips"
 
 
 class TestsFrameExtraction:
