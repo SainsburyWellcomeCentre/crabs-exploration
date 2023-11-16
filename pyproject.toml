@@ -24,7 +24,9 @@ classifiers = [
 dependencies = [
     "opencv-python",
     "sleap[pypi]==1.3.3",
+    "typer",
 ]
+
 
 
 
@@ -41,8 +43,8 @@ dev = [
   "setuptools_scm",
 ]
 
-# [project.scripts]
-# startwazp = "wazp.app:startwazp"
+[project.scripts]
+sams-great-tool = "crabs.bboxes_labelling.sams_great_tool:main"
 
 [build-system]
 requires = [
