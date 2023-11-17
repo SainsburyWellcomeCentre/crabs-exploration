@@ -3,13 +3,14 @@ import json
 
 import torch
 import yaml  # type: ignore
-from detection_utils import (
+from models import create_faster_rcnn, train_faster_rcnn
+
+from .detection_utils import (
     create_dataloader,
     get_train_transform,
     myFasterRCNNDataset,
     save_model,
 )
-from models import create_faster_rcnn, train_faster_rcnn
 
 # select device (whether GPU or CPU)
 device = (

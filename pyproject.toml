@@ -24,7 +24,6 @@ classifiers = [
 dependencies = [
     "opencv-python",
     "sleap[pypi]==1.3.3",
-    "torch",
 ]
 
 [project.optional-dependencies]
@@ -103,7 +102,7 @@ ignore = [
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py{39,310,311}
+envlist = py{39,310}
 isolated_build = True
 
 [gh-actions]
