@@ -1,6 +1,9 @@
 from pathlib import Path
 
-from annotations_utils import combine_multiple_via_jsons, convert_via_json_to_coco
+from annotations_utils import (
+    combine_multiple_via_jsons,
+    convert_via_json_to_coco,
+)
 
 
 def main(

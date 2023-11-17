@@ -1,7 +1,8 @@
 import argparse
-import cv2
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
+import cv2
 
 
 def real_time_to_frame_number(
@@ -44,7 +45,11 @@ def create_clip(
 
     fourcc = cv2.VideoWriter_fourcc(*"avc1")
     out = cv2.VideoWriter(
-        output_file, fourcc, video_fps, (int(cap.get(3)), int(cap.get(4))), isColor=True
+        output_file,
+        fourcc,
+        video_fps,
+        (int(cap.get(3)), int(cap.get(4))),
+        isColor=True,
     )
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
@@ -111,7 +116,10 @@ if __name__ == "__main__":
     args = argument_parser()
 
     input_file = args.video_path
-    file_name = f"{Path(args.video_path).parent.stem}_" f"{Path(args.video_path).stem}_"
+    file_name = (
+        f"{Path(args.video_path).parent.stem}_"
+        f"{Path(args.video_path).stem}_"
+    )
 
     start_real_time = datetime.strptime(args.start_time, "%H:%M:%S")
     event_time = datetime.strptime(args.event_time, "%H:%M:%S")
@@ -120,8 +128,12 @@ if __name__ == "__main__":
     # Convert event times to frame numbers
     cap = cv2.VideoCapture(args.video_path)
     video_fps = cap.get(cv2.CAP_PROP_FPS)
-    start_frame = real_time_to_frame_number(start_real_time, video_fps, start_real_time)
-    event_frame = real_time_to_frame_number(event_time, video_fps, start_real_time)
+    start_frame = real_time_to_frame_number(
+        start_real_time, video_fps, start_real_time
+    )
+    event_frame = real_time_to_frame_number(
+        event_time, video_fps, start_real_time
+    )
     after_event_frame = real_time_to_frame_number(
         after_event_time, video_fps, start_real_time
     )
@@ -134,10 +146,14 @@ if __name__ == "__main__":
 
     # Create event clip
     event_clip = f"{args.out_path}/{file_name}_event.mp4"
-    create_clip(args.video_path, event_frame, after_event_frame - 1, event_clip)
+    create_clip(
+        args.video_path, event_frame, after_event_frame - 1, event_clip
+    )
 
     # Create post-event clip
     post_event_clip = f"{args.out_path}/{file_name}_post_event.mp4"
-    create_clip(args.video_path, after_event_frame, total_frames - 1, post_event_clip)
+    create_clip(
+        args.video_path, after_event_frame, total_frames - 1, post_event_clip
+    )
 
     print("Clips created successfully!")
