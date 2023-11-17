@@ -34,9 +34,7 @@ jobs:
         include:
           - os: macos-latest
             python-version: "3.10"
-
     steps:
-      # Run tests
       - uses: neuroinformatics-unit/actions/test@v2
         with:
           python-version: ${{ matrix.python-version }}
