@@ -1,19 +1,20 @@
 import argparse
+import json
 
 import torch
 import yaml  # type: ignore
-import json
-
-from _utils import (
+from models import create_faster_rcnn, train_faster_rcnn
+from detection_utils import (
     create_dataloader,
     get_train_transform,
-    save_model,
     myFasterRCNNDataset,
+    save_model,
 )
-from _models import create_faster_rcnn, train_faster_rcnn
 
 # select device (whether GPU or CPU)
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+device = (
+    torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+)
 
 
 class Dectector_Train:
@@ -50,7 +51,9 @@ class Dectector_Train:
     def _load_dataset(self) -> None:
         """Load images and annotation file for training"""
 
-        self.annotation = f"{self.main_dir}/annotations/VIA_JSON_combined_coco_gen.json"
+        self.annotation = (
+            f"{self.main_dir}/annotations/VIA_JSON_combined_coco_gen.json"
+        )
 
         with open(self.annotation) as json_file:
             coco_data = json.load(json_file)
@@ -107,6 +110,11 @@ class Dectector_Train:
             save_model(trained_model)
 
 
+def main(args):
+    trainer = Dectector_Train(args)
+    trainer.train_model()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -128,6 +136,4 @@ if __name__ == "__main__":
         help="the model to use to train the object detection. Options: faster_rcnn",
     )
     args = parser.parse_args()
-
-    trainer = Dectector_Train(args)
-    trainer.train_model()
+    main(args)

@@ -1,13 +1,18 @@
 import argparse
-import os
 import json
+import os
 
 import torch
-from _utils import create_dataloader, get_test_transform, myFasterRCNNDataset
-
+from detection_utils import (
+    create_dataloader,
+    get_test_transform,
+    myFasterRCNNDataset,
+)
 
 # select device (whether GPU or CPU)
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+device = (
+    torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+)
 
 
 class Detector_Test:
@@ -61,7 +66,9 @@ class Detector_Test:
     def _load_dataset(self) -> None:
         """Load images and annotation file for training"""
 
-        self.annotation = f"{self.main_dir}/annotations/VIA_JSON_combined_coco_gen.json"
+        self.annotation = (
+            f"{self.main_dir}/annotations/VIA_JSON_combined_coco_gen.json"
+        )
 
         with open(self.annotation) as json_file:
             coco_data = json.load(json_file)

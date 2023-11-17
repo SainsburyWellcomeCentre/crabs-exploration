@@ -9,7 +9,9 @@ import torchvision.transforms as transforms
 from sort import Sort
 
 # select device (whether GPU or CPU)
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+device = (
+    torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+)
 
 
 class Detector_Inference:
@@ -118,7 +120,9 @@ class Detector_Inference:
             normalised difference between the blurred frame f and
             the mean blurred frame
         """
-        return (((blurred_frame - mean_blurred_frame) / max_abs_blurred_frame) + 1) / 2
+        return (
+            ((blurred_frame - mean_blurred_frame) / max_abs_blurred_frame) + 1
+        ) / 2
 
     def compute_motion_frame(
         self,
@@ -156,10 +160,12 @@ class Detector_Inference:
             0,
         )
         # compute the background subtracted for frame_idx + delta
-        background_subtracted_frame_delta = self.compute_background_subtracted_frame(
-            blurred_frame_delta,
-            mean_blurred_frame,
-            max_abs_blurred_frame,
+        background_subtracted_frame_delta = (
+            self.compute_background_subtracted_frame(
+                blurred_frame_delta,
+                mean_blurred_frame,
+                max_abs_blurred_frame,
+            )
         )
 
         # compute the motion channel for frame_idx
@@ -167,7 +173,9 @@ class Detector_Inference:
             background_subtracted_frame_delta - background_subtracted_frame,
         )
 
-    def __inference(self, final_frame: np.ndarray, frame: np.ndarray) -> np.ndarray:
+    def __inference(
+        self, final_frame: np.ndarray, frame: np.ndarray
+    ) -> np.ndarray:
         """
         Perform inference on a single frame of the video.
 
@@ -222,7 +230,9 @@ class Detector_Inference:
         frame_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap_fps = video.get(cv2.CAP_PROP_FPS)
 
-        video_file = f"{Path(self.vid_dir).parent.stem}_" f"{Path(self.vid_dir).stem}_"
+        video_file = (
+            f"{Path(self.vid_dir).parent.stem}_" f"{Path(self.vid_dir).stem}_"
+        )
 
         output_file = f"{video_file}_output_video.mp4"
         output_codec = cv2.VideoWriter_fourcc(*"mp4v")
@@ -280,13 +290,18 @@ class Detector_Inference:
                     frame, [5, 5], 0
                 )
 
-                background_subtracted_frame = self.compute_background_subtracted_frame(
-                    blurred_frame, mean_blurred_frame, max_abs_blurred_frame
+                background_subtracted_frame = (
+                    self.compute_background_subtracted_frame(
+                        blurred_frame,
+                        mean_blurred_frame,
+                        max_abs_blurred_frame,
+                    )
                 )
 
                 # Compute motion channel using the updated mean and max_abs values
                 video.set(
-                    cv2.CAP_PROP_POS_FRAMES, video.get(cv2.CAP_PROP_POS_FRAMES) + 10
+                    cv2.CAP_PROP_POS_FRAMES,
+                    video.get(cv2.CAP_PROP_POS_FRAMES) + 10,
                 )
                 success_delta, frame_delta = video.read()
                 if not success_delta:

@@ -71,13 +71,23 @@ def train_faster_rcnn(
     """
 
     # select device (whether GPU or CPU)
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = (
+        torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
 
     # setup tensorboard stuff
     layout = {
         "Multi": {
-            "recon_loss": ["Multiline", ["recon_loss/train", "recon_loss/validation"]],
-            "pred_loss": ["Multiline", ["pred_loss/train", "pred_loss/validation"]],
+            "recon_loss": [
+                "Multiline",
+                ["recon_loss/train", "recon_loss/validation"],
+            ],
+            "pred_loss": [
+                "Multiline",
+                ["pred_loss/train", "pred_loss/validation"],
+            ],
         },
     }
     writer = SummaryWriter(f"/tmp/tensorboard/{int(time.time())}")
@@ -93,7 +103,9 @@ def train_faster_rcnn(
     print(EXPERIMENT_NAME)
 
     try:
-        EXPERIMENT_ID = mlflow.get_experiment_by_name(EXPERIMENT_NAME).experiment_id
+        EXPERIMENT_ID = mlflow.get_experiment_by_name(
+            EXPERIMENT_NAME
+        ).experiment_id
         print(EXPERIMENT_ID)
     except mlflow.exception.MlflowException:
         EXPERIMENT_ID = mlflow.create_experiment(EXPERIMENT_NAME)
@@ -114,7 +126,8 @@ def train_faster_rcnn(
                 i += 1
                 imgs = list(img.to(device) for img in imgs)
                 annotations = [
-                    {k: v.to(device) for k, v in t.items()} for t in annotations
+                    {k: v.to(device) for k, v in t.items()}
+                    for t in annotations
                 ]
 
                 loss_dict = model(imgs, annotations)
@@ -124,7 +137,9 @@ def train_faster_rcnn(
                 losses.backward()
                 optimizer.step()
 
-                print(f"Iteration: {i}/{len(train_dataloader)}, Loss: {losses}")
+                print(
+                    f"Iteration: {i}/{len(train_dataloader)}, Loss: {losses}"
+                )
 
             log_scalar("total_loss/train", losses, epoch)
 

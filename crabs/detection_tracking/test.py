@@ -1,9 +1,8 @@
 import cv2
+import numpy as np
 import torch
 import torchvision
-from _utils import coco_category
-import numpy as np
-
+from detection_utils import coco_category
 from sort import Sort
 
 
@@ -25,7 +24,11 @@ def test_tracking(
     Returns:
         None
     """
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = (
+        torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
 
     coco_list = coco_category()
 
@@ -46,7 +49,9 @@ def test_tracking(
 
                 target_boxes = [
                     [(i[0], i[1]), (i[2], i[3])]
-                    for i in list(label["boxes"].detach().cpu().detach().numpy())
+                    for i in list(
+                        label["boxes"].detach().cpu().detach().numpy()
+                    )
                 ]
                 if pred_score:
                     pred_sort = []
@@ -54,16 +59,24 @@ def test_tracking(
 
                     if all(
                         label == 1
-                        for label in list(prediction["labels"].detach().cpu().numpy())
+                        for label in list(
+                            prediction["labels"].detach().cpu().numpy()
+                        )
                     ):
                         pred_class = [
                             coco_list[i]
-                            for i in list(prediction["labels"].detach().cpu().numpy())
+                            for i in list(
+                                prediction["labels"].detach().cpu().numpy()
+                            )
                         ]
                         pred_boxes = [
                             [(i[0], i[1]), (i[2], i[3])]
                             for i in list(
-                                prediction["boxes"].detach().cpu().detach().numpy()
+                                prediction["boxes"]
+                                .detach()
+                                .cpu()
+                                .detach()
+                                .numpy()
                             )
                         ]
 
@@ -123,7 +136,9 @@ def test_tracking(
 
 
 def test_detection(
-    test_dataloader: torch.utils.data.DataLoader, trained_model, score_threshold: float
+    test_dataloader: torch.utils.data.DataLoader,
+    trained_model,
+    score_threshold: float,
 ) -> None:
     """
     Test object detection on a dataset using a trained model.
@@ -137,7 +152,11 @@ def test_detection(
         None
     """
 
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = (
+        torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
 
     total_correct_boxes = 0
     total_gt_boxes = 0
@@ -150,7 +169,9 @@ def test_detection(
             # print(imgs)
             imgs_id += 1
             imgs = list(img.to(device) for img in imgs)
-            targets = [{k: v.to(device) for k, v in t.items()} for t in annotations]
+            targets = [
+                {k: v.to(device) for k, v in t.items()} for t in annotations
+            ]
 
             # detections = trained_model(imgs, annotations)
             detections = trained_model(imgs)
@@ -163,23 +184,33 @@ def test_detection(
                 pred_score = list(prediction["scores"].detach().cpu().numpy())
                 target_boxes = [
                     [(i[0], i[1]), (i[2], i[3])]
-                    for i in list(label["boxes"].detach().cpu().detach().numpy())
+                    for i in list(
+                        label["boxes"].detach().cpu().detach().numpy()
+                    )
                 ]
                 if pred_score:
                     pred_t = [pred_score.index(x) for x in pred_score][-1]
 
                     if all(
                         label == 1
-                        for label in list(prediction["labels"].detach().cpu().numpy())
+                        for label in list(
+                            prediction["labels"].detach().cpu().numpy()
+                        )
                     ):
                         pred_class = [
                             coco_list[i]
-                            for i in list(prediction["labels"].detach().cpu().numpy())
+                            for i in list(
+                                prediction["labels"].detach().cpu().numpy()
+                            )
                         ]
                         pred_boxes = [
                             [(i[0], i[1]), (i[2], i[3])]
                             for i in list(
-                                prediction["boxes"].detach().cpu().detach().numpy()
+                                prediction["boxes"]
+                                .detach()
+                                .cpu()
+                                .detach()
+                                .numpy()
                             )
                         ]
 
@@ -204,7 +235,9 @@ def test_detection(
                                     2,
                                 )
 
-                                label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
+                                label_text = (
+                                    f"{pred_class[i]}: {pred_score[i]:.2f}"
+                                )
                                 cv2.putText(
                                     image_with_boxes,
                                     label_text,
@@ -234,7 +267,9 @@ def test_detection(
                                 2,
                             )
 
-                        cv2.imwrite(f"/result/imgs{imgs_id}.jpg", image_with_boxes)
+                        cv2.imwrite(
+                            f"/result/imgs{imgs_id}.jpg", image_with_boxes
+                        )
 
             for target, detection in zip(targets, detections):
                 gt_boxes = target["boxes"]

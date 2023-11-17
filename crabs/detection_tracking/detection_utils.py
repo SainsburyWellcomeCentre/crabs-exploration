@@ -1,5 +1,5 @@
-import os
 import datetime
+import os
 
 import torch
 import torchvision.transforms as transforms
@@ -43,7 +43,9 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
 
     """
 
-    def __init__(self, main_dir, train_file_paths, annotation, transforms=None):
+    def __init__(
+        self, main_dir, train_file_paths, annotation, transforms=None
+    ):
         self.main_dir = main_dir
         self.file_paths = train_file_paths
         self.coco = COCO(annotation)
