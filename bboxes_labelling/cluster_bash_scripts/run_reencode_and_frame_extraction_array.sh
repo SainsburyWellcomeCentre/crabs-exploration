@@ -10,7 +10,7 @@
 #SBATCH -e slurm_array.%N.%A-%a.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-2%5
+#SBATCH --array=0-9%5
 
 #-------
 # NOTE!!
@@ -29,9 +29,16 @@ module load SLEAP
 # # TODO: have list here? change to directory?
 # INPUT_DATA_LIST=($(<input.list))
 INPUT_DATA_LIST=(
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-02-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-02-Right.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/06.09.2023-Day3/06.09.2023-03-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/07.09.2023-Day4/07.09.2023-01-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/07.09.2023-Day4/07.09.2023-01-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/07.09.2023-Day4/07.09.2023-02-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/07.09.2023-Day4/07.09.2023-02-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/07.09.2023-Day4/07.09.2023-03-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/07.09.2023-Day4/07.09.2023-03-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/07.09.2023-Day4/07.09.2023-04-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/07.09.2023-Day4/07.09.2023-04-Right.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/07.09.2023-Day4/07.09.2023-05-Left.MOV"
+    "/ceph/zoo/raw/CrabField/ramalhete_2023/07.09.2023-Day4/07.09.2023-05-Right.MOV"
 )
 
 # ----------------------
@@ -40,7 +47,7 @@ INPUT_DATA_LIST=(
 # location of extracted frames
 # TODO: derive subdir name from parent dir
 OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels
-OUTPUT_SUBDIR="Sep2023_day3_reencoded"
+OUTPUT_SUBDIR="Sep2023_day4_reencoded"
 
 # location of SLURM logs
 LOG_DIR=$OUTPUT_DIR/$OUTPUT_SUBDIR/logs
