@@ -1,16 +1,39 @@
 from pathlib import Path
 
+import typer
 from crabs.bboxes_labelling.annotations_utils import (
     combine_multiple_via_jsons,
     convert_via_json_to_coco,
 )
 
+# instantiate Typer app
+app = typer.Typer(rich_markup_mode="rich")
 
-def main(
-    parent_dir_via_jsons,
-    via_default_dir,
-    via_project_name,
-):
+
+@app.command()
+def combine_VIA_and_convert_to_COC0(
+    parent_dir_via_jsons: str,
+    via_default_dir: str,
+    via_project_name: str,
+) -> str:
+    """Combine a list of VIA JSON files into one and convert to COCO format
+
+    Parameters
+    ----------
+    parent_dir_via_jsons : str
+        path to the parent directory containing VIA JSON files
+    via_default_dir : str
+        The default directory in which to look for images for the VIA project.
+        A full path is required.
+    via_project_name : str
+        The name of the VIA project.
+
+    Returns
+    -------
+    str
+        path to the COCO json file. By default, the file
+    """
+
     # Get list of VIA JSON files
     list_json_files = [
         x
@@ -26,20 +49,13 @@ def main(
         via_project_name=via_project_name,
     )
 
-    # Convert to COCO
+    # Convert to COCO and return path
     return convert_via_json_to_coco(json_out_fullpath)
 
 
-if __name__ == "__main__":
-    parent_dir_via_jsons = (
-        "/Volumes/zoo/users/sminano/crabs_bboxes_labels/Aug2023/annotations"
-    )
-    via_default_dir = str(Path(parent_dir_via_jsons).parent)
-    via_project_name = "Aug2023"
+def app_wrapper():
+    app()
 
-    coco_out_fullpath = main(
-        parent_dir_via_jsons,
-        via_default_dir,
-        via_project_name,
-    )
-    print(coco_out_fullpath)
+
+if __name__ == "__main__":
+    app_wrapper()

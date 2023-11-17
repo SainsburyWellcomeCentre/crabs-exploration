@@ -472,9 +472,9 @@ def compute_and_extract_frames_to_label(
     )
 
 
-def main():
+def app_wrapper():
     app()
 
 
 if __name__ == "__main__":
-    main()
+    app_wrapper()
