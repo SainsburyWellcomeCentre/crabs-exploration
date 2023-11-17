@@ -53,6 +53,7 @@ dev = [
 extract-frames = "crabs.bboxes_labelling.extract_frames_to_label_w_sleap:main"
 # combine-and-format-annotations
 # verify-videos-and-extract-samples
+# extract-additional-channels
 # train-models
 # evaluate-models
 
