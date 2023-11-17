@@ -1,7 +1,7 @@
 include LICENSE
 include README.md
 
-recursive-include crabs *.md
+recursive-include guides *.md
 recursive-include crabs *.sh
 
 exclude .pre-commit-config.yaml
