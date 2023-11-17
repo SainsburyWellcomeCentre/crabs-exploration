@@ -79,23 +79,16 @@ venv/
 # OS
 .DS_Store
 
-# video and pose-estimation files
+# Video and image files
 *.MOV
-*.slp
-*.layout
-*.json
 *.png
 *.mp4
 
-# sample data
-# TODO: remove these?
-/data/
-/bboxes_labelling/annotations
-/stereo calibration/check_chessboard_cells_size/*
-/pose estimation/animal_size_4k/*
-/pose estimation/top_down_model_4k_230713/*
+# Metadata and pose-estimation files
+*.slp
+*.json
 
-# include mp4 files in tests/data dir
-# TODO: move videos for testing to GIN?
+# Test data to includ
+# TODO: move this to GIN? (or at least the larger files)
 !/tests/data/**/*.mp4
 !/tests/data/**/*.json
