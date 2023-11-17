@@ -34,6 +34,9 @@ from sleap.info.feature_suggestions import (
     ParallelFeaturePipeline,
 )
 
+# instantiate Typer app
+app = typer.Typer(rich_markup_mode="rich")
+
 
 def get_list_of_sleap_videos(
     list_video_locations,
@@ -346,6 +349,7 @@ def extract_frames_to_label_from_video(
         cap.release()
 
 
+@app.command()
 def compute_and_extract_frames_to_label(
     list_video_locations: list[str],
     output_path: str = ".",
@@ -363,48 +367,47 @@ def compute_and_extract_frames_to_label(
     """Compute suggested frames to label and
     extract them as png files.
 
+
     We use SLEAP's image feature method to select
     the frames for labelling and export them as png
     files in the desired directory.
 
     We also output to the same location the list of
     frame indices selected per video as a json file.
-    
-    \n
-    
-    Parameters\n
-    ----------\n
-    list_video_locations : list\n
-        list of paths to directories with videos, or to specific video files.\n
-    output_path : str, optional\n
-        path to directory in which to store extracted frames, by default the\n
-        current directory.\n
-    output_subdir : str, optional\n
-        name of output subdirectory in which to put extracted frames,\n
-        by default the timestamp in the format YYYMMDD_HHMMSS.\n
-    video_extensions : list, optional\n
-        extensions to search for when looking for video files,\n
-        by default ["mp4"]\n
-    initial_samples : int, optional\n
-        initial number of frames to extract per video, by default 200\n
-    sample_method : str, optional\n
-        method to sample initial frames, a choice between "random" or "stride,\n
-        by default "stride"\n
-    scale : float, optional\n
-        factor to apply to the images prior to PCA and k-means clustering,\n
-        by default 1.0\n
-    feature_type : str, optional\n
-        type of input feature, a choice between "raw", "brisk" or "hog",\n
-        by default "raw"\n
-    n_components : int, optional\n
-        number of PCA components to compute, by default 5\n
-    n_clusters : int, optional\n
-        number of k-means clusters to compute, by default 5\n
-    per_cluster : int, optional\n
-        number of frames to sample per cluster, by default 5\n
-    compute_features_per_video : bool, optional\n
-        whether to compute the (PCA?) features per video, or across all videos,\n
-        by default True\n
+
+    Parameters
+    ----------
+    list_video_locations : list
+        list of paths to directories with videos, or to specific video files.
+    output_path : str, optional
+        path to directory in which to store extracted frames, by default the
+        current directory.
+    output_subdir : str, optional
+        name of output subdirectory in which to put extracted frames,
+        by default the timestamp in the format YYYMMDD_HHMMSS.
+    video_extensions : list, optional
+        extensions to search for when looking for video files,
+        by default ["mp4"]
+    initial_samples : int, optional
+        initial number of frames to extract per video, by default 200
+    sample_method : str, optional
+        method to sample initial frames, a choice between "random" or "stride,
+        by default "stride"
+    scale : float, optional
+        factor to apply to the images prior to PCA and k-means clustering,
+        by default 1.0
+    feature_type : str, optional
+        type of input feature, a choice between "raw", "brisk" or "hog",
+        by default "raw"
+    n_components : int, optional
+        number of PCA components to compute, by default 5
+    n_clusters : int, optional
+        number of k-means clusters to compute, by default 5
+    per_cluster : int, optional
+        number of frames to sample per cluster, by default 5
+    compute_features_per_video : bool, optional
+        whether to compute the (PCA?) features per video, or across all videos,
+        by default True
     """
     # Compute list of suggested frames using SLEAP
     map_videos_to_extracted_frames = compute_suggested_sleap_frames(
@@ -420,7 +423,7 @@ def compute_and_extract_frames_to_label(
         compute_features_per_video,
     )
 
-    # Create target subdirectory inside the output folder, if it doesnt exist.
+    # Create target subdirectory inside the output folder, if it doesn't exist.
     # If no output subdirectory name is provided, create one whose name
     # is the current timestamp in the format YYYYMMDD_HHMMSS
     if not output_subdir:
@@ -430,8 +433,8 @@ def compute_and_extract_frames_to_label(
         output_subdir_path = Path(output_path) / output_subdir
     output_subdir_path.mkdir(parents=True, exist_ok=True)
 
-    # Save the set of videos and corresponding
-    # extracted frames' indices as json file
+    # Save the set of videos and corresponding extracted frames' indices
+    # as json file
     json_output_file = output_subdir_path / "extracted_frames.json"
     # if json file exists: append
     if json_output_file.is_file():
@@ -461,8 +464,7 @@ def compute_and_extract_frames_to_label(
             "New json file with extracted frames saved at {json_output_file}"
         )
 
-    # Save suggested frames as png files
-    # (extraction with opencv)
+    # Save suggested frames as png files (extraction with opencv)
     extract_frames_to_label_from_video(
         map_videos_to_extracted_frames,
         output_subdir_path,
@@ -471,7 +473,7 @@ def compute_and_extract_frames_to_label(
 
 
 def main():
-    typer.run(compute_and_extract_frames_to_label, rich_markup_mode="rich")
+    app()
 
 
 if __name__ == "__main__":
