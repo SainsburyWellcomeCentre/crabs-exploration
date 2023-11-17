@@ -92,7 +92,9 @@ def run_model_on_video(args):
         output_dir = Path(args.output_dir)
         # create output dir if it doesnt exist
         output_dir.mkdir(parents=True, exist_ok=True)
-        videowriter_path = output_dir / Path(Path(input_file).stem + "_flow.mp4")
+        videowriter_path = output_dir / Path(
+            Path(input_file).stem + "_flow.mp4"
+        )
 
         # initialise videowriter
         videowriter = cv2.VideoWriter(
@@ -110,7 +112,9 @@ def run_model_on_video(args):
             # ensure we start capture at 0
             if cap.get(cv2.CAP_PROP_POS_FRAMES) == 0:
                 frame_idx = 0
-                frame_idx_stop = int(nframes / args.step_frames) * args.step_frames
+                frame_idx_stop = (
+                    int(nframes / args.step_frames) * args.step_frames
+                )
 
                 while frame_idx < frame_idx_stop:
                     # set 'index to read next' to the desired position
@@ -124,7 +128,9 @@ def run_model_on_video(args):
                     frame_idx = cap.get(cv2.CAP_PROP_POS_FRAMES)
 
                     # read frame at f+n
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx + args.step_frames)
+                    cap.set(
+                        cv2.CAP_PROP_POS_FRAMES, frame_idx + args.step_frames
+                    )
                     success_frame_2, frame_2 = cap.read()
                     # OJO index to read next is now at f+n+1, but we
                     # will reset it to frame_idx at the start of
@@ -150,7 +156,9 @@ def run_model_on_video(args):
                     # compute flow
                     # output has batch channel on the first dim
                     # TODO: what is flow_low? (downsampled?)
-                    flow_low, flow_up = model(image1, image2, iters=20, test_mode=True)
+                    flow_low, flow_up = model(
+                        image1, image2, iters=20, test_mode=True
+                    )
 
                     # convert output to numpy array and reorder channels
                     # first dim = batch size (1)

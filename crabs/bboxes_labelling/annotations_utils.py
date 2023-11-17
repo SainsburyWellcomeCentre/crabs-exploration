@@ -114,11 +114,15 @@ def combine_multiple_via_jsons(
             raise ValueError(msg)
 
         # assign directory path to the VIA combined dictionary
-        via_data_combined["_via_settings"]["core"]["default_filepath"] = via_default_dir
+        via_data_combined["_via_settings"]["core"][
+            "default_filepath"
+        ] = via_default_dir
 
     # If required: change _via_settings > project > name
     if via_project_name:
-        via_data_combined["_via_settings"]["project"]["name"] = via_project_name
+        via_data_combined["_via_settings"]["project"][
+            "name"
+        ] = via_project_name
 
     # Save the VIA combined data as a new JSON file
     # if no output directory is passed, use the parent directory

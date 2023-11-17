@@ -4,9 +4,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image
-
 from bboxes_labelling.annotations_utils import read_json_file
+from PIL import Image
 
 
 def apply_grayscale_and_blur(
@@ -88,7 +87,9 @@ def compute_mean_and_max_abs_blurred_frame(cap, kernel_size, sigmax):
         mean_blurred_frame += blurred_frame
 
         # accumulate max absolute values
-        max_abs_blurred_frame = np.maximum(max_abs_blurred_frame, abs(blurred_frame))
+        max_abs_blurred_frame = np.maximum(
+            max_abs_blurred_frame, abs(blurred_frame)
+        )
 
         # update frame counter
         frame_counter += 1
@@ -124,7 +125,9 @@ def compute_background_subtracted_frame(
         normalised difference between the blurred frame f and
         the mean blurred frame
     """
-    return (((blurred_frame - mean_blurred_frame) / max_abs_blurred_frame) + 1) / 2
+    return (
+        ((blurred_frame - mean_blurred_frame) / max_abs_blurred_frame) + 1
+    ) / 2
 
 
 def compute_motion_frame(
@@ -206,7 +209,9 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
         (
             mean_blurred_frame,
             max_abs_blurred_frame,
-        ) = compute_mean_and_max_abs_blurred_frame(cap, args.kernel_size, args.sigmax)
+        ) = compute_mean_and_max_abs_blurred_frame(
+            cap, args.kernel_size, args.sigmax
+        )
 
         # save the mean
         cv2.imwrite(f"{Path(vid_file).stem}_mean.jpg", mean_blurred_frame)
