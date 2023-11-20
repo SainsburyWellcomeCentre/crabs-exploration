@@ -137,7 +137,11 @@ do
     --per_cluster $PARAM_PER_CLUSTER \
     --compute_features_per_video
 
-    echo "Frames extracted from video: $REENCODED_VIDEO_PATH"
+    if [ "$?" -ne 0 ]; then
+        echo "Frame extraction failed! Please check .err log"
+    else
+        echo "Frames extracted from video: $FRAME_EXTRACTION_INPUT_VIDEO"
+    fi
     echo "--------"
 
     # Reencoded videos log
