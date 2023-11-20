@@ -55,6 +55,7 @@ do
     filename_no_ext="$(basename "$FILEPATH" | sed 's/\(.*\)\..*/\1/')"
     echo "Input video: $FILEPATH"
 
+    ffmpeg -version  # print version to logs
     ffmpeg -y -i "$FILEPATH" \
     -c:v libx264 \
     -pix_fmt yuv420p \
