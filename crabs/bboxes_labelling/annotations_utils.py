@@ -114,11 +114,15 @@ def combine_multiple_via_jsons(
             raise ValueError(msg)
 
         # assign directory path to the VIA combined dictionary
-        via_data_combined["_via_settings"]["core"]["default_filepath"] = via_default_dir
+        via_data_combined["_via_settings"]["core"][
+            "default_filepath"
+        ] = via_default_dir
 
     # If required: change _via_settings > project > name
     if via_project_name:
-        via_data_combined["_via_settings"]["project"]["name"] = via_project_name
+        via_data_combined["_via_settings"]["project"][
+            "name"
+        ] = via_project_name
 
     # Save the VIA combined data as a new JSON file
     # if no output directory is passed, use the parent directory
@@ -133,11 +137,12 @@ def combine_multiple_via_jsons(
     return str(json_out_fullpath)
 
 
+DEFAULT_CRAB_CATEGORY = {"id": 1, "name": "crab", "supercategory": "animal"}
+
+
 def convert_via_json_to_coco(
     json_file_path: str,
-    coco_category_ID: int = 1,
-    coco_category_name: str = "crab",
-    coco_supercategory_name: str = "animal",
+    coco_category: dict = DEFAULT_CRAB_CATEGORY,
     coco_out_filename: Optional[str] = None,
     coco_out_dir: Optional[str] = None,
 ) -> str:
@@ -179,18 +184,11 @@ def convert_via_json_to_coco(
     with open(json_file_path) as json_file:
         annotation_data = json.load(json_file)
 
-    # Create data structure for COCO format
-    coco_categories = [
-        {
-            "id": coco_category_ID,
-            "name": coco_category_name,
-            "supercategory": coco_supercategory_name,
-        },
-    ]
+    # Create data structure for COCO
     coco_data: dict[str, Any] = {
         "info": {},
         "licenses": [],
-        "categories": coco_categories,
+        "categories": [coco_category],
         "images": [],
         "annotations": [],
     }
@@ -218,7 +216,7 @@ def convert_via_json_to_coco(
             annotation_data = {
                 "id": annotation_id,
                 "image_id": image_id,
-                "category_id": coco_category_ID,
+                "category_id": coco_category["id"],
                 "bbox": [x, y, width, height],
                 "area": width * height,
                 "iscrowd": 0,

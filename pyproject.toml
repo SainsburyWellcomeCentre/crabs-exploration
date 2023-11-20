@@ -1,126 +1,118 @@
-# [build-system]
-# build-backend = "setuptools.build_meta"
-# requires = [
-# "setuptools",
-# "setuptools-scm",
-# ]
-
 [project]
+name = "crabs"
 authors = [
     {email = "n.aznan@ucl.ac.uk", name = "Nik Khadijah Nik Aznan"},
     {email = "s.minano@ucl.ac.uk", name = "Sofia Minano"},
 ]
+description = "A toolkit for detecting and tracking crabs in the field."
+readme = "README.md"
+requires-python = ">=3.9.0"
+dynamic = ["version"]
+
+license = {text = "BSD-3-Clause"}
+urls.homepage = "https://github.com/SainsburyWellcomeCentre/crabs-exploration"
+
 classifiers = [
-    "Operating System :: POSIX",
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
-    "Typing :: Typed",
+    "Programming Language :: Python :: 3.10",
+    "Operating System :: POSIX",
+    "License :: OSI Approved :: BSD License",
 ]
 dependencies = [
     "opencv-python",
     "sleap[pypi]==1.3.3",
 ]
-description = "exploring the crabs field data"
-dynamic = [
-    "version",
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-cov",
+  "coverage",
+  "tox", # >=4 ?
+  "black",
+  "mypy",
+  "pre-commit",
+  "ruff",
+  "setuptools_scm",
 ]
-keywords = [
+
+[build-system]
+requires = [
+    "setuptools>=45",
+    "wheel",
+    "setuptools_scm[toml]>=6.2",
 ]
-name = "crabs-exploration"
-optional-dependencies = {dev = [
-    "black",
-    "build",
-    "mypy",
-    "pre-commit",
-    "pytest",
-    "ruff",
-    "tox>=4",
-    "twine",
-]}
-readme = "README.md"
-requires-python = ">=3.9.0"
-license.file = "LICENCE.md"
-urls.homepage = "https://github.com/sfmig/crabs-exploration"
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["crabs*"]
+exclude = ["tests*"]
 
 [tool.pytest.ini_options]
-addopts = "--color=yes -v"
-testpaths = [
-    "tests",
+addopts = "--cov=crabs"
+
+[tool.black]
+target-version = ['py39', 'py310']
+skip-string-normalization = false
+line-length = 79
+
+[tool.setuptools_scm]
+
+[tool.check-manifest]
+ignore = [
+  ".yaml",
+  "tox.ini",
+  "tests/",
+  "tests/test_unit/",
+  "tests/test_integration/",
 ]
 
 [tool.ruff]
+line-length = 79
+exclude = ["__init__.py","build",".eggs"]
+select = ["I", "E", "F"]
 fix = true
-force-exclude = true
 ignore = [
-    "D203", # no-blank-line-before-class
-    "D212", # multi-line-summary-first-line
-    "D417", # argument description in docstring (unreliable)
+    'E501', # line too long: should be handled by black
 ]
-per-file-ignores = {"test_*" = [
-    "S101",
-]}
-# select = [
-# "A",
-# "ARG",
-# "B",
-# "BLE",
-# "C",
-# "COM",
-# "D",
-# "DJ",
-# "DTZ",
-# "E",
-# "EM",
-# "ERA",
-# "EXE",
-# "F",
-# "FBT",
-# "I",
-# "ICN",
-# "ISC",
-# "N",
-# "NPY",
-# "PD",
-# "PGH",
-# "PIE",
-# "PL",
-# "PT",
-# "PTH",
-# "PYI",
-# "Q",
-# "RET",
-# "RSE",
-# "RUF",
-# "S",
-# "SIM",
-# "T",
-# "TCH",
-# "TID",
-# "UP",
-# "W",
-# "YTT",
+# force-exclude = true
+# ignore = [
+#     "D203", # no-blank-line-before-class
+#     "D212", # multi-line-summary-first-line
+#     "D417", # argument description in docstring (unreliable)
 # ]
-target-version = "py39"
+# per-file-ignores = {"test_*" = [
+#     "S101",
+# ]}
+# [tool.tomlsort]
+# all = true
+# spaces_indent_inline_array = 4
+# trailing_comma_inline_array = true
+# overrides."project.classifiers".inline_arrays = false
+# overrides."tool.coverage.paths.source".inline_arrays = false
 
-[tool.tomlsort]
-all = true
-spaces_indent_inline_array = 4
-trailing_comma_inline_array = true
-overrides."project.classifiers".inline_arrays = false
-overrides."tool.coverage.paths.source".inline_arrays = false
+
 
 [tool.tox]
 legacy_tox_ini = """
-    [gh-actions]
-    python = 3.9: py39
+[tox]
+envlist = py{39,310,311}
+isolated_build = True
 
-    [testenv]
-    commands =
-        pytest --cov
-    deps =
-        pytest
-        pytest-cov
+[gh-actions]
+python =
+    3.9: py39
+    3.10: py310
 
-    [tox]
-    env_list = py39
+[testenv]
+extras =
+    dev
+commands =
+    pytest -v --color=yes --cov=crabs --cov-report=xml
 """

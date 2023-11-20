@@ -101,7 +101,8 @@ def get_list_of_sleap_videos(
             cap.release()
         else:
             logging.warning(
-                f"Video at {vid_path!s} could not" " be opened by OpenCV. Skipping...",
+                f"Video at {vid_path!s} could not"
+                " be opened by OpenCV. Skipping...",
             )
 
     # Print warning if list is empty
@@ -302,7 +303,9 @@ def extract_frames_to_label_from_video(
         if flag_parent_dir_subdir_in_output:
             video_output_dir = (
                 output_subdir_path
-                / Path(vid_str).parent.stem  # timestamp  # parent dir of input video
+                / Path(
+                    vid_str
+                ).parent.stem  # timestamp  # parent dir of input video
             )
             video_output_dir.mkdir(parents=True, exist_ok=True)
         else:
@@ -422,7 +425,9 @@ def compute_and_extract_frames_to_label(args):
                 sort_keys=True,
                 indent=4,
             )
-        logging.info("New json file with extracted frames saved at {json_output_file}")
+        logging.info(
+            "New json file with extracted frames saved at {json_output_file}"
+        )
 
     # Save suggested frames as png files
     # (extraction with opencv)

@@ -13,9 +13,7 @@ input_video_file = Path(
 
 clip_suffix = "p1_05s"
 
-output_dir = (
-    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/tests/data"
-)
+output_dir = "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/tests/data"
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Get video params

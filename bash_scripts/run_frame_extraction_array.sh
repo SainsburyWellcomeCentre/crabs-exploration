@@ -101,7 +101,7 @@ do
     --per_cluster $PARAM_PER_CLUSTER \
     --compute_features_per_video
 
-    # Move logs for this job to subdir with extracted frames 
+    # Move logs for this job to subdir with extracted frames
     # TODO: ideally these are moved also if frame extraction fails
     mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err /$LOG_DIR
     mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.out /$LOG_DIR
