@@ -66,15 +66,3 @@ do
     echo "Reencoded video: $OUTPUT_DIR/$OUTPUT_SUBDIR/$filename_no_ext.mp4"
     echo "---"
 done
-
-# Use apple encoder settings?
-# https://ottverse.com/ffmpeg-convert-to-apple-prores-422-4444-hq/#:~:text=Encoding%20Apple%20ProRes%20422%20HQ%20using%20FFmpeg,-The%20commandline%20for&text=If%20you%20see%20the%20commandline,get%20a%20hang%20of%20it.
-
-# ffmpeg -y -i "$FILEPATH" \
-# -c:v prores_ks \
-# -profile:v 3 \
-# -vendor appl \
-# -pix_fmt yuv422p10le \
-# -preset superfast \
-# -crf 15 \
-# "$OUTPUT_DIR/$OUTPUT_SUBDIR/$filename_no_ext.MOV"
