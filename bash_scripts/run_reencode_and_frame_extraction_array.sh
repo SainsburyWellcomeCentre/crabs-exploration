@@ -36,6 +36,16 @@ INPUT_DATA_LIST=(
 flag_reencode_input_videos=false
 reencoded_extension=mp4
 
+# ---------------------------
+# Check number of array jobs
+# ------------------------------
+# Check len(list of input data) matches max SLURM_ARRAY_TASK_COUNT
+# if not, exit
+if [[ $SLURM_ARRAY_TASK_COUNT -ne ${#INPUT_DATA_LIST[@]} ]]; then
+    echo "The number of array tasks does not match the number of inputs"
+    exit 1
+fi
+
 # ----------------------
 # Output data location
 # ----------------------
@@ -69,16 +79,6 @@ PARAM_N_COMPONENTS=5
 PARAM_N_CLUSTERS=5
 PARAM_PER_CLUSTER=4
 
-
-# ---------------------------
-# Check number of array jobs
-# ------------------------------
-# Check len(list of input data) matches max SLURM_ARRAY_TASK_COUNT
-# if not, exit
-if [[ $SLURM_ARRAY_TASK_COUNT -ne ${#INPUT_DATA_LIST[@]} ]]; then
-    echo "The number of array tasks does not match the number of inputs"
-    exit 1
-fi
 
 # ----------------------
 # Script location
