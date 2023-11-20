@@ -32,7 +32,9 @@ list_downsampled_factors = [1, 0.75, 0.5, 0.25]
 list_downsampled_imgs = []
 for f in list_downsampled_factors:
     size_down = tuple(int(s * f) for s in size_og)
-    img_downsampled = cv2.resize(img_og, size_down, interpolation=cv2.INTER_NEAREST)
+    img_downsampled = cv2.resize(
+        img_og, size_down, interpolation=cv2.INTER_NEAREST
+    )
 
     window_id = f"scale {f}"
     cv2.namedWindow(window_id, cv2.WINDOW_NORMAL)

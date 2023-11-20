@@ -2,12 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from bboxes_labelling.extract_frames_to_label_w_sleap import get_list_of_sleap_videos
+from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
+    get_list_of_sleap_videos,
+)
 
 
 @pytest.fixture(autouse=True, scope="class")
 def input_video_dir():
-    return Path(__file__).parent / "data"
+    return Path(__file__).parents[1] / "data" / "clips"
 
 
 class TestsFrameExtraction:
@@ -29,24 +31,21 @@ class TestsFrameExtraction:
         # TODO: check they are all video files?
         list_files = [
             f
-            for f in list_video_locations[0].glob("**/*")
+            for f in list_video_locations[0].glob("*")
             if f.is_file() and not f.name.startswith(".")
         ]
         list_unique_extensions = list({f.suffix[1:] for f in list_files})
 
-        # force the user-input extension to be of the opposite case
-        list_video_extensions = []
-        for ext in list_unique_extensions:
-            if ext.isupper():
-                list_video_extensions.append(ext.lower())
-            elif ext.islower():
-                list_video_extensions.append(ext.upper())
+        # force the user-input extensions to be of the opposite case
+        list_user_extensions = [ext.lower() for ext in list_unique_extensions]
+        list_user_extensions = list(set(list_user_extensions))
 
-        # compute list of SLEAP videos
+        # compute list of SLEAP videos for the given user extensions
         list_sleap_videos = get_list_of_sleap_videos(
             list_video_locations,
-            list_video_extensions,
+            list_user_extensions,
         )
 
         # check list of SLEAP videos matches the list of files
+        assert len(list_sleap_videos) == len(list_files)
         assert len(list_sleap_videos) == len(list_files)
