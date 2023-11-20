@@ -229,7 +229,7 @@ def compute_opencv_start_idx(
     return timecodes_dict
 
 
-def extract_frames_from_video(
+def extract_chessboard_frames_from_video(
     video_path_str,
     nframes,
     opencv_start_idx,
@@ -237,7 +237,7 @@ def extract_frames_from_video(
     chessboard_config,
     output_parent_dir: str = "./calibration_pairs",
 ):
-    """Extract frames between selected indices from video,
+    """Extract frames with a chessboard pattern between selected indices from video,
     and save them to the output directory
 
     Parameters
@@ -382,7 +382,7 @@ if __name__ == "__main__":
         "cols": 9,  # ATT! THESE ARE INNER POINTS ONLY
     }
     for vid_str, vid_dict in timecodes_dict.items():
-        extract_frames_from_video(
+        extract_chessboard_frames_from_video(
             vid_str,
             vid_dict["n_frames"],
             vid_dict["opencv_start_idx"],

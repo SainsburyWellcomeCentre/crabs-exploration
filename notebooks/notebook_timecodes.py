@@ -60,7 +60,7 @@ timecodes_dict = stereo.compute_opencv_start_idx(
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Extract frames with opencv and save to directory
 for vid_str, vid_dict in timecodes_dict.items():
-    stereo.extract_frames_from_video(
+    stereo.extract_chessboard_frames_from_video(
         vid_str,
         vid_dict["n_frames"],
         vid_dict["opencv_start_idx"],
