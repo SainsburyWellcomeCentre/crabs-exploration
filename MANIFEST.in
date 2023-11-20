@@ -3,7 +3,7 @@ include README.md
 
 recursive-include guides *.md
 recursive-include bash_scripts *.sh
-recursive-include opencv_notebooks *.py
+recursive-include notebooks *.py
 
 exclude .pre-commit-config.yaml
 
