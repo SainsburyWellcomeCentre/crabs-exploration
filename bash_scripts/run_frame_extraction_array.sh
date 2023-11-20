@@ -51,9 +51,6 @@ OUTPUT_SUBDIR="Sep2023_day1"
 # SLURM logs dir
 LOG_DIR=$OUTPUT_DIR/$OUTPUT_SUBDIR/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
-# can I set SLURM logs location here?
-# srun -e slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err
-
 
 # ----------------------
 # parameters
