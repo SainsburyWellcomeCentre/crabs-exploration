@@ -97,7 +97,7 @@ do
     echo "Input video: $SAMPLE"
     echo "--------"
 
-    # Reencode video
+    # Reencode video if required
     # following SLEAP's recommendations
     # https://sleap.ai/help.html#does-my-data-need-to-be-in-a-particular-format
     if [ "$flag_reencode_input_videos"=true ] ; then 
