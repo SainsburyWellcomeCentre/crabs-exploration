@@ -19,9 +19,6 @@ module load SLEAP
 # input/output data dirs
 INPUT_DATA_LIST=(
     "/ceph/zoo/raw/CrabField/ramalhete_2023/09.08.2023-Day2/09.08.2023-01-Left.MOV"
-    # "/ceph/zoo/raw/CrabField/ramalhete_2023/09.08.2023-Day2/09.08.2023-01-Right.mov" #
-    # "/ceph/zoo/raw/CrabField/ramalhete_2023/09.08.2023-Day2/09.08.2023-02-Left.mov" #
-    # "/ceph/zoo/raw/CrabField/ramalhete_2023/09.08.2023-Day2/09.08.2023-02-Right.MOV" #
     "/ceph/zoo/raw/CrabField/ramalhete_2023/09.08.2023-Day2/09.08.2023-03-Left.MOV"
     "/ceph/zoo/raw/CrabField/ramalhete_2023/09.08.2023-Day2/09.08.2023-04-Left.MOV"
     "/ceph/zoo/raw/CrabField/ramalhete_2023/09.08.2023-Day2/09.08.2023-04-Right.MOV"
@@ -69,7 +66,7 @@ do
     echo "---"
 done
 
-# apple encoder settings?
+# Use apple encoder settings?
 # https://ottverse.com/ffmpeg-convert-to-apple-prores-422-4444-hq/#:~:text=Encoding%20Apple%20ProRes%20422%20HQ%20using%20FFmpeg,-The%20commandline%20for&text=If%20you%20see%20the%20commandline,get%20a%20hang%20of%20it.
 
 # ffmpeg -y -i "$FILEPATH" \
