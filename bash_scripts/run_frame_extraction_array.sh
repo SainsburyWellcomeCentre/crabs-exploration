@@ -66,7 +66,7 @@ PARAM_PER_CLUSTER=10
 # ----------------------
 # assumes repo located at '/ceph/scratch/sminano'
 SCRATCH_PERSONAL_DIR=/ceph/scratch/sminano
-SCRIPT_DIR=$SCRATCH_PERSONAL_DIR/crabs-exploration/bboxes_labelling
+SCRIPT_DIR=$SCRATCH_PERSONAL_DIR/crabs-exploration/crabs/bboxes_labelling
 
 
 # -------------------
