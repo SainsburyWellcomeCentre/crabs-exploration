@@ -36,10 +36,6 @@ INPUT_DATA_LIST=(
     "/ceph/zoo/raw/CrabField/ramalhete_2023/09.08.2023-Day2/09.08.2023-03-Left.MOV"
     "/ceph/zoo/raw/CrabField/ramalhete_2023/09.08.2023-Day2/09.08.2023-04-Left.MOV"
     "/ceph/zoo/raw/CrabField/ramalhete_2023/09.08.2023-Day2/09.08.2023-04-Right.MOV"
-    # "/ceph/zoo/raw/CrabField/ramalhete_2023/10.08.2023-Day3/10.08.2023-01-Left.mov"
-    # "/ceph/zoo/raw/CrabField/ramalhete_2023/10.08.2023-Day3/10.08.2023-01-Right.mov"
-    # "/ceph/zoo/raw/CrabField/ramalhete_2023/10.08.2023-Day3/10.08.2023-02-Left.MOV"
-    # "/ceph/zoo/raw/CrabField/ramalhete_2023/10.08.2023-Day3/10.08.2023-02-Right.MOV"
 )
 
 # Check len(list of input data) matches max SLURM_ARRAY_TASK_COUNT
