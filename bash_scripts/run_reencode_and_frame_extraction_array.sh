@@ -31,20 +31,16 @@ module load SLEAP
 INPUT_DATA_LIST=(
     "/ceph/zoo/raw/CrabField/ramalhete_2023/04.09.2023-Day1/04.09.2023-05-Left.mp4"
 )
-
-# set whether to reencode input videos or not
-flag_reencode_input_videos=false
-reencoded_extension=mp4
-
-# ---------------------------
-# Check number of array jobs
-# ------------------------------
 # Check len(list of input data) matches max SLURM_ARRAY_TASK_COUNT
 # if not, exit
 if [[ $SLURM_ARRAY_TASK_COUNT -ne ${#INPUT_DATA_LIST[@]} ]]; then
     echo "The number of array tasks does not match the number of inputs"
     exit 1
 fi
+
+# set whether to reencode input videos or not
+flag_reencode_input_videos=false
+reencoded_extension=mp4
 
 # ----------------------
 # Output data location
