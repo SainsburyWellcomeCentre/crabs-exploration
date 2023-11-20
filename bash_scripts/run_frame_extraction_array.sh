@@ -13,9 +13,10 @@
 #SBATCH --array=0-6%4
 
 #-------
-# NOTE!!
-# with "SBATCH --array=0-1%4" ---> runs n separate jobs, but not more than m at a time.
+# NOTE
+# with "SBATCH --array=0-1%4" ---> runs n+1 separate jobs, but not more than m at a time.
 # the number of array jobs should match the number of input files
+#-------
 
 # ---------------------
 # Load required modules
