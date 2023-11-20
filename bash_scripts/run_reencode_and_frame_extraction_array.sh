@@ -29,7 +29,7 @@ module load SLEAP
 # # TODO: have list here? change to directory?
 # INPUT_DATA_LIST=($(<input.list))
 INPUT_DATA_LIST=(
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/04.09.2023-Day1/04.09.2023-05-Left.mp4"
+    "/ceph/zoo/users/sminano/crabs_reencoded_videos/Sep2023_day1_reencoded/04.09.2023-05-Left_RE.mp4"
 )
 # Check len(list of input data) matches max SLURM_ARRAY_TASK_COUNT
 # if not, exit
@@ -55,7 +55,7 @@ LOG_DIR=$OUTPUT_DIR/$OUTPUT_SUBDIR/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
 
 # set location of reencoded videos if required
-if [ "$flag_reencode_input_videos"=true ] ; then
+if [ "$flag_reencode_input_videos" = true ] ; then
     REENCODED_VIDEOS_DIR=/ceph/zoo/users/sminano/crabs_reencoded_videos
     REENCODED_VIDEOS_SUBDIR=$REENCODED_VIDEOS_DIR/$OUTPUT_SUBDIR 
     mkdir -p $REENCODED_VIDEOS_SUBDIR # create if it doesnt exist
@@ -64,7 +64,7 @@ fi
 # Frame extraction parameters
 # -----------------------------------
 # extension of the videos from which frames are extracted! 
-if [ "$flag_reencode_input_videos"=true ] ; then
+if [ "$flag_reencode_input_videos" = true ] ; then
     PARAM_VIDEO_EXT=$reencoded_extension 
 else
     PARAM_VIDEO_EXT=MOV # TODO: derive video extension if not provided?
@@ -96,7 +96,7 @@ do
     # Reencode video if required
     # following SLEAP's recommendations
     # https://sleap.ai/help.html#does-my-data-need-to-be-in-a-particular-format
-    if [ "$flag_reencode_input_videos"=true ] ; then 
+    if [ "$flag_reencode_input_videos" = true ] ; then 
         echo "Rencoding ...."
 
         # path to reencoded video
@@ -144,7 +144,7 @@ do
     # copy .err file to go with reencoded video too if required
     # filename: {reencoded video name}.{slurm_array}.{slurm_job_id} 
     # TODO: make a nicer log
-    if [ "$flag_reencode_input_videos"=true ] ; then 
+    if [ "$flag_reencode_input_videos" = true ] ; then 
         for ext in err out
         do
             cp slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$ext \
