@@ -12,8 +12,8 @@
 #SBATCH --mail-user=s.minano@ucl.ac.uk
 #SBATCH --array=0-0%5
 
-#-------
-# NOTE!!
+
+# NOTE on SBATCH command for array jobs
 # with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
 # the number of array jobs should match the number of input files
 
