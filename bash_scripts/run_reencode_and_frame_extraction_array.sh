@@ -29,9 +29,8 @@ module load SLEAP
 # # TODO: have list here? change to directory?
 # INPUT_DATA_LIST=($(<input.list))
 INPUT_DATA_LIST=(
-    "/ceph/zoo/users/sminano/crabs_reencoded_videos/Sep2023_day1_reencoded/04.09.2023-05-Left_RE.mp4"
+    "/ceph/zoo/users/sminano/crabs_reencoded_videos/Sep2023_day4_reencoded/07.09.2023-01-Right_RE.mp4"
 )
-# "/ceph/zoo/users/sminano/crabs_reencoded_videos/Sep2023_day4_reencoded/07.09.2023-01-Right_RE.mp4"
 
 # Check len(list of input data) matches max SLURM_ARRAY_TASK_COUNT
 # if not, exit
@@ -40,9 +39,11 @@ if [[ $SLURM_ARRAY_TASK_COUNT -ne ${#INPUT_DATA_LIST[@]} ]]; then
     exit 1
 fi
 
+# ----------------------
+# Video reencoding
+# ----------------------
 # set whether to reencode input videos or not
 flag_reencode_input_videos=false
-# reencoded_extension=mp4
 
 # ----------------------
 # Output data location
@@ -50,7 +51,7 @@ flag_reencode_input_videos=false
 # location of extracted frames
 # TODO: derive subdir name from parent dir
 OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels
-OUTPUT_SUBDIR="Sep2023_day1_05_Left_reencoded"
+OUTPUT_SUBDIR="Sep2023_day4_reencoded"
 
 # location of SLURM logs
 LOG_DIR=$OUTPUT_DIR/$OUTPUT_SUBDIR/logs
@@ -62,15 +63,10 @@ if [ "$flag_reencode_input_videos" = true ] ; then
     REENCODED_VIDEOS_SUBDIR=$REENCODED_VIDEOS_DIR/$OUTPUT_SUBDIR 
     mkdir -p $REENCODED_VIDEOS_SUBDIR # create if it doesnt exist
 fi
+
 # ---------------------------------
 # Frame extraction parameters
 # -----------------------------------
-# extension of the videos from which frames are extracted! 
-# if [ "$flag_reencode_input_videos" = true ] ; then
-#     PARAM_VIDEO_EXT=$reencoded_extension 
-# else
-#     PARAM_VIDEO_EXT=MOV # TODO: derive video extension if not provided?
-# fi
 PARAM_INI_SAMPLES=500
 PARAM_SCALE=0.5
 PARAM_N_COMPONENTS=5
@@ -119,19 +115,20 @@ do
         FRAME_EXTRACTION_INPUT_VIDEO=$REENCODED_VIDEO_PATH
     else
         echo "Skipping video reencoding..."
+        echo "--------"
         FRAME_EXTRACTION_INPUT_VIDEO=$SAMPLE
     fi
 
     # Get extension of input video 
-    filename=$(basename -- "$FRAME_EXTRACTION_INPUT_VIDEO")
-    PARAM_VIDEO_EXT="${filename##*.}"
+    video_filename=$(basename -- "$FRAME_EXTRACTION_INPUT_VIDEO")
+    VIDEO_EXT="${video_filename##*.}"
 
     # Run frame extraction algorithm on video
     python $SCRIPT_DIR/extract_frames_to_label_w_sleap.py \
     $FRAME_EXTRACTION_INPUT_VIDEO \
     --output_path $OUTPUT_DIR \
     --output_subdir $OUTPUT_SUBDIR \
-    --video_extensions $PARAM_VIDEO_EXT \
+    --video_extensions $VIDEO_EXT \
     --initial_samples $PARAM_INI_SAMPLES \
     --scale $PARAM_SCALE \
     --n_components $PARAM_N_COMPONENTS \
