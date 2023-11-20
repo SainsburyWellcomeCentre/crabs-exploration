@@ -10,7 +10,7 @@
 #SBATCH -e slurm_array.%N.%A-%a.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-1%5
+#SBATCH --array=0-0%5
 
 #-------
 # NOTE!!
