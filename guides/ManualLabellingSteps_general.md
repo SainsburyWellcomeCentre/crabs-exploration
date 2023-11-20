@@ -1,33 +1,16 @@
-# Guide to manual labelling of Day 2 data (9/8/2023)
+# Guide to manual labelling
 
-### Location of extracted frames
+Authors: Sofía Miñano and Nik Khadijah Nik Aznan
 
-The frames extracted for labelling are saved in two directories:
-
-```
-/ceph/zoo/users/sminano/crabs_bboxes_labels/20230817_ramalhete2023_day2_combined
-/ceph/zoo/users/sminano/crabs_bboxes_labels/20230817_ramalhete2023_day2_reencoded
-```
-
-The first directory contains frames from the following 'raw' videos
+The frames extracted for labelling will typically be in a subdirectory under
 
 ```
-09.08.2023-01-Left.MOV
-09.08.2023-02-Right.MOV
-09.08.2023-03-Left.MOV
-09.08.2023-04-Left.MOV
-09.08.2023-04-Right.MOV
+/ceph/zoo/users/sminano/crabs_bboxes_labels
 ```
 
-The second directory contains frames from the following re-encoded videos
+Below we outline the steps on how to add annotations to these extracted frames.
 
-```
-09.08.2023-01-Right.mp4
-09.08.2023-02-Left.mp4
-09.08.2023-02-Right.mp4
-```
-
-Note that the video `09.08.2023-02-Right.mp4` appears in both directories! This is because the frame extraction job for the raw video initially failed, so we repeated that job but also launched one on the re-encoded video, and these last two both worked. Please only label the frames of this video in one of the directories!
+## Steps
 
 ### 0. Mount the server from `ceph` with the frames to label
 
@@ -35,6 +18,10 @@ Note that the video `09.08.2023-02-Right.mp4` appears in both directories! This 
 - In Mac, mounting the server can be done in the Finder app, pressing CMD+K and writing the following address:
   ```
   smb://ceph-gw02.hpc.swc.ucl.ac.uk
+  ```
+- Once the directory with the extracted frames is mounted, we can access it under `Volumes` in Mac. For example, its path could look like:
+  ```
+  /Volumes/zoo/users/sminano/crabs_bboxes_labels/20230816_ramalhete2023_day2_combined/
   ```
 
 ### 1. Download and launch the VIA annotation tool
@@ -53,7 +40,7 @@ If we are launching the tool for the first time for a new project:
     ```
     20230817_ramalhete2023_day2_combined_SM
     ```
-  - `Default Path`: this will be the starting point of the file explorer when loading the images to label, so we want the folder with the frames we want to label here. Importantly, a trailing slash is needed! For example, for me in a Mac the path would be:
+  - `Default Path`: this will be the starting point of the file explorer when loading the images to label, so we want the folder with the frames we want to label here. Importantly, a trailing slash is needed! For the example above, the default path to input would be:
     ```
     /Volumes/zoo/users/sminano/crabs_bboxes_labels/20230816_ramalhete2023_day2_combined/
     ```
@@ -68,32 +55,39 @@ If we are launching the tool for the first time for a new project:
   - On the left hand side, find the `Project` section and click on the `Add Files` button
   - Select the images to load. Multiple selection is allowed, and also across folders at the same level (at least in Mac 🍎)
 
-- Recommended approach to load frames:
+- _Recommendation_:
 
-  - Loading the frames of one video only in a labelling session is a good idea - flicking through the frames of a video recorded with a static camera helps to identify the individuals.
-  - What we did during our labelling sessions was to divide the 50 frames extracted for each video in two parts (25 frames each), and assigned each part to a person to label.
+  - Loading the frames of just one video in a labelling session is a good idea. This is because flicking through the frames of a video recorded with a static camera helps us identify the individuals when they move.
 
 - Once loaded, use the left/right arrows to navigate through the images
 
 ### 4. Add bounding boxes annotations to the images
 
 - Before starting, ensure the shape selected is `Rectangular` (see left-hand side panel, `Region shape` section)
-- Zooming in the frame to label
+
+- Zoom-in the frame to label it
+
+  _Hack_:
+
   - It is possible to zoom in the frame to label using the magnifying glass tool in the top bar.
   - However, I found that when I am zoomed in on the right hand side of the frame, if I switch to the next frame (with the left arrow), the zoom location is reset to the leftmost-side of the image. This is a bit annoying when labelling the right hand side of the image.
   - As a workaround I did the following (using Chrome, in a Mac): instead of zooming in the frame, we zoom in the whole browser window. To do this, I click on an empty area of the left side panel and zoom-in using the pinch gesture on the trackpad. This way we can zoom in on the right hand side of the image and also switch across frames without the zoom changing location.
   - For some reason, this pinch gesture is not equivalent to clicking the magnifying glass tool in Chrome - I'm not sure why
+
 - To label the **first frame**, draw a rectangle around every individual
-  - To select a bounding box, click on it. To resize it, click and drag its borders.
-  - To unselect a selected bounding box, press `ESC`
-  - To delete a bounding box, select it and press `d`
+
+  - To select a bounding box, click on it.
+  - To unselect a selected bounding box, press `ESC`.
+  - To delete a bounding box, select it and press `d`.
+  - To resize a bounding box, click and drag its borders.
   - Some additional comments
     - The number shown next to the annotation is the identifier for that bounding box. For now, we don't aim to reuse that as an identifier for an individual, so don't worry about being consistent with that ID across frames.
     - Aim to draw a fairly tight box around the animal, but including all of its bodyparts. This is just so that there is not much variation across different labellers.
     - The bounding boxes can overlap - that is not an issue.
     - Aim to draw a bounding box also if the animal is partially occluded.
     - Flicking through the frames before and after the current one is very useful to identify individuals.
-    - The `Help` menu in the top bar contains further documentation on the tool and its shortcuts.
+    - The `Help` menu in the top bar contains further documentation on the annotation tool and its shortcuts.
+
 - For the next frames, the following shortcuts can speed up the process. To label frame `f+1` based on the annotations in `f`:
 
   - Select all the bounding boxes in frame `f` by pressing `a`
@@ -104,17 +98,22 @@ If we are launching the tool for the first time for a new project:
   - Adjust their size by clicking and then dragging one of their corners
   - Delete the bounding boxes that don't apply anymore with `d`
 
-- You can also copy the bounding boxes to several previous or next frames (click the `Paste-n icon`` on the top bar and read the instructions) but I found this less useful
+- You can also copy the bounding boxes to several previous or next frames (click the `Paste-n icon` on the top bar and read the instructions)
+
+  - I found this less useful
+
 - Some convenient shortcuts:
 
   - Press `b` to toggle the boxes visibility
   - Press `l` to toggle the visibility of the boxes' IDs
   - Press `spacebar` to show the annotations for that frame
 
-- There is no undo action in the annotation tool!
+- **Important**: There is no undo action in the annotation tool!
 
-  - Be sure to save frequently, at least every labelled frame - more on saving the annotations in section 6 and 7.
-  - If you are using the "copy+paste" approach to reuse the annotations of the previous frame: note that the copied annotations stay in the clipboard after pasting! Be careful that you don't press `v` accidentally, as that would paste all boxes again to the frame you are viewing (and deleting them one by one will be painful)
+  - Be sure to save frequently, at least every labelled frame
+    - more on saving the annotations in steps 6 and 7.
+  - If you are using the "copy+paste" approach to reuse the annotations of the previous frame: note that the copied annotations stay in the clipboard after pasting!
+    - Be careful that you don't press `v` accidentally, as that would paste all boxes again to the frame you are viewing (and deleting them one by one will be painful)
 
 - Try to be as consistent as possible with other labellers (in terms of what you are labelling as a crab and how)
 
@@ -143,9 +142,9 @@ If we are launching the tool for the first time for a new project:
 
 ### 6. Export the annotations
 
-We save our work in two formats: as a VIA project and as COCO annotations.
+We save our work in two formats: as a VIA json file and as COCO annotations.
 
-To save a VIA project:
+To save a VIA json file:
 
 - In the top bar, click `Project` > `Save Project`
 - Leave all settings `ON` (as by default) and click `OK` to export
@@ -161,16 +160,20 @@ Recommended practices when saving the data:
 - Save the data frequently, at least every frame - remember there is no undo button! 😬
 - It is simpler to save the data locally (to your laptop) to start with, rather than in `ceph`.
 
-Once you are done with all your annotations for the frames you imported, please upload the 2 final json files (the VIA json file and COCO json file) to this directory: `/ceph/zoo/users/sminano/crabs_bboxes_labels/20230816_ramalhete2023_day2_combined/annotations`
+Once you are done with all your annotations for the frames you imported, please upload the 2 final json files (the VIA json file and COCO json file) to the subdirectory `annotations`, which is next to the extracted frames. In our previous example, that subdirectory would be:
+
+```
+/ceph/zoo/users/sminano/crabs_bboxes_labels/20230816_ramalhete2023_day2_combined/annotations
+```
 
 ### 7. Reloading an unfinished project
 
 To load an existing VIA project:
 
 - Launch the VIA application
-- Click `Project` > "Load" and select the VIA project json file (`<project_name>.json`)
+- Click `Project` > "Load" and select the VIA json file (`<project_name>.json`)
 
-Troubleshooting
+Troubleshooting reloading
 
 - We found that sometimes the images are not correctly located when loading an old file, even if the `Default Path` for the project is correctly set in the `Settings`. To locate the images, click on the highlighted link to the `browser's file select` and re-load the files manually (multiple selection is allowed).
 - After re-loading a project, the project name shown in the left hand side may be different to the one we assigned originally. However, we found that even if that field is not modified, when we save the project as a json file the original name is used.
@@ -178,7 +181,7 @@ Troubleshooting
 
 ---
 
-### Appendix: COCO format
+## Appendix: COCO format
 
 To understand the fields in the exported COCO json file, please check [this](https://www.immersivelimit.com/tutorials/create-coco-annotations-from-scratch) nice description of how the COCO format is defined for object detection. Below a brief overview.
 
