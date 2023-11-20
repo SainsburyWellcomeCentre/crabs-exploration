@@ -26,8 +26,8 @@ module load SLEAP
 # ----------------------
 # Input data
 # ----------------------
+# TODO: change to all files in a directory?
 # INPUT_DIR=/ceph/zoo/raw/CrabField/ramalhete_2023
-# # TODO: have list here? change to directory?
 # INPUT_DATA_LIST=($(<input.list))
 INPUT_DATA_LIST=(
     "/ceph/zoo/raw/CrabField/ramalhete_2023/04.09.2023-Day1/04.09.2023-04-Left.MOV"
