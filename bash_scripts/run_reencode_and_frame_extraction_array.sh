@@ -10,13 +10,12 @@
 #SBATCH -e slurm_array.%N.%A-%a.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-3%5
+#SBATCH --array=0-0%5
 
 #-------
-# NOTE
-# with "SBATCH --array=0-n%m" ---> runs n+1 separate jobs, but not more than m at a time.
+# NOTE!!
+# with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
 # the number of array jobs should match the number of input files
-#-------
 
 # ---------------------
 # Load required modules
@@ -30,45 +29,9 @@ module load SLEAP
 # INPUT_DIR=/ceph/zoo/raw/CrabField/ramalhete_2023
 # INPUT_DATA_LIST=($(<input.list))
 INPUT_DATA_LIST=(
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/04.09.2023-Day1/04.09.2023-04-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/04.09.2023-Day1/04.09.2023-04-Right.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/04.09.2023-Day1/04.09.2023-05-Left.MOV"
-    "/ceph/zoo/raw/CrabField/ramalhete_2023/04.09.2023-Day1/04.09.2023-05-Right.MOV"
+    "/ceph/zoo/users/sminano/crabs_reencoded_videos/Sep2023_day4_reencoded/07.09.2023-01-Right_RE.mp4"
 )
 
-# ----------------------
-# Output data location
-# ----------------------
-# location of extracted frames
-# TODO: derive subdir name from parent dir
-OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels
-OUTPUT_SUBDIR="Sep2023_day1_reencoded"
-
-# location of SLURM logs
-LOG_DIR=$OUTPUT_DIR/$OUTPUT_SUBDIR/logs
-mkdir -p $LOG_DIR  # create if it doesnt exist
-# TODO: can I set SLURM logs location here?
-# srun -e slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err
-
-# location of reencoded videos
-REENCODED_VIDEOS_DIR=/ceph/zoo/users/sminano/crabs_reencoded_videos
-REENCODED_VIDEOS_SUBDIR=$REENCODED_VIDEOS_DIR/$OUTPUT_SUBDIR
-mkdir -p $REENCODED_VIDEOS_SUBDIR # create if it doesnt exist
-
-# ---------------------------------
-# Frame extraction parameters
-# -----------------------------------
-PARAM_VIDEO_EXT=mp4  # extension of the video frames are extracted from! TODO: derive video extension if not provided?
-PARAM_INI_SAMPLES=500
-PARAM_SCALE=0.5
-PARAM_N_COMPONENTS=5
-PARAM_N_CLUSTERS=5
-PARAM_PER_CLUSTER=4
-
-
-# ---------------------------
-# Check number of array jobs
-# ------------------------------
 # Check len(list of input data) matches max SLURM_ARRAY_TASK_COUNT
 # if not, exit
 if [[ $SLURM_ARRAY_TASK_COUNT -ne ${#INPUT_DATA_LIST[@]} ]]; then
@@ -77,11 +40,46 @@ if [[ $SLURM_ARRAY_TASK_COUNT -ne ${#INPUT_DATA_LIST[@]} ]]; then
 fi
 
 # ----------------------
+# Video reencoding
+# ----------------------
+# set whether to reencode input videos or not
+flag_reencode_input_videos=false
+
+# ----------------------
+# Output data location
+# ----------------------
+# location of extracted frames
+# TODO: derive subdir name from parent dir
+OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels
+OUTPUT_SUBDIR="Sep2023_day4_reencoded"
+
+# location of SLURM logs
+LOG_DIR=$OUTPUT_DIR/$OUTPUT_SUBDIR/logs
+mkdir -p $LOG_DIR  # create if it doesnt exist
+
+# set location of reencoded videos if required
+if [ "$flag_reencode_input_videos" = true ] ; then
+    REENCODED_VIDEOS_DIR=/ceph/zoo/users/sminano/crabs_reencoded_videos
+    REENCODED_VIDEOS_SUBDIR=$REENCODED_VIDEOS_DIR/$OUTPUT_SUBDIR
+    mkdir -p $REENCODED_VIDEOS_SUBDIR # create if it doesnt exist
+fi
+
+# ---------------------------------
+# Frame extraction parameters
+# -----------------------------------
+PARAM_INI_SAMPLES=500
+PARAM_SCALE=0.5
+PARAM_N_COMPONENTS=5
+PARAM_N_CLUSTERS=5
+PARAM_PER_CLUSTER=4
+
+
+# ----------------------
 # Script location
 # ----------------------
 # assumes repo located at '/ceph/scratch/sminano'
 SCRATCH_PERSONAL_DIR=/ceph/scratch/sminano
-SCRIPT_DIR=$SCRATCH_PERSONAL_DIR/crabs-exploration/bboxes_labelling
+SCRIPT_DIR=$SCRATCH_PERSONAL_DIR/crabs-exploration/crabs/bboxes_labelling
 
 # -------------------
 # Run python script
@@ -93,31 +91,44 @@ do
     echo "Input video: $SAMPLE"
     echo "--------"
 
-    # Reencode video
+    # Reencode video if required
     # following SLEAP's recommendations
     # https://sleap.ai/help.html#does-my-data-need-to-be-in-a-particular-format
-    echo "Rencoding ...."
+    if [ "$flag_reencode_input_videos" = true ] ; then
+        echo "Rencoding ...."
 
-    # path to reencoded video
-    filename_no_ext="$(basename "$SAMPLE" | sed 's/\(.*\)\..*/\1/')" # filename without extension
-    REENCODED_VIDEO_PATH="$REENCODED_VIDEOS_SUBDIR/$filename_no_ext"_RE.mp4
+        # path to reencoded video
+        filename_no_ext="$(basename "$SAMPLE" | sed 's/\(.*\)\..*/\1/')" # filename without extension
+        REENCODED_VIDEO_PATH="$REENCODED_VIDEOS_SUBDIR/$filename_no_ext"_RE.$reencoded_extension
 
-    ffmpeg -version  # print version to logs
-    ffmpeg -y -i "$SAMPLE" \
-    -c:v libx264 \
-    -pix_fmt yuv420p \
-    -preset superfast \
-    -crf 15 \
-    $REENCODED_VIDEO_PATH
-    echo "Reencoded video: $REENCODED_VIDEO_PATH"
-    echo "--------"
+        ffmpeg -version  # print version to logs
+        ffmpeg -y -i "$SAMPLE" \
+        -c:v libx264 \
+        -pix_fmt yuv420p \
+        -preset superfast \
+        -crf 15 \
+        $REENCODED_VIDEO_PATH
 
-    # Run frame extraction algorithm on reencoded video
+
+        echo "Reencoded video: $REENCODED_VIDEO_PATH"
+        echo "--------"
+        FRAME_EXTRACTION_INPUT_VIDEO=$REENCODED_VIDEO_PATH
+    else
+        echo "Skipping video reencoding..."
+        echo "--------"
+        FRAME_EXTRACTION_INPUT_VIDEO=$SAMPLE
+    fi
+
+    # Get extension of input video
+    video_filename=$(basename -- "$FRAME_EXTRACTION_INPUT_VIDEO")
+    VIDEO_EXT="${video_filename##*.}"
+
+    # Run frame extraction algorithm on video
     python $SCRIPT_DIR/extract_frames_to_label_w_sleap.py \
-    $REENCODED_VIDEO_PATH \
+    $FRAME_EXTRACTION_INPUT_VIDEO \
     --output_path $OUTPUT_DIR \
     --output_subdir $OUTPUT_SUBDIR \
-    --video_extensions $PARAM_VIDEO_EXT \
+    --video_extensions $VIDEO_EXT \
     --initial_samples $PARAM_INI_SAMPLES \
     --scale $PARAM_SCALE \
     --n_components $PARAM_N_COMPONENTS \
@@ -125,20 +136,27 @@ do
     --per_cluster $PARAM_PER_CLUSTER \
     --compute_features_per_video
 
-    echo "Frames extracted from video: $REENCODED_VIDEO_PATH"
+    if [ "$?" -ne 0 ]; then
+        echo "Frame extraction failed! Please check .err log"
+    else
+        echo "Frames extracted from video: $FRAME_EXTRACTION_INPUT_VIDEO"
+    fi
     echo "--------"
 
-    # copy .err file to go with reencoded video too
-    # TODO: make a nicer log, and not dependant on whether frame extract is OK!
+    # Reencoded videos log
+    # copy .err file to go with reencoded video too if required
     # filename: {reencoded video name}.{slurm_array}.{slurm_job_id}
-    for ext in err out
-    do
-        cp slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$ext \
-        /$REENCODED_VIDEOS_SUBDIR/"$filename_no_ext"_RE.slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$ext
-    done
+    # TODO: make a nicer log
+    if [ "$flag_reencode_input_videos" = true ] ; then
+        for ext in err out
+        do
+            cp slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$ext \
+            /$REENCODED_VIDEOS_SUBDIR/"$filename_no_ext"_RE.slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$ext
+        done
+    fi
 
+    # Frame extraction logs
     # Move logs for this job to subdir with extracted frames
-    # TODO: ideally these are moved also if frame extraction fails!
     for ext in err out
     do
         mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$ext /$LOG_DIR
