@@ -2,12 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from bboxes_labelling.extract_frames_to_label_w_sleap import get_list_of_sleap_videos
+from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
+    get_list_of_sleap_videos,
+)
 
 
 @pytest.fixture(autouse=True, scope="class")
 def input_video_dir():
-    return Path(__file__).parent / "data" / "clips"
+    return Path(__file__).parents[1] / "data" / "clips"
 
 
 class TestsFrameExtraction:
@@ -45,4 +47,5 @@ class TestsFrameExtraction:
         )
 
         # check list of SLEAP videos matches the list of files
+        assert len(list_sleap_videos) == len(list_files)
         assert len(list_sleap_videos) == len(list_files)

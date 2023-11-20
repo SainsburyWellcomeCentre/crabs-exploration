@@ -25,7 +25,11 @@ file_types = ("**/*.MOV", "**/*.mp4", "**/*.avi")
 list_paths = []
 for typ in file_types:
     list_paths.extend(
-        [p for p in list(videos_parent_dir.glob(typ)) if not p.name.startswith("._")],
+        [
+            p
+            for p in list(videos_parent_dir.glob(typ))
+            if not p.name.startswith("._")
+        ],
     )
 
 
