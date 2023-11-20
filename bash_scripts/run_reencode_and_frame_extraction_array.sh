@@ -31,6 +31,8 @@ module load SLEAP
 INPUT_DATA_LIST=(
     "/ceph/zoo/users/sminano/crabs_reencoded_videos/Sep2023_day1_reencoded/04.09.2023-05-Left_RE.mp4"
 )
+# "/ceph/zoo/users/sminano/crabs_reencoded_videos/Sep2023_day4_reencoded/07.09.2023-01-Right_RE.mp4"
+
 # Check len(list of input data) matches max SLURM_ARRAY_TASK_COUNT
 # if not, exit
 if [[ $SLURM_ARRAY_TASK_COUNT -ne ${#INPUT_DATA_LIST[@]} ]]; then
@@ -40,7 +42,7 @@ fi
 
 # set whether to reencode input videos or not
 flag_reencode_input_videos=false
-reencoded_extension=mp4
+# reencoded_extension=mp4
 
 # ----------------------
 # Output data location
@@ -64,11 +66,11 @@ fi
 # Frame extraction parameters
 # -----------------------------------
 # extension of the videos from which frames are extracted! 
-if [ "$flag_reencode_input_videos" = true ] ; then
-    PARAM_VIDEO_EXT=$reencoded_extension 
-else
-    PARAM_VIDEO_EXT=MOV # TODO: derive video extension if not provided?
-fi
+# if [ "$flag_reencode_input_videos" = true ] ; then
+#     PARAM_VIDEO_EXT=$reencoded_extension 
+# else
+#     PARAM_VIDEO_EXT=MOV # TODO: derive video extension if not provided?
+# fi
 PARAM_INI_SAMPLES=500
 PARAM_SCALE=0.5
 PARAM_N_COMPONENTS=5
@@ -119,6 +121,10 @@ do
         echo "Skipping video reencoding..."
         FRAME_EXTRACTION_INPUT_VIDEO=$SAMPLE
     fi
+
+    # Get extension of input video 
+    filename=$(basename -- "$FRAME_EXTRACTION_INPUT_VIDEO")
+    PARAM_VIDEO_EXT="${filename##*.}"
 
     # Run frame extraction algorithm on video
     python $SCRIPT_DIR/extract_frames_to_label_w_sleap.py \
