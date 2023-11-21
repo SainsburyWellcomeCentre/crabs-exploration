@@ -41,21 +41,19 @@ If we are launching the tool for the first time for a new project:
     ```
     20230817_ramalhete2023_day2_combined_SM
     ```
-  - `Default Path`: this will be the starting point of the file explorer when loading the images to label, so we want the folder with the frames we want to label here.
-
-  > [!IMPORTANT]
-  >
-  > A trailing slash is needed!
-
-  For the example above, the default path to input would be:
+  - `Default Path`: this will be the starting point of the file explorer when loading the images to label, so we want the folder with the frames we want to label here. For the example above, the default path to input would be:
 
   ```
   /Volumes/zoo/users/sminano/crabs_bboxes_labels/20230816_ramalhete2023_day2_combined/
   ```
 
-  - Leave the rest of the settings with their default values
-  - Click `Save`
-  - NOTE: We found the default path bit doesn't work very reliably, so sometimes you will need to browse the image to label and select them manually.
+> [!IMPORTANT]
+>
+> A trailing slash is needed!
+
+- Leave the rest of the settings with their default values
+- Click `Save`
+- NOTE: We found the default path bit doesn't work very reliably, so sometimes you will need to browse the image to label and select them manually.
 
 ### 3. Load the images to label
 
