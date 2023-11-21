@@ -26,9 +26,9 @@ Before running any `gin` commands, make sure you are logged in to your account (
    - You will be prompted for your GIN username and password.
    - To list the repositories available to your account: `gin repos --all`
 
-   > [! TIP]
-   >
-   > You may need `sudo` permissions for some of the following `gin` commands. If so, remember to prepend all commands with `sudo`
+> [! TIP]
+>
+> You may need `sudo` permissions for some of the following `gin` commands. If so, remember to prepend all commands with `sudo`
 
 2. Create a GIN repository
 
@@ -46,15 +46,15 @@ Before running any `gin` commands, make sure you are logged in to your account (
        - select create (if existing it doesnt detect it?)
        - To show remotes: `gin remotes`.
 
-   > [! TIP]
-   >
-   > To create a GIN repository on a `ceph` directory, you may need to mount the `ceph` directory first. To do this temporarily (i.e., until the next reboot), follow [this guide](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html). To do this permanently, follow [this one](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu.html).
-   >
-   > You may also need to add an exception for the mounted directory. To do so, run the following command:
-   >
-   > ```
-   > git config --global --add safe.directory /mnt/<path-to-the-mounted-directory>
-   > ```
+> [! TIP]
+>
+> To create a GIN repository on a `ceph` directory, you may need to mount the `ceph` directory first. To do this temporarily (i.e., until the next reboot), follow [this guide](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html). To do this permanently, follow [this one](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu.html).
+>
+> You may also need to add an exception for the mounted directory. To do so, run the following command:
+>
+> ```
+> git config --global --add safe.directory /mnt/<path-to-the-mounted-directory>
+> ```
 
 3. Record changes and upload data to the GIN remote repository
 
@@ -69,9 +69,9 @@ Before running any `gin` commands, make sure you are logged in to your account (
      ```
      Like before, you can replace the `filename` above by `.` to include all files with changes. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository)
 
-   > [! TIP]
-   >
-   > Use `gin ls` to check on the current status of the GIN repository, somewhat equivalent to `git status`
+> [! TIP]
+>
+> Use `gin ls` to check on the current status of the GIN repository, somewhat equivalent to `git status`
 
 ### To update a dataset that is hosted in GIN
 
@@ -90,7 +90,7 @@ Before running any `gin` commands, make sure you are logged in to your account (
 
 - To get the most updated repository, run: `gin download`
 
-> [!NOTE]
+> [! NOTE]
 > From [the docs](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#download-all-new-information-from-a-remote-repository) :
 > `gin download` downloads changes from the remote repository to the local clone. This will create new files that were added remotely, delete files that were removed, and update files that were changed.
 >
