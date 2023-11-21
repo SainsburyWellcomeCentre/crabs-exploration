@@ -44,6 +44,7 @@ If we are launching the tool for the first time for a new project:
   - `Default Path`: this will be the starting point of the file explorer when loading the images to label, so we want the folder with the frames we want to label here.
 
     > [!IMPORTANT]
+    >
     > A trailing slash is needed!
 
     For the example above, the default path to input would be:
@@ -76,6 +77,7 @@ If we are launching the tool for the first time for a new project:
 - Zoom-in the frame to label it
 
   > [!TIP]
+  >
   > Zooming in:
   >
   > - It is possible to zoom in the frame to label using the magnifying glass tool in the top bar.
