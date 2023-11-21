@@ -72,7 +72,7 @@
    sacct -X -j 3813494,3813184
    ```
 
-   To check the timelimit of the jobs submitted by user `sminano`
+   To check the time limit of the jobs submitted by a user (for example, `sminano`)
 
    ```
    squeue -u sminano --format="%i %P %j %u %T %l %C %S"
@@ -90,7 +90,7 @@
 
 - When developing a new bash script, it is often a good idea to try each of the steps in an interactive node first!
 
-  To request a GPU interactive node:
+  To request an interactive GPU node:
 
   ```
   srun -p gpu --gres=gpu:1 --pty bash -i

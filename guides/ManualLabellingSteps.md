@@ -108,7 +108,8 @@ If we are launching the tool for the first time for a new project:
   - Press `l` to toggle the visibility of the boxes' IDs
   - Press `spacebar` to show the annotations for that frame
 
-- **Important**: There is no undo action in the annotation tool!
+> [!CAUTION]
+> There is no undo action in the annotation tool!
 
   - Be sure to save frequently, at least every labelled frame
     - more on saving the annotations in steps 6 and 7.
