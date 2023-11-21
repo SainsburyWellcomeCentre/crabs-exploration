@@ -36,14 +36,22 @@ If we are launching the tool for the first time for a new project:
 
 - Click on the gear icon on the top bar to go to `Settings`
 - Edit the following settings:
+
   - `Project Name`: use the name of the directory holding the extracted frames and add `_`+ your initials as a suffix. For example, for Sofia:
     ```
     20230817_ramalhete2023_day2_combined_SM
     ```
-  - `Default Path`: this will be the starting point of the file explorer when loading the images to label, so we want the folder with the frames we want to label here. Importantly, a trailing slash is needed! For the example above, the default path to input would be:
+  - `Default Path`: this will be the starting point of the file explorer when loading the images to label, so we want the folder with the frames we want to label here.
+
+    > [!IMPORTANT]
+    > A trailing slash is needed!
+
+    For the example above, the default path to input would be:
+
     ```
     /Volumes/zoo/users/sminano/crabs_bboxes_labels/20230816_ramalhete2023_day2_combined/
     ```
+
   - Leave the rest of the settings with their default values
   - Click `Save`
   - NOTE: We found the default path bit doesn't work very reliably, so sometimes you will need to browse the image to label and select them manually.
@@ -55,9 +63,9 @@ If we are launching the tool for the first time for a new project:
   - On the left hand side, find the `Project` section and click on the `Add Files` button
   - Select the images to load. Multiple selection is allowed, and also across folders at the same level (at least in Mac 🍎)
 
-- _Recommendation_:
-
-  - Loading the frames of just one video in a labelling session is a good idea. This is because flicking through the frames of a video recorded with a static camera helps us identify the individuals when they move.
+> [!TIP]
+>
+> - Loading the frames of just one video in a labelling session is a good idea. This is because flicking through the frames of a video recorded with a static camera helps us identify the individuals when they move.
 
 - Once loaded, use the left/right arrows to navigate through the images
 
@@ -67,12 +75,13 @@ If we are launching the tool for the first time for a new project:
 
 - Zoom-in the frame to label it
 
-  _Hack_:
-
-  - It is possible to zoom in the frame to label using the magnifying glass tool in the top bar.
-  - However, I found that when I am zoomed in on the right hand side of the frame, if I switch to the next frame (with the left arrow), the zoom location is reset to the leftmost-side of the image. This is a bit annoying when labelling the right hand side of the image.
-  - As a workaround I did the following (using Chrome, in a Mac): instead of zooming in the frame, we zoom in the whole browser window. To do this, I click on an empty area of the left side panel and zoom-in using the pinch gesture on the trackpad. This way we can zoom in on the right hand side of the image and also switch across frames without the zoom changing location.
-  - For some reason, this pinch gesture is not equivalent to clicking the magnifying glass tool in Chrome - I'm not sure why
+  > [!TIP]
+  > Zooming in:
+  >
+  > - It is possible to zoom in the frame to label using the magnifying glass tool in the top bar.
+  > - However, I found that when I am zoomed in on the right hand side of the frame, if I switch to the next frame (with the left arrow), the zoom location is reset to the leftmost-side of the image. This is a bit annoying when labelling the right hand side of the image.
+  > - As a workaround I did the following (using Chrome, in a Mac): instead of zooming in the frame, we zoom in the whole browser window. To do this, I click on an empty area of the left side panel and zoom-in using the pinch gesture on the trackpad. This way we can zoom in on the right hand side of the image and also switch across frames without the zoom changing location.
+  > - For some reason, this pinch gesture is not equivalent to clicking the magnifying glass tool in Chrome - I'm not sure why
 
 - To label the **first frame**, draw a rectangle around every individual
 
@@ -111,10 +120,11 @@ If we are launching the tool for the first time for a new project:
 > [!CAUTION]
 > There is no undo action in the annotation tool!
 
-  - Be sure to save frequently, at least every labelled frame
-    - more on saving the annotations in steps 6 and 7.
-  - If you are using the "copy+paste" approach to reuse the annotations of the previous frame: note that the copied annotations stay in the clipboard after pasting!
-    - Be careful that you don't press `v` accidentally, as that would paste all boxes again to the frame you are viewing (and deleting them one by one will be painful)
+- Be sure to save frequently, at least every labelled frame
+  - more on saving the annotations in steps 6 and 7.
+- If you are using the "copy+paste" approach to reuse the annotations of the previous frame: note that the copied annotations stay in the clipboard after pasting!
+
+  - Be careful that you don't press `v` accidentally, as that would paste all boxes again to the frame you are viewing (and deleting them one by one will be painful)
 
 - Try to be as consistent as possible with other labellers (in terms of what you are labelling as a crab and how)
 
@@ -156,10 +166,10 @@ To export the annotations to COCO format:
 - in the top menu, click `Annotation` > `Export annotations (COCO format)`
 - This will download a json file to your Downloads folder named `<project_name>_COCO.json`
 
-Recommended practices when saving the data:
-
-- Save the data frequently, at least every frame - remember there is no undo button! 😬
-- It is simpler to save the data locally (to your laptop) to start with, rather than in `ceph`.
+> [!TIP]
+>
+> - Save the data frequently, at least every frame - remember there is no undo button! 😬
+> - It is simpler to save the data locally (to your laptop) to start with, rather than in `ceph`.
 
 Once you are done with all your annotations for the frames you imported, please upload the 2 final json files (the VIA json file and COCO json file) to the subdirectory `annotations`, which is next to the extracted frames. In our previous example, that subdirectory would be:
 
