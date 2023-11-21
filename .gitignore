@@ -88,7 +88,7 @@ venv/
 *.slp
 *.json
 
-# Test data to includ
-# TODO: move this to GIN? (or at least the larger files)
+# Test data to include
+# TODO: move this to GIN? (at least the larger files)
 !/tests/data/**/*.mp4
 !/tests/data/**/*.json
