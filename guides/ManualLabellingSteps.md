@@ -43,15 +43,15 @@ If we are launching the tool for the first time for a new project:
     ```
   - `Default Path`: this will be the starting point of the file explorer when loading the images to label, so we want the folder with the frames we want to label here.
 
-    > [!IMPORTANT]
-    >
-    > A trailing slash is needed!
+  > [!IMPORTANT]
+  >
+  > A trailing slash is needed!
 
-    For the example above, the default path to input would be:
+  For the example above, the default path to input would be:
 
-    ```
-    /Volumes/zoo/users/sminano/crabs_bboxes_labels/20230816_ramalhete2023_day2_combined/
-    ```
+  ```
+  /Volumes/zoo/users/sminano/crabs_bboxes_labels/20230816_ramalhete2023_day2_combined/
+  ```
 
   - Leave the rest of the settings with their default values
   - Click `Save`
@@ -76,14 +76,14 @@ If we are launching the tool for the first time for a new project:
 
 - Zoom-in the frame to label it
 
-  > [!TIP]
-  >
-  > Zooming in:
-  >
-  > - It is possible to zoom in the frame to label using the magnifying glass tool in the top bar.
-  > - However, I found that when I am zoomed in on the right hand side of the frame, if I switch to the next frame (with the left arrow), the zoom location is reset to the leftmost-side of the image. This is a bit annoying when labelling the right hand side of the image.
-  > - As a workaround I did the following (using Chrome, in a Mac): instead of zooming in the frame, we zoom in the whole browser window. To do this, I click on an empty area of the left side panel and zoom-in using the pinch gesture on the trackpad. This way we can zoom in on the right hand side of the image and also switch across frames without the zoom changing location.
-  > - For some reason, this pinch gesture is not equivalent to clicking the magnifying glass tool in Chrome - I'm not sure why
+> [!TIP]
+>
+> Zooming in:
+>
+> - It is possible to zoom in the frame to label using the magnifying glass tool in the top bar.
+> - However, I found that when I am zoomed in on the right hand side of the frame, if I switch to the next frame (with the left arrow), the zoom location is reset to the leftmost-side of the image. This is a bit annoying when labelling the right hand side of the image.
+> - As a workaround I did the following (using Chrome, in a Mac): instead of zooming in the frame, we zoom in the whole browser window. To do this, I click on an empty area of the left side panel and zoom-in using the pinch gesture on the trackpad. This way we can zoom in on the right hand side of the image and also switch across frames without the zoom changing location.
+> - For some reason, this pinch gesture is not equivalent to clicking the magnifying glass tool in Chrome - I'm not sure why
 
 - To label the **first frame**, draw a rectangle around every individual
 
