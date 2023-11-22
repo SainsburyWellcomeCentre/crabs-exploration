@@ -328,7 +328,7 @@ def extract_frames_to_label_from_video(
             # file naming format: videoname_frame_XXX.png
             else:
                 file_path = video_output_dir / Path(
-                    f"{Path(vid_str).stem}_" f"frame_{frame_idx:06d}.png",
+                    f"{Path(vid_str).stem}_" f"frame_{frame_idx:08d}.png",
                 )
                 img_saved = cv2.imwrite(str(file_path), frame)
                 if img_saved:
