@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -33,7 +34,8 @@ def read_json_file(
 
 
 def combine_multiple_via_jsons(
-    list_json_files: list,
+    list_input_json_files: list,
+    exclude_pattern: Optional[str] = None,
     json_out_filename: str = "VIA_JSON_combined.json",
     json_out_dir: Optional[str] = None,
     via_default_dir: Optional[str] = None,
@@ -54,8 +56,11 @@ def combine_multiple_via_jsons(
 
     Parameters
     ----------
-    list_json_files : list
+    list_input_json_files : list
         list of paths to VIA JSON files
+    exclude_pattern : Optional[str], optional
+        a regex pattern to exclude specific files from the input list.
+        By default, none.
     json_out_filename : str, optional
         name of the combined VIA JSON file, by default "VIA_JSON_combined.json"
     json_out_dir : Optional[str], optional
@@ -78,6 +83,17 @@ def combine_multiple_via_jsons(
     via_data_combined = {}
     dict_of_via_img_metadata = {}
     list_of_via_img_id_list = []
+
+    # Apply exclude pattern if required
+    if exclude_pattern:
+        list_json_files = [
+            js
+            for js in list_input_json_files
+            if not re.search(exclude_pattern, str(js))
+        ]
+    else:
+        list_json_files = list_input_json_files.copy()
+    list_json_files.sort()
 
     # loop through the input VIA JSON files
     for k, js_path in enumerate(list_json_files):
@@ -178,7 +194,7 @@ def convert_via_json_to_coco(
     Returns
     -------
     str
-        path to the COCO json file. By default, the file
+        path to the COCO json file.
     """
     # Load the annotation data in VIA JSON format
     with open(json_file_path) as json_file:
