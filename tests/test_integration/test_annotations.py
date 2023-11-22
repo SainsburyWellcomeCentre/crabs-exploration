@@ -376,4 +376,23 @@ def test_coco_generated_from_via_json(
         ann_idx_per_img += 1
 
 
-# def test_exclude_pattern()
+def test_exclude_pattern(
+    via_json_1: str,
+    via_json_2: str,
+):
+    json_out_fullpath = combine_multiple_via_jsons(
+        [via_json_1, via_json_2], "\w+_2.json$"
+    )
+
+    # the combination is the same as json1
+    assert json_out_fullpath == via_json_1
+
+
+# def test_exclude_pattern() -> None:
+#     status = os.system(
+#         "combine-and-format-annotations"
+#         "tests/data/COCO_VIA_JSONS"
+#         "--exclude-pattern"
+#         "'\w+_2.json$'"
+#     )
+#     assert status == 0
