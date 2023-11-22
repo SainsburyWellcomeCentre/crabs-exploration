@@ -374,3 +374,6 @@ def test_coco_generated_from_via_json(
 
         # Update annotation index for next iteration
         ann_idx_per_img += 1
+
+
+# def test_exclude_pattern()
