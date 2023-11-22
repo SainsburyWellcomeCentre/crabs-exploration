@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import typer
@@ -16,6 +17,7 @@ def combine_VIA_and_convert_to_COCO(
     parent_dir_via_jsons: str,
     via_default_dir: str,
     via_project_name: str,
+    exclude_pattern=None,
 ) -> str:
     """Combine a list of VIA JSON files into one and convert to COCO format
 
@@ -35,17 +37,28 @@ def combine_VIA_and_convert_to_COCO(
         path to the COCO json file. By default, the file
     """
 
-    # Get list of VIA JSON files
+    # Get list of all JSON files
     list_json_files = [
         x
         for x in Path(parent_dir_via_jsons).glob("*")
         if x.is_file() and str(x).endswith(".json")
     ]
-    list_json_files.sort()
+
+    # Exclude pattern if required
+    if exclude_pattern:
+        list_selected_json_files = [
+            js
+            for js in list_json_files
+            if not re.search(exclude_pattern, str(js))
+        ]
+    else:
+        list_selected_json_files = list_json_files.copy()
+
+    list_selected_json_files.sort()
 
     # Combine VIA JSONS
     json_out_fullpath = combine_multiple_via_jsons(
-        list_json_files,
+        list_selected_json_files,
         via_default_dir=via_default_dir,
         via_project_name=via_project_name,
     )
