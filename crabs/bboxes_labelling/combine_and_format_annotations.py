@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 
 import typer
+from typing import Optional
 
 from crabs.bboxes_labelling.annotations_utils import (
     combine_multiple_via_jsons,
@@ -17,7 +18,7 @@ def combine_VIA_and_convert_to_COCO(
     parent_dir_via_jsons: str,
     via_default_dir: str,
     via_project_name: str,
-    exclude_pattern=None,
+    exclude_pattern: Optional[str] = None,
 ) -> str:
     """Combine a list of VIA JSON files into one and convert to COCO format
 
@@ -30,6 +31,8 @@ def combine_VIA_and_convert_to_COCO(
         A full path is required.
     via_project_name : str
         The name of the VIA project.
+    exclude_pattern : str
+        a regex pattern that matches files to exclude. E.g.: "\w+_coco_gen.json$"
 
     Returns
     -------
