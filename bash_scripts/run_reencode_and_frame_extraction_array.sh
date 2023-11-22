@@ -157,10 +157,6 @@ do
 
     # Frame extraction logs
     # Move logs for this job to subdir with extracted frames
-    for ext in err out
-    do
-        mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$ext /$LOG_DIR
-    done
-
+    mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.{err,out} /$LOG_DIR
 
 done
