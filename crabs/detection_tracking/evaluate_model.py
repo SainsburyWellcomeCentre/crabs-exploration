@@ -51,6 +51,7 @@ class Detector_Test:
         self.args = args
         self.main_dir = args.main_dir
         self.score_threshold = args.score_threshold
+        self.ious_threshold = args.ious_threshold
         # self.sort_crab = Sort()
 
     def _load_pretrain_model(self) -> None:
@@ -60,8 +61,7 @@ class Detector_Test:
         # Load the pre-trained subject predictor
         # TODO: deal with different model
         self.trained_model = torch.load(
-            self.args.model_dir,
-            # map_location=torch.device('cpu')
+            self.args.model_dir, map_location=torch.device("cpu")
         )
 
     def _load_dataset(self) -> None:
@@ -70,6 +70,7 @@ class Detector_Test:
         self.annotation = (
             f"{self.main_dir}/annotations/VIA_JSON_combined_coco_gen.json"
         )
+        # self.annotation = f"{self.main_dir}/labels/test.json"
 
         with open(self.annotation) as json_file:
             coco_data = json.load(json_file)
@@ -115,8 +116,16 @@ class Detector_Test:
 
         if not self.args.sort:
             test_detection(
-                self.test_dataloader, self.trained_model, self.score_threshold
+                self.test_dataloader,
+                self.trained_model,
+                self.score_threshold,
+                self.ious_threshold,
             )
+
+
+def main(args):
+    test = Detector_Test(args)
+    test.test_model()
 
 
 if __name__ == "__main__":
@@ -148,8 +157,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--score_threshold",
         type=float,
-        default=0.5,
+        default=0.1,
         help="threshold for prediction score",
+    )
+    parser.add_argument(
+        "--ious_threshold",
+        type=float,
+        default=0.5,
+        help="threshold for IOU",
     )
     parser.add_argument(
         "--sort",
@@ -159,5 +174,4 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    test = Detector_Test(args)
-    test.test_model()
+    main(args)
