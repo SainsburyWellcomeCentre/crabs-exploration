@@ -11,8 +11,7 @@ from timecode import Timecode
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 video_path_str = (
-    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/"
-    "stereo calibration/check_chessboard_prelim_230809/"
+    "/Users/sofia/Documents_local/project_Zoo_crabs/data/check_chessboard_prelim_230809/"
     "NINJAV__cam1_S001_S001_T001_1.mp4"
 )
 video_path = Path(video_path_str)
@@ -70,7 +69,7 @@ print(nframes, width, height, frame_rate)
 
 
 # %%%%%%%%%%%%%%%%%%%%
-# prepare video writer -------
+# prepare video writer
 output_frame_rate = 1
 
 # initialise capture and videowriter
@@ -115,6 +114,7 @@ for f_idx in frame_idcs_to_extract:
         img_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
         # try to detect chessboard corners
+        # TODO: this function is very slow when a chessboard is not present
         ret, corners = cv2.findChessboardCorners(
             img_gray,
             (chessboard_config["rows"], chessboard_config["cols"]),
