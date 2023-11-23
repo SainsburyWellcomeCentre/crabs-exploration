@@ -13,14 +13,12 @@ from timecode import Timecode
 
 # %%
 video_path_str = (
-    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/"
-    "stereo calibration/check_chessboard_prelim_230809/"
+    "/Users/sofia/Documents_local/project_Zoo_crabs/data/check_chessboard_prelim_230809/"
     "NINJAV__cam1_S001_S001_T001_1.mp4"
 )
 video_path = Path(video_path_str)
 video_output_dir = Path(
-    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration"
-    "/stereo calibration/check_chessboard_prelim_230809"
+    "/Users/sofia/Documents_local/project_Zoo_crabs/data/check_chessboard_prelim_230809"
 )
 
 
@@ -169,6 +167,7 @@ for file in list_frames:
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # try to detect chessboard corners
+    # TODO: the following is very slow when no chessboard is present
     ret, corners = cv2.findChessboardCorners(
         img_gray,
         (chessboard_config["rows"], chessboard_config["cols"]),

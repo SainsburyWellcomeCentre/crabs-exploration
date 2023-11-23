@@ -8,7 +8,9 @@ import crabs.stereo_calibration.extract_pairs_of_frames as stereo
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
-input_videos_parent_dir = "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/data/crab_courtyard/"
+input_videos_parent_dir = (
+    "/Users/sofia/Documents_local/project_Zoo_crabs/data/crab_courtyard/"
+)
 video_extensions = ["MOV"]
 output_calibration_dir = "./calibration_pairs"
 
@@ -145,6 +147,7 @@ for kk in range(timecodes_dict[video_path_str]["n_frames"]):
         # find chessboard
         # to check flags:
         # https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html#ga93efa9b0aa890de240ca32b11253dd4a
+        # TODO: the following is very slow when no chessboard is present
         ret, corners = cv2.findChessboardCorners(
             frame_gray,
             chessboard_tuple,

@@ -320,6 +320,7 @@ def extract_chessboard_frames_from_video(
             # TODO: append 2d coords of corners?
             frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
+            # TODO: the following is very slow when no chessboard is present
             ret, corners = cv2.findChessboardCorners(
                 frame_gray,
                 (chessboard_config["rows"], chessboard_config["cols"]),
