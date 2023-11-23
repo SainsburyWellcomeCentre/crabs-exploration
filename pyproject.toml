@@ -24,6 +24,9 @@ classifiers = [
 dependencies = [
     "opencv-python",
     "sleap[pypi]==1.3.3",
+    "typer",
+    "timecode",
+    "ffmpeg-python"
 ]
 
 [project.optional-dependencies]
