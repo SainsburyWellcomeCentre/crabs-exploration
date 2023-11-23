@@ -123,7 +123,16 @@ class Detector_Test:
             )
 
 
-def main(args):
+def main(args) -> None:
+    """
+    Main function to orchestrate the testing process using Detector_Test.
+
+    Args:
+        args: Arguments or configuration settings for testing.
+
+    Returns:
+        None
+    """
     test = Detector_Test(args)
     test.test_model()
 

@@ -111,7 +111,16 @@ class Dectector_Train:
             save_model(trained_model)
 
 
-def main(args):
+def main(args) -> None:
+    """
+    Main function to orchestrate the training process.
+
+    Args:
+        args: Arguments or configuration settings.
+
+    Returns:
+        None
+    """
     trainer = Dectector_Train(args)
     trainer.train_model()
 

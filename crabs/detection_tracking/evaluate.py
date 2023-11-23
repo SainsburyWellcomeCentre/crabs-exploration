@@ -1,11 +1,19 @@
+import logging
 from collections import defaultdict
-from typing import DefaultDict
+from typing import DefaultDict, List, Tuple
 
 import cv2
 import numpy as np
 import torch
 import torchvision
 from detection_utils import coco_category
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+device = (
+    torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+)
 
 
 def drawing_bbox(imgs, annotations, detections, score_threshold) -> np.ndarray:
@@ -101,6 +109,75 @@ def drawing_bbox(imgs, annotations, detections, score_threshold) -> np.ndarray:
     return image_with_boxes
 
 
+def save_images_with_boxes(
+    test_dataloader, trained_model, best_threshold
+) -> None:
+    """
+    Save images with bounding boxes drawn around detected objects.
+
+    Args:
+        test_dataloader: DataLoader for the test dataset.
+        trained_model: The trained object detection model.
+        best_threshold: Threshold for object detection.
+
+    Returns:
+        None
+    """
+    with torch.no_grad():
+        imgs_id = 0
+        for imgs, annotations in test_dataloader:
+            # print(imgs)
+            imgs_id += 1
+            imgs = list(img.to(device) for img in imgs)
+            detections = trained_model(imgs)
+
+            image_with_boxes = drawing_bbox(
+                imgs, annotations, detections, best_threshold
+            )
+
+            cv2.imwrite(f"results/imgs{imgs_id}.jpg", image_with_boxes)
+
+
+def compute_precision_recall(
+    class_stats,
+    score_threshold,
+    precision_recall,
+    best_f1_score,
+    best_threshold,
+) -> Tuple[List[Tuple[float, float]], float]:
+    """
+    Compute precision, recall, and best F1 score for object detection.
+
+    Args:
+        class_stats: Statistics or information about different classes.
+        score_threshold: Threshold for detection scores.
+        precision_recall: List to store precision-recall pairs.
+        best_f1_score: Best F1 score encountered during computation.
+        best_threshold: Threshold corresponding to the best F1 score.
+
+    Returns:
+        Tuple containing precision-recall pairs and the best threshold.
+    """
+
+    for class_name, stats in class_stats.items():
+        precision = stats["tp"] / max(stats["tp"] + stats["fp"], 1)
+        recall = stats["tp"] / max(stats["tp"] + stats["fn"], 1)
+        precision_recall.append((precision, recall))
+        f1_score = (
+            2 * (precision * recall) / max((precision + recall), 1e-8)
+        )  # Avoid division by zero
+        if f1_score > best_f1_score:
+            best_f1_score = f1_score
+            best_threshold = score_threshold
+
+        logging.info(
+            f"Threshold: {score_threshold}, Class: {class_name}, "
+            f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1 Score: {f1_score:.4f}, "
+            f"False Positive: {class_stats['crab']['fp']}, False Negative: {class_stats['crab']['fn']}"
+        )
+    return precision_recall, best_threshold
+
+
 def compute_metrics(
     targets, detections, score_threshold, ious_threshold, class_stats
 ) -> dict:
@@ -185,89 +262,55 @@ def test_detection(
         None
     """
 
-    device = (
-        torch.device("cuda")
-        if torch.cuda.is_available()
-        else torch.device("cpu")
-    )
-
     # Initialize counters for true positives, false positives, and false negatives for each class
     class_stats: DefaultDict[str, dict] = defaultdict(
         lambda: {"tp": 0, "fp": 0, "fn": 0}
     )
     score_thresholds = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-    precision_recall = []
     best_f1_score = 0.0
     best_threshold = 0.0
-    # Loop through each score threshold
-    for score_threshold in score_thresholds:
-        # Initialize counters for true positives, false positives, and false negatives for each class
-
-        with torch.no_grad():
-            imgs_id = 0
-            for imgs, annotations in test_dataloader:
-                # print(imgs)
-                imgs_id += 1
-                imgs = list(img.to(device) for img in imgs)
-                targets = [
-                    {k: v.to(device) for k, v in t.items()}
-                    for t in annotations
-                ]
-                detections = trained_model(imgs)
-
-                metrics_result = compute_metrics(
-                    targets,
-                    detections,
-                    score_threshold,
-                    ious_threshold,
-                    class_stats,
-                )
-
-                # Convert the returned dict to a defaultdict
-                class_stats = defaultdict(
-                    lambda: {"tp": 0, "fp": 0, "fn": 0}, metrics_result
-                )
-            # Calculate precision, recall, and F1 score for each threshold
-            for class_name, stats in class_stats.items():
-                precision = stats["tp"] / max(stats["tp"] + stats["fp"], 1)
-                recall = stats["tp"] / max(stats["tp"] + stats["fn"], 1)
-                precision_recall.append((precision, recall))
-                f1_score = (
-                    2 * (precision * recall) / max((precision + recall), 1e-8)
-                )  # Avoid division by zero
-                if f1_score > best_f1_score:
-                    best_f1_score = f1_score
-                    best_threshold = score_threshold
-
-                print("*******************************")
-                print(f"Threshold: {score_threshold}")
-                print(f"Class: {class_name}")
-                print(f"Precision: {precision:.4f}")
-                print(f"Recall: {recall:.4f}")
-                print(f"F1 Score: {f1_score:.4f}")
-                print(f"False Negative: {stats['fn']}")
-                print(f"False Positive: {stats['fp']}")
-
-    precisions, recalls = zip(*precision_recall)
-    average_precision = sum(precisions) / len(precisions)
-
-    print(
-        f"Average Precision (Area Under Precision-Recall Curve): {average_precision:.4f}"
-    )
+    precision_recall: List[Tuple[float, float]] = []
 
     with torch.no_grad():
-        imgs_id = 0
+        all_detections = []
+        all_targets = []
         for imgs, annotations in test_dataloader:
-            # print(imgs)
-            imgs_id += 1
             imgs = list(img.to(device) for img in imgs)
             targets = [
                 {k: v.to(device) for k, v in t.items()} for t in annotations
             ]
             detections = trained_model(imgs)
 
-            image_with_boxes = drawing_bbox(
-                imgs, annotations, detections, best_threshold
+            all_detections.extend(detections)
+            all_targets.extend(targets)
+
+        for score_threshold in score_thresholds:
+            metrics_result = compute_metrics(
+                all_targets,
+                all_detections,
+                score_threshold,
+                ious_threshold,
+                class_stats,
             )
 
-            cv2.imwrite(f"results/imgs{imgs_id}.jpg", image_with_boxes)
+            # Convert the returned dict to a defaultdict
+            class_stats = defaultdict(
+                lambda: {"tp": 0, "fp": 0, "fn": 0}, metrics_result
+            )
+
+            # Calculate precision, recall, and F1 score for each threshold
+            precision_recall, best_threshold = compute_precision_recall(
+                class_stats,
+                score_threshold,
+                precision_recall,
+                best_f1_score,
+                best_threshold,
+            )
+
+    save_images_with_boxes(test_dataloader, trained_model, best_threshold)
+    precisions, recalls = zip(*precision_recall)
+    average_precision = sum(precisions) / len(precisions)
+
+    print(
+        f"Average Precision (Area Under Precision-Recall Curve): {average_precision:.4f}"
+    )

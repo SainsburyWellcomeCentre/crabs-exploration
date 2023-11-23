@@ -7,8 +7,17 @@ from PIL import Image
 from pycocotools.coco import COCO
 
 
-# Define a function to get the full file path from the file name
-def get_file_path(main_dir, file_name):
+def get_file_path(main_dir, file_name) -> str:
+    """
+    Get the file path by joining the main directory and file name.
+
+    Args:
+        main_dir (str): Main directory path.
+        file_name (str): Name of the file.
+
+    Returns:
+        str: File path joining the main directory and file name within the 'images' directory.
+    """
     return os.path.join(main_dir, "images", file_name)
 
 
@@ -296,7 +305,7 @@ def get_train_transform() -> transforms.Compose:
     return transforms.Compose(custom_transforms)
 
 
-def get_test_transform():
+def get_test_transform() -> transforms.Compose:
     # TODO: testing with different transforms
     custom_transforms = []
     custom_transforms.append(transforms.ToTensor())
