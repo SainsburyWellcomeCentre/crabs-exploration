@@ -1,18 +1,41 @@
-import argparse
 import logging
 from pathlib import Path
 
 import cv2
 import ffmpeg
+import typer
 from timecode import Timecode
 
 
-def compute_timecode_params_per_video(list_paths: list[Path]):
-    """Compute timecode parameters per video
+def compute_timecode_params_per_video(list_paths: list[Path]) -> dict:
+    """
+    Compute timecode parameters per video
 
-    We assume the timecode data is logged in the timecode stream,
-    since we are expecting MOV files.
+    We assume the timecode data is logged in the timecode stream ("tmcd"),
+    since we are expecting MOV files (see Notes for further details).
 
+    Parameters
+    ----------
+    list_paths : list[Path]
+       list of Paths to video files to extract timecode from
+
+    Returns
+    -------
+    dict
+        a dictionary with an entry for each video file that maps to a
+        dictionary with the following keys:
+        - r_frame_rate_str: ffprobe's r_frame_rate, expressed as a string
+            fraction
+        - n_frames: total number of frames derived from ffmpeg
+        - start_timecode: an instance of the Timecode class, for the
+            timecode of the first frame and at the frame rate extracted for
+            the video
+        - end_timecode: an instance of the Timecode class, for the
+            timecode of the last frame and at the frame rate extracted for
+            the video
+
+    Notes
+    -----
     On file types and timecode info (from ffprobe docs):
     - MPEG1/2 timecode is extracted from the GOP, and is available in the video
       stream details (-show_streams, see timecode).
@@ -21,7 +44,7 @@ def compute_timecode_params_per_video(list_paths: list[Path]):
     - DV, GXF and AVI timecodes are available in format metadata
       (-show_format, see TAG:timecode).
 
-    FFprobe output is a (json) dict w/ two fields:
+    FFprobe output is a (json) dict with two fields:
     - 'format', holds container-level info (i.e., info that applies to all
        streams)
     - 'streams', holding a list of dicts, one per stream
@@ -30,7 +53,7 @@ def compute_timecode_params_per_video(list_paths: list[Path]):
     - r_frame_rate: the lowest common multiple of all the frame rates in the
       stream
     - avg_frame_rate: total # frames / total duration
-    https://video.stackexchange.com/questions/20789/ffmpeg-default-output-frame-rate?newreg=e797b27b58a241dc9af8734dc8e14dc4
+      https://video.stackexchange.com/questions/20789/ffmpeg-default-output-frame-rate?newreg=e797b27b58a241dc9af8734dc8e14dc4
 
     The container has 3 streams:
     - codec_type: audio
@@ -44,26 +67,6 @@ def compute_timecode_params_per_video(list_paths: list[Path]):
     - codec_type: 'data'
       'codec_tag_string': 'tmcd', nb_frames = 1
        the timecode stream also contains r_frame_rate and avg_frame_rate
-
-    Parameters
-    ----------
-    list_paths : list[Path]
-       list of Paths to video files to extract timecode from
-
-    Returns
-    -------
-    dict
-        a dictionary with an entry for each video file that maps to a
-        dictionary with the following keys:
-            - r_frame_rate_str: ffprobe's r_frame_rate, expressed as a string
-              fraction
-            - n_frames: total number of frames
-            - start_timecode: an instance of the Timecode class, for the
-              timecode of the first frame and at the frame rate extracted for
-              the video
-            - end_timecode: an instance of the Timecode class, for the
-              timecode of the last frame and at the frame rate extracted for
-              the video
 
     """
     timecodes_dict = {}
@@ -131,16 +134,17 @@ def compute_timecode_params_per_video(list_paths: list[Path]):
 def compute_synching_timecodes(
     timecodes_dict: dict,
 ) -> tuple[Timecode, Timecode]:
-    """Determine the timecodes for the first and last frame
+    """
+    Determine the timecodes for the first and last frame
     in common across all videos
 
     We assume all videos in timecodes_dict were timecode-synched
     (i.e., their timecode streams will overlap from the common start frame
-    aka syncing point until the common end frame)
+    - aka syncing point - until the common end frame)
 
     Parameters
     ----------
-    dict
+    timecodes_dict: dict
         a dictionary with an entry for each video file that maps to a
         dictionary with the following keys:
             - r_frame_rate_str: ffprobe's r_frame_rate, expressed as a string
@@ -155,7 +159,7 @@ def compute_synching_timecodes(
 
     Returns
     -------
-    tuple of Timecodes
+    tuple[Timecode, Timecode]
         a tuple containing the max and min timecodes in common across all
         videos
 
@@ -174,12 +178,14 @@ def compute_synching_timecodes(
 
 
 def compute_opencv_start_idx(
-    timecodes_dict, max_start_timecode, min_end_timecode
-):
+    timecodes_dict: dict,
+    max_min_timecode: tuple[Timecode, Timecode],
+) -> dict:
     """
-    Compute the start and end indices for opencv
-    based on the common starting frame (max_start_timecode)
-    and the common end frame (min_end_timecode).
+    Compute the start and end indices of a set of videos
+    for opencv tools, based on their common starting frame
+    (max_start_timecode) and their common end frame
+    (min_end_timecode).
 
     This function adds the following fields to the input dict:
     - open_cv_start_idx
@@ -194,17 +200,29 @@ def compute_opencv_start_idx(
     Parameters
     ----------
     timecodes_dict : dict
-        _description_
-    max_start_timecode : Timecode
-        _description_
-    min_end_timecode : Timecode
-        _description_
+        A dictionary with an entry for each video file that maps to a
+        dictionary with the following keys:
+        - r_frame_rate_str: ffprobe's r_frame_rate, expressed as a string
+            fraction
+        - n_frames: total number of frames derived from ffmpeg
+        - start_timecode: an instance of the Timecode class, for the
+            timecode of the first frame and at the frame rate extracted for
+            the video
+        - end_timecode: an instance of the Timecode class, for the
+            timecode of the last frame and at the frame rate extracted for
+            the video
+    max_min_timecode : tuple[Timecode, Timecode]
+        a tuple containing the max_start_timecode (i.e., the common starting
+        frame), and the min_end_timecode (i.e. the common end frame)
 
     Returns
     -------
     dict
-        _description_
+        an extension to the timecodes_dict, with the openCV start and
+        end indices per video. Both are 0-based indices relative to the
+        start of the video.
     """
+    (max_start_timecode, min_end_timecode) = max_min_timecode
 
     for vid in timecodes_dict.values():
         # Set opencv start idx from the video's start_timecode
@@ -230,40 +248,40 @@ def compute_opencv_start_idx(
 
 
 def extract_chessboard_frames_from_video(
-    video_path_str,
-    nframes,
-    opencv_start_idx,
-    opencv_end_idx,
-    chessboard_config,
+    video_path_str: str,
+    video_dict: dict,
+    chessboard_config: dict,
     output_parent_dir: str = "./calibration_pairs",
 ):
-    """Extract frames with a chessboard pattern between selected indices from video,
-    and save them to the output directory
+    """
+    Extract frames with a chessboard pattern between the selected indices
+    and save them to an output directory
 
     Parameters
     ----------
-    video_path_str : _type_
-        _description_
-    nframes : _type_
-        _description_
-    opencv_start_idx : _type_
-        _description_
-    opencv_end_idx : _type_
-        _description_
+    video_path_str : str
+        path to the video to analyse
+    video_dict : dict
+        a dictionary holding timecode parameters per video.
+        It should have at least the following keys:
+        - n_frames: number of frames from ffmpeg
+        - opencv_start_idx: start index for synced period
+        - opencv_end_idx: end index for synced period
     output_parent_dir : str, optional
-        _description_, by default "./calibration_pairs"
+        directory to which save the extracted synced frames,
+        by default "./calibration_pairs"
     """
 
     # initialise capture
     cap = cv2.VideoCapture(video_path_str)
-    if cap.get(cv2.CAP_PROP_FRAME_COUNT) != nframes:
+    if cap.get(cv2.CAP_PROP_FRAME_COUNT) != video_dict["n_frames"]:
         logging.error(
             "The total number of frames from ffmpeg and opencv don't match"
         )
 
     # set capture index to desired starting point
     # ATT! Opencv is 0-based indexed (aka first frame is index 0)
-    cap.set(cv2.CAP_PROP_POS_FRAMES, opencv_start_idx)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, video_dict["opencv_start_idx"])
 
     # create output dir for this video
     output_dir_one_camera = Path(output_parent_dir) / Path(video_path_str).stem
@@ -272,7 +290,9 @@ def extract_chessboard_frames_from_video(
     # extract frames between start index and end index
     # if a chessboard pattern is detected
     pair_count = 0  # for consistency, pair_count is also 0-based
-    for frame_idx0 in range(opencv_start_idx, opencv_end_idx + 1):
+    for frame_idx0 in range(
+        video_dict["opencv_start_idx"], video_dict["opencv_end_idx"] + 1
+    ):
         # read frame
         success, frame = cap.read()
 
@@ -321,47 +341,40 @@ def extract_chessboard_frames_from_video(
                 )
 
 
-# ----------
-# Main
-# ------------
-if __name__ == "__main__":
-    # Input data
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "input_videos_parent_dir",  # positional, needs first fwd slash!
-        help="path to directory with videos",
-    )
-    parser.add_argument(
-        "--video_extensions",
-        nargs="*",
-        default=["MOV"],
-        help="video extensions to consider (typically MOV, mp4, avi)",
-    )
-    parser.add_argument(
-        "--output_calibration_dir",
-        default="./calibration_pairs",  # does this work?
-        help=(
-            "path to directory in which to store extracted"
-            " frames (by default, the current directory)"
-        ),
-    )
-    args = parser.parse_args()
+def main(
+    input_videos_parent_dir: str,
+    video_extensions: list,
+    output_calibration_dir: str = "./calibration_pairs",
+):
+    """_summary_
 
-    # Transform file_types
-    file_types = tuple(f"**/*.{ext}" for ext in args.video_extensions)
+    Parameters
+    ----------
+    input_videos_parent_dir : str
+        path to directory with videos
+    video_extensions : list
+        video extensions to consider (typically MOV, mp4, avi)
+    output_calibration_dir : str, optional
+        path to directory in which to store extracted frames,
+        by default "./calibration_pairs"
 
-    # Extract list of files
+    """
+
+    # Transform extensions to file_types regular expressions
+    file_types = tuple(f"**/*.{ext}" for ext in video_extensions)
+
+    # Extract list of video files to process
     list_paths = []
     for typ in file_types:
         list_paths.extend(
             [
                 p
-                for p in list(Path(args.input_videos_parent_dir).glob(typ))
+                for p in list(Path(input_videos_parent_dir).glob(typ))
                 if not p.name.startswith("._")
             ]
         )
 
-    # Extract timecode params
+    # Extract timecode parameters for each video
     timecodes_dict = compute_timecode_params_per_video(list_paths)
 
     # Compute syncing timecodes: the max start timecode across all videos
@@ -370,13 +383,14 @@ if __name__ == "__main__":
         timecodes_dict
     )
 
-    # Compute opencv start and end indices per video:
+    # Compute opencv start and end frame indices per video
     timecodes_dict = compute_opencv_start_idx(
-        timecodes_dict, max_start_timecode, min_end_timecode
+        timecodes_dict,
+        (max_start_timecode, min_end_timecode),
     )
 
-    # Extract synced frames with opencv and save to directory
-    # (i.e., points of intersection of 4 squares, boundaries dont count!)
+    # Extract pairs of sync frames with a visible chessboard
+    # and save to directory
     chessboard_config = {
         "rows": 6,  # ATT! THESE ARE INNER POINTS ONLY
         "cols": 9,  # ATT! THESE ARE INNER POINTS ONLY
@@ -384,9 +398,14 @@ if __name__ == "__main__":
     for vid_str, vid_dict in timecodes_dict.items():
         extract_chessboard_frames_from_video(
             vid_str,
-            vid_dict["n_frames"],
-            vid_dict["opencv_start_idx"],
-            vid_dict["opencv_end_idx"],
+            vid_dict,
             chessboard_config,
-            output_parent_dir=args.output_calibration_dir,
+            output_parent_dir=output_calibration_dir,
         )
+
+
+# ----------
+# Main
+# ------------
+if __name__ == "__main__":
+    typer.run(main)
