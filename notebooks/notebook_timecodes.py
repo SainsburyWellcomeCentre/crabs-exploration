@@ -1,6 +1,4 @@
 # %%
-# - timecode
-# - ffmpeg python bindings
 from pathlib import Path
 
 import cv2
@@ -10,7 +8,7 @@ import crabs.stereo_calibration.extract_pairs_of_frames as stereo
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
-input_videos_parent_dir = "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/crab_courtyard/"
+input_videos_parent_dir = "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/data/crab_courtyard/"
 video_extensions = ["MOV"]
 output_calibration_dir = "./calibration_pairs"
 
@@ -54,7 +52,7 @@ max_start_timecode, min_end_timecode = stereo.compute_synching_timecodes(
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Compute opencv start index per video:
 timecodes_dict = stereo.compute_opencv_start_idx(
-    timecodes_dict, max_start_timecode, min_end_timecode
+    timecodes_dict, (max_start_timecode, min_end_timecode)
 )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -62,13 +60,10 @@ timecodes_dict = stereo.compute_opencv_start_idx(
 for vid_str, vid_dict in timecodes_dict.items():
     stereo.extract_chessboard_frames_from_video(
         vid_str,
-        vid_dict["n_frames"],
-        vid_dict["opencv_start_idx"],
-        vid_dict["opencv_end_idx"],
+        vid_dict,
         chessboard_config,
         output_parent_dir=output_calibration_dir,
     )
-
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Print timecodes for every frame in a sample video
@@ -116,8 +111,7 @@ for frames_to_add in range(n_frames):
 
 # Drop frame?
 
-
-# %%%%%%%%%%%
+#  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Check if chessboard is detected
 video_path_str = list(timecodes_dict.keys())[0]
 # opencv_start_idx = timecodes_dict[video_path_str]['opencv_start_idx']
