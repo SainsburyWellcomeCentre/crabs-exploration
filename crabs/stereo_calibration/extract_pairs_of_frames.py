@@ -14,6 +14,10 @@ def compute_timecode_params_per_video(list_paths: list[Path]) -> dict:
     We assume the timecode data is logged in the timecode stream ("tmcd"),
     since we are expecting MOV files (see Notes for further details).
 
+    TODO: the timecodes obtained with ffprobe and Quicktime are
+    different, we need to find out why. See issue here:
+    https://github.com/SainsburyWellcomeCentre/crabs-exploration/issues/90
+
     Parameters
     ----------
     list_paths : list[Path]
@@ -142,6 +146,10 @@ def compute_synching_timecodes(
     (i.e., their timecode streams will overlap from the common start frame
     - aka syncing point - until the common end frame)
 
+    TODO: the timecodes obtained with ffprobe and Quicktime are
+    different, we need to find out why. See issue here:
+    https://github.com/SainsburyWellcomeCentre/crabs-exploration/issues/90
+
     Parameters
     ----------
     timecodes_dict: dict
@@ -196,6 +204,10 @@ def compute_opencv_start_idx(
     Note:
     - timecode does not accept subtraction of the same timecode
       (a timecode cannot have 0 frames)
+
+    TODO: the timecodes obtained with ffprobe and Quicktime are
+    different, we need to find out why. See issue here:
+    https://github.com/SainsburyWellcomeCentre/crabs-exploration/issues/90
 
     Parameters
     ----------
@@ -256,6 +268,10 @@ def extract_chessboard_frames_from_video(
     """
     Extract frames with a chessboard pattern between the selected indices
     and save them to an output directory
+
+    TODO: detecting the checkerboard is very slow with open-cv if no board is
+    present. See issue here:
+    https://github.com/SainsburyWellcomeCentre/crabs-exploration/issues/90
 
     Parameters
     ----------
