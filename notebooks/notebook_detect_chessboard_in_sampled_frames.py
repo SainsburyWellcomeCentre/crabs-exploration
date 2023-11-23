@@ -13,14 +13,12 @@ from timecode import Timecode
 
 # %%
 video_path_str = (
-    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/"
-    "stereo calibration/check_chessboard_prelim_230809/"
+    "/Users/sofia/Documents_local/project_Zoo_crabs/data/check_chessboard_prelim_230809/"
     "NINJAV__cam1_S001_S001_T001_1.mp4"
 )
 video_path = Path(video_path_str)
 video_output_dir = Path(
-    "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration"
-    "/stereo calibration/check_chessboard_prelim_230809"
+    "/Users/sofia/Documents_local/project_Zoo_crabs/data/check_chessboard_prelim_230809"
 )
 
 

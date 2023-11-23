@@ -8,7 +8,9 @@ import crabs.stereo_calibration.extract_pairs_of_frames as stereo
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
-input_videos_parent_dir = "/Users/sofia/Documents_local/project_Zoo_crabs/crabs-exploration/data/crab_courtyard/"
+input_videos_parent_dir = (
+    "/Users/sofia/Documents_local/project_Zoo_crabs/data/crab_courtyard/"
+)
 video_extensions = ["MOV"]
 output_calibration_dir = "./calibration_pairs"
 
