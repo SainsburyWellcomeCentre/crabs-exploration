@@ -167,6 +167,7 @@ for file in list_frames:
     img_gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # try to detect chessboard corners
+    # TODO: the following is very slow when no chessboard is present
     ret, corners = cv2.findChessboardCorners(
         img_gray,
         (chessboard_config["rows"], chessboard_config["cols"]),
