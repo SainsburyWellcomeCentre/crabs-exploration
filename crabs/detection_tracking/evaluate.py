@@ -1,9 +1,11 @@
 import logging
-from collections import defaultdict
-from typing import DefaultDict, List, Tuple
+from typing import List, Tuple
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import seaborn as sns
 import torch
 import torchvision
 from detection_utils import coco_category
@@ -44,18 +46,12 @@ def drawing_bbox(imgs, annotations, detections, score_threshold) -> np.ndarray:
 
         if pred_score:
             pred_t = [pred_score.index(x) for x in pred_score][-1]
-            # print(prediction["labels"])
 
-            # if all(
-            #     label == 1
-            #     for label in list(prediction["labels"].detach().cpu().numpy())
-            # ):
-            #     print(label)
             pred_class = [
                 coco_list[i]
                 for i in list(prediction["labels"].detach().cpu().numpy())
             ]
-            # print(pred_class)
+
             pred_boxes = [
                 [(i[0], i[1]), (i[2], i[3])]
                 for i in list(
@@ -128,11 +124,9 @@ def save_images_with_boxes(
     with torch.no_grad():
         imgs_id = 0
         for imgs, annotations in test_dataloader:
-            # print(imgs)
             imgs_id += 1
             imgs = list(img.to(device) for img in imgs)
             detections = trained_model(imgs)
-            # print(detections)
 
             image_with_boxes = drawing_bbox(
                 imgs, annotations, detections, best_threshold
@@ -211,12 +205,17 @@ def compute_metrics(
         pred_labels = detection["labels"]
         pred_scores = detection["scores"]
 
-        valid_indices = pred_scores > score_threshold
+        bool_valid_indices = pred_scores > score_threshold
 
-        pred_boxes = pred_boxes[valid_indices]
-        pred_labels = pred_labels[valid_indices]
+        class_stats["crab"]["fp"] += int(
+            len(pred_scores) - sum(bool_valid_indices)
+        )  # n of detections with score below threshold
+
+        pred_boxes = pred_boxes[bool_valid_indices]
+        pred_labels = pred_labels[bool_valid_indices]
 
         ious = torchvision.ops.box_iou(pred_boxes, gt_boxes)
+
         max_ious, max_indices = ious.max(dim=1)
 
         # Identify true positives, false positives, and false negatives
@@ -224,8 +223,7 @@ def compute_metrics(
             if iou.item() > ious_threshold:
                 pred_class_idx = pred_labels[idx].item()
                 true_label = target["labels"][max_indices[idx]].item()
-                # print(pred_class_idx)
-                # print(true_label)
+
                 if pred_class_idx == true_label == 1:
                     class_stats["crab"]["tp"] += 1
                 else:
@@ -237,8 +235,10 @@ def compute_metrics(
             found_match = False
             for idx, iou in enumerate(max_ious):
                 if (
-                    iou.item() > ious_threshold
-                    and max_indices[idx] == target_box_index
+                    iou.item()
+                    > ious_threshold  # we need this condition because the max overlap is not necessarily above the threshold
+                    and max_indices[idx]
+                    == target_box_index  # the matching index is the index of the GT box with which it has max overlap
                 ):
                     # There's an IoU match and the matched index corresponds to the current target_box_index
                     found_match = True
@@ -269,13 +269,7 @@ def test_detection(
     Returns:
         None
     """
-
-    # Initialize counters for true positives, false positives, and false negatives for each class
-    class_stats: DefaultDict[str, dict] = defaultdict(
-        lambda: {"tp": 0, "fp": 0, "fn": 0}
-    )
     score_thresholds = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-    # score_thresholds = [0.5]
     best_f1_score = 0.0
     best_threshold = 0.0
     precision_recall: List[Tuple[float, float]] = []
@@ -294,17 +288,13 @@ def test_detection(
             all_targets.extend(targets)
 
         for score_threshold in score_thresholds:
-            metrics_result = compute_metrics(
-                all_targets,
+            class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
+            class_stats = compute_metrics(
+                all_targets,  # one elem per image
                 all_detections,
                 score_threshold,
                 ious_threshold,
                 class_stats,
-            )
-
-            # Convert the returned dict to a defaultdict
-            class_stats = defaultdict(
-                lambda: {"tp": 0, "fp": 0, "fn": 0}, metrics_result
             )
 
             # Calculate precision, recall, and F1 score for each threshold
@@ -320,7 +310,7 @@ def test_detection(
                 best_f1_score,
                 best_threshold,
             )
-        # print(len(all_detections))
+
         print(best_threshold)
         save_images_with_boxes(test_dataloader, trained_model, best_threshold)
         precisions, recalls = zip(*precision_recall)
@@ -329,3 +319,17 @@ def test_detection(
         print(
             f"Average Precision (Area Under Precision-Recall Curve): {average_precision:.4f}"
         )
+
+        data = pd.DataFrame({"Recall": recalls, "Precision": precisions})
+
+        # Plotting precision-recall curve with Seaborn style
+        plt.figure(figsize=(8, 6))
+        sns.lineplot(
+            x="Recall", y="Precision", data=data, marker="o", linestyle="-"
+        )
+        plt.xlabel("Recall")
+        plt.ylabel("Precision")
+        plt.title("Precision-Recall Curve")
+
+        sns.set(style="dark")
+        plt.show()

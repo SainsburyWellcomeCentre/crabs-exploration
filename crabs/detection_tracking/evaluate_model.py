@@ -58,8 +58,7 @@ class Detector_Test:
         # Load the pre-trained subject predictor
         # TODO: deal with different model
         self.trained_model = torch.load(
-            self.args.model_dir,
-            # map_location=torch.device("cpu")
+            self.args.model_dir, map_location=torch.device("cpu")
         )
 
     def _load_dataset(self) -> None:
@@ -109,6 +108,7 @@ class Detector_Test:
         self.trained_model.eval()
         self._load_dataset()
 
+        # pdb.set_trace()
         test_detection(
             self.test_dataloader,
             self.trained_model,

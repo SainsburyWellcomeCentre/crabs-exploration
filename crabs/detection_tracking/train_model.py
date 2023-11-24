@@ -68,7 +68,7 @@ class Dectector_Train:
             if (
                 video_file == "09.08.2023-03-Left"
                 or video_file == "10.08.2023-01-Left"
-                or video_file == "10.08.2023-01-Left"
+                or video_file == "10.08.2023-01-Right"
             ):
                 continue
 
