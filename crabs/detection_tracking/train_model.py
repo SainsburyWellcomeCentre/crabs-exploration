@@ -3,14 +3,13 @@ import json
 
 import torch
 import yaml  # type: ignore
-from models import create_faster_rcnn, train_faster_rcnn
-
-from .detection_utils import (
+from detection_utils import (
     create_dataloader,
     get_train_transform,
     myFasterRCNNDataset,
     save_model,
 )
+from models import create_faster_rcnn, train_faster_rcnn
 
 # select device (whether GPU or CPU)
 device = (
@@ -66,7 +65,11 @@ class Dectector_Train:
             image_file = image_info["file_name"]
             video_file = image_file.split("_")[1]
 
-            if video_file == "09.08.2023-03-Left":
+            if (
+                video_file == "09.08.2023-03-Left"
+                or video_file == "10.08.2023-01-Left"
+                or video_file == "10.08.2023-01-Left"
+            ):
                 continue
 
             # taking the first 40 frames as training data
@@ -100,8 +103,6 @@ class Dectector_Train:
             lr=self.config["learning_rate"],
             weight_decay=self.config["wdecay"],
         )
-
-        print(f"Training {self.model_name}...")
 
         trained_model = train_faster_rcnn(
             self.config, self.model, self.train_dataloader, optimizer

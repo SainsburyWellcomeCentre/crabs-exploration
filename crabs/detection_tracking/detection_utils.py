@@ -300,6 +300,10 @@ def get_train_transform() -> transforms.Compose:
     custom_transforms = []
     # custom_transforms.append(transforms.Resize((1080, 1920)))
     custom_transforms.append(transforms.ColorJitter(brightness=0.5, hue=0.3))
+    custom_transforms.append(
+        transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.0))
+    )
+    custom_transforms.append(transforms.RandomRotation(degrees=(0, 180)))
     custom_transforms.append(transforms.ToTensor())
 
     return transforms.Compose(custom_transforms)

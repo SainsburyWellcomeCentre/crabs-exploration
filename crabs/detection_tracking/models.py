@@ -100,16 +100,13 @@ def train_faster_rcnn(
 
     EXPERIMENT_NAME = "baseline"
     RUN_NAME = f"run_{datetime.today()}"
-    print(EXPERIMENT_NAME)
 
     try:
         EXPERIMENT_ID = mlflow.get_experiment_by_name(
             EXPERIMENT_NAME
         ).experiment_id
-        print(EXPERIMENT_ID)
     except mlflow.exception.MlflowException:
         EXPERIMENT_ID = mlflow.create_experiment(EXPERIMENT_NAME)
-        print(EXPERIMENT_ID)
 
     with mlflow.start_run(experiment_id=EXPERIMENT_ID, run_name=RUN_NAME):
         mlflow.log_params(config)
@@ -119,7 +116,6 @@ def train_faster_rcnn(
         output_dir = tempfile.mkdtemp()
 
         for epoch in range(config["num_epochs"]):
-            print(epoch)
             model.train()
             i = 0
             for batch_idx, (imgs, annotations) in enumerate(train_dataloader):
@@ -136,10 +132,6 @@ def train_faster_rcnn(
                 optimizer.zero_grad()
                 losses.backward()
                 optimizer.step()
-
-                print(
-                    f"Iteration: {i}/{len(train_dataloader)}, Loss: {losses}"
-                )
 
             log_scalar("total_loss/train", losses, epoch)
 

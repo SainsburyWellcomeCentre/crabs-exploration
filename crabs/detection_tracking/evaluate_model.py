@@ -27,8 +27,7 @@ class Detector_Test:
     Attributes:
         args (argparse.Namespace): The command-line arguments provided.
         main_dir (str): The main directory path.
-        score_threshold (float): The confidence threshold for detection scores.
-        sort_crab (Sort): An instance of the sorting algorithm used for tracking.
+        ious_threshold (float): The ious threshold for detection bounding boxes.
         trained_model: The pre-trained subject classification model.
         test_data (str): The path to the directory containing test images.
         test_label (str): The path to the test annotation JSON file.
@@ -50,9 +49,7 @@ class Detector_Test:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.main_dir = args.main_dir
-        self.score_threshold = args.score_threshold
         self.ious_threshold = args.ious_threshold
-        # self.sort_crab = Sort()
 
     def _load_pretrain_model(self) -> None:
         """
@@ -61,7 +58,8 @@ class Detector_Test:
         # Load the pre-trained subject predictor
         # TODO: deal with different model
         self.trained_model = torch.load(
-            self.args.model_dir, map_location=torch.device("cpu")
+            self.args.model_dir,
+            # map_location=torch.device("cpu")
         )
 
     def _load_dataset(self) -> None:
@@ -104,9 +102,6 @@ class Detector_Test:
         """
         Test the pre-trained model on the testation dataset.
 
-        If 'sort' is False, object detection is tested via 'test_detection' function.
-        If 'sort' is True, object tracking is tested via 'test_tracking' function.
-
         Returns:
             None
         """
@@ -114,13 +109,11 @@ class Detector_Test:
         self.trained_model.eval()
         self._load_dataset()
 
-        if not self.args.sort:
-            test_detection(
-                self.test_dataloader,
-                self.trained_model,
-                self.score_threshold,
-                self.ious_threshold,
-            )
+        test_detection(
+            self.test_dataloader,
+            self.trained_model,
+            self.ious_threshold,
+        )
 
 
 def main(args) -> None:
@@ -152,34 +145,16 @@ if __name__ == "__main__":
         help="location of images and coco annotation",
     )
     parser.add_argument(
-        "--save",
-        type=bool,
-        default=True,
-        help="save video inference",
-    )
-    parser.add_argument(
         "--output_path",
         type=str,
         default=os.getcwd(),
         help="location of output video",
     )
     parser.add_argument(
-        "--score_threshold",
-        type=float,
-        default=0.1,
-        help="threshold for prediction score",
-    )
-    parser.add_argument(
         "--ious_threshold",
         type=float,
         default=0.5,
         help="threshold for IOU",
-    )
-    parser.add_argument(
-        "--sort",
-        type=bool,
-        default=False,
-        help="running sort as tracker",
     )
 
     args = parser.parse_args()

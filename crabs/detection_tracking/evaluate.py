@@ -41,71 +41,73 @@ def drawing_bbox(imgs, annotations, detections, score_threshold) -> np.ndarray:
             [(i[0], i[1]), (i[2], i[3])]
             for i in list(label["boxes"].detach().cpu().detach().numpy())
         ]
+
         if pred_score:
             pred_t = [pred_score.index(x) for x in pred_score][-1]
+            # print(prediction["labels"])
 
-            if all(
-                label == 1
-                for label in list(prediction["labels"].detach().cpu().numpy())
-            ):
-                pred_class = [
-                    coco_list[i]
-                    for i in list(prediction["labels"].detach().cpu().numpy())
-                ]
-                pred_boxes = [
-                    [(i[0], i[1]), (i[2], i[3])]
-                    for i in list(
-                        prediction["boxes"].detach().cpu().detach().numpy()
-                    )
-                ]
+            # if all(
+            #     label == 1
+            #     for label in list(prediction["labels"].detach().cpu().numpy())
+            # ):
+            #     print(label)
+            pred_class = [
+                coco_list[i]
+                for i in list(prediction["labels"].detach().cpu().numpy())
+            ]
+            # print(pred_class)
+            pred_boxes = [
+                [(i[0], i[1]), (i[2], i[3])]
+                for i in list(
+                    prediction["boxes"].detach().cpu().detach().numpy()
+                )
+            ]
 
-                pred_boxes = pred_boxes[: pred_t + 1]
-                pred_class = pred_class[: pred_t + 1]
-                for i in range(len(pred_boxes)):
-                    if (pred_class[i]) == "crab" and pred_score[
-                        i
-                    ] > score_threshold:
-                        cv2.rectangle(
-                            image_with_boxes,
-                            (
-                                int((pred_boxes[i][0])[0]),
-                                int((pred_boxes[i][0])[1]),
-                            ),
-                            (
-                                int((pred_boxes[i][1])[0]),
-                                int((pred_boxes[i][1])[1]),
-                            ),
-                            (0, 0, 255),
-                            2,
-                        )
-
-                        label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
-                        cv2.putText(
-                            image_with_boxes,
-                            label_text,
-                            (
-                                int((pred_boxes[i][0])[0]),
-                                int((pred_boxes[i][0])[1]),
-                            ),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            1,
-                            (0, 0, 255),
-                            thickness=2,
-                        )
-                for i in range(len(target_boxes)):
+            pred_boxes = pred_boxes[: pred_t + 1]
+            pred_class = pred_class[: pred_t + 1]
+            for i in range(len(pred_boxes)):
+                if pred_score[i] > score_threshold:
                     cv2.rectangle(
                         image_with_boxes,
                         (
-                            int((target_boxes[i][0])[0]),
-                            int((target_boxes[i][0])[1]),
+                            int((pred_boxes[i][0])[0]),
+                            int((pred_boxes[i][0])[1]),
                         ),
                         (
-                            int((target_boxes[i][1])[0]),
-                            int((target_boxes[i][1])[1]),
+                            int((pred_boxes[i][1])[0]),
+                            int((pred_boxes[i][1])[1]),
                         ),
-                        (0, 255, 0),
+                        (0, 0, 255),
                         2,
                     )
+
+                    label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
+                    cv2.putText(
+                        image_with_boxes,
+                        label_text,
+                        (
+                            int((pred_boxes[i][0])[0]),
+                            int((pred_boxes[i][0])[1]),
+                        ),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1,
+                        (0, 0, 255),
+                        thickness=2,
+                    )
+            for i in range(len(target_boxes)):
+                cv2.rectangle(
+                    image_with_boxes,
+                    (
+                        int((target_boxes[i][0])[0]),
+                        int((target_boxes[i][0])[1]),
+                    ),
+                    (
+                        int((target_boxes[i][1])[0]),
+                        int((target_boxes[i][1])[1]),
+                    ),
+                    (0, 255, 0),
+                    2,
+                )
     return image_with_boxes
 
 
@@ -130,6 +132,7 @@ def save_images_with_boxes(
             imgs_id += 1
             imgs = list(img.to(device) for img in imgs)
             detections = trained_model(imgs)
+            # print(detections)
 
             image_with_boxes = drawing_bbox(
                 imgs, annotations, detections, best_threshold
@@ -144,7 +147,7 @@ def compute_precision_recall(
     precision_recall,
     best_f1_score,
     best_threshold,
-) -> Tuple[List[Tuple[float, float]], float]:
+):
     """
     Compute precision, recall, and best F1 score for object detection.
 
@@ -172,10 +175,17 @@ def compute_precision_recall(
 
         logging.info(
             f"Threshold: {score_threshold}, Class: {class_name}, "
-            f"Precision: {precision:.4f}, Recall: {recall:.4f}, F1 Score: {f1_score:.4f}, "
-            f"False Positive: {class_stats['crab']['fp']}, False Negative: {class_stats['crab']['fn']}"
+            f"Precision: {precision:.4f}, Recall: {recall:.4f}, "
+            f"F1 Score: {f1_score:.4f}, "
+            f"False Positive: {class_stats['crab']['fp']}, "
+            f"False Negative: {class_stats['crab']['fn']}"
         )
-    return precision_recall, best_threshold
+    return (
+        precision_recall,
+        best_threshold,
+        best_f1_score,
+        best_threshold,
+    )
 
 
 def compute_metrics(
@@ -246,7 +256,6 @@ def compute_metrics(
 def test_detection(
     test_dataloader: torch.utils.data.DataLoader,
     trained_model,
-    score_threshold: float,
     ious_threshold: float,
 ) -> None:
     """
@@ -255,7 +264,6 @@ def test_detection(
     Args:
         test_dataloader (torch.utils.data.DataLoader): DataLoader for the test dataset.
         trained_model: The trained object detection model.
-        score_threshold (float): The confidence threshold for detection scores.
         ious_threshold (float): The confidence threshold for IOU.
 
     Returns:
@@ -267,6 +275,7 @@ def test_detection(
         lambda: {"tp": 0, "fp": 0, "fn": 0}
     )
     score_thresholds = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    # score_thresholds = [0.5]
     best_f1_score = 0.0
     best_threshold = 0.0
     precision_recall: List[Tuple[float, float]] = []
@@ -299,18 +308,24 @@ def test_detection(
             )
 
             # Calculate precision, recall, and F1 score for each threshold
-            precision_recall, best_threshold = compute_precision_recall(
+            (
+                precision_recall,
+                best_threshold,
+                best_f1_score,
+                best_threshold,
+            ) = compute_precision_recall(
                 class_stats,
                 score_threshold,
                 precision_recall,
                 best_f1_score,
                 best_threshold,
             )
+        # print(len(all_detections))
+        print(best_threshold)
+        save_images_with_boxes(test_dataloader, trained_model, best_threshold)
+        precisions, recalls = zip(*precision_recall)
+        average_precision = sum(precisions) / len(precisions)
 
-    save_images_with_boxes(test_dataloader, trained_model, best_threshold)
-    precisions, recalls = zip(*precision_recall)
-    average_precision = sum(precisions) / len(precisions)
-
-    print(
-        f"Average Precision (Area Under Precision-Recall Curve): {average_precision:.4f}"
-    )
+        print(
+            f"Average Precision (Area Under Precision-Recall Curve): {average_precision:.4f}"
+        )
