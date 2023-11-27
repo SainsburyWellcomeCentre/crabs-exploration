@@ -1,8 +1,10 @@
-# Create a GIN private repository for the labelled data
+# Create a GIN private repository
 
-Below we explain the steps to follow to create a GIN private repository for a set of labelled data
+GIN is a free and open data management system designed for reproducible management of neuroscientific data. It is a web-accessible repository store of your data based on `git` and `git-annex` that you can access securely anywhere you desire while keeping your data in sync, backed up and easily accessible.
 
-### Preparatory steps - do only once
+Below we explain the steps to create a GIN private repository for a dataset (in our case, a set of labelled images). Note that all GIN repos are private by default.
+
+## Preparatory steps - do only once
 
 These steps apply to any of the workflows below, but we need to them only the first time we use GIN in our machine.
 
@@ -16,118 +18,128 @@ These steps apply to any of the workflows below, but we need to them only the fi
    gin --version
    ```
 
-### To set up a GIN private repository from the CLI
+## Create a GIN private repository from the command line (CLI)
 
-All GIN repos are private by default.
-Before running any `gin` commands, make sure you are logged in to your account (via `gin login`).
-
-1. Use `gin login` to confirm your identity with the GIN server
-
+1. **Log in to the GIN server**
+   Before running any `gin` commands, make sure you are logged in to your account by running:
+   ```
+   gin login
+   ```
    - You will be prompted for your GIN username and password.
    - To list the repositories available to your account: `gin repos --all`
 
 > [!TIP]
 >
-> You may need `sudo` permissions for some of the following `gin` commands. If so, remember to prepend all commands with `sudo`
+> You may need `sudo` permissions for some of the following `gin` commands. If so, remember to prepend all commands with `sudo`.
 
-2. Create a GIN repository
+2. **Initialise a GIN repository**
 
-   - Option 1: on a new directory
+   - **Option 1: on a new directory**
 
-     - Run `gin create <repository name>` to create a new GIN repository locally and on the GIN server, or
-     - Create a repository in the GIN server [from the browser](https://gin.g-node.org/repo/create), and run `gin get <user name>/<repository name>` locally to download it to your local workspace.
-     - Add data (with `mv`, `cp` or drag-and-drop) to the new local GIN repository
+     - Create a new GIN repository locally and on the GIN server by running:
+       ```
+       gin create <repository name>
+       ```
+       OR alternatively:
+     - Create a repository in the GIN server [from the browser](https://gin.g-node.org/repo/create), and download it locally to your local workspace by running:
+       ```
+       gin get <user name>/<repository name>
+       ```
+     - Once the repository has been initialised (by any of the methods above), add data to the new local GIN repository with `mv`, `cp` or drag-and-dropping files to the directory.
 
-   - Option 2: on an existing directory
-     - from the relevant directory, run `gin init` to initialise the current working directory as a GIN repository
-     - Optional: create a repository in the GIN server [from the browser](https://gin.g-node.org/repo/create) ----> this doesnt work well for me!
-     - add a remote with `gin add-remote <name> <location>`, with the location of the data store in the form of alias:path or server:path
-       - e.g: `gin add-remote origin gin:sfmig/crab-data`
-       - select create (if existing it doesnt detect it?)
-       - To show remotes: `gin remotes`.
+   - **Option 2: on an existing directory**
+     - From the relevant directory, initialise the current working directory as a GIN repository by running:
+       ```
+       gin init
+       ```
+     - Add a remote for your GIN local repostory by running:
+       ```
+       gin add-remote <name> <location>
+       ```
+       where `<name>` is the name you want to give to the remote (e.g. `origin`) and `<location>` is the location of the data store, which should be in the form of alias:path or server:path (e.g. `gin add-remote origin gin:sfmig/crab-data`).
+       - If the remote GIN repository doesn't exist, you will be prompted to either create the remote GIN repository if it doesn't exist, add the remote address anyways or abort.
+       - To show the remotes accessible to your GIN account run `gin remotes`.
 
 > [!TIP]
 >
-> To create a GIN repository on a `ceph` directory, you may need to mount the `ceph` directory first. To do this temporarily (i.e., until the next reboot), follow [this guide](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html). To do this permanently, follow [this one](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu.html).
+> To create a GIN repository on a `ceph` directory:
 >
-> You may also need to add an exception for the mounted directory. To do so, run the following command:
+> - You may need to mount the `ceph` directory first. To do this temporarily (i.e., until the next reboot), follow [this guide](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html). To do this permanently, follow [this one](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu.html).
+> - You may also need to add an exception for the mounted directory. To do so, run the following command:
 >
 > ```
 > git config --global --add safe.directory /mnt/<path-to-the-mounted-directory>
 > ```
+>
+> - Alternatively, you can log to SWC's HPC cluster (`hpc-gw1`), which has the GIN CLI client installed, and work from there. This is likely faster than mounting the `ceph` directory to your laptop, since the cluster is in the same network as `ceph` and physically close to it.
 
-3. Record changes and upload data to the GIN remote repository
+3. **Add files to the GIN remote repository**
 
-   - To make a record of the current state of a local repository, run
-     ```
-     gin commit --message <message> <filename>
-     ```
-     You can replace the `filename` above by `.` to include all files with changes. See the full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#record-changes-in-local-repository)
-   - To upload all local changes to the remote GIN repository:
-     ```
-     gin upload <filename>
-     ```
-     Like before, you can replace the `filename` above by `.` to include all files with changes. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository)
+It is good practice to keep a record of the changes in the repository through commit messages. To keep a useful and clean commit history, it is also recommended to make small commits by selecting a subset of the files.
+
+- To make a record of the current state of a local repository, run
+
+  ```
+  gin commit --message <message> <filename>
+  ```
+
+  You can replace the `filename` above by an expression with wildcard (e.g., `*.png` to include all png files). A filename equal to `.` will include all files with changes. See the full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#record-changes-in-local-repository).
+
+- To upload all local changes to the remote GIN repository:
+  ```
+  gin upload <filename>
+  ```
+  Like before, `filename` accepts wildcards. It can also be replaced by `.` to include all files with changes. Again, the recommended practice would be to upload data in small-ish chunks. You can run an upload command after a few commits (so not necessarily after each commit). If the set of files you upload includes files that have been changed locally but not committed, they will be added to an automatic commit when uploading. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository).
 
 > [!TIP]
 >
-> Use `gin ls` to check on the current status of the GIN repository, somewhat equivalent to `git status`
+> - Use `gin ls` to check on the current status of the GIN repository - this is somewhat equivalent to `git status`
+> - Use `gin sync` to sync the changes bi-directionally between the local and the remote GIN repository.
+> - If the output from `gin ls` doesn't look right (e.g., files already uploaded to the GIN server appear under `Locally modified (unsaved)`), try running `gin sync` and check the status again.
 
 ### To update a dataset that is hosted in GIN
 
-1. Clone the data repository
+1. Clone the data repository:
    ```
    gin get <relative-path>
    ```
-2. Add files and commit them
+2. Add files to the directory where the local repository is in, and commit them:
    ```
    gin commit -m <message> <filename>
    ```
-3. Upload the committed changes to the GIN server
+3. Upload the committed changes to the GIN server with:
    ```
-   gin upload
+   gin upload <filename>
    ```
 
-- To get the most updated repository, run: `gin download`
+### To download the data locally
 
-> [!NOTE]
-> From [the docs](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#download-all-new-information-from-a-remote-repository) :
-> `gin download` downloads changes from the remote repository to the local clone. This will create new files that were added remotely, delete files that were removed, and update files that were changed.
->
-> With the `--content` flag, it optionally downloads the content of all files in the repository. If 'content' is not specified, new files will be empty placeholders. Content of individual files can later be retrieved using the 'get content' command, and later removed with 'remove content'.
-
-- To sync the changes bi-directionally, run: `gin sync`
-
-> [!TIP]
->
-> If the output from `gin ls` doesn't look right (e.g., files already uploaded to the GIN server appear under `Locally modified (unsaved)`), try running `gin sync` and check the status again.
-
-### Other useful commands
-
-- To undo a commit
+- To download changes from the remote repository to the local clone, and get the most updated repository, run:
   ```
-  ...
+  gin download
   ```
-- To ammend a commit message
-  ```
-  ...
-  ```
-- To stop tracking the GIN repo locally: delete the `.git` directory
+  This command is somewhat equivalent to "pulling" the latest changes to the repository. It will create new files that were added remotely, delete files that were removed, and update files that were changed. With the `--content` flag, it optionally downloads the content of all files in the repository. If 'content' is not specified, new files will be empty placeholders. Content of individual files can later be retrieved using the 'get content' command, and later removed with 'remove content'. See [the docs](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#download-all-new-information-from-a-remote-repository) for further details.
 
-- To delete a GIN repository but keeping git repo:
-  - delete the repository in the GIN server through the browser and then log back into gin?
+### To donwload the data programmatically in your Python code
+
+We recommend using [pooch](https://www.fatiando.org/pooch/latest/index.html) to easily download data from the GIN repo's URL. Pooch also has some nice bonus functionalities like caching the downloaded data locally, verifying cryptographic hashes or unzipping files upon download.
+
+### Other useful tips
+
+- To [unannex a file](https://gin.g-node.org/G-Node/Info/wiki/FAQ+Troubleshooting#how-to-unannex-files), aka remove a file from the GIN tracking before uploading:
+
+  ```
+  gin git annex unannex [path/filename]
+  ```
+
+- To stop tracking the GIN repo locally delete the `.git` directory
+
+- To delete a GIN repository but keep the git repo:
+  - delete the repository in the GIN server via the browser
   - delete the GIN local repository with `git annex uninit`
-    - this command removes relevant bits in `.git/annex` and `.git/objects`, but some pre-commits may need to be edited by hand
-    - see this [SO post](https://stackoverflow.com/questions/24447047/remove-git-annex-repository-from-file-tree)
+    - this command removes relevant bits in `.git/annex` and `.git/objects`, but some pre-commits may need to be edited by hand (see this [SO post](https://stackoverflow.com/questions/24447047/remove-git-annex-repository-from-file-tree)).
 
-To fetch the data in your code
-...
-
-To extract the checksum
-
-> Determine the sha256 checksum hash of each new file, by running sha256sum <filename> in a terminal. Alternatively, you can use pooch to do this for you: python -c "import pooch; pooch.file_hash('/path/to/file')". If you wish to generate a text file containing the hashes of all the files in a given folder, you can use python -c "import pooch; pooch.make_registry('/path/to/folder', 'sha256_registry.txt').
-
-### Useful resources
+### Helpful resources
 
 - [GIN CLI Usage tutorial](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial)
 - [GIN commands cheatsheet](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help)
@@ -139,3 +151,4 @@ To extract the checksum
 - https://movement.neuroinformatics.dev/community/contributing.html#adding-new-data
 - https://gin.g-node.org/G-Node/info/wiki#how-do-i-start
 - https://gin-howto.readthedocs.io/en/latest/gin-repositories.html
+- On GIN and its relation to `git-annex` (very high-level): https://gin.g-node.org/G-Node/Info/wiki/GIN+Advantages+Structure
