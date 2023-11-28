@@ -132,13 +132,14 @@ It is good practice to keep a record of the changes in the repository through co
   This command is somewhat equivalent to "pulling" the latest changes to the repository. It will create new files that were added remotely, delete files that were removed, and update files that were changed. With the `--content` flag, it optionally downloads the content of all files in the repository. If 'content' is not specified, new files will be empty placeholders. Content of individual files can later be retrieved using the 'get content' command, and later removed with 'remove content'. See [the docs](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#download-all-new-information-from-a-remote-repository) for further details.
 
 - To retrieve the content of an individual file, run:
+
   ```
   gin get-content <filename>
   ```
 
-### To donwload the data programmatically in your Python code
+- To donwload the data programmatically in your Python code
 
-We recommend using [pooch](https://www.fatiando.org/pooch/latest/index.html) to easily download data from the GIN repo's URL. Pooch also has some nice bonus functionalities like caching the downloaded data locally, verifying cryptographic hashes or unzipping files upon download.
+  We recommend using [pooch](https://www.fatiando.org/pooch/latest/index.html) to easily download data from the GIN repo's URL. Pooch also has some nice bonus functionalities like caching the downloaded data, verifying cryptographic hashes or unzipping files upon download.
 
 ### Other useful tips
 
