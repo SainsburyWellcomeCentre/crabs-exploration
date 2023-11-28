@@ -83,13 +83,17 @@ It is good practice to keep a record of the changes in the repository through co
   gin commit --message <message> <filename>
   ```
 
-  You can replace the `filename` above by an expression with wildcard (e.g., `*.png` to include all png files). A filename equal to `.` will include all files with changes. See the full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#record-changes-in-local-repository).
+  You can replace the `filename` above by an expression with wildcard (e.g., `*.png` to include all png files). It can also be a list of files (separated by white spaces). A filename equal to `.` will include all files with changes. See the full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#record-changes-in-local-repository).
 
 - To upload all local changes to the remote GIN repository:
+
   ```
   gin upload <filename>
   ```
-  Like before, `filename` accepts wildcards. It can also be replaced by `.` to include all files with changes. Again, the recommended practice would be to upload data in small-ish chunks. You can run an upload command after a few commits (so not necessarily after each commit). If the set of files you upload includes files that have been changed locally but not committed, they will be added to an automatic commit when uploading. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository).
+
+  Like before, `filename` accepts wildcards, can be a list of files (separated by white spaces), and can be replaced by `.` to include all files with changes. Again, the recommended practice would be to upload data in small-ish chunks. You can run an upload command after a few commits (so not necessarily after each commit).
+
+  If the set of files you upload includes files that have been changed locally but not committed, they will be automatically committed when uploading. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository).
 
 > [!TIP]
 >
@@ -99,10 +103,15 @@ It is good practice to keep a record of the changes in the repository through co
 
 ### To update a dataset that is hosted in GIN
 
-1. Clone the data repository:
+1. To clone (retrieve) a repository from the remote server to a local machine:
+
    ```
    gin get <relative-path>
    ```
+
+   > [!TIP]
+   > To see the relative paths available for your account, run `gin repos`
+
 2. Add files to the directory where the local repository is in, and commit them:
    ```
    gin commit -m <message> <filename>
@@ -115,10 +124,17 @@ It is good practice to keep a record of the changes in the repository through co
 ### To download the data locally
 
 - To download changes from the remote repository to the local clone, and get the most updated repository, run:
+
   ```
   gin download
   ```
+
   This command is somewhat equivalent to "pulling" the latest changes to the repository. It will create new files that were added remotely, delete files that were removed, and update files that were changed. With the `--content` flag, it optionally downloads the content of all files in the repository. If 'content' is not specified, new files will be empty placeholders. Content of individual files can later be retrieved using the 'get content' command, and later removed with 'remove content'. See [the docs](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#download-all-new-information-from-a-remote-repository) for further details.
+
+- To retrieve the content of an individual file, run:
+  ```
+  gin get-content <filename>
+  ```
 
 ### To donwload the data programmatically in your Python code
 
