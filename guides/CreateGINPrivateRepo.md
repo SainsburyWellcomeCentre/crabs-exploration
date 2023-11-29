@@ -185,7 +185,65 @@ These steps apply to any of the workflows below, but we need to them only the fi
   - delete the GIN local repository with `git annex uninit`
     - this command removes relevant bits in `.git/annex` and `.git/objects`, but some pre-commits may need to be edited by hand (see this [SO post](https://stackoverflow.com/questions/24447047/remove-git-annex-repository-from-file-tree)).
 
-- To lock / unlock the data
+## File locking
+
+[File locking](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial#file-locking) is an important point in GIN repos and git-annex which surprisingly comes up quite late in the docs. Below the main ideas behind it.
+
+- Files in a GIN repo can be locked or unlocked.
+
+- The lock state of a file is persistent. This means that if I clone a GIN repo whose files are unlocked, I lock them in my local copy, and then upload that to the GIN server, the next time someone clones from the GIN repo the files they fetch will be locked.
+
+- The lock state relates to the nature of the placeholder file (aka, the file in the working directory when we do `gin get <repository`):
+
+  - on Unix-like systems: if a file is locked, its corresponding placeholder file will be a symlink pointing to the annexed content (i.e., the content under `.git/annex/objects`). This way we can open and inspect the file but not modify it. If a file is unlocked, the placeholder file in the working directory is an ASCII text file with a path. This path is _approximately_ where the content of the file will be downloaded to when we request it.
+  - on Windows: from the docs, if a file is locked, the placeholder file is a plain text file pointing to the content in the git annex. If a file is unlocked, presumably the behaviour is the same as in Unix-like systems. I haven't tested the situation on Windows.
+
+- Unlocked files can be edited. If the data is unlocked and the full content of the dataset is downloaded locally, the file in the working directory has content, and so does its copy under git annex. This doubles disk usage of files checked into the repo, but in exchange users can modify and revert files to previous commits.
+
+- Locked files cannot be edited. In MacOS, we may be prompted to unlock the files if we try to edit them, but we won't be able to save any changes because we don't have writing permissions. Files need to be committed before locking (double check).
+
+- We can switch the state for one or more file using `gin lock <filename>` and `gin unlock <filename>`. After changing the state, remember to record the new state with `gin commit`!
+
+- Recommendations from the docs on when to lock / unlocked data:
+  - Keep files _unlocked_ if the workflow requires editing large files and keeping snapshots of the progress. But keep in mind this will increase storage use with every commit of a file.
+  - Keep files _locked_ if using the repo mainly as long term storage, as an archive, if files are only to be read and if the filesystem supports symlinks. This will save extra storage of keeping two copies of the same file.
+
+## Some under-the-hood details...
+
+- GIN is a wrapper around [git-annex](https://git-annex.branchable.com/)
+
+- The high-level idea behind git-annex is:
+  - git is designed to track small text files, and doesn't cope well with large binary files
+  - git-annex bypasses this by using git only to track the names and metadata of these large binary files, but not their content
+  - the content of these files is only retrieved on demand
+- How? Case for an unlocked dataset
+
+  - When we `gin download` a repository from the GIN server, we get a local "copy" (clone) of the dataset in our machine. It is not strictly a copy, because the large binary files that make up this dataset will only be downloaded as placeholders.
+
+  - These placeholder files have the same filenames (and paths) as the corresponding original files, but are instead simply ASCII text files (if the data is unlocked). If we open these placeholder files, we see they contain a path. This path is where the actual content of the corresponding file will be downloaded to, when we request it.
+  - For example, if the placeholder ASCII text file with name `09.08_09.08.2023-01-Left_frame_013230.png` points to this path `/annex/objects/MD5-s15081575--f0a21c00672ab7ed0733951a652d4b49`, it means that when we specifically request for this file's content with `gin get-content 09.08_09.08.2023-01-Left_frame_013230.png`, the actual png file will be downloaded to `.git/annex/objects/Xq/7G/MD5-s15081575--f0a21c00672ab7ed0733951a652d4b49/MD5-s15081575--f0a21c00672ab7ed0733951a652d4b49` (note that the path in the ASCII file and the actual path are somewhat different, since the actual path contains some subdirectories under `objects`). We can actually verify this file is the image by opening it with an image viewer (in mac: `open -a Preview .git/annex/objects/Xq/7G/MD5-s15081575--f0a21c00672ab7ed0733951a652d4b49/MD5-s15081575--f0a21c00672ab7ed0733951a652d4b49`)
+
+- How? Case for a locked dataset
+
+  - When we `gin download` a repository from the GIN server, we get a local "copy" (clone) of the dataset in our machine. It is not strictly a copy, because the large binary files that make up this dataset will only be downloaded as placeholders.
+  - If the data is locked and no content has been downloaded, the symlinks in the working directory will be broken (since there is no data in the git annex to retrieve).
+  - To get the actual content in the git annex, we need to run `gin download --content`. This will fetch the content from the GIN server (presumably). After this, the symlinks in the working directory should work
+
+- And in an existing directory?
+
+  - After initialising the GIN repo in the current directory and adding a remote, we would commit the data. When committing, the data is "copied" to the git annex.
+  - To replace the copies in the working directory with symlinks to the git annex content, we run `gin lock <path-to-data>`
+  - If we commit this state change and upload the changes to the GIN server, the files will be locked for any future clones of the repo.
+
+- Useful tools for inspecting this further
+
+  - `file` shows the type of file (inspecting the file, rather than plainly looking at the extension like Finder does)
+  - `open -a Preview <>` to open a png file that has no extension
+  - `ls -l <path to symlink` to check the path a symlink points to
+
+- Pending questions
+  - What is the best approach re this "data duplication"
+  - Where is the content of the files stored? Is it in the GIN server?
 
 ## Helpful resources
 
