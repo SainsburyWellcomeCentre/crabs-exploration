@@ -43,38 +43,45 @@ These steps apply to any of the workflows below, but we need to them only the fi
        ```
        gin create <repository name>
        ```
-       OR alternatively:
-     - Create a repository in the GIN server [from the browser](https://gin.g-node.org/repo/create), and download it locally to your local workspace by running:
-       ```
-       gin get <user name>/<repository name>
-       ```
-     - Once the repository has been initialised (by any of the methods above), add data to the new local GIN repository with `mv`, `cp` or drag-and-dropping files to the directory.
+         <details><summary> OR alternatively:</summary>
+         Create a repository in the GIN server [from the browser](https://gin.g-node.org/repo/create), and download it locally to your local workspace by running:
+         ```
+         gin get <user name>/<repository name>
+         ```
+         </details>
+     - Once the repository has been initialised, add data to the new local GIN repository with `mv`, `cp` or drag-and-dropping files to the directory.
 
    - **Option 2: on an existing directory**
-     - From the relevant directory, initialise the current working directory as a GIN repository by running:
-       ```
-       gin init
-       ```
-     - Add a remote for your GIN local repostory by running:
-       ```
-       gin add-remote <name> <location>
-       ```
-       where `<name>` is the name you want to give to the remote (e.g. `origin`) and `<location>` is the location of the data store, which should be in the form of alias:path or server:path (e.g. `gin add-remote origin gin:sfmig/crab-data`).
-       - If the remote GIN repository doesn't exist, you will be prompted to either create the remote GIN repository, add the remote address anyways or abort.
-       - To show the remotes accessible to your GIN account run `gin remotes`.
 
-> [!TIP]
->
-> To create a GIN repository on a `ceph` directory:
->
-> - You may need to mount the `ceph` directory first. To do this temporarily (i.e., until the next reboot), follow [this guide](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html). To do this permanently, follow [this one](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu.html).
-> - You may also need to add an exception for the mounted directory. To do so, run the following command:
->
->   ```
->   git config --global --add safe.directory /mnt/<path-to-the-mounted-directory>
->   ```
->
-> - Alternatively, you can log to SWC's HPC cluster (specifically, its [gateway node](https://howto.neuroinformatics.dev/_images/swc_hpc_access_flowchart.png) `hpc-gw1`), which has the GIN CLI client installed, and work from there. This is likely faster than mounting the `ceph` directory in your laptop, since the cluster is in the same network as `ceph` (and actually physically close to it).
+     - To create a new repository on the GIN server and in the current working directory in one go, run:
+       ```
+       gin create --here <name>
+       ```
+        <details><summary> OR alternatively:</summary>
+        To do each step independently:
+        - Initialise the current working directory as a GIN repository by running:
+        ```
+        gin init
+        ```
+        - Then add a remote for your GIN local repository by running:
+        ```
+        gin add-remote <name> <location>
+        ```
+        where `<name>` is the name you want to give to the remote (e.g. `origin`) and `<location>` is the location of the data store, which should be in the form of alias:path or server:path (e.g. `gin add-remote origin gin:sfmig/crab-data`). - If the remote GIN repository doesn't exist, you will be prompted to either create the remote GIN repository, add the remote address anyways or abort. - To show the remotes accessible to your GIN account run `gin remotes`.
+        </details>
+
+     > [!TIP]
+     >
+     > To create a GIN repository on a `ceph` directory:
+     >
+     > - You may need to mount the `ceph` directory first. To do this temporarily (i.e., until the next reboot), follow [this guide](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html). To do this permanently, follow [this one](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu.html).
+     > - You may also need to add an exception for the mounted directory. To do so, run the following command:
+     >
+     >   ```
+     >   git config --global --add safe.directory /mnt/<path-to-the-mounted-directory>
+     >   ```
+     >
+     > - Alternatively, you can log to SWC's HPC cluster (specifically, its [gateway node](https://howto.neuroinformatics.dev/_images/swc_hpc_access_flowchart.png) `hpc-gw1`), which has the GIN CLI client installed, and work from there. This is likely faster than mounting the `ceph` directory in your laptop, since the cluster is in the same network as `ceph` (and actually physically close to it).
 
 3. **Add files to the GIN remote repository**
 
@@ -98,7 +105,7 @@ It is good practice to keep a record of the changes in the repository through co
 
   If the set of files you upload includes files that have been changed locally but not committed, they will be automatically committed when uploading. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository).
 
-  Note this command sends all changes made in the directory to the server, including deletions, renames, etc. Therefore, if you delete files from the directory on your computer and perform a gin upload, the deletion will also be sent and the file will be removed from the server as well. Such changes can be synchronized without uploading any new files by not specifying any files or directories (i.e. simply running `git upload`). See further detailsin [the docs basic workflow](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial#basic-workflow-only-using-gin).
+  Note this command sends all changes made in the directory to the server, including deletions, renames, etc. Therefore, if you delete files from the directory on your computer and perform a gin upload, the deletion will also be sent and the file will be removed from the server as well. Such changes can be synchronized without uploading any new files by not specifying any files or directories (i.e. simply running `git upload`). See further details in [the docs basic workflow](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial#basic-workflow-only-using-gin).
 
 > [!TIP]
 >
