@@ -40,36 +40,48 @@ These steps apply to any of the workflows below, but we need to them only the fi
    - **Option 1: on a new directory**
 
      - Create a new GIN repository locally and on the GIN server by running:
+
        ```
        gin create <repository name>
        ```
+
          <details><summary> OR alternatively:</summary>
 
-         Create a repository in the GIN server [from the browser](https://gin.g-node.org/repo/create), and download it locally to your local workspace by running:
-         ```
-         gin get <user name>/<repository name>
-         ```
+       Create a repository in the GIN server [from the browser](https://gin.g-node.org/repo/create), and download it locally to your local workspace by running:
+
+       ```
+       gin get <user name>/<repository name>
+       ```
+
          </details>
+
      - Once the repository has been initialised, add data to the new local GIN repository with `mv`, `cp` or drag-and-dropping files to the directory.
 
    - **Option 2: on an existing directory**
 
      - To create a new repository on the GIN server and in the current working directory in one go, run:
+
        ```
        gin create --here <name>
        ```
+
         <details><summary> OR alternatively:</summary>
 
-        To do each step independently:
-        - Initialise the current working directory as a GIN repository by running:
-        ```
-        gin init
-        ```
-        - Then add a remote for your GIN local repository by running:
-        ```
-        gin add-remote <name> <location>
-        ```
-        where `<name>` is the name you want to give to the remote (e.g. `origin`) and `<location>` is the location of the data store, which should be in the form of alias:path or server:path (e.g. `gin add-remote origin gin:sfmig/crab-data`). - If the remote GIN repository doesn't exist, you will be prompted to either create the remote GIN repository, add the remote address anyways or abort. - To show the remotes accessible to your GIN account run `gin remotes`.
+       To do each step independently:
+
+       - Initialise the current working directory as a GIN repository by running:
+
+       ```
+       gin init
+       ```
+
+       - Then add a remote for your GIN local repository by running:
+
+       ```
+       gin add-remote <name> <location>
+       ```
+
+       where `<name>` is the name you want to give to the remote (e.g. `origin`) and `<location>` is the location of the data store, which should be in the form of alias:path or server:path (e.g. `gin add-remote origin gin:sfmig/crab-data`). - If the remote GIN repository doesn't exist, you will be prompted to either create the remote GIN repository, add the remote address anyways or abort. - To show the remotes accessible to your GIN account run `gin remotes`.
         </details>
 
 > [!TIP]
@@ -91,23 +103,23 @@ These steps apply to any of the workflows below, but we need to them only the fi
 
    - To make a record of the current state of a local repository, run
 
-      ```
-      gin commit --message <message> <filename>
-      ```
+     ```
+     gin commit --message <message> <filename>
+     ```
 
-      You can replace the `filename` above by an expression with wildcard (e.g., `*.png` to include all png files). It can also be a list of files (separated by white spaces). A filename equal to `.` will include all files with changes. See the full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#record-changes-in-local-repository).
+     You can replace the `filename` above by an expression with wildcard (e.g., `*.png` to include all png files). It can also be a list of files (separated by white spaces). A filename equal to `.` will include all files with changes. See the full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#record-changes-in-local-repository).
 
    - To upload all local changes to the remote GIN repository:
 
-      ```
-      gin upload <filename>
-      ```
+     ```
+     gin upload <filename>
+     ```
 
-      Like before, `filename` accepts wildcards, can be a list of files (separated by white spaces) and can be replaced by `.` to include all files with changes. Again, the recommended practice would be to upload data in small-ish chunks. You can run an upload command after a few commits (so not necessarily after each commit).
+     Like before, `filename` accepts wildcards, can be a list of files (separated by white spaces) and can be replaced by `.` to include all files with changes. Again, the recommended practice would be to upload data in small-ish chunks. You can run an upload command after a few commits (so not necessarily after each commit).
 
-      If the set of files you upload includes files that have been changed locally but not committed, they will be automatically committed when uploading. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository).
+     If the set of files you upload includes files that have been changed locally but not committed, they will be automatically committed when uploading. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository).
 
-      Note this command sends all changes made in the directory to the server, including deletions, renames, etc. Therefore, if you delete files from the directory on your computer and perform a gin upload, the deletion will also be sent and the file will be removed from the server as well. Such changes can be synchronized without uploading any new files by not specifying any files or directories (i.e. simply running `git upload`). See further details in [the docs basic workflow](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial#basic-workflow-only-using-gin).
+     Note this command sends all changes made in the directory to the server, including deletions, renames, etc. Therefore, if you delete files from the directory on your computer and perform a gin upload, the deletion will also be sent and the file will be removed from the server as well. Such changes can be synchronized without uploading any new files by not specifying any files or directories (i.e. simply running `git upload`). See further details in [the docs basic workflow](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial#basic-workflow-only-using-gin).
 
 > [!TIP]
 >
