@@ -115,7 +115,7 @@ These steps apply to any of the workflows below, but we need to them only the fi
 > - Use `gin sync` to sync the changes bi-directionally between the local and the remote GIN repository.
 > - If the output from `gin ls` doesn't look right (e.g., files already uploaded to the GIN server appear under `Locally modified (unsaved)`), try running `gin sync` and check the status again.
 
-### To update a dataset that is hosted in GIN
+## To update a dataset that is hosted in GIN
 
 1. To clone (retrieve) a repository from the remote server to a local machine:
 
@@ -137,7 +137,7 @@ These steps apply to any of the workflows below, but we need to them only the fi
    gin upload <filename>
    ```
 
-### To download the data locally
+## To download the dataset locally
 
 - To download changes from the remote repository to the local clone, and get the most updated repository, run:
 
@@ -157,7 +157,7 @@ These steps apply to any of the workflows below, but we need to them only the fi
 
   We recommend using [pooch](https://www.fatiando.org/pooch/latest/index.html) to easily download data from the GIN repo's URL. Pooch also has some nice bonus functionalities like caching the downloaded data, verifying cryptographic hashes or unzipping files upon download.
 
-### Other useful tips
+## Other useful tips
 
 - To [unannex a file](https://gin.g-node.org/G-Node/Info/wiki/FAQ+Troubleshooting#how-to-unannex-files), aka remove a file from the GIN tracking before uploading:
 
@@ -175,14 +175,14 @@ These steps apply to any of the workflows below, but we need to them only the fi
 
 - To lock / unlock the data
 
-### Helpful resources
+## Helpful resources
 
 - [GIN CLI Usage tutorial](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial): includes a description of a basic workflow and examples of multi-user workflows.
 - [GIN commands cheatsheet](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help)
 - [Troubleshooting](https://gin.g-node.org/G-Node/Info/wiki/FAQ%20Troubleshooting)
 - [GIN CLI Recipes](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Recipes)
 
-### References
+## References
 
 - https://movement.neuroinformatics.dev/community/contributing.html#adding-new-data
 - https://gin.g-node.org/G-Node/info/wiki#how-do-i-start
