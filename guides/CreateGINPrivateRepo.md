@@ -72,18 +72,18 @@ These steps apply to any of the workflows below, but we need to them only the fi
         where `<name>` is the name you want to give to the remote (e.g. `origin`) and `<location>` is the location of the data store, which should be in the form of alias:path or server:path (e.g. `gin add-remote origin gin:sfmig/crab-data`). - If the remote GIN repository doesn't exist, you will be prompted to either create the remote GIN repository, add the remote address anyways or abort. - To show the remotes accessible to your GIN account run `gin remotes`.
         </details>
 
-   > [!TIP]
-   >
-   > To create a GIN repository on a `ceph` directory:
-   >
-   > - You may need to mount the `ceph` directory first. To do this temporarily (i.e., until the next reboot), follow [this guide](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html). To do this permanently, follow [this one](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu.html).
-   > - You may also need to add an exception for the mounted directory. To do so, run the following command:
-   >
-   >   ```
-   >   git config --global --add safe.directory /mnt/<path-to-the-mounted-directory>
-   >   ```
-   >
-   > - Alternatively, you can log to SWC's HPC cluster (specifically, its [gateway node](https://howto.neuroinformatics.dev/_images/swc_hpc_access_flowchart.png) `hpc-gw1`), which has the GIN CLI client installed, and work from there. This is likely faster than mounting the `ceph` directory in your laptop, since the cluster is in the same network as `ceph` (and actually physically close to it).
+> [!TIP]
+>
+> To create a GIN repository on a `ceph` directory:
+>
+> - You may need to mount the `ceph` directory first. To do this temporarily (i.e., until the next reboot), follow [this guide](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html). To do this permanently, follow [this one](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu.html).
+> - You may also need to add an exception for the mounted directory. To do so, run the following command:
+>
+>   ```
+>   git config --global --add safe.directory /mnt/<path-to-the-mounted-directory>
+>   ```
+>
+> - Alternatively, you can log to SWC's HPC cluster (specifically, its [gateway node](https://howto.neuroinformatics.dev/_images/swc_hpc_access_flowchart.png) `hpc-gw1`), which has the GIN CLI client installed, and work from there. This is likely faster than mounting the `ceph` directory in your laptop, since the cluster is in the same network as `ceph` (and actually physically close to it).
 
 3. **Add files to the GIN remote repository**
 
