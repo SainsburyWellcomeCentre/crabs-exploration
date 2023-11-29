@@ -44,6 +44,7 @@ These steps apply to any of the workflows below, but we need to them only the fi
        gin create <repository name>
        ```
          <details><summary> OR alternatively:</summary>
+
          Create a repository in the GIN server [from the browser](https://gin.g-node.org/repo/create), and download it locally to your local workspace by running:
          ```
          gin get <user name>/<repository name>
@@ -58,6 +59,7 @@ These steps apply to any of the workflows below, but we need to them only the fi
        gin create --here <name>
        ```
         <details><summary> OR alternatively:</summary>
+
         To do each step independently:
         - Initialise the current working directory as a GIN repository by running:
         ```
@@ -70,42 +72,42 @@ These steps apply to any of the workflows below, but we need to them only the fi
         where `<name>` is the name you want to give to the remote (e.g. `origin`) and `<location>` is the location of the data store, which should be in the form of alias:path or server:path (e.g. `gin add-remote origin gin:sfmig/crab-data`). - If the remote GIN repository doesn't exist, you will be prompted to either create the remote GIN repository, add the remote address anyways or abort. - To show the remotes accessible to your GIN account run `gin remotes`.
         </details>
 
-     > [!TIP]
-     >
-     > To create a GIN repository on a `ceph` directory:
-     >
-     > - You may need to mount the `ceph` directory first. To do this temporarily (i.e., until the next reboot), follow [this guide](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html). To do this permanently, follow [this one](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu.html).
-     > - You may also need to add an exception for the mounted directory. To do so, run the following command:
-     >
-     >   ```
-     >   git config --global --add safe.directory /mnt/<path-to-the-mounted-directory>
-     >   ```
-     >
-     > - Alternatively, you can log to SWC's HPC cluster (specifically, its [gateway node](https://howto.neuroinformatics.dev/_images/swc_hpc_access_flowchart.png) `hpc-gw1`), which has the GIN CLI client installed, and work from there. This is likely faster than mounting the `ceph` directory in your laptop, since the cluster is in the same network as `ceph` (and actually physically close to it).
+   > [!TIP]
+   >
+   > To create a GIN repository on a `ceph` directory:
+   >
+   > - You may need to mount the `ceph` directory first. To do this temporarily (i.e., until the next reboot), follow [this guide](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html). To do this permanently, follow [this one](https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu.html).
+   > - You may also need to add an exception for the mounted directory. To do so, run the following command:
+   >
+   >   ```
+   >   git config --global --add safe.directory /mnt/<path-to-the-mounted-directory>
+   >   ```
+   >
+   > - Alternatively, you can log to SWC's HPC cluster (specifically, its [gateway node](https://howto.neuroinformatics.dev/_images/swc_hpc_access_flowchart.png) `hpc-gw1`), which has the GIN CLI client installed, and work from there. This is likely faster than mounting the `ceph` directory in your laptop, since the cluster is in the same network as `ceph` (and actually physically close to it).
 
 3. **Add files to the GIN remote repository**
 
-It is good practice to keep a record of the changes in the repository through commit messages. To keep a useful and clean commit history, it is also recommended to make small commits by selecting a subset of the files.
+   It is good practice to keep a record of the changes in the repository through commit messages. To keep a useful and clean commit history, it is also recommended to make small commits by selecting a subset of the files.
 
-- To make a record of the current state of a local repository, run
+   - To make a record of the current state of a local repository, run
 
-  ```
-  gin commit --message <message> <filename>
-  ```
+      ```
+      gin commit --message <message> <filename>
+      ```
 
-  You can replace the `filename` above by an expression with wildcard (e.g., `*.png` to include all png files). It can also be a list of files (separated by white spaces). A filename equal to `.` will include all files with changes. See the full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#record-changes-in-local-repository).
+      You can replace the `filename` above by an expression with wildcard (e.g., `*.png` to include all png files). It can also be a list of files (separated by white spaces). A filename equal to `.` will include all files with changes. See the full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#record-changes-in-local-repository).
 
-- To upload all local changes to the remote GIN repository:
+   - To upload all local changes to the remote GIN repository:
 
-  ```
-  gin upload <filename>
-  ```
+      ```
+      gin upload <filename>
+      ```
 
-  Like before, `filename` accepts wildcards, can be a list of files (separated by white spaces) and can be replaced by `.` to include all files with changes. Again, the recommended practice would be to upload data in small-ish chunks. You can run an upload command after a few commits (so not necessarily after each commit).
+      Like before, `filename` accepts wildcards, can be a list of files (separated by white spaces) and can be replaced by `.` to include all files with changes. Again, the recommended practice would be to upload data in small-ish chunks. You can run an upload command after a few commits (so not necessarily after each commit).
 
-  If the set of files you upload includes files that have been changed locally but not committed, they will be automatically committed when uploading. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository).
+      If the set of files you upload includes files that have been changed locally but not committed, they will be automatically committed when uploading. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository).
 
-  Note this command sends all changes made in the directory to the server, including deletions, renames, etc. Therefore, if you delete files from the directory on your computer and perform a gin upload, the deletion will also be sent and the file will be removed from the server as well. Such changes can be synchronized without uploading any new files by not specifying any files or directories (i.e. simply running `git upload`). See further details in [the docs basic workflow](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial#basic-workflow-only-using-gin).
+      Note this command sends all changes made in the directory to the server, including deletions, renames, etc. Therefore, if you delete files from the directory on your computer and perform a gin upload, the deletion will also be sent and the file will be removed from the server as well. Such changes can be synchronized without uploading any new files by not specifying any files or directories (i.e. simply running `git upload`). See further details in [the docs basic workflow](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial#basic-workflow-only-using-gin).
 
 > [!TIP]
 >
