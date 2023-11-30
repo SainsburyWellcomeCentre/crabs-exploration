@@ -123,7 +123,7 @@ These steps apply to any of the workflows below, but we need to them only the fi
 
 > [!TIP]
 >
-> - Use `gin ls` to check on the current status of the GIN repository - this is somewhat equivalent to `git status`
+> - Use `gin ls` to check on the current status of the GIN repository - this is somewhat equivalent to `git status`. The acronyms for the different status of the files are described [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#list-the-sync-status-of-files-in-the-local-repository)
 > - Use `gin sync` to sync the changes bi-directionally between the local and the remote GIN repository.
 > - If the output from `gin ls` doesn't look right (e.g., files already uploaded to the GIN server appear under `Locally modified (unsaved)`), try running `gin sync` and check the status again.
 
