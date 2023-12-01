@@ -2,7 +2,7 @@
 
 [GIN](https://gin.g-node.org/G-Node/Info/wiki) (hosted by the German Neuroinformatics Node) is a free and open data management system designed for reproducible management of neuroscientific data. It is a web-accessible repository store of your data based on `git` and `git-annex` that you can access securely anywhere you desire while keeping your data in sync, backed up and easily accessible.
 
-Below we explain the steps to create a GIN private repository for a dataset (in our case, a set of labelled images). 
+Below we explain the steps to create a GIN private repository for a dataset (in our case, a set of labelled images).
 
 > [!NOTE]
 > All GIN repos are private by default.
@@ -68,7 +68,7 @@ These steps apply to any of the workflows below, but we need to them only the fi
        gin create --here <name>
        ```
 
-        <details><summary>Or, to do each step independently:</summary>      
+        <details><summary>Or, to do each step independently:</summary>
 
        - Initialise the current working directory as a GIN repository by running:
 
@@ -215,11 +215,12 @@ To download the data programmatically in your Python code:
   - on Unix-like systems: if a file is locked, its corresponding placeholder file will be a symlink pointing to the annexed content (i.e., the content under `.git/annex/objects`). This way we can open and inspect the file but not modify it. If a file is unlocked, the placeholder file in the working directory is an ASCII text file with a path. This path is _approximately_ where the content of the file will be downloaded to when we request it.
   - on Windows: from the docs, if a file is locked, the placeholder file is a plain text file pointing to the content in the git annex. If a file is unlocked, presumably the behaviour is the same as in Unix-like systems. I haven't tested the situation on Windows.
 
-- Unlocked files can be edited. If the data is unlocked and the full content of the dataset is downloaded locally, the file in the working directory has content, and so does its copy under git annex. 
+- Unlocked files can be edited. If the data is unlocked and the full content of the dataset is downloaded locally, the file in the working directory has content, and so does its copy under git annex.
+
   > [!CAUTION]
   > This doubles disk usage of files checked into the repo, but in exchange users can modify and revert files to previous commits.
 
-- Locked files cannot be edited. In MacOS, we may be prompted to unlock the files if we try to edit them, but we won't be able to save any changes because we don't have writing permissions. Files need to be committed before locking (double check).
+- Locked files cannot be edited. For example, if we open a locked image with Preview in MacOS and try to edit it, we will be asked if we wish to unlock the file. However even if we do, we won't be able to save any changes because we don't have writing permissions. Files need to be committed before locking.
 
 - We can switch the state for one or more file using `gin lock <filename>` and `gin unlock <filename>`. After changing the state, remember to record the new state with `gin commit`!
 
