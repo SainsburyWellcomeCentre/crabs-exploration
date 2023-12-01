@@ -8,7 +8,7 @@ from detection_utils import (
     get_test_transform,
     myFasterRCNNDataset,
 )
-from evaluate import test_detection
+from evaluate import evaluate_detection
 
 # select device (whether GPU or CPU)
 device = (
@@ -18,7 +18,7 @@ device = (
 
 class Detector_Test:
     """
-    A class for testing object detection models using pre-trained classification.
+    A class for evaluating object detection models using pre-trained classification.
 
     Args:
         args (argparse.Namespace): Command-line arguments containing
@@ -109,7 +109,7 @@ class Detector_Test:
         self._load_dataset()
 
         # pdb.set_trace()
-        test_detection(
+        evaluate_detection(
             self.test_dataloader,
             self.trained_model,
             self.ious_threshold,

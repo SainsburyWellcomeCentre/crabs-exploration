@@ -253,7 +253,7 @@ def compute_metrics(
     return class_stats
 
 
-def test_detection(
+def evaluate_detection(
     test_dataloader: torch.utils.data.DataLoader,
     trained_model,
     ious_threshold: float,

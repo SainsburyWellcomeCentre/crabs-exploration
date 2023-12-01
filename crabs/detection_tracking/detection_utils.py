@@ -11,12 +11,17 @@ def get_file_path(main_dir, file_name) -> str:
     """
     Get the file path by joining the main directory and file name.
 
-    Args:
-        main_dir (str): Main directory path.
-        file_name (str): Name of the file.
+    Parameters
+    ----------
+    main_dir : str
+        Main directory path.
+    file_name :str
+        Name of the file.
 
-    Returns:
-        str: File path joining the main directory and file name within the 'images' directory.
+    Returns
+    ----------
+    file path : str
+        File path joining the main directory and file_name of images to create the full image path.
     """
     return os.path.join(main_dir, "images", file_name)
 
@@ -25,22 +30,25 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
     """Custom Pytorch dataset class for Faster RCNN object detection
     using COCO-style annotation.
 
-    Args
+    Parameters
     ----------
-    data_dir : str
-        Path to the directory containing image data.
+    main_dir : str
+        Path to the main directory containing the data.
+    train_file_path : list
+        A List containing str for path of the training files.
     annotation : str
         Path to the coco-style annotation file.
     transforms : callable, optional
         A function to apply to the images
 
     Attributes
-
     ----------
-    data_dir : str
-        Path to the directory containing image data.
-    annotation : str
-        Path to the coco-style annotation file.
+    main_dir : str
+        Path to the main directory containing the data.
+    train_file_path : list
+        A List containing str for path of the training files.
+    coco : Object
+        Instance of COCO object for handling annotations.
     ids : list
         List of image IDs from the COCO annotation.
     transforms : callable, optional
@@ -48,7 +56,8 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
 
     Returns
     ----------
-    tuple : A tuple containing an image tensor and a dictionary of annotations
+    tuple
+        A tuple containing an image tensor and a dictionary of annotations
 
     """
 
@@ -64,7 +73,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         """Get the image and associated annotations at the specified index.
 
-        Args
+        Parameters
         ----------
         index : str
             Index of the sample to retrieve.
@@ -82,7 +91,7 @@ class myFasterRCNNDataset(torch.utils.data.Dataset):
             - 'labels': Class labels for each object.
             - 'image_id': Image ID.
             - 'area': Area of each object.
-        -    'iscrowd': Flag indicating whether the object is a crowd.
+            - 'iscrowd': Flag indicating whether the object is a crowd.
         """
 
         file_name = self.file_paths[index]
@@ -160,7 +169,7 @@ def coco_category():
 # collate_fn needs for batch
 def collate_fn(batch):
     """
-    Collates a batch of samples into a structured format.
+    Collates a batch of samples into a structured format that is expected in Pytorch.
 
     This function takes a list of samples, where each sample can be any data structure.
     It filters out any `None` values from the batch and then groups the
@@ -277,7 +286,8 @@ def save_model(model: torch.nn.Module):
 
 def get_train_transform() -> transforms.Compose:
     """
-    Get a composed transformation for training data.
+    Get a composed transformation for training data for data augmentation and
+    transform the data to tensor.
 
     Returns
     -------
@@ -288,7 +298,8 @@ def get_train_transform() -> transforms.Compose:
     -----
     This function returns a composed transformation for use with training data.
     The following transforms are applied in sequence:
-    2. Apply color jittering with brightness adjustment (0.5) and hue (0.3).
+    1. Apply color jittering with brightness adjustment (0.5) and hue (0.3).
+    2. Apply Gaussian blur with kernel size of (5, 9) and sigma (0.1, 5.0)
     3. Convert the image to a PyTorch tensor.
 
     Examples
@@ -303,14 +314,12 @@ def get_train_transform() -> transforms.Compose:
     custom_transforms.append(
         transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.0))
     )
-    custom_transforms.append(transforms.RandomRotation(degrees=(0, 180)))
     custom_transforms.append(transforms.ToTensor())
 
     return transforms.Compose(custom_transforms)
 
 
 def get_test_transform() -> transforms.Compose:
-    # TODO: testing with different transforms
     custom_transforms = []
     custom_transforms.append(transforms.ToTensor())
 
