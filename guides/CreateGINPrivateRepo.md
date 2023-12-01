@@ -120,7 +120,7 @@ These steps apply to any of the workflows below, but we need to them only the fi
 
      If the set of files you upload includes files that have been changed locally but not committed, they will be automatically committed when uploading. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository).
 
-     Note this command sends all changes made in the directory to the server, including deletions, renames, etc. Therefore, if you delete files from the directory on your computer and perform a gin upload, the deletion will also be sent and the file will be removed from the server as well. Such changes can be synchronized without uploading any new files by not specifying any files or directories (i.e. simply running `git upload`). See further details in [the docs basic workflow](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial#basic-workflow-only-using-gin).
+     After running `gin upload`, the data will be uploaded to the GIN server and it will be possible to fetch it later from there. However, note this command sends all changes made in the directory to the server, including deletions, renames, etc. Therefore, if you delete files from the directory on your computer and perform a gin upload, the deletion will also be sent and the file will be removed from the server as well. Such changes can be synchronized without uploading any new files by not specifying any files or directories (i.e. simply running `git upload`). See further details in [the docs basic workflow](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial#basic-workflow-only-using-gin).
 
 > [!TIP]
 >
@@ -260,10 +260,6 @@ To download the data programmatically in your Python code:
   - `file` shows the type of file (inspecting the file, rather than plainly looking at the extension like Finder does)
   - `open -a Preview <>` to open a png file that has no extension
   - `ls -l <path to symlink` to check the path a symlink points to
-
-- Pending questions
-  - What is the best approach re this "data duplication"
-  - Where is the content of the files stored? Is it in the GIN server?
 
 ## Helpful resources
 
