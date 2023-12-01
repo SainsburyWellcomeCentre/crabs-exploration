@@ -217,8 +217,8 @@ To download the data programmatically in your Python code:
 
 - Unlocked files can be edited. If the data is unlocked and the full content of the dataset is downloaded locally, the file in the working directory has content, and so does its copy under git annex.
 
-  > [!CAUTION]
-  > This doubles disk usage of files checked into the repo, but in exchange users can modify and revert files to previous commits.
+> [!CAUTION]
+> This doubles disk usage of files checked into the repo, but in exchange users can modify and revert files to previous commits.
 
 - Locked files cannot be edited. For example, if we open a locked image with Preview in MacOS and try to edit it, we will be asked if we wish to unlock the file. However even if we do, we won't be able to save any changes because we don't have writing permissions. Files need to be committed before locking.
 
