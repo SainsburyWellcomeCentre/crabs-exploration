@@ -196,6 +196,9 @@ To download the data programmatically in your Python code:
 
 - To stop tracking the GIN repo locally delete the `.git` directory
 
+  > [!NOTE]
+  > If in the GIN repo the files are locked, remember to unlock them before removing the `.git` directory! Otherwise we won't be able to delete the `.git/annex` content.
+
 - To delete a GIN repository but keep the git repo:
 
   - delete the repository in the GIN server via the browser
