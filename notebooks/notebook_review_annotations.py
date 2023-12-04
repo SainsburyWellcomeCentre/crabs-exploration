@@ -76,14 +76,24 @@ plt.xlabel("image ID")
 plt.ylabel("n labelled crabs (annotations)")
 # %% plot per video
 
+map_video_to_n_frames = {
+    y: sum([x == y for x in list_video_name_per_image])
+    for y in list(set(list_video_name_per_image))
+}
+map_video_to_n_frames = dict(
+    sorted(map_video_to_n_frames.items(), key=lambda item: item[1])
+)
 
 plt.figure()
-for p in range(0, len(n_annotations_per_img), 50):
+start_idx = 0
+for video_name, nframes in map_video_to_n_frames.items():
+    end_idx = start_idx + nframes
     plt.plot(
-        n_annotations_per_img[p : p + 50],
+        n_annotations_per_img[start_idx:end_idx],
         ".-",
-        label=list_video_name_per_image[p],
+        label=video_name,
     )
+    start_idx = end_idx + 1
 # plt.show()
 plt.xlabel("increasing frame number ->")
 plt.ylabel("n labelled crabs (annotations)")
