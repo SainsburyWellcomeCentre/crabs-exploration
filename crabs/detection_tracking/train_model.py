@@ -11,7 +11,7 @@ from detection_utils import (
 )
 from models import create_faster_rcnn, train_faster_rcnn
 
-# select device (whether GPU or CPU)
+# select GPU if available
 device = (
     torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 )
