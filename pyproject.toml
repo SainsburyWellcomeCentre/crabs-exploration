@@ -28,8 +28,12 @@ dependencies = [
     "timecode",
     "ffmpeg-python",
     "torch",
+    "torch",
     "torchvision",
     "pycocotools",
+    "filterpy",
+    "scikit-image",
+    "lap"
 ]
 
 [project.optional-dependencies]

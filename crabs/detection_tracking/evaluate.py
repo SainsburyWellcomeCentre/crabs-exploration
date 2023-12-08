@@ -1,11 +1,7 @@
 import logging
-from typing import List, Tuple
 
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import seaborn as sns
 import torch
 import torchvision
 from detection_utils import coco_category
@@ -13,23 +9,26 @@ from detection_utils import coco_category
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
-device = (
-    torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-)
-
 
 def drawing_bbox(imgs, annotations, detections, score_threshold) -> np.ndarray:
     """
     Draw bounding boxes on images based on annotations and detections.
 
-    Args:
-        imgs: List of images.
-        annotations: Ground truth annotations.
-        detections: Detected objects.
-        score_threshold (float): The confidence threshold for detection scores.
+    Parameters
+    ----------
+    imgs : list
+        List of images.
+    annotations : dict
+        Ground truth annotations.
+    detections : dict
+        Detected objects.
+    score_threshold ; float
+        The confidence threshold for detection scores.
 
-    Returns:
-        np.ndarray: Image(s) with bounding boxes drawn on them.
+    Returns
+    ----------
+    np.ndarray
+        Image(s) with bounding boxes drawn on them.
     """
 
     coco_list = coco_category()
@@ -108,17 +107,22 @@ def drawing_bbox(imgs, annotations, detections, score_threshold) -> np.ndarray:
 
 
 def save_images_with_boxes(
-    test_dataloader, trained_model, best_threshold
+    test_dataloader, trained_model, score_threshold, device
 ) -> None:
     """
     Save images with bounding boxes drawn around detected objects.
 
-    Args:
-        test_dataloader: DataLoader for the test dataset.
-        trained_model: The trained object detection model.
-        best_threshold: Threshold for object detection.
+    Parameters
+    ----------
+    test_dataloader :
+        DataLoader for the test dataset.
+    trained_model :
+        The trained object detection model.
+    score_threshold : float
+        Threshold for object detection.
 
-    Returns:
+    Returns
+    ----------
         None
     """
     with torch.no_grad():
@@ -129,90 +133,66 @@ def save_images_with_boxes(
             detections = trained_model(imgs)
 
             image_with_boxes = drawing_bbox(
-                imgs, annotations, detections, best_threshold
+                imgs, annotations, detections, score_threshold
             )
 
             cv2.imwrite(f"results/imgs{imgs_id}.jpg", image_with_boxes)
 
 
-def compute_precision_recall(
-    class_stats,
-    score_threshold,
-    precision_recall,
-    best_f1_score,
-    best_threshold,
-):
+def compute_precision_recall(class_stats):
     """
-    Compute precision, recall, and best F1 score for object detection.
+    Compute precision and recall.
 
-    Args:
-        class_stats: Statistics or information about different classes.
-        score_threshold: Threshold for detection scores.
-        precision_recall: List to store precision-recall pairs.
-        best_f1_score: Best F1 score encountered during computation.
-        best_threshold: Threshold corresponding to the best F1 score.
+    Parameters
+    ----------
+    class_stats : dict
+        Statistics or information about different classes.
 
-    Returns:
-        Tuple containing precision-recall pairs and the best threshold.
+    Returns
+    ----------
+    None
     """
 
-    for class_name, stats in class_stats.items():
+    for _, stats in class_stats.items():
         precision = stats["tp"] / max(stats["tp"] + stats["fp"], 1)
         recall = stats["tp"] / max(stats["tp"] + stats["fn"], 1)
-        precision_recall.append((precision, recall))
-        f1_score = (
-            2 * (precision * recall) / max((precision + recall), 1e-8)
-        )  # Avoid division by zero
-        if f1_score > best_f1_score:
-            best_f1_score = f1_score
-            best_threshold = score_threshold
 
         logging.info(
-            f"Threshold: {score_threshold}, Class: {class_name}, "
             f"Precision: {precision:.4f}, Recall: {recall:.4f}, "
-            f"F1 Score: {f1_score:.4f}, "
             f"False Positive: {class_stats['crab']['fp']}, "
             f"False Negative: {class_stats['crab']['fn']}"
         )
-    return (
-        precision_recall,
-        best_threshold,
-        best_f1_score,
-        best_threshold,
-    )
 
 
-def compute_metrics(
-    targets, detections, score_threshold, ious_threshold, class_stats
+def compute_confusion_metrics(
+    targets, detections, ious_threshold, class_stats
 ) -> dict:
     """
-    Compute metrics for object detection.
+    Compute metrics (true positive, false positive, false negative) for object detection.
 
-    Args:
-        targets: Ground truth annotations.
-        detections: Detected objects.
-        score_threshold (float): The confidence threshold for detection scores.
-        ious_threshold (float): The confidence threshold for IOU.
-        class_stats: Statistics or information about different classes.
+    Parameters
+    ----------
+    targets : list
+        Ground truth annotations.
+    detections : list
+        Detected objects.
+    ious_threshold  : float
+        The threshold value for the intersection-over-union (IOU).
+        Only detections whose IOU relative to the ground truth is above the
+        threshold are true positive candidates.
+    class_stats : dict
+        Statistics or information about different classes.
 
-    Returns:
-        dict: Updated class statistics after computation.
+    Returns
+    ----------
+    dict
+        Updated class statistics after computation.
     """
 
     for target, detection in zip(targets, detections):
         gt_boxes = target["boxes"]
         pred_boxes = detection["boxes"]
         pred_labels = detection["labels"]
-        pred_scores = detection["scores"]
-
-        bool_valid_indices = pred_scores > score_threshold
-
-        class_stats["crab"]["fp"] += int(
-            len(pred_scores) - sum(bool_valid_indices)
-        )  # n of detections with score below threshold
-
-        pred_boxes = pred_boxes[bool_valid_indices]
-        pred_labels = pred_labels[bool_valid_indices]
 
         ious = torchvision.ops.box_iou(pred_boxes, gt_boxes)
 
@@ -224,7 +204,7 @@ def compute_metrics(
                 pred_class_idx = pred_labels[idx].item()
                 true_label = target["labels"][max_indices[idx]].item()
 
-                if pred_class_idx == true_label == 1:
+                if pred_class_idx == true_label:
                     class_stats["crab"]["tp"] += 1
                 else:
                     class_stats["crab"]["fp"] += 1
@@ -257,6 +237,7 @@ def evaluate_detection(
     test_dataloader: torch.utils.data.DataLoader,
     trained_model,
     ious_threshold: float,
+    score_threshold: float,
 ) -> None:
     """
     Test object detection on a dataset using a trained model.
@@ -269,11 +250,11 @@ def evaluate_detection(
     Returns:
         None
     """
-    score_thresholds = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-    best_f1_score = 0.0
-    best_threshold = 0.0
-    precision_recall: List[Tuple[float, float]] = []
-
+    device = (
+        torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
     with torch.no_grad():
         all_detections = []
         all_targets = []
@@ -287,49 +268,19 @@ def evaluate_detection(
             all_detections.extend(detections)
             all_targets.extend(targets)
 
-        for score_threshold in score_thresholds:
-            class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
-            class_stats = compute_metrics(
-                all_targets,  # one elem per image
-                all_detections,
-                score_threshold,
-                ious_threshold,
-                class_stats,
-            )
-
-            # Calculate precision, recall, and F1 score for each threshold
-            (
-                precision_recall,
-                best_threshold,
-                best_f1_score,
-                best_threshold,
-            ) = compute_precision_recall(
-                class_stats,
-                score_threshold,
-                precision_recall,
-                best_f1_score,
-                best_threshold,
-            )
-
-        print(best_threshold)
-        save_images_with_boxes(test_dataloader, trained_model, best_threshold)
-        precisions, recalls = zip(*precision_recall)
-        average_precision = sum(precisions) / len(precisions)
-
-        print(
-            f"Average Precision (Area Under Precision-Recall Curve): {average_precision:.4f}"
+        class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
+        class_stats = compute_confusion_metrics(
+            all_targets,  # one elem per image
+            all_detections,
+            ious_threshold,
+            class_stats,
         )
 
-        data = pd.DataFrame({"Recall": recalls, "Precision": precisions})
+        print(type(class_stats))
 
-        # Plotting precision-recall curve with Seaborn style
-        plt.figure(figsize=(8, 6))
-        sns.lineplot(
-            x="Recall", y="Precision", data=data, marker="o", linestyle="-"
+        # Calculate precision, recall, and F1 score for each threshold
+        compute_precision_recall(class_stats)
+
+        save_images_with_boxes(
+            test_dataloader, trained_model, score_threshold, device
         )
-        plt.xlabel("Recall")
-        plt.ylabel("Precision")
-        plt.title("Precision-Recall Curve")
-
-        sns.set(style="dark")
-        plt.show()

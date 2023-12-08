@@ -14,15 +14,13 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
 
-def create_faster_rcnn(num_classes: int, coco_model: bool = True) -> nn.Module:
+def create_faster_rcnn(num_classes: int) -> nn.Module:
     """Create faster rcnn model for the training
 
     Parameters
     ----------
     num_classes : int
         number of classes to train
-    coco_moder : bool
-        either the dataset format is coco format or not
 
     Returns
     -------
@@ -34,8 +32,6 @@ def create_faster_rcnn(num_classes: int, coco_model: bool = True) -> nn.Module:
     model = torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(
         weights=torchvision.models.detection.FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
     )
-    if coco_model:  # Return the COCO pretrained model for COCO classes.
-        return model
 
     # Get the number of input features
     in_features = model.roi_heads.box_predictor.cls_score.in_features

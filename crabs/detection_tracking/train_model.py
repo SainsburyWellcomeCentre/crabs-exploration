@@ -11,16 +11,11 @@ from detection_utils import (
 )
 from models import create_faster_rcnn, train_faster_rcnn
 
-# select GPU if available
-device = (
-    torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-)
-
 
 class Dectector_Train:
     """Training class for detector algorithm
 
-    Args
+    Parameters
     ----------
     args: argparse.Namespace
         An object containing the parsed command-line arguments.
@@ -35,10 +30,12 @@ class Dectector_Train:
         The model use to train the detector.
     """
 
-    def __init__(self, args: argparse.Namespace) -> None:
+    def __init__(self, args: argparse.Namespace):
         self.config_file = args.config_file
         self.main_dir = args.main_dir
+        self.annotation_file = args.annotation_file
         self.model_name = args.model_name
+        self.annotation = f"{self.main_dir}/annotations/{self.annotation_file}"
         self.load_config_yaml()
 
     def load_config_yaml(self) -> None:
@@ -50,10 +47,6 @@ class Dectector_Train:
 
     def _load_dataset(self) -> None:
         """Load images and annotation file for training"""
-
-        self.annotation = (
-            f"{self.main_dir}/annotations/VIA_JSON_combined_coco_gen.json"
-        )
 
         with open(self.annotation) as json_file:
             coco_data = json.load(json_file)
@@ -72,7 +65,7 @@ class Dectector_Train:
             ):
                 continue
 
-            # taking the first 40 frames as training data
+            # taking the first 40 frames per video as training data
             if image_id % 50 < 40:
                 self.train_file_paths.append(image_file)
 
@@ -91,11 +84,15 @@ class Dectector_Train:
         """Train the model using the provided configuration"""
 
         self._load_dataset()
+        # select GPU if available
+        device = (
+            torch.device("cuda")
+            if torch.cuda.is_available()
+            else torch.device("cpu")
+        )
 
         # create model
-        self.model = create_faster_rcnn(
-            num_classes=self.config["num_classes"], coco_model=True
-        )
+        self.model = create_faster_rcnn(num_classes=self.config["num_classes"])
         self.model.to(device)
 
         optimizer = torch.optim.Adam(
@@ -116,11 +113,14 @@ def main(args) -> None:
     """
     Main function to orchestrate the training process.
 
-    Args:
-        args: Arguments or configuration settings.
+    Parameters
+    ----------
+    args: argparse.Namespace
+        An object containing the parsed command-line arguments.
 
-    Returns:
-        None
+    Returns
+    ----------
+    None
     """
     trainer = Dectector_Train(args)
     trainer.train_model()
@@ -145,6 +145,12 @@ if __name__ == "__main__":
         type=str,
         default="faster_rcnn",
         help="the model to use to train the object detection. Options: faster_rcnn",
+    )
+    parser.add_argument(
+        "--annotation_file",
+        type=str,
+        required=True,
+        help="filename for coco annotation",
     )
     args = parser.parse_args()
     main(args)

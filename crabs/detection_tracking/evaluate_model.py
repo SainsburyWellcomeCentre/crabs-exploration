@@ -16,40 +16,42 @@ device = (
 )
 
 
-class Detector_Test:
+class Detector_Evaluate:
     """
     A class for evaluating object detection models using pre-trained classification.
 
-    Args:
-        args (argparse.Namespace): Command-line arguments containing
-        configuration settings.
+    Parameters
+    ----------
+    args : argparse
+        Command-line arguments containing configuration settings.
 
-    Attributes:
-        args (argparse.Namespace): The command-line arguments provided.
-        main_dir (str): The main directory path.
-        ious_threshold (float): The ious threshold for detection bounding boxes.
-        trained_model: The pre-trained subject classification model.
-        test_data (str): The path to the directory containing test images.
-        test_label (str): The path to the test annotation JSON file.
-        test_dataset: An instance of myFasterRCNNDataset for test data.
-        test_dataloader: The DataLoader for the test dataset.
-
-    Methods:
-        _load_pretrain_model(self) -> None:
-            Load the pre-trained subject classification model.
-
-        _load_dataset(self) -> None:
-            Load images and annotation file for testing.
-
-        test_model(self) -> None:
-            Test the pre-trained model on the test dataset.
-
+    Attributes
+    ----------
+    args : argparse
+        The command-line arguments provided.
+    main_dir : str
+        The main directory path.
+    annotation_file : str
+        The filename of coco annotation JSON file.
+    score_threshold : float
+        The score threshold for confidence detection.
+    ious_threshold : float
+        The ious threshold for detection bounding boxes.
+    trained_model:
+        The pre-trained subject classification model.
+    evaluate_dataset:
+        An instance of myFasterRCNNDataset for test data.
+    evaluate_dataloader:
+        The DataLoader for the test dataset.
     """
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.main_dir = args.main_dir
+        self.annotation_file = args.annotation_file
         self.ious_threshold = args.ious_threshold
+        self.score_threshold = args.score_threshold
+        self.annotation = f"{self.main_dir}/annotations/{self.annotation_file}"
 
     def _load_pretrain_model(self) -> None:
         """
@@ -64,42 +66,37 @@ class Detector_Test:
     def _load_dataset(self) -> None:
         """Load images and annotation file for training"""
 
-        self.annotation = (
-            f"{self.main_dir}/annotations/VIA_JSON_combined_coco_gen.json"
-        )
-        # self.annotation = f"{self.main_dir}/labels/test.json"
-
         with open(self.annotation) as json_file:
             coco_data = json.load(json_file)
 
-        self.test_file_paths = []
+        self.evaluate_file_paths = []
         for image_info in coco_data["images"]:
             image_id = image_info["id"]
-            image_id -= 1
+            image_id -= 1  # reset the image_id to 0 to get the index
             image_file = image_info["file_name"]
             video_file = image_file.split("_")[1]
 
             if video_file == "09.08.2023-03-Left":
                 continue
 
-            # taking the first 40 frames as training data
+            # taking the first 40 frames per video as training data
             if image_id % 50 < 40:
                 continue
             else:
-                self.test_file_paths.append(image_file)
+                self.evaluate_file_paths.append(image_file)
 
-        self.test_dataset = myFasterRCNNDataset(
+        self.evaluate_dataset = myFasterRCNNDataset(
             self.main_dir,
-            self.test_file_paths,
+            self.evaluate_file_paths,
             self.annotation,
             transforms=get_test_transform(),
         )
 
-        self.test_dataloader = create_dataloader(self.test_dataset, 1)
+        self.evaluate_dataloader = create_dataloader(self.evaluate_dataset, 1)
 
-    def test_model(self) -> None:
+    def evaluate_model(self) -> None:
         """
-        Test the pre-trained model on the testation dataset.
+        Evaluate the pre-trained model on the testation dataset.
 
         Returns:
             None
@@ -110,9 +107,10 @@ class Detector_Test:
 
         # pdb.set_trace()
         evaluate_detection(
-            self.test_dataloader,
+            self.evaluate_dataloader,
             self.trained_model,
             self.ious_threshold,
+            self.score_threshold,
         )
 
 
@@ -120,14 +118,17 @@ def main(args) -> None:
     """
     Main function to orchestrate the testing process using Detector_Test.
 
-    Args:
-        args: Arguments or configuration settings for testing.
+    Parameters
+    ----------
+    args : argparse
+        Arguments or configuration settings for testing.
 
-    Returns:
+    Returns
+    -------
         None
     """
-    test = Detector_Test(args)
-    test.test_model()
+    eval = Detector_Evaluate(args)
+    eval.evaluate_model()
 
 
 if __name__ == "__main__":
@@ -142,13 +143,25 @@ if __name__ == "__main__":
         "--main_dir",
         type=str,
         required=True,
-        help="location of images and coco annotation",
+        help="main location of images and coco annotation",
+    )
+    parser.add_argument(
+        "--annotation_file",
+        type=str,
+        required=True,
+        help="filename for coco annotation",
     )
     parser.add_argument(
         "--output_path",
         type=str,
         default=os.getcwd(),
         help="location of output video",
+    )
+    parser.add_argument(
+        "--score_threshold",
+        type=float,
+        default=0.5,
+        help="threshold for confidence score",
     )
     parser.add_argument(
         "--ious_threshold",
