@@ -26,7 +26,13 @@ dependencies = [
     "sleap[pypi]==1.3.3",
     "typer",
     "timecode",
-    "ffmpeg-python"
+    "ffmpeg-python",
+    "torch",
+    "torch",
+    "torchvision",
+    "pycocotools",
+    "filterpy",
+    "scikit-image",
 ]
 
 [project.optional-dependencies]
@@ -105,7 +111,7 @@ ignore = [
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py{39,310,311}
+envlist = py{39,310}
 isolated_build = True
 
 [gh-actions]
