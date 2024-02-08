@@ -52,12 +52,10 @@ class Dectector_Train:
         lightning_model = FasterRCNN(self.config)
 
         trainer = pl.Trainer(max_epochs=self.config["num_epochs"])
-        # if torch.cuda.is_available():
-        #     trainer.gpus = 1
-        # else:
-        # trainer.gpus = 0
 
         trainer.fit(lightning_model, train_dataloader)
+        if self.config["save"]:
+            save_model(lightning_model)
 
 
 def main(args) -> None:
