@@ -8,7 +8,7 @@ from detection_utils import (
     load_dataset,
     save_model,
 )
-from models import FasterRCNN
+from crabs.detection_tracking.models import FasterRCNN
 
 
 class Dectector_Train:
@@ -34,6 +34,7 @@ class Dectector_Train:
         self.main_dir = args.main_dir
         self.annotation_file = args.annotation_file
         self.model_name = args.model_name
+        self.accelerator = args.accelerator
         self.annotation = f"{self.main_dir}/annotations/{self.annotation_file}"
         self.load_config_yaml()
 
@@ -51,7 +52,9 @@ class Dectector_Train:
 
         lightning_model = FasterRCNN(self.config)
 
-        trainer = pl.Trainer(max_epochs=self.config["num_epochs"])
+        trainer = pl.Trainer(
+            max_epochs=self.config["num_epochs"], accelerator=self.accelerator
+        )
 
         trainer.fit(lightning_model, train_dataloader)
         if self.config["save"]:
@@ -100,6 +103,12 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="filename for coco annotation",
+    )
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="cpu",
+        help="accelerator for pytorch lightning",
     )
     args = parser.parse_args()
     main(args)
