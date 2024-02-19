@@ -1,164 +1,23 @@
-import datetime
 import os
-
+import numpy as np
+import cv2
+import datetime
+import json
 import torch
 import torchvision.transforms as transforms
-from PIL import Image
-from pycocotools.coco import COCO
 
-
-def get_file_path(main_dir, file_name) -> str:
-    """
-    Get the file path by joining the main directory and file name.
-
-    Parameters
-    ----------
-    main_dir : str
-        Main directory path.
-    file_name :str
-        Name of the file.
-
-    Returns
-    ----------
-    file path : str
-        File path joining the main directory and file_name of images to create the full image path.
-    """
-    return os.path.join(main_dir, "images", file_name)
-
-
-class myFasterRCNNDataset(torch.utils.data.Dataset):
-    """Custom Pytorch dataset class for Faster RCNN object detection
-    using COCO-style annotation.
-
-    Parameters
-    ----------
-    main_dir : str
-        Path to the main directory containing the data.
-    train_file_path : list
-        A List containing str for path of the training files.
-    annotation : str
-        Path to the coco-style annotation file.
-    transforms : callable, optional
-        A function to apply to the images
-
-    Attributes
-    ----------
-    main_dir : str
-        Path to the main directory containing the data.
-    train_file_path : list
-        A List containing str for path of the training files.
-    coco : Object
-        Instance of COCO object for handling annotations.
-    ids : list
-        List of image IDs from the COCO annotation.
-    transforms : callable, optional
-        A function to apply to the images
-
-    Returns
-    ----------
-    tuple
-        A tuple containing an image tensor and a dictionary of annotations
-
-    """
-
-    def __init__(
-        self, main_dir, train_file_paths, annotation, transforms=None
-    ):
-        self.main_dir = main_dir
-        self.file_paths = train_file_paths
-        self.coco = COCO(annotation)
-        self.transforms = transforms
-        self.ids = list(sorted(self.coco.imgs.keys()))
-
-    def __getitem__(self, index):
-        """Get the image and associated annotations at the specified index.
-
-        Parameters
-        ----------
-        index : str
-            Index of the sample to retrieve.
-
-        Returns
-        ----------
-        tuple: A tuple containing the image tensor and a dictionary of annotations.
-
-        Note
-        ----------
-        The annotations dictionary contains the following keys:
-            - 'image': The image tensor.
-            - 'annotations': A dictionary containing object annotations with keys:
-            - 'boxes': Bounding box coordinates (xmin, ymin, xmax, ymax).
-            - 'labels': Class labels for each object.
-            - 'image_id': Image ID.
-            - 'area': Area of each object.
-            - 'iscrowd': Flag indicating whether the object is a crowd.
-        """
-
-        file_name = self.file_paths[index]
-        file_path = get_file_path(self.main_dir, file_name)
-        img = Image.open(file_path).convert("RGB")
-
-        # Get the image ID based on the file name
-        img_id = [
-            img_info["id"]
-            for img_info in self.coco.imgs.values()
-            if img_info["file_name"] == file_name
-        ][0]
-
-        # Get the annotations for the image
-        ann_ids = self.coco.getAnnIds(imgIds=img_id)
-        coco_annotation = self.coco.loadAnns(ann_ids)
-
-        if not coco_annotation:
-            return None
-
-        num_objs = len(coco_annotation)
-
-        # Bounding boxes for objects
-        # In coco format, bbox = [xmin, ymin, width, height]
-        # In pytorch, the input should be [xmin, ymin, xmax, ymax]
-        boxes = []
-        for i in range(num_objs):
-            xmin = coco_annotation[i]["bbox"][0]
-            ymin = coco_annotation[i]["bbox"][1]
-            xmax = xmin + coco_annotation[i]["bbox"][2]
-            ymax = ymin + coco_annotation[i]["bbox"][3]
-            boxes.append([xmin, ymin, xmax, ymax])
-        boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        labels = torch.ones((num_objs,), dtype=torch.int64)
-        img_id = torch.tensor([img_id])
-
-        areas = []
-        for i in range(num_objs):
-            areas.append(coco_annotation[i]["area"])
-
-        areas = torch.as_tensor(areas, dtype=torch.float32)
-        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
-
-        # Annotation is in dictionary format
-        my_annotation = {}
-        my_annotation["boxes"] = boxes
-        my_annotation["labels"] = labels
-        my_annotation["image_id"] = img_id
-        my_annotation["area"] = areas
-        my_annotation["iscrowd"] = iscrowd
-
-        if self.transforms is not None:
-            img = self.transforms(img)
-
-        return img, my_annotation
-
-    def __len__(self):
-        """Get the total number of samples in the dataset.
-
-        Returns
-        ----------
-            int: The number of samples in the dataset
-        """
-        return len(self.file_paths)
+from crabs.detection_tracking.myfaster_rcnn_dataset import myFasterRCNNDataset
 
 
 def coco_category():
+    """
+    Get the COCO instance category names.
+
+    Returns
+    -------
+    list of str
+        List of COCO instance category names.
+    """
     COCO_INSTANCE_CATEGORY_NAMES = [
         "__background__",
         "crab",
@@ -188,19 +47,6 @@ def collate_fn(batch):
         A tuple of lists, where each list contains the elements from the corresponding
         position in the samples. If the input batch is empty or contains only `None`
         values, the function returns `None`.
-
-    Notes
-    -----
-    This function is useful for collating samples before passing them into a data loader
-    or a batching process.
-
-    Examples
-    --------
-    >>> sample1 = (1, 'a')
-    >>> sample2 = (2, 'b')
-    >>> sample3 = None
-    >>> collate_fn([sample1, sample2, sample3])
-    ((1, 2), ('a', 'b'))
     """
     batch = [sample for sample in batch if sample is not None]
 
@@ -279,7 +125,11 @@ def save_model(model: torch.nn.Module):
 
     """
     current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"model/model_{current_time}.pt"
+    directory = "model"
+    os.makedirs(directory, exist_ok=True)
+    filename = f"{directory}/model_{current_time}.pt"
+
+    print(filename)
     torch.save(model, filename)
     print("Model Saved")
 
@@ -309,7 +159,6 @@ def get_train_transform() -> transforms.Compose:
     """
     # TODO: testing with different transforms
     custom_transforms = []
-    # custom_transforms.append(transforms.Resize((1080, 1920)))
     custom_transforms.append(transforms.ColorJitter(brightness=0.5, hue=0.3))
     custom_transforms.append(
         transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5.0))
@@ -319,8 +168,193 @@ def get_train_transform() -> transforms.Compose:
     return transforms.Compose(custom_transforms)
 
 
-def get_test_transform() -> transforms.Compose:
+def get_eval_transform() -> transforms.Compose:
+    """
+    Get a composed transformation for evaluation data which
+    transform the data to tensor.
+
+    Returns
+    -------
+    transforms.Compose
+        A composed transformation that includes the specified operations.
+    """
     custom_transforms = []
     custom_transforms.append(transforms.ToTensor())
 
     return transforms.Compose(custom_transforms)
+
+
+def load_dataset(main_dir, annotation, batch_size, training=False):
+    """Load images and annotation file for training or evaluation"""
+
+    with open(annotation) as json_file:
+        coco_data = json.load(json_file)
+
+        file_paths = []
+        for image_info in coco_data["images"]:
+            image_id = image_info["id"]
+            image_id -= 1
+            image_file = image_info["file_name"]
+            video_file = image_file.split("_")[1]
+
+            if not training and (
+                video_file == "09.08.2023-03-Left"
+                or video_file == "10.08.2023-01-Left"
+                or video_file == "10.08.2023-01-Right"
+            ):
+                continue
+
+            # For training, take the first 40 frames per video as training data
+            # For evaluation, take the remaining frames per video
+            if training:
+                if image_id % 50 < 40:
+                    file_paths.append(image_file)
+            else:
+                if image_id % 50 >= 40:
+                    file_paths.append(image_file)
+
+    dataset = myFasterRCNNDataset(
+        main_dir,
+        file_paths,
+        annotation,
+        transforms=get_train_transform() if training else get_eval_transform(),
+    )
+
+    dataloader = create_dataloader(dataset, batch_size)
+
+    return dataloader
+
+
+def drawing_bbox(
+    image_with_boxes, top_pt, left_pt, bottom_pt, right_pt, colour, label_text=None
+) -> None:
+    """
+    Drawing the bounding boxes on the image, based on detection results.
+
+    Parameters
+    ----------
+    image_with_boxes : np.ndarray
+        Image with bounding boxes drawn on it.
+    top_pt : tuple
+        Coordinates of the top-left corner of the bounding box.
+    left_pt : tuple
+        Coordinates of the top-left corner of the bounding box.
+    bottom_pt : tuple
+        Coordinates of the bottom-right corner of the bounding box.
+    right_pt : tuple
+        Coordinates of the bottom-right corner of the bounding box.
+    colour : tuple
+        Color of the bounding box in BGR format.
+    label_text : str, optional
+        Text to display alongside the bounding box, indicating class and score.
+
+    Returns
+    ----------
+    None
+
+    Note
+    ----------
+    To draw a rectangle in OpenCV:
+        Specify the top-left and bottom-right corners of the rectangle.
+    """
+    
+    cv2.rectangle(
+        image_with_boxes,
+        (top_pt, left_pt),
+        (bottom_pt, right_pt),
+        colour,
+        thickness=2,
+    )
+    if label_text:
+        cv2.putText(
+            image_with_boxes,
+            label_text,
+            (top_pt, left_pt),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            colour,
+            thickness=2,
+        )
+
+
+def drawing_detection(
+    imgs, annotations=None, detections=None, score_threshold=None
+) -> np.ndarray:
+    """
+    Drawing the results based on the detection.
+
+    Parameters
+    ----------
+    imgs : list
+        List of images.
+    annotations : dict, optional
+        Ground truth annotations.
+    detections : dict, optional
+        Detected objects.
+    score_threshold : float, optional
+        The confidence threshold for detection scores.
+
+    Returns
+    ----------
+    np.ndarray
+        Image(s) with bounding boxes drawn on them.
+    """
+
+    coco_list = coco_category()
+    image_with_boxes = None
+
+    for image, label, prediction in zip(
+        imgs, annotations or [], detections or []
+    ):
+        image = image.cpu().numpy().transpose(1, 2, 0)
+        image = (image * 255).astype("uint8")
+        image_with_boxes = image.copy()
+
+        if label:
+            target_boxes = [
+                [(i[0], i[1]), (i[2], i[3])]
+                for i in list(label["boxes"].detach().cpu().numpy())
+            ]
+
+            for i in range(len(target_boxes)):
+                drawing_bbox(
+                    image_with_boxes,
+                    int((target_boxes[i][0])[0]),
+                    int((target_boxes[i][0])[1]),
+                    int((target_boxes[i][1])[0]),
+                    int((target_boxes[i][1])[1]),
+                    colour=(0, 255, 0),
+                )
+
+        if prediction:
+            pred_score = list(prediction["scores"].detach().cpu().numpy())
+            pred_t = [pred_score.index(x) for x in pred_score][-1]
+
+            pred_class = [
+                coco_list[i]
+                for i in list(prediction["labels"].detach().cpu().numpy())
+            ]
+
+            pred_boxes = [
+                [(i[0], i[1]), (i[2], i[3])]
+                for i in list(
+                    prediction["boxes"].detach().cpu().detach().numpy()
+                )
+            ]
+
+            pred_boxes = pred_boxes[: pred_t + 1]
+            pred_class = pred_class[: pred_t + 1]
+            for i in range(len(pred_boxes)):
+                if pred_score[i] > (score_threshold or 0):
+                    label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
+                    drawing_bbox(
+                        image_with_boxes,
+                        int((pred_boxes[i][0])[0]),
+                        int((pred_boxes[i][0])[1]),
+                        int((pred_boxes[i][1])[0]),
+                        int((pred_boxes[i][1])[1]),
+                        (0, 0, 255),
+                        label_text,
+                    )
+
+    return image_with_boxes

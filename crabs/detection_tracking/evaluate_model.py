@@ -1,14 +1,13 @@
 import argparse
-import json
 import os
-
 import torch
-from detection_utils import (
-    create_dataloader,
-    get_test_transform,
-    myFasterRCNNDataset,
+
+from crabs.detection_tracking.detection_utils import load_dataset
+from crabs.detection_tracking.evaluate import (
+    compute_confusion_metrics,
+    compute_precision_recall,
+    save_images_with_boxes,
 )
-from evaluate import evaluate_detection
 
 # select device (whether GPU or CPU)
 device = (
@@ -63,37 +62,6 @@ class Detector_Evaluate:
             self.args.model_dir, map_location=torch.device("cpu")
         )
 
-    def _load_dataset(self) -> None:
-        """Load images and annotation file for training"""
-
-        with open(self.annotation) as json_file:
-            coco_data = json.load(json_file)
-
-        self.evaluate_file_paths = []
-        for image_info in coco_data["images"]:
-            image_id = image_info["id"]
-            image_id -= 1  # reset the image_id to 0 to get the index
-            image_file = image_info["file_name"]
-            video_file = image_file.split("_")[1]
-
-            if video_file == "09.08.2023-03-Left":
-                continue
-
-            # taking the first 40 frames per video as training data
-            if image_id % 50 < 40:
-                continue
-            else:
-                self.evaluate_file_paths.append(image_file)
-
-        self.evaluate_dataset = myFasterRCNNDataset(
-            self.main_dir,
-            self.evaluate_file_paths,
-            self.annotation,
-            transforms=get_test_transform(),
-        )
-
-        self.evaluate_dataloader = create_dataloader(self.evaluate_dataset, 1)
-
     def evaluate_model(self) -> None:
         """
         Evaluate the pre-trained model on the testation dataset.
@@ -103,15 +71,42 @@ class Detector_Evaluate:
         """
         self._load_pretrain_model()
         self.trained_model.eval()
-        self._load_dataset()
+        evaluate_dataloader = load_dataset(
+            self.main_dir, self.annotation, batch_size=1
+        )
 
         # pdb.set_trace()
-        evaluate_detection(
-            self.evaluate_dataloader,
-            self.trained_model,
-            self.ious_threshold,
-            self.score_threshold,
-        )
+        with torch.no_grad():
+            all_detections = []
+            all_targets = []
+            for imgs, annotations in evaluate_dataloader:
+                imgs = list(img.to(device) for img in imgs)
+                targets = [
+                    {k: v.to(device) for k, v in t.items()}
+                    for t in annotations
+                ]
+                detections = self.trained_model(imgs)
+
+                all_detections.extend(detections)
+                all_targets.extend(targets)
+
+            class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
+            class_stats = compute_confusion_metrics(
+                all_targets,  # one elem per image
+                all_detections,
+                self.ious_threshold,
+                class_stats,
+            )
+
+            # Calculate precision, recall, and F1 score for each threshold
+            compute_precision_recall(class_stats)
+
+            save_images_with_boxes(
+                evaluate_dataloader,
+                self.trained_model,
+                self.score_threshold,
+                device,
+            )
 
 
 def main(args) -> None:
