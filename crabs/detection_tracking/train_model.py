@@ -30,7 +30,6 @@ class Dectector_Train:
         self.config_file = args.config_file
         self.main_dir = args.main_dir
         self.annotation_file = args.annotation_file
-        self.model_name = args.model_name
         self.accelerator = args.accelerator
         self.seed_n = args.seed_n
         self.annotation = f"{self.main_dir}/annotations/{self.annotation_file}"
@@ -95,12 +94,6 @@ if __name__ == "__main__":
         help="location of images and coco annotation",
     )
     parser.add_argument(
-        "--model_name",
-        type=str,
-        default="faster_rcnn",
-        help="the model to use to train the object detection.",
-    )
-    parser.add_argument(
         "--annotation_file",
         type=str,
         required=True,
@@ -116,7 +109,7 @@ if __name__ == "__main__":
         "--seed_n",
         type=int,
         default=42,
-        help="seed for randon state",
+        help="seed for random state",
     )
     args = parser.parse_args()
     main(args)

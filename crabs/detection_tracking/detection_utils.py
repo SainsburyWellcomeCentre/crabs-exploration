@@ -24,7 +24,7 @@ def coco_category():
 
 def save_model(model: torch.nn.Module):
     """
-    Save the model and embeddings.
+    Save the trained model.
 
     Parameters
     ----------

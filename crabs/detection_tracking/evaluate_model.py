@@ -22,18 +22,10 @@ class Detector_Evaluation:
     ----------
     args : argparse
         The command-line arguments provided.
-    main_dir : str
-        The main directory path.
-    annotation_file : str
-        The filename of coco annotation JSON file.
     score_threshold : float
         The score threshold for confidence detection.
     ious_threshold : float
         The ious threshold for detection bounding boxes.
-    trained_model:
-        The pre-trained subject classification model.
-    evaluate_dataset:
-        An instance of myFasterRCNNDataset for test data.
     evaluate_dataloader:
         The DataLoader for the test dataset.
     """
@@ -42,7 +34,6 @@ class Detector_Evaluation:
         self,
         args: argparse.Namespace,
         data_loader: torch.utils.data.DataLoader,
-        annotation,
     ) -> None:
         self.args = args
         self.ious_threshold = args.ious_threshold
@@ -127,7 +118,7 @@ def main(args) -> None:
     data_module.setup()
     data_loader = data_module.val_dataloader()
 
-    evaluator = Detector_Evaluation(args, data_loader, annotation)
+    evaluator = Detector_Evaluation(args, data_loader)
     evaluator.evaluate_model()
 
 
