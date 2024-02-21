@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import torch
 from PIL import Image
 from pycocotools.coco import COCO

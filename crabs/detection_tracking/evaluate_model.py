@@ -1,21 +1,15 @@
 import argparse
-import os
+
 import torch
 
-from crabs.detection_tracking.detection_utils import load_dataset
+from crabs.detection_tracking.datamodule import myDataModule
 from crabs.detection_tracking.evaluate import (
     compute_confusion_metrics,
-    compute_precision_recall,
     save_images_with_boxes,
 )
 
-# select device (whether GPU or CPU)
-device = (
-    torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-)
 
-
-class Detector_Evaluate:
+class Detector_Evaluation:
     """
     A class for evaluating object detection models using pre-trained classification.
 
@@ -44,17 +38,24 @@ class Detector_Evaluate:
         The DataLoader for the test dataset.
     """
 
-    def __init__(self, args: argparse.Namespace) -> None:
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        data_loader: torch.utils.data.DataLoader,
+        annotation,
+    ) -> None:
         self.args = args
-        self.main_dir = args.main_dir
-        self.annotation_file = args.annotation_file
         self.ious_threshold = args.ious_threshold
         self.score_threshold = args.score_threshold
-        self.annotation = f"{self.main_dir}/annotations/{self.annotation_file}"
+        self.evaluate_dataloader = data_loader
 
     def _load_pretrain_model(self) -> None:
         """
         Load the pre-trained subject classification model.
+
+        Returns
+        -------
+        None
         """
         self.trained_model = torch.load(
             self.args.model_dir, map_location=torch.device("cpu")
@@ -64,20 +65,22 @@ class Detector_Evaluate:
         """
         Evaluate the pre-trained model on the testation dataset.
 
-        Returns:
-            None
+        Returns
+        -------
+        None
         """
         self._load_pretrain_model()
         self.trained_model.eval()
-        evaluate_dataloader = load_dataset(
-            self.main_dir, self.annotation, batch_size=1
+        device = (
+            torch.device("cuda")
+            if torch.cuda.is_available()
+            else torch.device("cpu")
         )
 
-        # pdb.set_trace()
         with torch.no_grad():
             all_detections = []
             all_targets = []
-            for imgs, annotations in evaluate_dataloader:
+            for imgs, annotations in self.evaluate_dataloader:
                 imgs = list(img.to(device) for img in imgs)
                 targets = [
                     {k: v.to(device) for k, v in t.items()}
@@ -88,19 +91,14 @@ class Detector_Evaluate:
                 all_detections.extend(detections)
                 all_targets.extend(targets)
 
-            class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
-            class_stats = compute_confusion_metrics(
+            compute_confusion_metrics(
                 all_targets,  # one elem per image
                 all_detections,
                 self.ious_threshold,
-                class_stats,
             )
 
-            # Calculate precision, recall, and F1 score for each threshold
-            compute_precision_recall(class_stats)
-
             save_images_with_boxes(
-                evaluate_dataloader,
+                self.evaluate_dataloader,
                 self.trained_model,
                 self.score_threshold,
                 device,
@@ -120,8 +118,17 @@ def main(args) -> None:
     -------
         None
     """
-    eval = Detector_Evaluate(args)
-    eval.evaluate_model()
+
+    main_dir = args.main_dir
+    annotation_file = args.annotation_file
+    annotation = f"{main_dir}/annotations/{annotation_file}"
+
+    data_module = myDataModule(main_dir, annotation, batch_size=1)
+    data_module.setup()
+    data_loader = data_module.val_dataloader()
+
+    evaluator = Detector_Evaluation(args, data_loader, annotation)
+    evaluator.evaluate_model()
 
 
 if __name__ == "__main__":
@@ -145,12 +152,6 @@ if __name__ == "__main__":
         help="filename for coco annotation",
     )
     parser.add_argument(
-        "--output_path",
-        type=str,
-        default=os.getcwd(),
-        help="location of output video",
-    )
-    parser.add_argument(
         "--score_threshold",
         type=float,
         default=0.5,
@@ -161,6 +162,12 @@ if __name__ == "__main__":
         type=float,
         default=0.5,
         help="threshold for IOU",
+    )
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="cpu",
+        help="accelerator for pytorch lightning",
     )
 
     args = parser.parse_args()

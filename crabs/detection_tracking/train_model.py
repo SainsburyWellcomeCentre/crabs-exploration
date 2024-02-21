@@ -1,13 +1,10 @@
 import argparse
-import json
 
-import torch
-import pytorch_lightning as pl
+import lightning as pl
 import yaml  # type: ignore
-from detection_utils import (
-    load_dataset,
-    save_model,
-)
+
+from crabs.detection_tracking.datamodule import myDataModule
+from crabs.detection_tracking.detection_utils import save_model
 from crabs.detection_tracking.models import FasterRCNN
 
 
@@ -35,6 +32,7 @@ class Dectector_Train:
         self.annotation_file = args.annotation_file
         self.model_name = args.model_name
         self.accelerator = args.accelerator
+        self.seed_n = args.seed_n
         self.annotation = f"{self.main_dir}/annotations/{self.annotation_file}"
         self.load_config_yaml()
 
@@ -43,20 +41,24 @@ class Dectector_Train:
             self.config = yaml.safe_load(f)
 
     def train_model(self):
-        train_dataloader = load_dataset(
+        data_module = myDataModule(
             self.main_dir,
             self.annotation,
             self.config["batch_size"],
-            training=True,
         )
 
         lightning_model = FasterRCNN(self.config)
 
+        mlf_logger = pl.pytorch.loggers.MLFlowLogger(
+            experiment_name="lightning_logs", tracking_uri="file:./ml-runs"
+        )
         trainer = pl.Trainer(
-            max_epochs=self.config["num_epochs"], accelerator=self.accelerator
+            max_epochs=self.config["num_epochs"],
+            accelerator=self.accelerator,
+            logger=mlf_logger,
         )
 
-        trainer.fit(lightning_model, train_dataloader)
+        trainer.fit(lightning_model, data_module)
         if self.config["save"]:
             save_model(lightning_model)
 
@@ -109,6 +111,12 @@ if __name__ == "__main__":
         type=str,
         default="cpu",
         help="accelerator for pytorch lightning",
+    )
+    parser.add_argument(
+        "--seed_n",
+        type=int,
+        default=42,
+        help="seed for randon state",
     )
     args = parser.parse_args()
     main(args)
