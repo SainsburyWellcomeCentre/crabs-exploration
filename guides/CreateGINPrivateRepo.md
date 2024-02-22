@@ -65,7 +65,7 @@ These steps apply to any of the workflows below, but we need to them only the fi
      - To create a new repository on the GIN server and in the current working directory in one go, run:
 
        ```
-       gin create --here <name>
+       gin create --here <repository name>
        ```
 
         <details><summary>Or, to do each step independently:</summary>
