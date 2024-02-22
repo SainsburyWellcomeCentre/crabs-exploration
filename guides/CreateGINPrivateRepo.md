@@ -121,9 +121,14 @@ These steps apply to any of the workflows below, but we need to them only the fi
 
      Like before, `filename` accepts wildcards, can be a list of files (separated by white spaces) and can be replaced by `.` to include all files with changes. Again, the recommended practice would be to upload data in small-ish chunks. You can run an upload command after a few commits (so not necessarily after each commit).
 
+     You can add `--to <remote>` to upload to a specific remote.
+
      If the set of files you upload includes files that have been changed locally but not committed, they will be automatically committed when uploading. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository).
 
      After running `gin upload`, the data will be uploaded to the GIN server and it will be possible to fetch it later from there. However, note this command sends all changes made in the directory to the server, including deletions, renames, etc. Therefore, if you delete files from the directory on your computer and perform a gin upload, the deletion will also be sent and the file will be removed from the server as well. Such changes can be synchronized without uploading any new files by not specifying any files or directories (i.e. simply running `git upload`). See further details in [the docs basic workflow](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial#basic-workflow-only-using-gin).
+
+4. **Consider whether to lock the data**
+   You may want to lock the data to save space locally or to prevent editing in the future - see the section on [File locking](#file-locking) for further details.
 
 > [!TIP]
 >
@@ -185,7 +190,7 @@ If the repository already exists locally:
 
    Content of individual files can be retrieved using the `gin get-content <filename>` command, and later removed with `gin remove-content <filename>`. See [the docs](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#download-all-new-information-from-a-remote-repository) for further details.
 
-To download the data programmatically in your Python code:
+### To download the data programmatically in your Python code:
 
 - We recommend using [pooch](https://www.fatiando.org/pooch/latest/index.html) to easily download data from the GIN repo's URL. Pooch also has some nice bonus functionalities like caching the downloaded data, verifying cryptographic hashes or unzipping files upon download.
 
@@ -199,8 +204,8 @@ To download the data programmatically in your Python code:
 
 - To stop tracking the GIN repo locally delete the `.git` directory
 
-  > [!NOTE]
-  > If in the GIN repo the files are locked, remember to unlock them before removing the `.git` directory! Otherwise we won't be able to delete the `.git/annex` content.
+> [!NOTE]
+> If in the GIN repo the files are locked, remember to unlock them before removing the `.git` directory! Otherwise we won't be able to delete the `.git/annex` content.
 
 - To delete a GIN repository but keep the git repo:
 
@@ -212,25 +217,27 @@ To download the data programmatically in your Python code:
 
 [File locking](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Usage+Tutorial#file-locking) is an important point in GIN repos and git-annex which surprisingly comes up quite late in the docs. Below, are the main ideas behind this.
 
-- Files in a GIN repo can be locked or unlocked.
+- Files in a GIN repo can be _locked_ or _unlocked_.
 
-- The lock state of a file is persistent. This means that if I clone a GIN repo whose files are unlocked, I lock them in my local copy, and then upload that to the GIN server, the next time someone clones from the GIN repo the files they fetch will be locked.
+- The lock state relates to the nature of the (placeholder) files we get in the working directory when we do `gin get <repository`:
 
-- The lock state actually relates more to the nature of the placeholder file (the file in the working directory when we do `gin get <repository`):
+  - **on Unix-like systems**: if a file is _locked_, its corresponding placeholder file will be a _symlink_. These symlinks point to the annexed content (under `.git/annex/objects`). With the symlinks we can open the file but not modify it. If a file is _unlocked_, the placeholder file in the working directory is an _ASCII text file with a path_. The path is approximately where the content of the file will be downloaded to when we request it.
+  - **on Windows**: if a file is _locked_, the placeholder file is a _plain text file_ pointing to the content in the git annex. If a file is _unlocked_, the behaviour should be the same as in Unix-like systems (I haven't tested the situation on Windows).
 
-  - on Unix-like systems: if a file is locked, its corresponding placeholder file will be a symlink pointing to the annexed content (i.e., the content under `.git/annex/objects`). This way we can open and inspect the file but not modify it. If a file is unlocked, the placeholder file in the working directory is an ASCII text file with a path. This path is _approximately_ where the content of the file will be downloaded to when we request it.
-  - on Windows: from the docs, if a file is locked, the placeholder file is a plain text file pointing to the content in the git annex. If a file is unlocked, presumably the behaviour is the same as in Unix-like systems. I haven't tested the situation on Windows.
+- The lock state of a file is \*_persistent_. This means that if I clone a GIN repo whose files are unlocked, I lock them in my local copy, and then upload that to the GIN server, the next time someone clones from the GIN repo the files they fetch will be locked.
 
 - Unlocked files can be edited. If the data is unlocked and the full content of the dataset is downloaded locally, the file in the working directory has content, and so does its copy under git annex.
 
 > [!CAUTION]
 > This doubles disk usage of files checked into the repo, but in exchange users can modify and revert files to previous commits.
 
-- Locked files cannot be edited. For example, if we open a locked image with Preview in MacOS and try to edit it, we will be asked if we wish to unlock the file. However even if we do, we won't be able to save any changes because we don't have writing permissions. Files need to be committed before locking.
+- Locked files cannot be edited. For example, if we open a locked image with Preview in MacOS and try to edit it, we will be asked if we wish to unlock the file. However even if we do, we won't be able to save any changes because we don't have writing permissions.
+
+- Files need to be committed before locking.
 
 - We can switch the state for one or more file using `gin lock <filename>` and `gin unlock <filename>`. After changing the state, remember to record the new state with `gin commit`!
 
-- Recommendations from the docs on when to lock / unlocked data:
+- **\*Recommendations from the GIN docs on when to lock / unlocked data:**
   - Keep files _unlocked_ if the workflow requires editing large files and keeping snapshots of the progress. But keep in mind this will increase storage use with every commit of a file.
   - Keep files _locked_ if using the repo mainly as long term storage, as an archive, if files are only to be read and if the filesystem supports symlinks. This will save extra storage of keeping two copies of the same file.
 
