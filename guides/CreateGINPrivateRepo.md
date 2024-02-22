@@ -82,8 +82,11 @@ These steps apply to any of the workflows below, but we need to them only the fi
        gin add-remote <name> <location>
        ```
 
-       where `<name>` is the name you want to give to the remote (e.g. `origin`) and `<location>` is the location of the data store, which should be in the form of alias:path or server:path (e.g. `gin add-remote origin gin:sfmig/crab-data`). - If the remote GIN repository doesn't exist, you will be prompted to either create the remote GIN repository, add the remote address anyways or abort. - To show the remotes accessible to your GIN account run `gin remotes`.
-        </details>
+       where `<name>` is the name you want to give to the remote (e.g. `origin`) and `<location>` is the location of the data store, which should be in the form of alias:path or server:path (e.g. `gin add-remote origin gin:sfmig/crab-data`).
+
+       - If the remote GIN repository doesn't exist, you will be prompted to either create the remote GIN repository, add the remote address anyways or abort.
+       - To show the remotes accessible to your GIN account run `gin remotes`.
+       </details>
 
 > [!TIP]
 >
