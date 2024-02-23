@@ -45,7 +45,7 @@ These steps apply to any of the workflows below, but we need to them only the fi
      - Create a new GIN repository locally and on the GIN server by running:
 
        ```
-       gin create <repository name>
+       gin create <remote repository name>
        ```
 
          <details><summary> OR alternatively:</summary>
@@ -65,9 +65,10 @@ These steps apply to any of the workflows below, but we need to them only the fi
      - To create a new repository on the GIN server and in the current working directory in one go, run:
 
        ```
-       gin create --here <repository name>
+       gin create --here <remote repository name>
        ```
 
+       This will create a repository named `<remote repository name>` on the GIN server under your account.
         <details><summary>Or, to do each step independently:</summary>
 
        - Initialise the current working directory as a GIN repository by running:
@@ -79,10 +80,10 @@ These steps apply to any of the workflows below, but we need to them only the fi
        - Then add a remote for your GIN local repository by running:
 
        ```
-       gin add-remote <name> <location>
+       gin add-remote <remote name> <repository location>
        ```
 
-       where `<name>` is the name you want to give to the remote (e.g. `origin`) and `<location>` is the location of the data store, which should be in the form of alias:path or server:path (e.g. `gin add-remote origin gin:sfmig/crab-data`).
+       where `<remote name>` is the name you want to give to the remote (e.g. `origin`) and `<repository location>` is the location of the data store, which should be in the form of alias:path or server:path (e.g. `gin add-remote origin gin:sfmig/crab-data`).
 
        - If the remote GIN repository doesn't exist, you will be prompted to either create the remote GIN repository, add the remote address anyways or abort.
        - To show the remotes accessible to your GIN account run `gin remotes`.
@@ -121,7 +122,7 @@ These steps apply to any of the workflows below, but we need to them only the fi
 
      Like before, `filename` accepts wildcards, can be a list of files (separated by white spaces) and can be replaced by `.` to include all files with changes. Again, the recommended practice would be to upload data in small-ish chunks. You can run an upload command after a few commits (so not necessarily after each commit).
 
-     You can add `--to <remote>` to upload to a specific remote.
+     You can add `--to <remote name>` to upload to a specific remote.
 
      If the set of files you upload includes files that have been changed locally but not committed, they will be automatically committed when uploading. See full syntax [here](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#upload-local-changes-to-a-remote-repository).
 
@@ -141,11 +142,11 @@ These steps apply to any of the workflows below, but we need to them only the fi
 1. To clone (retrieve) a repository from the remote server to a local machine:
 
    ```
-   gin get <relative-path>
+   gin get <repository-path>
    ```
 
 > [!TIP]
-> To see the relative paths accesible from your GIN account, run `gin repos`
+> To see the `repository path`s accesible from your GIN account, run `gin repos`
 
 2. Add files to the directory where the local repository is in, and commit them:
 
