@@ -25,7 +25,7 @@ def sample_data(tmp_path):
     return {
         "input_dir": input_dir,
         "output_dir": output_dir,
-        "input_video": input_dir / "NINJAV_S001_S001_T003_subclip.mp4",
+        "input_video": input_dir / "NINJAV_S001_S001_T003_subclip_p1_05s.mp4",
         "extract_frames_params": {
             "output_path": str(output_dir),
             "video_extensions": "mp4",
