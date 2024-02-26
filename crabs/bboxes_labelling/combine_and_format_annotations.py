@@ -12,7 +12,7 @@ app = typer.Typer(rich_markup_mode="rich")
 
 
 @app.command()
-def combine_VIA_and_convert_to_COC0(
+def combine_VIA_and_convert_to_COCO(
     parent_dir_via_jsons: str,
     via_default_dir: str,
     via_project_name: str,
