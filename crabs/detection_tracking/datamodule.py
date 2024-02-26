@@ -26,7 +26,7 @@ def collate_fn(batch: list) -> tuple:
     -------
     collated : Optional[Tuple[List[Any]]]
         A tuple of lists, where each list contains the elements from the corresponding
-        position in the samples. If the input batch is empty or contains only `None`
+        position in the input batch of samples. If the input batch is empty or contains only `None`
         values, the function returns `None`.
     """
     batch = [sample for sample in batch if sample is not None]
