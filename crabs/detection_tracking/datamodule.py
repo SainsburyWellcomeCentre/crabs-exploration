@@ -10,7 +10,7 @@ from crabs.detection_tracking.myfaster_rcnn_dataset import myFasterRCNNDataset
 
 def collate_fn(batch):
     """
-    Collates a batch of samples into a structured format that is expected in Pytorch.
+    Collates a batch of input samples into the format expected by Pytorch.
 
     This function takes a list of samples, where each sample can be any data structure.
     It filters out any `None` values from the batch, and then groups the
