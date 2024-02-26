@@ -13,9 +13,8 @@ def collate_fn(batch):
     Collates a batch of samples into a structured format that is expected in Pytorch.
 
     This function takes a list of samples, where each sample can be any data structure.
-    It filters out any `None` values from the batch and then groups the
-    remaining samples into a structured format. The structured format
-    is a tuple of lists, where each list contains the elements from the
+    It filters out any `None` values from the batch, and then groups the
+    remaining samples into a tuple of lists, where each list contains the elements from the
     corresponding position in the samples.
 
     Parameters
