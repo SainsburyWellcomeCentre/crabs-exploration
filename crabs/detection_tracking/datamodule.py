@@ -8,7 +8,7 @@ from torchvision.transforms import transforms
 from crabs.detection_tracking.myfaster_rcnn_dataset import myFasterRCNNDataset
 
 
-def collate_fn(batch):
+def collate_fn(batch: list) -> tuple:
     """
     Collates a batch of input samples into the format expected by Pytorch.
 
