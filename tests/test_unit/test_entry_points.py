@@ -10,6 +10,6 @@ import pytest
         "combine-annotations",
     ],
 )
-def test_entry_points(cli_tool_name: str) -> None:
-    status = os.system(f"{cli_tool_name} --help")
+def test_smoke(cli_command: str) -> None:
+    status = os.system(f"{cli_command} --help")
     assert status == 0
