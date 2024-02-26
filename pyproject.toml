@@ -49,9 +49,8 @@ dev = [
 ]
 
 [project.scripts]
-# reencode-videos = "crabs."
 extract-frames = "crabs.bboxes_labelling.extract_frames_to_label_w_sleap:app_wrapper"
-combine-and-format-annotations = "crabs.bboxes_labelling.combine_and_format_annotations:app_wrapper"
+combine-annotations = "crabs.bboxes_labelling.combine_and_format_annotations:app_wrapper"
 # verify-videos-and-extract-samples
 # extract-additional-channels
 # train-models
