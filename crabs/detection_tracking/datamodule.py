@@ -39,7 +39,7 @@ def collate_fn(batch: list) -> tuple:
 
 def get_train_transform() -> transforms.Compose:
     """
-    Get a composed transformation for training data for data augmentation and
+    Get the data augmentation transform function to apply to an input training sample
     transform the data to tensor.
 
     Returns
