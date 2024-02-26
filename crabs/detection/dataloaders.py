@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from torchvision.transforms import transforms
 
-from crabs.detection_tracking.myfaster_rcnn_dataset import myFasterRCNNDataset
+from crabs.detection.dataset import CustomFasterRCNNDataset
 
 
 def collate_fn(batch):
@@ -38,7 +38,7 @@ def collate_fn(batch):
     return tuple(zip(*batch))
 
 
-def get_train_transform() -> transforms.Compose:
+def train_transforms() -> transforms.Compose:
     """
     Get a composed transformation for training data for data augmentation and
     transform the data to tensor.
@@ -72,7 +72,7 @@ def get_train_transform() -> transforms.Compose:
     return transforms.Compose(custom_transforms)
 
 
-def get_eval_transform() -> transforms.Compose:
+def eval_transforms() -> transforms.Compose:
     """
     Get a composed transformation for evaluation data which
     transform the data to tensor.
@@ -88,7 +88,7 @@ def get_eval_transform() -> transforms.Compose:
     return transforms.Compose(custom_transforms)
 
 
-class myDataModule(pl.LightningDataModule):
+class CustomDataLoader(pl.LightningDataModule):
     """
     Data module for handling data loading and preprocessing for object detection models.
 
@@ -141,13 +141,14 @@ class myDataModule(pl.LightningDataModule):
         """
         with open(self.annotation) as json_file:
             self.coco_data = json.load(json_file)
+
+            # exclude samples from relevant videos
             exclude_video_file_list = [
                 "09.08.2023-03-Left",
                 "10.08.2023-01-Left",
                 "10.08.2023-01-Right",
             ]
             all_ids = []
-
             for image_info in self.coco_data["images"]:
                 image_id = image_info["id"]
                 image_file = image_info["file_name"]
@@ -156,6 +157,7 @@ class myDataModule(pl.LightningDataModule):
                 if video_file not in exclude_video_file_list:
                     all_ids.append(image_id)
 
+            # if training stage
             if stage == "fit" or stage is None:
                 train_ids, _ = train_test_split(
                     all_ids,
@@ -164,6 +166,8 @@ class myDataModule(pl.LightningDataModule):
                     random_state=self.seed_n,
                 )
                 self.train_ids = train_ids
+
+            # if testing stage
             if stage == "test" or stage is None:
                 _, test_ids = train_test_split(
                     all_ids,
@@ -192,11 +196,11 @@ class myDataModule(pl.LightningDataModule):
             )["file_name"]
             for image_id in self.train_ids
         ]
-        train_dataset = myFasterRCNNDataset(
+        train_dataset = CustomFasterRCNNDataset(
             self.main_dir,
             file_paths,
             self.annotation,
-            transforms=get_train_transform(),
+            transforms=train_transforms(),
         )
         return DataLoader(
             train_dataset,
@@ -226,11 +230,11 @@ class myDataModule(pl.LightningDataModule):
             )["file_name"]
             for image_id in self.test_ids
         ]
-        val_dataset = myFasterRCNNDataset(
+        val_dataset = CustomFasterRCNNDataset(
             self.main_dir,
             file_paths,
             self.annotation,
-            transforms=get_eval_transform(),
+            transforms=eval_transforms(),
         )
         return DataLoader(
             val_dataset,

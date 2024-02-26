@@ -3,9 +3,8 @@ import argparse
 import lightning as pl
 import yaml  # type: ignore
 
-from crabs.detection_tracking.datamodule import myDataModule
-from crabs.detection_tracking.detection_utils import save_model
-from crabs.detection_tracking.models import FasterRCNN
+from crabs.detection.dataloaders import CustomDataLoader
+from crabs.detection.models import FasterRCNN, save_model
 
 
 class Dectector_Train:
@@ -40,7 +39,7 @@ class Dectector_Train:
             self.config = yaml.safe_load(f)
 
     def train_model(self):
-        data_module = myDataModule(
+        data_module = CustomDataLoader(
             self.main_dir,
             self.annotation,
             self.config["batch_size"],

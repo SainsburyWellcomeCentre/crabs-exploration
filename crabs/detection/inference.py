@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import torch
 import torchvision.transforms as transforms
-from sort import Sort
+from tracking.sort import Sort
 
 # select device (whether GPU or CPU)
 device = (

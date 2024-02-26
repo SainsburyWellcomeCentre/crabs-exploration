@@ -1,3 +1,6 @@
+import datetime
+import os
+
 import torch
 import torchvision
 from lightning import LightningModule
@@ -58,3 +61,33 @@ class FasterRCNN(LightningModule):
             weight_decay=self.config["wdecay"],
         )
         return optimizer
+
+
+def save_model(model: torch.nn.Module):
+    """
+    Save the trained model.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        The PyTorch model to be saved.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    This function saves the provided PyTorch model to a file with a unique
+    filename based on the current date and time. The filename format is
+    'model_<timestamp>.pt'.
+
+    """
+    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    directory = "model"
+    os.makedirs(directory, exist_ok=True)
+    filename = f"{directory}/model_{current_time}.pt"
+
+    print(filename)
+    torch.save(model, filename)
+    print("Model Saved")

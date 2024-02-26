@@ -1,4 +1,3 @@
-import datetime
 import os
 
 import cv2
@@ -20,36 +19,6 @@ def coco_category():
         "crab",
     ]
     return COCO_INSTANCE_CATEGORY_NAMES
-
-
-def save_model(model: torch.nn.Module):
-    """
-    Save the trained model.
-
-    Parameters
-    ----------
-    model : torch.nn.Module
-        The PyTorch model to be saved.
-
-    Returns
-    -------
-    None
-
-    Notes
-    -----
-    This function saves the provided PyTorch model to a file with a unique
-    filename based on the current date and time. The filename format is
-    'model_<timestamp>.pt'.
-
-    """
-    current_time = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    directory = "model"
-    os.makedirs(directory, exist_ok=True)
-    filename = f"{directory}/model_{current_time}.pt"
-
-    print(filename)
-    torch.save(model, filename)
-    print("Model Saved")
 
 
 def drawing_bbox(
@@ -191,3 +160,37 @@ def drawing_detection(
                     )
 
     return image_with_boxes
+
+
+def save_images_with_boxes(
+    test_dataloader, trained_model, score_threshold, device
+) -> None:
+    """
+    Save images with bounding boxes drawn around detected objects.
+
+    Parameters
+    ----------
+    test_dataloader :
+        DataLoader for the test dataset.
+    trained_model :
+        The trained object detection model.
+    score_threshold : float
+        Threshold for object detection.
+
+    Returns
+    ----------
+        None
+    """
+    with torch.no_grad():
+        imgs_id = 0
+        for imgs, annotations in test_dataloader:
+            imgs_id += 1
+            imgs = list(img.to(device) for img in imgs)
+            detections = trained_model(imgs)
+
+            image_with_boxes = drawing_detection(
+                imgs, annotations, detections, score_threshold
+            )
+            directory = "results"
+            os.makedirs(directory, exist_ok=True)
+            cv2.imwrite(f"{directory}/imgs{imgs_id}.jpg", image_with_boxes)

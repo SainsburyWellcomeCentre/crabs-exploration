@@ -26,7 +26,7 @@ def get_file_path(main_dir, file_name) -> str:
     return str(file_path)
 
 
-class myFasterRCNNDataset(torch.utils.data.Dataset):
+class CustomFasterRCNNDataset(torch.utils.data.Dataset):
     """Custom Pytorch dataset class for Faster RCNN object detection
     using COCO-style annotation.
 
