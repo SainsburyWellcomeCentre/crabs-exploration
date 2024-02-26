@@ -4,12 +4,12 @@ import pytest
 
 
 @pytest.mark.parametrize(
-    "cli_tool_name",
+    "cli_command",
     [
         "extract-frames",
-        "combine-and-format-annotations",
+        "combine-annotations",
     ],
 )
-def test_cli_tool(cli_tool_name: str) -> None:
+def test_entry_points(cli_tool_name: str) -> None:
     status = os.system(f"{cli_tool_name} --help")
     assert status == 0
