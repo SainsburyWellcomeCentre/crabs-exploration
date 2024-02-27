@@ -1,6 +1,5 @@
 import json
 from typing import Any, List, Optional, Tuple
-
 import lightning as pl
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
@@ -17,7 +16,7 @@ def collate_fn(batch: List[Any]) -> Optional[Tuple[List[Any], ...]]:
 
     This function takes a list of samples, filters out any `None` values, and groups
     the remaining samples into a tuple of lists, where each list contains the elements
-    from the corresponding position in the samples.
+    from the corresponding position in input batch of the samples.
 
     Parameters
     ----------
@@ -246,7 +245,7 @@ class CustomDataModule(pl.LightningDataModule):
         )
         return DataLoader(
             test_dataset,
-            batch_size=1,
+            batch_size=self.config["batch_size_test"],
             shuffle=False,
             num_workers=4,
             collate_fn=collate_fn,

@@ -1,7 +1,8 @@
-num_epochs: 1
+num_epochs: 150
 learning_rate: 0.00005
 wdecay: 0.00005
-batch_size: 4
+batch_size: 8
+batch_size_test: 1
 num_classes: 2
 save: True
 test_size: 0.2
