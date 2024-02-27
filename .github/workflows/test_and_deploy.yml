@@ -33,7 +33,7 @@ jobs:
         # Include one macos run
         include:
           - os: macos-latest
-            python-version: "3.10"
+            python-version: ["3.9", "3.10"]
     steps:
       - uses: neuroinformatics-unit/actions/test@v2
         with:
