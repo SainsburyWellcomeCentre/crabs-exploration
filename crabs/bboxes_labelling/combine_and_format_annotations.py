@@ -12,6 +12,7 @@ from crabs.bboxes_labelling.annotations_utils import (
 app = typer.Typer(rich_markup_mode="rich")
 
 
+@app.command()
 def combine_VIA_and_convert_to_COCO(
     parent_dir_via_jsons: str,
     exclude_pattern: Optional[str] = None,
