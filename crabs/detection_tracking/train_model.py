@@ -1,6 +1,7 @@
 import argparse
 
 import lightning as pl
+import torch
 import yaml  # type: ignore
 
 from crabs.detection_tracking.datamodule import CustomDataModule
@@ -110,4 +111,5 @@ if __name__ == "__main__":
         help="seed for random state",
     )
     args = parser.parse_args()
+    torch.set_float32_matmul_precision("medium")
     main(args)

@@ -29,7 +29,7 @@ def collate_fn(batch: List[Any]) -> Optional[Tuple[List[Any], ...]]:
     collated : Optional[Tuple[List[Any]]]
         A tuple of lists, where each list contains the elements from the corresponding
         position in the input batch of samples. If the input batch is empty or contains only
-        `None` values, the function returns `None`.
+        `None` values, the function returns empty tuple.
 
     Example
     -------
@@ -89,9 +89,10 @@ def get_train_transform(config: dict) -> transforms.Compose:
     return transforms.Compose(custom_transforms)
 
 
-def get_eval_transform() -> transforms.Compose:
+def get_test_transform() -> transforms.Compose:
     """
-    Get the transform function to apply to an input sample during evaluation / inference.
+    Get the transform function to apply to an input sample
+    during test (evaluation) and inference.
 
     Returns
     -------
@@ -223,7 +224,7 @@ class CustomDataModule(pl.LightningDataModule):
             train_dataset,
             batch_size=self.config["batch_size"],
             shuffle=True,
-            num_workers=4,
+            num_workers=self.config["num_workers"],
             collate_fn=collate_fn,
             persistent_workers=True,
         )
@@ -242,12 +243,12 @@ class CustomDataModule(pl.LightningDataModule):
             self.main_dir,
             file_paths,
             self.annotation,
-            transforms=get_eval_transform(),
+            transforms=get_test_transform(),
         )
         return DataLoader(
             test_dataset,
             batch_size=self.config["batch_size_test"],
             shuffle=False,
-            num_workers=4,
+            num_workers=self.config["num_workers"],
             collate_fn=collate_fn,
         )
