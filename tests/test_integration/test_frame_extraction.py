@@ -44,13 +44,13 @@ def cli_inputs_dict(tmp_path: Path) -> dict:
     """
     return {
         "output-path": str(tmp_path),
-        "video-extensions": "mp4",
+        "video-extensions": ["mp4"],  # this could be a list but for simplicity
         "initial-samples": 5,
         "scale": 0.5,
         "n-components": 3,
         "n-clusters": 5,
         "per-cluster": 1,
-        "compute-features-per-video": "",
+        "compute-features-per-video": True,
     }
 
 
@@ -60,8 +60,12 @@ def cli_inputs_list(cli_inputs_dict: dict) -> list:
         """Transforms a dictionary of parameters into a list of CLI arguments
         that can be passed to `subprocess.run()`.
 
-        If for an item in the dictionary the value is empty string,
+        If for an item in the dictionary the value is True,
         its key is taken as a CLI boolean argument (i.e., a flag).
+
+        If for an item in the dictionary the value is False,
+        its key with '--no-' prepended is taken as a CLI boolean argument
+        (i.e., a flag).
 
         Parameters
         ----------
@@ -75,14 +79,23 @@ def cli_inputs_list(cli_inputs_dict: dict) -> list:
         list
             a list of command line arguments to pass to `subprocess.run()`.
         """
+        list_kys_modified = []
+        for k in input_params.keys():
+            if input_params[k] is False:
+                list_kys_modified.append("--no-" + k)
+            else:
+                list_kys_modified.append("--" + k)
 
-        list_kys_modified = ["--" + k for k in input_params.keys()]
-        list_cli_args = [
-            str(elem)
-            for pair in zip(list_kys_modified, input_params.values())
-            for elem in pair
-            if elem != ""
-        ]
+        list_cli_args = []
+        for ky, val in zip(list_kys_modified, input_params.values()):
+            if isinstance(val, list):
+                list_cli_args.append(str(ky))
+                for elem in val:
+                    list_cli_args.append(str(elem))
+
+            elif not isinstance(val, bool):
+                for elem in [ky, val]:
+                    list_cli_args.append(str(elem))
 
         return list_cli_args
 
@@ -122,7 +135,7 @@ def mock_extract_frames_app(
         list_video_locations: list[str],
         output_path: str = cli_inputs_dict["output-path"],
         output_subdir: Optional[str] = None,
-        video_extensions: list[str] = [cli_inputs_dict["video-extensions"]],
+        video_extensions: list[str] = cli_inputs_dict["video-extensions"],
         initial_samples: int = cli_inputs_dict["initial-samples"],
         sample_method: str = "stride",
         scale: float = cli_inputs_dict["scale"],
@@ -159,15 +172,13 @@ def list_files_in_dir(input_dir: str):
     ]
 
 
-def check_output_files(input_video_str: str, cli_dict: dict):
+def check_output_files(list_input_videos: list, cli_dict: dict):
     # check name of directory with extracted frames
-    list_subfolders_with_paths = [
+    list_subfolders = [
         f.path for f in os.scandir(cli_dict["output-path"]) if f.is_dir()
     ]
-
-    extracted_frames_dir = Path(list_subfolders_with_paths[0])
-
-    assert len(list_subfolders_with_paths) == 1
+    extracted_frames_dir = Path(list_subfolders[0])
+    assert len(list_subfolders) == 1
     assert (
         type(
             datetime.datetime.strptime(
@@ -183,13 +194,22 @@ def check_output_files(input_video_str: str, cli_dict: dict):
     # check min number of image files
     # NOTE: total number of files generated is not deterministic
     list_imgs = [f for f in extracted_frames_dir.glob("*.png")]
-    assert (
-        len(list_imgs) <= cli_dict["n-clusters"] * cli_dict["per-cluster"]
-    )  # per video?
+
+    if cli_dict["compute-features-per-video"]:
+        n_expected_imgs = (
+            cli_dict["n-clusters"]
+            * cli_dict["per-cluster"]
+            * len(list_input_videos)
+        )
+    else:
+        n_expected_imgs = cli_dict["n-clusters"] * cli_dict["per-cluster"]
+
+    assert len(list_imgs) <= n_expected_imgs
 
     # check format of images filename
-    regex_pattern = Path(input_video_str).stem + "_frame_[\d]{8}$"
-    assert all([re.fullmatch(regex_pattern, f.stem) for f in list_imgs])
+    for input_video_str in list_input_videos:
+        regex_pattern = Path(input_video_str).stem + "_frame_[\d]{8}$"
+        assert all([re.fullmatch(regex_pattern, f.stem) for f in list_imgs])
 
     # check n_elements in json file matches n of files generated
 
@@ -210,7 +230,7 @@ def test_frame_extraction_one_video(
     assert result.exit_code == 0
 
     # check output files
-    check_output_files(input_video, cli_inputs_dict)
+    check_output_files([input_video], cli_inputs_dict)
 
 
 def test_frame_extraction_one_video_defaults(
@@ -227,12 +247,13 @@ def test_frame_extraction_one_video_defaults(
     assert result.exit_code == 0
 
     # check output files
-    check_output_files(input_video, cli_inputs_dict)
+    check_output_files([input_video], cli_inputs_dict)
 
 
 def test_frame_extraction_one_dir(
     input_data_dir: str,
     cli_inputs_list: list,
+    cli_inputs_dict: dict,
 ):
     # import app
     from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import app
@@ -245,6 +266,19 @@ def test_frame_extraction_one_dir(
     assert result.exit_code == 0
 
     # check files
+    # list of input videos
+    list_input_videos = list_files_in_dir(input_data_dir)
+    list_input_videos = [
+        f
+        for f in list_input_videos
+        if any(
+            [
+                str(f).endswith(ext)
+                for ext in cli_inputs_dict["video-extensions"]
+            ]
+        )
+    ]
+    check_output_files(list_input_videos, cli_inputs_dict)
 
 
 def test_frame_extraction_one_dir_defaults(
