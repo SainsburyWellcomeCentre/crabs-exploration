@@ -60,7 +60,7 @@ def combine_multiple_via_jsons(
         list of paths to VIA JSON files
     exclude_pattern : Optional[str], optional
         a regex pattern to exclude specific files from the input list.
-        By default, none.
+        By default, None. E.g.: "\w+_coco_gen.json$"
     json_out_filename : str, optional
         name of the combined VIA JSON file, by default "VIA_JSON_combined.json"
     json_out_dir : Optional[str], optional
@@ -69,7 +69,7 @@ def combine_multiple_via_jsons(
     via_default_dir : Optional[str], optional
         The default directory in which to look for images for the VIA project.
         If None, the value specified in the first VIA JSON file is used.
-        A full path is required.
+        If a path is provided it needs to be a full path.
     via_project_name : Optional[str], optional
         The name of the VIA project.
         If None, the value specified in the first VIA JSON file is used.

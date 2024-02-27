@@ -25,13 +25,15 @@ def combine_VIA_and_convert_to_COCO(
     parent_dir_via_jsons : str
         path to the parent directory containing VIA JSON files
     exclude_pattern : Optional[str], optional
-        a regex pattern that matches files to exclude. E.g.: "\w+_coco_gen.json$"
-        By default, none.
+        a regex pattern that matches files to exclude.
+        By default, None.  E.g.: "\w+_coco_gen.json$"
     via_default_dir : str
-        The default directory in which to look for images for the VIA project.
-        A full path is required.
+        he default directory in which to look for images for the VIA project.
+        If None, the value specified in the first VIA JSON file is used.
+        If a path is provided it needs to be a full path.
     via_project_name : str
         The name of the VIA project.
+        If None, the value specified in the first VIA JSON file is used.
 
     Returns
     -------
