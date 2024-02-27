@@ -29,8 +29,38 @@ def input_video(input_data_dir, request) -> str:
 
 
 @pytest.fixture()
-def cli_input_arguments(tmp_path: Path) -> dict:
-    return {
+def cli_input_arguments(tmp_path: Path) -> list:
+    def dict_to_list_of_cli_args(input_params: dict) -> list:
+        """Transforms a dictionary of parameters into a list of CLI arguments
+        that can be passed to `subprocess.run()`.
+
+        If for an item in the dictionary the value is empty string,
+        its key is taken as a CLI boolean argument (i.e., a flag).
+
+        Parameters
+        ----------
+        input_params : dict
+            dictionary with the command line arguments to transform.
+            If a value is an empty string, the corresponding key is
+            considered a boolean input argument (i.e., a flag).
+
+        Returns
+        -------
+        list
+            a list of command line arguments to pass to `subprocess.run()`.
+        """
+
+        list_kys_modified = ["--" + k for k in input_params.keys()]
+        list_cli_args = [
+            elem
+            for pair in zip(list_kys_modified, input_params.values())
+            for elem in pair
+            if elem != ""
+        ]
+
+        return list_cli_args
+
+    cli_dict = {
         "output-path": str(tmp_path),
         "video-extensions": "mp4",
         "initial-samples": "5",
@@ -40,6 +70,13 @@ def cli_input_arguments(tmp_path: Path) -> dict:
         "per-cluster": "1",
         "compute-features-per-video": "",
     }
+
+    return dict_to_list_of_cli_args(cli_dict)
+
+
+@pytest.fixture()
+def cli_default_arguments() -> list:
+    return []
 
 
 @pytest.fixture()
@@ -57,37 +94,6 @@ def video_extensions_flipped(input_data_dir: str) -> list:
     return list_user_extensions_flip
 
 
-def dict_to_list_of_cli_args(input_params: dict) -> list:
-    """Transforms a dictionary of parameters into a list of CLI arguments
-    that can be passed to `subprocess.run()`.
-
-    If for an item in the dictionary the value is empty string,
-    its key is taken as a CLI boolean argument (i.e., a flag).
-
-    Parameters
-    ----------
-    input_params : dict
-        dictionary with the command line arguments to transform.
-        If a value is an empty string, the corresponding key is
-        considered a boolean input argument (i.e., a flag).
-
-    Returns
-    -------
-    list
-        a list of command line arguments to pass to `subprocess.run()`.
-    """
-
-    list_kys_modified = ["--" + k for k in input_params.keys()]
-    list_cli_args = [
-        elem
-        for pair in zip(list_kys_modified, input_params.values())
-        for elem in pair
-        if elem != ""
-    ]
-
-    return list_cli_args
-
-
 def list_files_in_dir(input_dir: str):
     # build list of files in dir
     return [
@@ -97,13 +103,17 @@ def list_files_in_dir(input_dir: str):
     ]
 
 
+@pytest.mark.parametrize(
+    "cli_input", ["cli_input_arguments", "cli_default_arguments"]
+)
 def test_small_frame_extraction_one_video(
     extract_frames_command: str,
     input_video: str,
-    cli_input_arguments: dict,
+    cli_input: list,
+    request: pytest.FixtureRequest,
 ):
-    # format input parameters as command line arguments
-    list_cli_args = dict_to_list_of_cli_args(cli_input_arguments)
+    # get fixture
+    list_cli_args = request.getfixturevalue(cli_input)
 
     # run extract frames on one video
     result = subprocess.run(
@@ -128,20 +138,25 @@ def test_small_frame_extraction_one_video(
     # check name of files
 
 
+@pytest.mark.parametrize(
+    "cli_input", ["cli_input_arguments", "cli_default_arguments"]
+)
 def test_small_frame_extraction_one_dir(
     extract_frames_command: str,
     input_data_dir: str,
-    cli_input_arguments: dict,
+    cli_input: list,
+    request: pytest.FixtureRequest,
 ):
-    # format input parameters as command line arguments
-    list_cli_args = dict_to_list_of_cli_args(cli_input_arguments)
+    # get fixture for CLI input arguments
+    list_cli_args = request.getfixturevalue(cli_input)
 
+    # run command
     result = subprocess.run(
         [
             extract_frames_command,
             input_data_dir,
         ]
-        + list_cli_args,  # comment for defaults?
+        + list_cli_args,
         capture_output=True,
         text=True,
     )
