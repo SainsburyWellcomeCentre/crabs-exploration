@@ -33,6 +33,7 @@ dependencies = [
     "pycocotools",
     "filterpy",
     "scikit-image",
+    "lightning"
 ]
 
 [project.optional-dependencies]

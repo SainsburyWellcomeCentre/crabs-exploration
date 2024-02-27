@@ -92,3 +92,7 @@ venv/
 # TODO: move this to GIN? (at least the larger files)
 !/tests/data/**/*.mp4
 !/tests/data/**/*.json
+
+# python
+model/
+mlruns/
