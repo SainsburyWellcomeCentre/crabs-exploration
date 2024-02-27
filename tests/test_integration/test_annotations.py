@@ -378,6 +378,17 @@ def test_coco_generated_from_via_json(
 
 
 def test_exclude_pattern(via_json_1: str, via_json_2: str, tmp_path: Path):
+    """Tests if exclude pattern works when combining annotation files
+
+    Parameters
+    ----------
+    via_json_1 : str
+        path to first VIA JSON file
+    via_json_2 : str
+        path to second VIA JSON file
+    tmp_path : Path
+        Pytest fixture with a path to a temporary directory
+    """
     # combine input json files, excluding those that end with _2.json
     json_out_fullpath = combine_multiple_via_jsons(
         [via_json_1, via_json_2],
