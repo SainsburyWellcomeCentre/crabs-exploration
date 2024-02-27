@@ -1,20 +1,16 @@
 import datetime
 import os
 import re
-import subprocess
 from pathlib import Path
 from typing import Optional
 
 import pytest
+import typer
+from typer.testing import CliRunner
 
 from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
     get_list_of_sleap_videos,
 )
-
-
-@pytest.fixture()
-def extract_frames_command() -> str:
-    return "extract-frames"
 
 
 @pytest.fixture()
@@ -33,7 +29,7 @@ def input_video(input_data_dir, request) -> str:
 
 
 @pytest.fixture()
-def cli_dict(tmp_path: Path) -> dict:
+def cli_inputs_dict(tmp_path: Path) -> dict:
     """These are also the default values
 
     Parameters
@@ -59,8 +55,8 @@ def cli_dict(tmp_path: Path) -> dict:
 
 
 @pytest.fixture()
-def cli_input_arguments(cli_dict: dict) -> list:
-    def dict_to_list_of_cli_args(input_params: dict) -> list:
+def cli_inputs_list(cli_inputs_dict: dict) -> list:
+    def cli_inputs_dict_to_list(input_params: dict) -> list:
         """Transforms a dictionary of parameters into a list of CLI arguments
         that can be passed to `subprocess.run()`.
 
@@ -90,12 +86,7 @@ def cli_input_arguments(cli_dict: dict) -> list:
 
         return list_cli_args
 
-    return dict_to_list_of_cli_args(cli_dict)
-
-
-@pytest.fixture()
-def cli_default_arguments() -> list:
-    return []
+    return cli_inputs_dict_to_list(cli_inputs_dict)
 
 
 @pytest.fixture()
@@ -115,34 +106,32 @@ def video_extensions_flipped(input_data_dir: str) -> list:
 
 @pytest.fixture()
 def mock_extract_frames_to_label_w_sleap(
-    cli_dict: dict,
-):
-    import typer
-
+    cli_inputs_dict: dict,
+) -> typer.main.Typer:
     from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
         compute_and_extract_frames_to_label,
     )
 
+    # instantiate app
     app = typer.Typer(rich_markup_mode="rich")
 
-    # monkeypatch Path.home() to point to the mock home
-
+    # link mocked command
+    # we change the defaults so that they match cli_inputs_dict
     @app.command()
     def mock_combine_and_format_annotations(
         list_video_locations: list[str],
-        output_path: str = cli_dict["output-path"],
+        output_path: str = cli_inputs_dict["output-path"],
         output_subdir: Optional[str] = None,
-        video_extensions: list[str] = [cli_dict["video-extensions"]],
-        initial_samples: int = cli_dict["initial-samples"],
+        video_extensions: list[str] = [cli_inputs_dict["video-extensions"]],
+        initial_samples: int = cli_inputs_dict["initial-samples"],
         sample_method: str = "stride",
-        scale: float = cli_dict["scale"],
+        scale: float = cli_inputs_dict["scale"],
         feature_type: str = "raw",
-        n_components: int = cli_dict["n-components"],
-        n_clusters: int = cli_dict["n-clusters"],
-        per_cluster: int = cli_dict["per-cluster"],
+        n_components: int = cli_inputs_dict["n-components"],
+        n_clusters: int = cli_inputs_dict["n-clusters"],
+        per_cluster: int = cli_inputs_dict["per-cluster"],
         compute_features_per_video: bool = True,
     ):
-        # overwrite defaults with those from cli_dict
         return compute_and_extract_frames_to_label(
             list_video_locations,
             output_path=output_path,
@@ -170,7 +159,7 @@ def list_files_in_dir(input_dir: str):
     ]
 
 
-def check_output_files(input_video_str, cli_dict):
+def check_output_files(input_video_str: str, cli_dict: dict):
     # check name of directory with extracted frames
     list_subfolders_with_paths = [
         f.path for f in os.scandir(cli_dict["output-path"]) if f.is_dir()
@@ -206,92 +195,72 @@ def check_output_files(input_video_str, cli_dict):
 
 
 def test_frame_extraction_one_video(
-    extract_frames_command: str,
     input_video: str,
-    cli_input_arguments: list,
-    cli_dict: dict,  # ---- make these hold the default values!
+    cli_inputs_list: list,
+    cli_inputs_dict: dict,
 ):
-    # run extract frames on one video
-    result = subprocess.run(
-        [
-            extract_frames_command,
-            input_video,
-        ]
-        + cli_input_arguments,
-        capture_output=True,
-        text=True,
-    )
+    # import app
+    from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import app
 
-    # check return code of subprocess
-    assert result.returncode == 0
+    # invoke app
+    runner = CliRunner()
+    result = runner.invoke(app, args=[input_video] + cli_inputs_list)
+
+    # check exit code
+    assert result.exit_code == 0
 
     # check output files
-    check_output_files(input_video, cli_dict)
+    check_output_files(input_video, cli_inputs_dict)
 
 
 def test_frame_extraction_one_video_defaults(
-    extract_frames_command: str,
     input_video: str,
-    cli_dict: dict,
-    mock_extract_frames_to_label_w_sleap,
-    # tmp_path: Path,
+    cli_inputs_dict: dict,
+    mock_extract_frames_to_label_w_sleap: typer.main.Typer,
 ):
-    from typer.testing import CliRunner
-
-    runner = CliRunner()
-
-    # mock app call
+    # import mocked app
     app = mock_extract_frames_to_label_w_sleap
 
+    # call mocked app
+    runner = CliRunner()
     result = runner.invoke(app, args=input_video)
     assert result.exit_code == 0
 
-    # run extract frames on one video from pytest tmp path
-    # (output is by default under cwd)
-    # result = subprocess.run(
-    #     [
-    #         extract_frames_command,
-    #         input_video,
-    #     ],
-    #     capture_output=True,
-    #     text=True,
-    #     # cwd=tmp_path,
-    # )
-
-    # # check return code of subprocess
-    # assert result.returncode == 0
-
     # check output files
-    check_output_files(input_video, cli_dict)
+    check_output_files(input_video, cli_inputs_dict)
 
 
-@pytest.mark.parametrize(
-    "cli_input", ["cli_input_arguments", "cli_default_arguments"]
-)
 def test_frame_extraction_one_dir(
-    extract_frames_command: str,
     input_data_dir: str,
-    cli_input: list,
-    request: pytest.FixtureRequest,
+    cli_inputs_list: list,
 ):
-    # get fixture for CLI input arguments
-    list_cli_args = request.getfixturevalue(cli_input)
+    # import app
+    from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import app
 
-    # run command
-    result = subprocess.run(
-        [
-            extract_frames_command,
-            input_data_dir,
-        ]
-        + list_cli_args,
-        capture_output=True,
-        text=True,
-    )
+    # invoke app
+    runner = CliRunner()
+    result = runner.invoke(app, args=[input_data_dir] + cli_inputs_list)
 
-    # check return code
-    assert result.returncode == 0
+    # check exit code
+    assert result.exit_code == 0
 
-    # check name of files
+    # check files
+
+
+def test_frame_extraction_one_dir_defaults(
+    input_data_dir: str, mock_extract_frames_to_label_w_sleap
+):
+    # import mock app
+    app = mock_extract_frames_to_label_w_sleap
+
+    # invoke app
+    runner = CliRunner()
+    result = runner.invoke(app, args=input_data_dir)
+
+    # check exit code
+    assert result.exit_code == 0
+
+    # check files
 
 
 def test_extension_case_insensitive(
