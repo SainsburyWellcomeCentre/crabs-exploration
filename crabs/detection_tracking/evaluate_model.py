@@ -42,7 +42,7 @@ class Detector_Evaluation:
 
     def _load_pretrain_model(self) -> None:
         """
-        Load the pre-trained subject classification model.
+        Load the trained model.
 
         Returns
         -------
