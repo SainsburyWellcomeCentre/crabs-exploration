@@ -377,12 +377,12 @@ def test_coco_generated_from_via_json(
         ann_idx_per_img += 1
 
 
-def test_exclude_pattern(via_json_1: str, via_json_2: str, tmp_dir: Path):
+def test_exclude_pattern(via_json_1: str, via_json_2: str, tmp_path: Path):
     # combine input json files, excluding those that end with _2.json
     json_out_fullpath = combine_multiple_via_jsons(
         [via_json_1, via_json_2],
         exclude_pattern="\w+_2.json$",
-        json_out_dir=str(tmp_dir),
+        json_out_dir=str(tmp_path),
     )
 
     # read json files
