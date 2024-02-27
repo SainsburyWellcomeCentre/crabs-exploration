@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 import re
 from pathlib import Path
@@ -206,12 +207,29 @@ def check_output_files(list_input_videos: list, cli_dict: dict):
 
     assert len(list_imgs) <= n_expected_imgs
 
-    # check format of images filename
-    for input_video_str in list_input_videos:
-        regex_pattern = Path(input_video_str).stem + "_frame_[\d]{8}$"
-        assert all([re.fullmatch(regex_pattern, f.stem) for f in list_imgs])
+    # check filename format of images: <video_name>_frame_{frame_idx:08d}
+    list_regex_patterns = [
+        Path(input_video_str).stem + "_frame_[\d]{8}$"
+        for input_video_str in list_input_videos
+    ]
+    for f in list_imgs:
+        assert (
+            sum(
+                [
+                    bool(re.fullmatch(regex, f.stem))
+                    for regex in list_regex_patterns
+                ]
+            )
+            == 1
+        )  # only one must match
 
     # check n_elements in json file matches n of files generated
+    with open((extracted_frames_dir / "extracted_frames.json")) as js:
+        extracted_frames_dict = json.load(js)
+        n_extracted_frames = sum(
+            [len(list_idcs) for list_idcs in extracted_frames_dict.values()]
+        )
+        assert n_extracted_frames == len(list_imgs)
 
 
 def test_frame_extraction_one_video(
@@ -273,7 +291,7 @@ def test_frame_extraction_one_dir(
         for f in list_input_videos
         if any(
             [
-                str(f).endswith(ext)
+                str(f).lower().endswith(ext)
                 for ext in cli_inputs_dict["video-extensions"]
             ]
         )
@@ -282,7 +300,9 @@ def test_frame_extraction_one_dir(
 
 
 def test_frame_extraction_one_dir_defaults(
-    input_data_dir: str, mock_extract_frames_app
+    input_data_dir: str,
+    cli_inputs_dict: dict,
+    mock_extract_frames_app: typer.main.Typer,
 ):
     # import mock app
     app = mock_extract_frames_app
@@ -295,6 +315,19 @@ def test_frame_extraction_one_dir_defaults(
     assert result.exit_code == 0
 
     # check files
+    # list of input videos
+    list_input_videos = list_files_in_dir(input_data_dir)
+    list_input_videos = [
+        f
+        for f in list_input_videos
+        if any(
+            [
+                str(f).lower().endswith(ext)
+                for ext in cli_inputs_dict["video-extensions"]
+            ]
+        )
+    ]
+    check_output_files(list_input_videos, cli_inputs_dict)
 
 
 def test_extension_case_insensitive(
