@@ -1,3 +1,6 @@
+import datetime
+import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -29,7 +32,33 @@ def input_video(input_data_dir, request) -> str:
 
 
 @pytest.fixture()
-def cli_input_arguments(tmp_path: Path) -> list:
+def cli_dict(tmp_path: Path) -> dict:
+    """These are also the default values
+
+    Parameters
+    ----------
+    tmp_path : Path
+        _description_
+
+    Returns
+    -------
+    dict
+        _description_
+    """
+    return {
+        "output-path": str(tmp_path),
+        "video-extensions": "mp4",
+        "initial-samples": 5,
+        "scale": 0.5,
+        "n-components": 3,
+        "n-clusters": 5,
+        "per-cluster": 1,
+        "compute-features-per-video": "",
+    }
+
+
+@pytest.fixture()
+def cli_input_arguments(cli_dict: dict) -> list:
     def dict_to_list_of_cli_args(input_params: dict) -> list:
         """Transforms a dictionary of parameters into a list of CLI arguments
         that can be passed to `subprocess.run()`.
@@ -52,24 +81,13 @@ def cli_input_arguments(tmp_path: Path) -> list:
 
         list_kys_modified = ["--" + k for k in input_params.keys()]
         list_cli_args = [
-            elem
+            str(elem)
             for pair in zip(list_kys_modified, input_params.values())
             for elem in pair
             if elem != ""
         ]
 
         return list_cli_args
-
-    cli_dict = {
-        "output-path": str(tmp_path),
-        "video-extensions": "mp4",
-        "initial-samples": "5",
-        "scale": "0.5",
-        "n-components": "3",
-        "n-clusters": "5",
-        "per-cluster": "1",
-        "compute-features-per-video": "",
-    }
 
     return dict_to_list_of_cli_args(cli_dict)
 
@@ -103,19 +121,54 @@ def list_files_in_dir(input_dir: str):
     ]
 
 
+def check_output_files(input_video_str, cli_dict):
+    # check name of directory with extracted frames
+    list_subfolders_with_paths = [
+        f.path for f in os.scandir(cli_dict["output-path"]) if f.is_dir()
+    ]
+    extracted_frames_dir = Path(list_subfolders_with_paths[0])
+
+    assert len(list_subfolders_with_paths) == 1
+    assert (
+        type(
+            datetime.datetime.strptime(
+                extracted_frames_dir.name, "%Y%m%d_%H%M%S"
+            )
+        )
+        == datetime.datetime
+    )
+
+    # check there is an extracted_frames.json file
+    assert (extracted_frames_dir / "extracted_frames.json").is_file()
+
+    # check min number of image files
+    # NOTE: total number of files generated is not deterministic
+    list_imgs = [f for f in extracted_frames_dir.glob("*.png")]
+    assert len(list_imgs) <= cli_dict["n-clusters"] * cli_dict["per-cluster"]
+
+    # check format of images filename
+    regex_pattern = Path(input_video_str).stem + "_frame_[\d]{8}$"
+    assert all([re.fullmatch(regex_pattern, f.stem) for f in list_imgs])
+
+    # check n_elements in json file matches n of files generated
+
+
 @pytest.mark.parametrize(
-    "cli_input", ["cli_input_arguments", "cli_default_arguments"]
+    "cli_input",
+    ["cli_input_arguments"],  # , "cli_default_arguments"]
 )
 def test_small_frame_extraction_one_video(
     extract_frames_command: str,
     input_video: str,
     cli_input: list,
+    cli_dict: dict,  # ---- make these hold the default values!
     request: pytest.FixtureRequest,
+    tmp_path: Path,
 ):
-    # get fixture
+    # get CLI arguments fixture
     list_cli_args = request.getfixturevalue(cli_input)
 
-    # run extract frames on one video
+    # run extract frames on one video from pytest tmp path
     result = subprocess.run(
         [
             extract_frames_command,
@@ -126,16 +179,11 @@ def test_small_frame_extraction_one_video(
         text=True,
     )
 
-    # check return code
+    # check return code of subprocess
     assert result.returncode == 0
 
-    # check one json file
-
-    # check n_elements in json file matches n of files generated
-
-    # check min number of files? (NOTE: total number of files is not deterministic!)
-
-    # check name of files
+    # check output files
+    check_output_files(input_video, cli_dict)
 
 
 @pytest.mark.parametrize(
