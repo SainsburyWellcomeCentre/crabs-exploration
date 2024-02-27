@@ -5,7 +5,7 @@ import cv2
 import torch
 import torchvision
 
-from crabs.detection_tracking.detection_utils import drawing_detection
+from crabs.detection_tracking.detection_utils import draw_detection
 
 logging.basicConfig(level=logging.INFO)
 
@@ -36,7 +36,7 @@ def save_images_with_boxes(
             imgs = list(img.to(device) for img in imgs)
             detections = trained_model(imgs)
 
-            image_with_boxes = drawing_detection(
+            image_with_boxes = draw_detection(
                 imgs, annotations, detections, score_threshold
             )
             directory = "results"
@@ -69,7 +69,9 @@ def compute_precision_recall(class_stats):
         )
 
 
-def compute_confusion_metrics(targets, detections, ious_threshold) -> None:
+def compute_confusion_matrix_elements(
+    targets, detections, ious_threshold
+) -> None:
     """
     Compute metrics (true positive, false positive, false negative) for object detection.
 

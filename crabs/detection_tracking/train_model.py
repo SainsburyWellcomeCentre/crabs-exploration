@@ -3,7 +3,7 @@ import argparse
 import lightning as pl
 import yaml  # type: ignore
 
-from crabs.detection_tracking.datamodule import myDataModule
+from crabs.detection_tracking.datamodule import CustomDataModule
 from crabs.detection_tracking.detection_utils import save_model
 from crabs.detection_tracking.models import FasterRCNN
 
@@ -40,10 +40,8 @@ class Dectector_Train:
             self.config = yaml.safe_load(f)
 
     def train_model(self):
-        data_module = myDataModule(
-            self.main_dir,
-            self.annotation,
-            self.config["batch_size"],
+        data_module = CustomDataModule(
+            self.main_dir, self.annotation, self.config, self.seed_n
         )
 
         lightning_model = FasterRCNN(self.config)
@@ -102,7 +100,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--accelerator",
         type=str,
-        default="cpu",
+        default="gpu",
         help="accelerator for pytorch lightning",
     )
     parser.add_argument(

@@ -52,7 +52,7 @@ def save_model(model: torch.nn.Module):
     print("Model Saved")
 
 
-def drawing_bbox(
+def draw_bbox(
     image_with_boxes,
     top_pt,
     left_pt,
@@ -62,7 +62,9 @@ def drawing_bbox(
     label_text=None,
 ) -> None:
     """
-    Drawing the bounding boxes on the image, based on detection results.
+    Draw the bounding boxes on the image, based on detection results.
+    To draw a rectangle in OpenCV:
+        Specify the top-left and bottom-right corners of the rectangle.
 
     Parameters
     ----------
@@ -84,11 +86,6 @@ def drawing_bbox(
     Returns
     ----------
     None
-
-    Note
-    ----------
-    To draw a rectangle in OpenCV:
-        Specify the top-left and bottom-right corners of the rectangle.
     """
 
     cv2.rectangle(
@@ -110,11 +107,11 @@ def drawing_bbox(
         )
 
 
-def drawing_detection(
+def draw_detection(
     imgs, annotations=None, detections=None, score_threshold=None
 ) -> np.ndarray:
     """
-    Drawing the results based on the detection.
+    Draw the results based on the detection.
 
     Parameters
     ----------
@@ -150,7 +147,7 @@ def drawing_detection(
             ]
 
             for i in range(len(target_boxes)):
-                drawing_bbox(
+                draw_bbox(
                     image_with_boxes,
                     int((target_boxes[i][0])[0]),
                     int((target_boxes[i][0])[1]),
@@ -180,7 +177,7 @@ def drawing_detection(
             for i in range(len(pred_boxes)):
                 if pred_score[i] > (score_threshold or 0):
                     label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
-                    drawing_bbox(
+                    draw_bbox(
                         image_with_boxes,
                         int((pred_boxes[i][0])[0]),
                         int((pred_boxes[i][0])[1]),
