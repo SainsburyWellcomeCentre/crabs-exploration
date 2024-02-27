@@ -41,19 +41,6 @@ class CustomFasterRCNNDataset(torch.utils.data.Dataset):
     transforms : callable, optional
         A function to apply to the images
 
-    Attributes
-    ----------
-    main_dir : str
-        Path to the main directory containing the data.
-    train_file_path : list
-        A List containing str for path of the training files.
-    coco : Object
-        Instance of COCO object for handling annotations.
-    ids : list
-        List of image IDs from the COCO annotation.
-    transforms : callable, optional
-        A function to apply to the images
-
     Returns
     ----------
     tuple
