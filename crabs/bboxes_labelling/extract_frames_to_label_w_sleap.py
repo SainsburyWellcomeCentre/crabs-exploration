@@ -16,7 +16,7 @@ TODO: change it to copy directory structure from input? See
 https://www.geeksforgeeks.org/python-copy-directory-structure-without-files/
 """
 
-import argparse
+
 import copy
 import json
 import logging
@@ -24,13 +24,18 @@ import pprint
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import cv2
+import typer
 from sleap import Video
 from sleap.info.feature_suggestions import (
     FeatureSuggestionPipeline,
     ParallelFeaturePipeline,
 )
+
+# instantiate Typer app
+app = typer.Typer(rich_markup_mode="rich")
 
 
 def get_list_of_sleap_videos(
@@ -344,60 +349,92 @@ def extract_frames_to_label_from_video(
         cap.release()
 
 
-def compute_and_extract_frames_to_label(args):
-    """
-    Compute suggested frames to label and
+@app.command()
+def compute_and_extract_frames_to_label(
+    list_video_locations: list[str],
+    output_path: str = ".",
+    output_subdir: Optional[str] = None,
+    video_extensions: list[str] = ["mp4"],
+    initial_samples: int = 200,
+    sample_method: str = "stride",  # choices=["random", "stride"],
+    scale: float = 1.0,
+    feature_type: str = "raw",  # choices=["raw", "brisk", "hog"],
+    n_components: int = 5,
+    n_clusters: int = 5,
+    per_cluster: int = 5,
+    compute_features_per_video: bool = True,
+):
+    """Compute suggested frames to label and
     extract them as png files.
+
 
     We use SLEAP's image feature method to select
     the frames for labelling and export them as png
     files in the desired directory.
+
     We also output to the same location the list of
     frame indices selected per video as a json file.
 
     Parameters
     ----------
-    args : argparse.Namespace
-        data structure holding parsed input arguments.
-        It includes the following attributes:
-            'list_video_locations',
-            'output_path',
-            'video_extensions',
-            'initial_samples',
-            'sample_method',
-            'scale',
-            'feature_type',
-            'n_components',
-            'n_clusters',
-            'per_cluster',
-            'compute_features_per_video'
+    list_video_locations : list
+        list of paths to directories with videos, or to specific video files.
+    output_path : str, optional
+        path to directory in which to store extracted frames, by default the
+        current directory.
+    output_subdir : str, optional
+        name of output subdirectory in which to put extracted frames,
+        by default the timestamp in the format YYYMMDD_HHMMSS.
+    video_extensions : list, optional
+        extensions to search for when looking for video files,
+        by default ["mp4"]
+    initial_samples : int, optional
+        initial number of frames to extract per video, by default 200
+    sample_method : str, optional
+        method to sample initial frames, a choice between "random" or "stride,
+        by default "stride"
+    scale : float, optional
+        factor to apply to the images prior to PCA and k-means clustering,
+        by default 1.0
+    feature_type : str, optional
+        type of input feature, a choice between "raw", "brisk" or "hog",
+        by default "raw"
+    n_components : int, optional
+        number of PCA components to compute, by default 5
+    n_clusters : int, optional
+        number of k-means clusters to compute, by default 5
+    per_cluster : int, optional
+        number of frames to sample per cluster, by default 5
+    compute_features_per_video : bool, optional
+        whether to compute the (PCA?) features per video, or across all videos,
+        by default True
     """
     # Compute list of suggested frames using SLEAP
     map_videos_to_extracted_frames = compute_suggested_sleap_frames(
-        args.list_video_locations,
-        args.video_extensions,
-        args.initial_samples,
-        args.sample_method,
-        args.scale,
-        args.feature_type,
-        args.n_components,
-        args.n_clusters,
-        args.per_cluster,
-        args.compute_features_per_video,
+        list_video_locations,
+        video_extensions,
+        initial_samples,
+        sample_method,
+        scale,
+        feature_type,
+        n_components,
+        n_clusters,
+        per_cluster,
+        compute_features_per_video,
     )
 
-    # Create target subdirectory inside the output folder, if it doesnt exist.
+    # Create target subdirectory inside the output folder, if it doesn't exist.
     # If no output subdirectory name is provided, create one whose name
     # is the current timestamp in the format YYYYMMDD_HHMMSS
-    if args.output_subdir == "":
+    if not output_subdir:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_subdir_path = Path(args.output_path) / f"{timestamp}"
+        output_subdir_path = Path(output_path) / f"{timestamp}"
     else:
-        output_subdir_path = Path(args.output_path) / args.output_subdir
+        output_subdir_path = Path(output_path) / output_subdir
     output_subdir_path.mkdir(parents=True, exist_ok=True)
 
-    # Save the set of videos and corresponding
-    # extracted frames' indices as json file
+    # Save the set of videos and corresponding extracted frames' indices
+    # as json file
     json_output_file = output_subdir_path / "extracted_frames.json"
     # if json file exists: append
     if json_output_file.is_file():
@@ -427,8 +464,7 @@ def compute_and_extract_frames_to_label(args):
             "New json file with extracted frames saved at {json_output_file}"
         )
 
-    # Save suggested frames as png files
-    # (extraction with opencv)
+    # Save suggested frames as png files (extraction with opencv)
     extract_frames_to_label_from_video(
         map_videos_to_extracted_frames,
         output_subdir_path,
@@ -436,130 +472,9 @@ def compute_and_extract_frames_to_label(args):
     )
 
 
-def argument_parser():
-    """
-    Generate data structure holding
-    parsed command-line input arguments.
-
-    Returns
-    -------
-    args: argparse.Namespace
-        data structure holding parsed input arguments.
-        It includes the following attributes:
-            'list_video_locations',
-            'output_path',
-            'video_extensions',
-            'initial_samples',
-            'sample_method',
-            'scale',
-            'feature_type',
-            'n_components', '
-            n_clusters',
-            'per_cluster',
-            'compute_features_per_video'
-    """
-    # TODO: add grayscale option?
-    # TODO: read extracted frames from file?
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "list_video_locations",  # positional, needs first fwd slash!
-        nargs="*",
-        help="list of paths to directories with videos, or to specific video files",
-    )
-    parser.add_argument(
-        "--output_path",
-        default=".",  # does this work?
-        help=(
-            "path to directory in which to store extracted"
-            " frames (by default, the current directory)"
-        ),
-    )
-    parser.add_argument(
-        "--output_subdir",
-        default="",
-        help=(
-            "name of output subdirectory in which to put"
-            " extracted frames (by default, timestamp in the"
-            " format YYYMMDD_HHMMSS)"
-        ),
-    )
-    parser.add_argument(
-        "--video_extensions",
-        nargs="*",
-        default=["mp4"],
-        help="extensions to search for when looking for video files",
-    )
-    parser.add_argument(
-        "--initial_samples",
-        type=int,
-        nargs="?",
-        default=200,
-        help="initial number of frames to extract per video",
-    )
-    parser.add_argument(
-        "--sample_method",
-        type=str,
-        default="stride",
-        choices=["random", "stride"],
-        help="method to sample initial frames",
-    )  # ok?
-    parser.add_argument(
-        "--scale",
-        type=float,
-        nargs="?",
-        default=1.0,
-        help="factor to apply to the images prior to PCA and k-means clustering",
-    )  # help ok?
-    parser.add_argument(
-        "--feature_type",
-        type=str,
-        nargs="?",
-        default="raw",
-        choices=["raw", "brisk", "hog"],
-        help="type of input feature",
-    )
-    parser.add_argument(
-        "--n_components",
-        type=int,
-        nargs="?",
-        default=5,
-        help="number of PCA components",
-    )
-    parser.add_argument(
-        "--n_clusters",
-        type=int,
-        nargs="?",
-        default=5,
-        help="number of k-means clusters",
-    )
-    parser.add_argument(
-        "--per_cluster",
-        type=int,
-        nargs="?",
-        default=5,
-        help="number of frames to sample per cluster",
-    )
-    parser.add_argument(
-        "--compute_features_per_video",
-        type=bool,
-        nargs="?",
-        const=True,
-        help="whether to compute the (PCA?) features per video, or across all videos",
-    )
-
-    # TODO: add random seed, to make it deterministic?
-    # parser.add_argument('--random_seed',
-    #                     help='random seed')
-
-    return parser.parse_args()
+def app_wrapper():
+    app()
 
 
 if __name__ == "__main__":
-    # parse input arguments
-    args = argument_parser()
-    logging.info("---------------------------")
-    logging.info("CLI arguments:")
-    logging.info(pprint.pformat(vars(args)))
-
-    # run frame extraction
-    compute_and_extract_frames_to_label(args)
+    app_wrapper()
