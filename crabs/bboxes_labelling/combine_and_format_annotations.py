@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+
 from crabs.bboxes_labelling.annotations_utils import (
     combine_multiple_via_jsons,
     convert_via_json_to_coco,
