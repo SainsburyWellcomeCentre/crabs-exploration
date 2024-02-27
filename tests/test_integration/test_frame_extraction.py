@@ -105,7 +105,7 @@ def video_extensions_flipped(input_data_dir: str) -> list:
 
 
 @pytest.fixture()
-def mock_extract_frames_to_label_w_sleap(
+def mock_extract_frames_app(
     cli_inputs_dict: dict,
 ) -> typer.main.Typer:
     from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
@@ -115,8 +115,8 @@ def mock_extract_frames_to_label_w_sleap(
     # instantiate app
     app = typer.Typer(rich_markup_mode="rich")
 
-    # link mocked command
-    # we change the defaults so that they match cli_inputs_dict
+    # link mocked command to app
+    # change the defaults so that they match cli_inputs_dict
     @app.command()
     def mock_combine_and_format_annotations(
         list_video_locations: list[str],
@@ -216,10 +216,10 @@ def test_frame_extraction_one_video(
 def test_frame_extraction_one_video_defaults(
     input_video: str,
     cli_inputs_dict: dict,
-    mock_extract_frames_to_label_w_sleap: typer.main.Typer,
+    mock_extract_frames_app: typer.main.Typer,
 ):
     # import mocked app
-    app = mock_extract_frames_to_label_w_sleap
+    app = mock_extract_frames_app
 
     # call mocked app
     runner = CliRunner()
@@ -248,10 +248,10 @@ def test_frame_extraction_one_dir(
 
 
 def test_frame_extraction_one_dir_defaults(
-    input_data_dir: str, mock_extract_frames_to_label_w_sleap
+    input_data_dir: str, mock_extract_frames_app
 ):
     # import mock app
-    app = mock_extract_frames_to_label_w_sleap
+    app = mock_extract_frames_app
 
     # invoke app
     runner = CliRunner()
