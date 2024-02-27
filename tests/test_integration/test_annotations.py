@@ -1,4 +1,5 @@
 import datetime
+import json
 import os
 from pathlib import Path
 
@@ -376,23 +377,20 @@ def test_coco_generated_from_via_json(
         ann_idx_per_img += 1
 
 
-def test_exclude_pattern(
-    via_json_1: str,
-    via_json_2: str,
-):
+def test_exclude_pattern(via_json_1: str, via_json_2: str, tmp_dir: Path):
+    # combine input json files, excluding those that end with _2.json
     json_out_fullpath = combine_multiple_via_jsons(
-        [via_json_1, via_json_2], "\w+_2.json$"
+        [via_json_1, via_json_2],
+        exclude_pattern="\w+_2.json$",
+        json_out_dir=str(tmp_dir),
     )
 
-    # the combination is the same as json1
-    assert json_out_fullpath == via_json_1
+    # read json files
+    with open(json_out_fullpath) as js:
+        json_combined_dict = json.load(js)
 
+    with open(via_json_1) as js:
+        json_1_dict = json.load(js)
 
-# def test_exclude_pattern() -> None:
-#     status = os.system(
-#         "combine-and-format-annotations"
-#         "tests/data/COCO_VIA_JSONS"
-#         "--exclude-pattern"
-#         "'\w+_2.json$'"
-#     )
-#     assert status == 0
+    # check the combined json file is the same as json1
+    assert json_combined_dict == json_1_dict
