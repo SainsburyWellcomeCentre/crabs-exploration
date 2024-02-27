@@ -31,21 +31,26 @@ def input_video(input_data_dir, request) -> str:
 
 @pytest.fixture()
 def cli_inputs_dict(tmp_path: Path) -> dict:
-    """These are also the default values
+    """Returns the command line input arguments as a dictionary.
+
+    These command line arguments are passed to the
+    extract frames CLI command. The output path is
+    set to Pytest's temporary directory to manage
+    teardown.
 
     Parameters
     ----------
     tmp_path : Path
-        _description_
+        Pytest fixture providing a temporary path
 
     Returns
     -------
     dict
-        _description_
+        a dictionary with parameters for the frame extraction
     """
     return {
         "output-path": str(tmp_path),
-        "video-extensions": ["mp4"],  # this could be a list but for simplicity
+        "video-extensions": ["mp4"],
         "initial-samples": 5,
         "scale": 0.5,
         "n-components": 3,
@@ -57,16 +62,28 @@ def cli_inputs_dict(tmp_path: Path) -> dict:
 
 @pytest.fixture()
 def cli_inputs_list(cli_inputs_dict: dict) -> list:
-    def cli_inputs_dict_to_list(input_params: dict) -> list:
-        """Transforms a dictionary of parameters into a list of CLI arguments
-        that can be passed to `subprocess.run()`.
+    """Returns the command line input arguments as a list.
 
-        If for an item in the dictionary the value is True,
-        its key is taken as a CLI boolean argument (i.e., a flag).
+    Parameters
+    ----------
+    cli_inputs_dict : dict
+        a dictionary with parameters for the frame extraction
+
+    Returns
+    -------
+    list
+        a list with parameters for the frame extraction
+    """
+
+    def cli_inputs_dict_to_list(input_params: dict) -> list:
+        """Transforms a dictionary of parameters into a list of CLI arguments.
+
+        If for an item in the dictionary its value is True,
+        the key is taken as a CLI boolean argument (i.e., a flag).
 
         If for an item in the dictionary the value is False,
         its key with '--no-' prepended is taken as a CLI boolean argument
-        (i.e., a flag).
+        (i.e., a flag). This matches typer behaviour.
 
         Parameters
         ----------
@@ -105,6 +122,22 @@ def cli_inputs_list(cli_inputs_dict: dict) -> list:
 
 @pytest.fixture()
 def video_extensions_flipped(input_data_dir: str) -> list:
+    """Extracts the extensions of video files in input_data_dir
+    and flips their case (uppercase -> lowercase and viceversa).
+
+    The file extensions would be provided by the user in the
+    typical use case.
+
+    Parameters
+    ----------
+    input_data_dir : str
+        path to the directory containing the video files
+
+    Returns
+    -------
+    list
+        list of file extensions
+    """
     # build list of video files
     list_files = list_files_in_dir(input_data_dir)
 
@@ -112,16 +145,31 @@ def video_extensions_flipped(input_data_dir: str) -> list:
     list_unique_extensions = list({f.suffix[1:] for f in list_files})
 
     # flip the case of the extensions
-    list_user_extensions_flip = [ext.lower() for ext in list_unique_extensions]
-    list_user_extensions_flip = list(set(list_user_extensions_flip))
+    list_extensions_flipped = [ext.lower() for ext in list_unique_extensions]
+    list_extensions_flipped = list(set(list_extensions_flipped))
 
-    return list_user_extensions_flip
+    return list_extensions_flipped
 
 
 @pytest.fixture()
 def mock_extract_frames_app(
     cli_inputs_dict: dict,
 ) -> typer.main.Typer:
+    """Monkeypatches the extract-frames app to modify its default values.
+
+    We modify the defaults with values that are more convenient for testing.
+
+    Parameters
+    ----------
+    cli_inputs_dict : dict
+        a dictionary with parameters for the frame extraction
+
+    Returns
+    -------
+    typer.main.Typer
+        an app with the same functionality as the one defined for
+        `compute_and_extract_frames_to_label` but with different default values.
+    """
     from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
         compute_and_extract_frames_to_label,
     )
@@ -164,8 +212,20 @@ def mock_extract_frames_app(
     return app
 
 
-def list_files_in_dir(input_dir: str):
-    # build list of files in dir
+def list_files_in_dir(input_dir: str) -> list:
+    """Lists files in input directory
+
+    Parameters
+    ----------
+    input_dir : str
+        path to directory
+
+    Returns
+    -------
+    list
+        list of files in input directory
+    """
+
     return [
         f
         for f in Path(input_dir).glob("*")
@@ -174,6 +234,15 @@ def list_files_in_dir(input_dir: str):
 
 
 def check_output_files(list_input_videos: list, cli_dict: dict):
+    """Run assertions on output files from frame extraction
+
+    Parameters
+    ----------
+    list_input_videos : list
+        list of videos used for frame extraction
+    cli_dict : dict
+        a dictionary with the parameters of the frame extraction
+    """
     # check name of directory with extracted frames
     list_subfolders = [
         f.path for f in os.scandir(cli_dict["output-path"]) if f.is_dir()
@@ -237,6 +306,17 @@ def test_frame_extraction_one_video(
     cli_inputs_list: list,
     cli_inputs_dict: dict,
 ):
+    """Test frame extraction on one video
+
+    Parameters
+    ----------
+    input_video : str
+        path to input video
+    cli_inputs_list : list
+        command line input arguments for frame extraction as a list
+    cli_inputs_dict : dict
+        command line input arguments as a dictionary, for validation
+    """
     # import app
     from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import app
 
@@ -256,6 +336,17 @@ def test_frame_extraction_one_video_defaults(
     cli_inputs_dict: dict,
     mock_extract_frames_app: typer.main.Typer,
 ):
+    """Test frame extraction on one video, using default CLI arguments
+
+    Parameters
+    ----------
+    input_video : str
+        path to input video
+    cli_inputs_dict : dict
+        command line input arguments as a dictionary, for validation
+    mock_extract_frames_app: typer.main.Typer
+        a monkeypatched app with convenient defaults for testing
+    """
     # import mocked app
     app = mock_extract_frames_app
 
@@ -273,6 +364,20 @@ def test_frame_extraction_one_dir(
     cli_inputs_list: list,
     cli_inputs_dict: dict,
 ):
+    """Test frame extraction on one input directory.
+
+    Frames are extracted from all video files in the input
+    directory.
+
+    Parameters
+    ----------
+    input_data_dir : str
+        path to input video directory
+    cli_inputs_list : list
+        command line input arguments for frame extraction as a list
+    cli_inputs_dict : dict
+        command line input arguments as a dictionary, for validation
+    """
     # import app
     from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import app
 
@@ -304,6 +409,21 @@ def test_frame_extraction_one_dir_defaults(
     cli_inputs_dict: dict,
     mock_extract_frames_app: typer.main.Typer,
 ):
+    """Test frame extraction on one input directory, using default
+    CLI arguments.
+
+    Frames are extracted from all video files in the input
+    directory.
+
+    Parameters
+    ----------
+    input_data_dir : str
+        path to input video directory
+    cli_inputs_dict : dict
+        command line input arguments as a dictionary, for validation
+    mock_extract_frames_app : typer.main.Typer
+        a monkeypatched app with convenient defaults for testing.
+    """
     # import mock app
     app = mock_extract_frames_app
 
@@ -335,12 +455,12 @@ def test_extension_case_insensitive(
 ):
     """
     Tests that the function that computes the list of SLEAP videos
-    is case-insensitive for the user-input extension.
+    is case-insensitive for the user-provided extension.
 
     Parameters
     ----------
     input_video_dir : pathlib.Path
-        Path to the input video directory
+        path to the input video directory
     """
 
     # build list of video files in dir
