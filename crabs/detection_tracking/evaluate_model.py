@@ -54,7 +54,7 @@ class Detector_Evaluation:
 
     def evaluate_model(self) -> None:
         """
-        Evaluate the pre-trained model on the testation dataset.
+        Evaluate the trained model on the test dataset.
 
         Returns
         -------
