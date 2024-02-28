@@ -19,16 +19,6 @@ def input_data_dir() -> str:
     return str(Path(__file__).parents[1] / "data" / "clips")
 
 
-@pytest.fixture(
-    params=[
-        "NINJAV_S001_S001_T003_subclip_p1_05s.mp4",
-        "NINJAV_S001_S001_T003_subclip_p2_05s.MP4",
-    ]
-)
-def input_video(input_data_dir, request) -> str:
-    return str(Path(input_data_dir) / request.param)
-
-
 @pytest.fixture()
 def cli_inputs_dict(tmp_path: Path) -> dict:
     """Returns the command line input arguments as a dictionary.
@@ -301,8 +291,16 @@ def check_output_files(list_input_videos: list, cli_dict: dict):
         assert n_extracted_frames == len(list_imgs)
 
 
+@pytest.mark.parametrize(
+    "input_video",
+    [
+        "NINJAV_S001_S001_T003_subclip_p1_05s.mp4",
+        "NINJAV_S001_S001_T003_subclip_p2_05s.MP4",
+    ],
+)
 def test_frame_extraction_one_video(
     input_video: str,
+    input_data_dir: str,
     cli_inputs_list: list,
     cli_inputs_dict: dict,
 ):
@@ -311,7 +309,9 @@ def test_frame_extraction_one_video(
     Parameters
     ----------
     input_video : str
-        path to input video
+        input video filename
+    input_data_dir : str
+        path to input video directory
     cli_inputs_list : list
         command line input arguments for frame extraction as a list
     cli_inputs_dict : dict
@@ -322,17 +322,26 @@ def test_frame_extraction_one_video(
 
     # invoke app
     runner = CliRunner()
-    result = runner.invoke(app, args=[input_video] + cli_inputs_list)
+    input_video_path = str(Path(input_data_dir) / input_video)
+    result = runner.invoke(app, args=[input_video_path] + cli_inputs_list)
 
     # check exit code
     assert result.exit_code == 0
 
     # check output files
-    check_output_files([input_video], cli_inputs_dict)
+    check_output_files([input_video_path], cli_inputs_dict)
 
 
+@pytest.mark.parametrize(
+    "input_video",
+    [
+        "NINJAV_S001_S001_T003_subclip_p1_05s.mp4",
+        "NINJAV_S001_S001_T003_subclip_p2_05s.MP4",
+    ],
+)
 def test_frame_extraction_one_video_defaults(
     input_video: str,
+    input_data_dir: str,
     cli_inputs_dict: dict,
     mock_extract_frames_app: typer.main.Typer,
 ):
@@ -341,7 +350,9 @@ def test_frame_extraction_one_video_defaults(
     Parameters
     ----------
     input_video : str
-        path to input video
+        input video filename
+    input_data_dir : str
+        path to input video directory
     cli_inputs_dict : dict
         command line input arguments as a dictionary, for validation
     mock_extract_frames_app: typer.main.Typer
@@ -352,11 +363,12 @@ def test_frame_extraction_one_video_defaults(
 
     # call mocked app
     runner = CliRunner()
-    result = runner.invoke(app, args=input_video)
+    input_video_path = str(Path(input_data_dir) / input_video)
+    result = runner.invoke(app, args=input_video_path)
     assert result.exit_code == 0
 
     # check output files
-    check_output_files([input_video], cli_inputs_dict)
+    check_output_files([input_video_path], cli_inputs_dict)
 
 
 def test_frame_extraction_one_dir(
