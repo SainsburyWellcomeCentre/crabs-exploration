@@ -7,15 +7,15 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 from sort import Sort
-from crabs.detection_tracking.detection_utils import drawing_detection
-
+from crabs.detection_tracking.detection_utils import draw_bbox, coco_category
+from crabs.detection_tracking.datamodule import get_test_transform
 # select device (whether GPU or CPU)
 device = (
     torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 )
 
 
-class Detector_Inference:
+class DetectorInference:
     """
     A class for performing object detection or tracking inference on a video
     using a pre-trained model.
@@ -50,72 +50,46 @@ class Detector_Inference:
         self.args = args
         self.vid_dir = args.vid_dir
         self.score_threshold = args.score_threshold
-        self.sort_crab = Sort()
+        self.sort_tracker = Sort()
 
-    def _load_pretrain_model(self) -> None:
+    def _load_trained_model(self) -> torch.nn.Module:
         """
-        Load the pre-trained subject classification model.
+        Load the trained model.
+
+        Returns
+        -------
+        None
         """
-        # Load the pre-trained subject predictor
-        # TODO: deal with different model
-        self.trained_model = torch.load(
-            self.args.model_dir,
-            map_location=torch.device("cpu")
-        )
+        model = torch.load(self.args.model_dir, map_location=torch.device(self.args.accelerator))
+        model.eval()
+        return model
+    
+    def _track_objects(self, prediction):
+        pred_boxes = prediction[0]["boxes"].detach().cpu().numpy()
+        pred_scores = prediction[0]["scores"].detach().cpu().numpy()
+        pred_labels = prediction[0]["labels"].detach().cpu().numpy()
 
-    # def __inference(self, frame: np.ndarray) -> np.ndarray:
-    #     """
-    #     Perform inference on a single frame of the video.
+        pred_sort = []
+        for box, score, label in zip(pred_boxes, pred_scores, pred_labels):
+            if label == 1 and score > self.score_threshold:  # Assuming label 1 represents "crab"
+                bbox = np.concatenate((box, [score]))
+                pred_sort.append(bbox)
 
-    #     Args:
-    #         frame (np.ndarray): The input frame as a NumPy array.
-
-    #     Returns:
-    #         None
-    #     """
-    #     self.trained_model.eval()
-    #     transform = transforms.Compose(
-    #         [
-    #             transforms.ToTensor(),
-    #         ]
-    #     )
-    #     img = transform(frame)
-    #     img = img.to(device)
-
-    #     img = img.unsqueeze(0)
-    #     prediction = self.trained_model(img)
-    #     pred_score = list(prediction[0]["scores"].detach().cpu().numpy())
-
-    #     # if not self.args.sort:
-    #     #     from inference import inference_detection
-
-    #     #     frame_out = inference_detection(
-    #     #         frame, prediction, pred_score, self.score_threshold
-    #     #     )
-
-    #     # else:
-    #     # from inference import inference_tracking
-
-    #     frame_out = inference_tracking(
-    #         frame,
-    #         prediction,
-    #         pred_score,
-    #         self.score_threshold,
-    #     )
-    #     return frame_out
-
-    def _load_video(self) -> None:
+        return np.asarray(pred_sort)
+    
+    def load_video(self) -> None:
         """
-        Load the input video and perform inference on its frames.
+        Load the input video and and prepare the output video.
         """
-        video = cv2.VideoCapture(self.vid_dir)
-
-        if not video.isOpened():
+        self.trained_model = self._load_trained_model()
+        
+        self.video = cv2.VideoCapture(self.vid_dir)
+        if not self.video.isOpened():
             raise Exception("Error opening video file")
 
-        frame_width = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_height = int(video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        cap_fps = video.get(cv2.CAP_PROP_FPS)
+        frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
+        frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap_fps = self.video.get(cv2.CAP_PROP_FPS)
 
         video_file = (
             f"{Path(self.vid_dir).parent.stem}_" f"{Path(self.vid_dir).stem}_"
@@ -123,49 +97,62 @@ class Detector_Inference:
 
         output_file = f"{video_file}_output_video.mp4"
         output_codec = cv2.VideoWriter_fourcc(*"mp4v")
-        out = cv2.VideoWriter(
+        self.out = cv2.VideoWriter(
             output_file, output_codec, cap_fps, (frame_width, frame_height)
         )
 
-        self.trained_model.eval()
-        transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-            ]
-        )
-        
-        while video.isOpened():
-            ret, frame = video.read()
+    def run_inference(self):
+
+        transform = transforms.Compose([transforms.ToTensor()])
+
+        while self.video.isOpened():
+            ret, frame = self.video.read()
             if not ret:
                 print("No frame read. Exiting...")
                 break
 
-            # frame_out = self.__inference(frame)
-            img = transform(frame)
-            img = img.to(device)
-
+            img = transform(frame).to(self.args.accelerator)
             img = img.unsqueeze(0)
             prediction = self.trained_model(img)
-            frame_out = drawing_detection(
-                img, prediction, score_threshold=0.5
-            )
-            out.write(frame_out)
+            pred_sort = self._track_objects(prediction)
 
-            cv2.imshow("frame", frame_out)
+            tracked_boxes = self.sort_tracker.update(pred_sort)
+
+            for bbox in tracked_boxes:
+                x1, y1, x2, y2, _ = bbox
+                id_label = f"id : {bbox[4]}"
+                draw_bbox(frame, int(x1), int(y1), int(x2), int(y2), (0, 0, 255), id_label)
+
+            if self.args.save:
+                self.out.write(frame)
+
+            cv2.imshow("frame", frame)
 
             if cv2.waitKey(30) & 0xFF == 27:
                 break
 
-        video.release()
-        out.release()
+        self.video.release()
+        self.out.release()
         cv2.destroyAllWindows()
 
-    def inference_model(self) -> None:
-        """
-        Perform object detection or tracking inference on the input video.
-        """
-        self._load_pretrain_model()
-        self._load_video()
+
+def main(args) -> None:
+    """
+    Main function to run the inference on video based on the trained model.
+
+    Parameters
+    ----------
+    args : argparse
+        Arguments or configuration settings for testing.
+
+    Returns
+    -------
+        None
+    """
+
+    inference = DetectorInference(args)
+    inference.load_video()
+    inference.run_inference()
 
 
 if __name__ == "__main__":
@@ -201,12 +188,10 @@ if __name__ == "__main__":
         help="threshold for prediction score",
     )
     parser.add_argument(
-        "--sort",
-        type=bool,
-        default=True,
-        help="running sort as tracker",
+        "--accelerator",
+        type=str,
+        default="gpu",
+        help="accelerator for pytorch lightning",
     )
-
     args = parser.parse_args()
-    inference = Detector_Inference(args)
-    inference.inference_model()
+    main(args)

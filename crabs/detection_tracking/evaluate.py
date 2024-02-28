@@ -1,11 +1,12 @@
 import logging
 import os
+
 import cv2
 import torch
 import torchvision
-from crabs.detection_tracking.detection_utils import drawing_detection
 
-# Configure logging
+from crabs.detection_tracking.detection_utils import draw_detection
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -35,7 +36,7 @@ def save_images_with_boxes(
             imgs = list(img.to(device) for img in imgs)
             detections = trained_model(imgs)
 
-            image_with_boxes = drawing_detection(
+            image_with_boxes = draw_detection(
                 imgs, annotations, detections, score_threshold
             )
             directory = "results"
@@ -68,9 +69,9 @@ def compute_precision_recall(class_stats):
         )
 
 
-def compute_confusion_metrics(
-    targets, detections, ious_threshold, class_stats
-) -> dict:
+def compute_confusion_matrix_elements(
+    targets, detections, ious_threshold
+) -> None:
     """
     Compute metrics (true positive, false positive, false negative) for object detection.
 
@@ -89,10 +90,9 @@ def compute_confusion_metrics(
 
     Returns
     ----------
-    dict
-        Updated class statistics after computation.
+    None
     """
-
+    class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
     for target, detection in zip(targets, detections):
         gt_boxes = target["boxes"]
         pred_boxes = detection["boxes"]
@@ -134,4 +134,4 @@ def compute_confusion_metrics(
                     "fn"
                 ] += 1  # Ground truth box has no corresponding detection
 
-    return class_stats
+    compute_precision_recall(class_stats)

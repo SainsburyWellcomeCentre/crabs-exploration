@@ -1,13 +1,11 @@
 import argparse
-import json
 
+import lightning as pl
 import torch
-import pytorch_lightning as pl
 import yaml  # type: ignore
-from crabs.detection_tracking.detection_utils import (
-    load_dataset,
-    save_model,
-)
+
+from crabs.detection_tracking.datamodule import CustomDataModule
+from crabs.detection_tracking.detection_utils import save_model
 from crabs.detection_tracking.models import FasterRCNN
 
 
@@ -23,36 +21,46 @@ class Dectector_Train:
     ----------
     config_file : str
         Path to the directory containing configuration file.
-    main_dir : str
-        Path to the main directory of the dataset.
+    main_dirs : List[str]
+        List of paths to the main directories of the datasets.
+    annotation_files : List[str]
+        List of filenames for the COCO annotations.
     model_name : str
         The model use to train the detector.
     """
 
     def __init__(self, args):
         self.config_file = args.config_file
-        self.main_dir = args.main_dir
-        self.annotation_file = args.annotation_file
-        self.model_name = args.model_name
-        self.annotation = f"{self.main_dir}/annotations/{self.annotation_file}"
+        self.main_dirs = args.main_dir
+        self.annotation_files = args.annotation_file
+        self.accelerator = args.accelerator
+        self.seed_n = args.seed_n
         self.load_config_yaml()
 
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
-
+    
+    
     def train_model(self):
-        train_dataloader = load_dataset(
-            self.main_dir,
-            self.annotation,
-            self.config["batch_size"],
-            training=True,
-        )
+        annotations = []
+        for main_dir, annotation_file in zip(self.main_dirs, self.annotation_files):
+            annotations.append(f"{main_dir}/annotations/{annotation_file}")
+
+        data_module = CustomDataModule(self.main_dirs, annotations, self.config, self.seed_n)
+
         lightning_model = FasterRCNN(self.config)
 
-        trainer = pl.Trainer(max_epochs=self.config["num_epochs"], accelerator="cpu")
+        mlf_logger = pl.pytorch.loggers.MLFlowLogger(
+            experiment_name="lightning_logs", tracking_uri="file:./ml-runs"
+        )
+        trainer = pl.Trainer(
+            max_epochs=self.config["num_epochs"],
+            accelerator=self.accelerator,
+            logger=mlf_logger,
+        )
 
-        trainer.fit(lightning_model, train_dataloader)
+        trainer.fit(lightning_model, data_module)
         if self.config["save"]:
             save_model(lightning_model)
 
@@ -84,21 +92,28 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--main_dir",
-        type=str,
+        nargs="+",
         required=True,
-        help="location of images and coco annotation",
-    )
-    parser.add_argument(
-        "--model_name",
-        type=str,
-        default="faster_rcnn",
-        help="the model to use to train the object detection.",
+        help="list of locations of images and coco annotations",
     )
     parser.add_argument(
         "--annotation_file",
-        type=str,
+        nargs="+",
         required=True,
-        help="filename for coco annotation",
+        help="list of filenames for coco annotations",
+    )
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="gpu",
+        help="accelerator for pytorch lightning",
+    )
+    parser.add_argument(
+        "--seed_n",
+        type=int,
+        default=42,
+        help="seed for random state",
     )
     args = parser.parse_args()
+    torch.set_float32_matmul_precision("medium")
     main(args)
