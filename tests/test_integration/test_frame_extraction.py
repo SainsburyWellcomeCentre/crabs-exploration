@@ -22,7 +22,7 @@ def input_data_dir() -> str:
 @pytest.fixture(
     params=[
         "NINJAV_S001_S001_T003_subclip_p1_05s.mp4",
-        "NINJAV_S001_S001_T003_subclip_p2_05s.mp4",
+        "NINJAV_S001_S001_T003_subclip_p2_05s.MP4",
     ]
 )
 def input_video(input_data_dir, request) -> str:
