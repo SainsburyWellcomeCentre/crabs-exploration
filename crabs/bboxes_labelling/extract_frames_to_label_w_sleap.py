@@ -449,7 +449,7 @@ def compute_and_extract_frames_to_label(
                 indent=4,
             )
         logging.info(
-            "Existing json file with extracted frames updated at {json_output_file}",
+            f"Existing json file with extracted frames updated at {json_output_file}",
         )
     # else: start a new file
     else:
@@ -461,7 +461,7 @@ def compute_and_extract_frames_to_label(
                 indent=4,
             )
         logging.info(
-            "New json file with extracted frames saved at {json_output_file}"
+            f"New json file with extracted frames saved at {json_output_file}"
         )
 
     # Save suggested frames as png files (extraction with opencv)
