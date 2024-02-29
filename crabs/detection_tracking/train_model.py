@@ -1,15 +1,12 @@
 import argparse
-import json
 
+import lightning as pl
 import torch
 import yaml  # type: ignore
-from detection_utils import (
-    create_dataloader,
-    get_train_transform,
-    myFasterRCNNDataset,
-    save_model,
-)
-from models import create_faster_rcnn, train_faster_rcnn
+
+from crabs.detection_tracking.datamodule import CustomDataModule
+from crabs.detection_tracking.detection_utils import save_model
+from crabs.detection_tracking.models import FasterRCNN
 
 
 class Dectector_Train:
@@ -30,83 +27,38 @@ class Dectector_Train:
         The model use to train the detector.
     """
 
-    def __init__(self, args: argparse.Namespace):
+    def __init__(self, args):
         self.config_file = args.config_file
         self.main_dir = args.main_dir
         self.annotation_file = args.annotation_file
-        self.model_name = args.model_name
+        self.accelerator = args.accelerator
+        self.seed_n = args.seed_n
         self.annotation = f"{self.main_dir}/annotations/{self.annotation_file}"
         self.load_config_yaml()
 
-    def load_config_yaml(self) -> None:
-        """Load a YAML file describing the training setup"""
-
+    def load_config_yaml(self):
         with open(self.config_file, "r") as f:
-            self.config = yaml.safe_load(f)  # type: dict
-        print(self.config)
+            self.config = yaml.safe_load(f)
 
-    def _load_dataset(self) -> None:
-        """Load images and annotation file for training"""
-
-        with open(self.annotation) as json_file:
-            coco_data = json.load(json_file)
-
-        self.train_file_paths = []
-        for image_info in coco_data["images"]:
-            image_id = image_info["id"]
-            image_id -= 1
-            image_file = image_info["file_name"]
-            video_file = image_file.split("_")[1]
-
-            if (
-                video_file == "09.08.2023-03-Left"
-                or video_file == "10.08.2023-01-Left"
-                or video_file == "10.08.2023-01-Right"
-            ):
-                continue
-
-            # taking the first 40 frames per video as training data
-            if image_id % 50 < 40:
-                self.train_file_paths.append(image_file)
-
-        self.train_dataset = myFasterRCNNDataset(
-            self.main_dir,
-            self.train_file_paths,
-            self.annotation,
-            transforms=get_train_transform(),
+    def train_model(self):
+        data_module = CustomDataModule(
+            self.main_dir, self.annotation, self.config, self.seed_n
         )
 
-        self.train_dataloader = create_dataloader(
-            self.train_dataset, self.config["batch_size"]
+        lightning_model = FasterRCNN(self.config)
+
+        mlf_logger = pl.pytorch.loggers.MLFlowLogger(
+            experiment_name="lightning_logs", tracking_uri="file:./ml-runs"
+        )
+        trainer = pl.Trainer(
+            max_epochs=self.config["num_epochs"],
+            accelerator=self.accelerator,
+            logger=mlf_logger,
         )
 
-    def train_model(self) -> None:
-        """Train the model using the provided configuration"""
-
-        self._load_dataset()
-        # select GPU if available
-        device = (
-            torch.device("cuda")
-            if torch.cuda.is_available()
-            else torch.device("cpu")
-        )
-
-        # create model
-        self.model = create_faster_rcnn(num_classes=self.config["num_classes"])
-        self.model.to(device)
-
-        optimizer = torch.optim.Adam(
-            self.model.parameters(),
-            lr=self.config["learning_rate"],
-            weight_decay=self.config["wdecay"],
-        )
-
-        trained_model = train_faster_rcnn(
-            self.config, self.model, self.train_dataloader, optimizer
-        )
-
+        trainer.fit(lightning_model, data_module)
         if self.config["save"]:
-            save_model(trained_model)
+            save_model(lightning_model)
 
 
 def main(args) -> None:
@@ -131,7 +83,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config_file",
         type=str,
-        default="config/faster_rcnn.yaml",
+        default="crabs/detection_tracking/config/faster_rcnn.yaml",
         help="location of YAML config to control training",
     )
     parser.add_argument(
@@ -141,16 +93,23 @@ if __name__ == "__main__":
         help="location of images and coco annotation",
     )
     parser.add_argument(
-        "--model_name",
-        type=str,
-        default="faster_rcnn",
-        help="the model to use to train the object detection. Options: faster_rcnn",
-    )
-    parser.add_argument(
         "--annotation_file",
         type=str,
         required=True,
         help="filename for coco annotation",
     )
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="gpu",
+        help="accelerator for pytorch lightning",
+    )
+    parser.add_argument(
+        "--seed_n",
+        type=int,
+        default=42,
+        help="seed for random state",
+    )
     args = parser.parse_args()
+    torch.set_float32_matmul_precision("medium")
     main(args)

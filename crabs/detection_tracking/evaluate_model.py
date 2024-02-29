@@ -1,117 +1,96 @@
 import argparse
-import json
-import os
 
 import torch
-from detection_utils import (
-    create_dataloader,
-    get_test_transform,
-    myFasterRCNNDataset,
-)
-from evaluate import evaluate_detection
+import yaml  # type: ignore
 
-# select device (whether GPU or CPU)
-device = (
-    torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+from crabs.detection_tracking.datamodule import CustomDataModule
+from crabs.detection_tracking.evaluate import (
+    compute_confusion_matrix_elements,
+    save_images_with_boxes,
 )
 
 
-class Detector_Evaluate:
+class Detector_Evaluation:
     """
-    A class for evaluating object detection models using pre-trained classification.
+    A class for evaluating an object detector using trained model.
 
     Parameters
     ----------
     args : argparse
         Command-line arguments containing configuration settings.
-
-    Attributes
-    ----------
-    args : argparse
-        The command-line arguments provided.
-    main_dir : str
-        The main directory path.
-    annotation_file : str
-        The filename of coco annotation JSON file.
     score_threshold : float
         The score threshold for confidence detection.
     ious_threshold : float
         The ious threshold for detection bounding boxes.
-    trained_model:
-        The pre-trained subject classification model.
-    evaluate_dataset:
-        An instance of myFasterRCNNDataset for test data.
     evaluate_dataloader:
         The DataLoader for the test dataset.
     """
 
-    def __init__(self, args: argparse.Namespace) -> None:
+    def __init__(
+        self,
+        args: argparse.Namespace,
+        data_loader: torch.utils.data.DataLoader,
+    ) -> None:
         self.args = args
-        self.main_dir = args.main_dir
-        self.annotation_file = args.annotation_file
         self.ious_threshold = args.ious_threshold
         self.score_threshold = args.score_threshold
-        self.annotation = f"{self.main_dir}/annotations/{self.annotation_file}"
+        self.evaluate_dataloader = data_loader
 
-    def _load_pretrain_model(self) -> None:
+    def _load_trained_model(self) -> None:
         """
-        Load the pre-trained subject classification model.
+        Load the trained model.
+
+        Returns
+        -------
+        None
         """
-        # Load the pre-trained subject predictor
-        # TODO: deal with different model
         self.trained_model = torch.load(
-            self.args.model_dir, map_location=torch.device("cpu")
+            self.args.model_dir,
+            map_location=torch.device(self.args.accelerator),
         )
-
-    def _load_dataset(self) -> None:
-        """Load images and annotation file for training"""
-
-        with open(self.annotation) as json_file:
-            coco_data = json.load(json_file)
-
-        self.evaluate_file_paths = []
-        for image_info in coco_data["images"]:
-            image_id = image_info["id"]
-            image_id -= 1  # reset the image_id to 0 to get the index
-            image_file = image_info["file_name"]
-            video_file = image_file.split("_")[1]
-
-            if video_file == "09.08.2023-03-Left":
-                continue
-
-            # taking the first 40 frames per video as training data
-            if image_id % 50 < 40:
-                continue
-            else:
-                self.evaluate_file_paths.append(image_file)
-
-        self.evaluate_dataset = myFasterRCNNDataset(
-            self.main_dir,
-            self.evaluate_file_paths,
-            self.annotation,
-            transforms=get_test_transform(),
-        )
-
-        self.evaluate_dataloader = create_dataloader(self.evaluate_dataset, 1)
 
     def evaluate_model(self) -> None:
         """
-        Evaluate the pre-trained model on the testation dataset.
+        Evaluate the trained model on the test dataset.
 
-        Returns:
-            None
+        Returns
+        -------
+        None
         """
-        self._load_pretrain_model()
+        self._load_trained_model()
         self.trained_model.eval()
-        self._load_dataset()
-
-        # pdb.set_trace()
-        evaluate_detection(
-            self.evaluate_dataloader,
-            self.trained_model,
-            self.ious_threshold,
-            self.score_threshold,
+        device = (
+            torch.device("cuda")
+            if torch.cuda.is_available()
+            else torch.device("cpu")
         )
+
+        with torch.no_grad():
+            all_detections = []
+            all_targets = []
+            for imgs, annotations in self.evaluate_dataloader:
+                imgs = list(img.to(device) for img in imgs)
+                targets = [
+                    {k: v.to(device) for k, v in t.items()}
+                    for t in annotations
+                ]
+                detections = self.trained_model(imgs)
+
+                all_detections.extend(detections)
+                all_targets.extend(targets)
+
+            compute_confusion_matrix_elements(
+                all_targets,  # one elem per image
+                all_detections,
+                self.ious_threshold,
+            )
+
+            save_images_with_boxes(
+                self.evaluate_dataloader,
+                self.trained_model,
+                self.score_threshold,
+                device,
+            )
 
 
 def main(args) -> None:
@@ -127,12 +106,32 @@ def main(args) -> None:
     -------
         None
     """
-    eval = Detector_Evaluate(args)
-    eval.evaluate_model()
+
+    main_dir = args.main_dir
+    annotation_file = args.annotation_file
+    annotation = f"{main_dir}/annotations/{annotation_file}"
+
+    with open(args.config_file, "r") as f:
+        config = yaml.safe_load(f)
+
+    data_module = data_module = CustomDataModule(
+        main_dir, annotation, config, args.seed_n
+    )
+    data_module.setup("test")
+    data_loader = data_module.test_dataloader()
+
+    evaluator = Detector_Evaluation(args, data_loader)
+    evaluator.evaluate_model()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config_file",
+        type=str,
+        default="crabs/detection_tracking/config/faster_rcnn.yaml",
+        help="location of YAML config to control training",
+    )
     parser.add_argument(
         "--model_dir",
         type=str,
@@ -152,12 +151,6 @@ if __name__ == "__main__":
         help="filename for coco annotation",
     )
     parser.add_argument(
-        "--output_path",
-        type=str,
-        default=os.getcwd(),
-        help="location of output video",
-    )
-    parser.add_argument(
         "--score_threshold",
         type=float,
         default=0.5,
@@ -168,6 +161,18 @@ if __name__ == "__main__":
         type=float,
         default=0.5,
         help="threshold for IOU",
+    )
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="gpu",
+        help="accelerator for pytorch lightning",
+    )
+    parser.add_argument(
+        "--seed_n",
+        type=int,
+        default=42,
+        help="seed for random state",
     )
 
     args = parser.parse_args()

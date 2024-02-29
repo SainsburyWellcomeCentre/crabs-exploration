@@ -1,8 +1,22 @@
 num_epochs: 250
 learning_rate: 0.00005
 wdecay: 0.00005
-batch_size: 8
+batch_size: 2
+batch_size_test: 1
 num_classes: 2
-image_stack: False
-Sort: False
 save: True
+test_size: 0.2
+num_workers: 4
+transform_brightness: 0.5
+transform_hue: 0.3
+gaussian_blur_params:
+  kernel_size:
+    - 5
+    - 9
+  sigma:
+    - 0.1
+    - 5.0
+exclude_video_file_list:
+  - "09.08.2023-03-Left"
+  - "10.08.2023-01-Left"
+  - "10.08.2023-01-Right"

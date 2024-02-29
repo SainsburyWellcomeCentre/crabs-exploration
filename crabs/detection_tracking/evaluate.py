@@ -1,109 +1,13 @@
 import logging
+import os
 
 import cv2
-import numpy as np
 import torch
 import torchvision
-from detection_utils import coco_category
 
-# Configure logging
+from crabs.detection_tracking.detection_utils import draw_detection
+
 logging.basicConfig(level=logging.INFO)
-
-
-def drawing_bbox(imgs, annotations, detections, score_threshold) -> np.ndarray:
-    """
-    Draw bounding boxes on images based on annotations and detections.
-
-    Parameters
-    ----------
-    imgs : list
-        List of images.
-    annotations : dict
-        Ground truth annotations.
-    detections : dict
-        Detected objects.
-    score_threshold ; float
-        The confidence threshold for detection scores.
-
-    Returns
-    ----------
-    np.ndarray
-        Image(s) with bounding boxes drawn on them.
-    """
-
-    coco_list = coco_category()
-    for image, label, prediction in zip(imgs, annotations, detections):
-        image = image.cpu().numpy().transpose(1, 2, 0)
-        image = (image * 255).astype("uint8")
-        image_with_boxes = image.copy()
-
-        pred_score = list(prediction["scores"].detach().cpu().numpy())
-        target_boxes = [
-            [(i[0], i[1]), (i[2], i[3])]
-            for i in list(label["boxes"].detach().cpu().detach().numpy())
-        ]
-
-        if pred_score:
-            pred_t = [pred_score.index(x) for x in pred_score][-1]
-
-            pred_class = [
-                coco_list[i]
-                for i in list(prediction["labels"].detach().cpu().numpy())
-            ]
-
-            pred_boxes = [
-                [(i[0], i[1]), (i[2], i[3])]
-                for i in list(
-                    prediction["boxes"].detach().cpu().detach().numpy()
-                )
-            ]
-
-            pred_boxes = pred_boxes[: pred_t + 1]
-            pred_class = pred_class[: pred_t + 1]
-            for i in range(len(pred_boxes)):
-                if pred_score[i] > score_threshold:
-                    cv2.rectangle(
-                        image_with_boxes,
-                        (
-                            int((pred_boxes[i][0])[0]),
-                            int((pred_boxes[i][0])[1]),
-                        ),
-                        (
-                            int((pred_boxes[i][1])[0]),
-                            int((pred_boxes[i][1])[1]),
-                        ),
-                        (0, 0, 255),
-                        2,
-                    )
-
-                    label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
-                    cv2.putText(
-                        image_with_boxes,
-                        label_text,
-                        (
-                            int((pred_boxes[i][0])[0]),
-                            int((pred_boxes[i][0])[1]),
-                        ),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        1,
-                        (0, 0, 255),
-                        thickness=2,
-                    )
-            for i in range(len(target_boxes)):
-                cv2.rectangle(
-                    image_with_boxes,
-                    (
-                        int((target_boxes[i][0])[0]),
-                        int((target_boxes[i][0])[1]),
-                    ),
-                    (
-                        int((target_boxes[i][1])[0]),
-                        int((target_boxes[i][1])[1]),
-                    ),
-                    (0, 255, 0),
-                    2,
-                )
-    return image_with_boxes
 
 
 def save_images_with_boxes(
@@ -132,11 +36,12 @@ def save_images_with_boxes(
             imgs = list(img.to(device) for img in imgs)
             detections = trained_model(imgs)
 
-            image_with_boxes = drawing_bbox(
+            image_with_boxes = draw_detection(
                 imgs, annotations, detections, score_threshold
             )
-
-            cv2.imwrite(f"results/imgs{imgs_id}.jpg", image_with_boxes)
+            directory = "results"
+            os.makedirs(directory, exist_ok=True)
+            cv2.imwrite(f"{directory}/imgs{imgs_id}.jpg", image_with_boxes)
 
 
 def compute_precision_recall(class_stats):
@@ -164,9 +69,9 @@ def compute_precision_recall(class_stats):
         )
 
 
-def compute_confusion_metrics(
-    targets, detections, ious_threshold, class_stats
-) -> dict:
+def compute_confusion_matrix_elements(
+    targets, detections, ious_threshold
+) -> None:
     """
     Compute metrics (true positive, false positive, false negative) for object detection.
 
@@ -185,10 +90,9 @@ def compute_confusion_metrics(
 
     Returns
     ----------
-    dict
-        Updated class statistics after computation.
+    None
     """
-
+    class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
     for target, detection in zip(targets, detections):
         gt_boxes = target["boxes"]
         pred_boxes = detection["boxes"]
@@ -230,57 +134,4 @@ def compute_confusion_metrics(
                     "fn"
                 ] += 1  # Ground truth box has no corresponding detection
 
-    return class_stats
-
-
-def evaluate_detection(
-    test_dataloader: torch.utils.data.DataLoader,
-    trained_model,
-    ious_threshold: float,
-    score_threshold: float,
-) -> None:
-    """
-    Test object detection on a dataset using a trained model.
-
-    Args:
-        test_dataloader (torch.utils.data.DataLoader): DataLoader for the test dataset.
-        trained_model: The trained object detection model.
-        ious_threshold (float): The confidence threshold for IOU.
-
-    Returns:
-        None
-    """
-    device = (
-        torch.device("cuda")
-        if torch.cuda.is_available()
-        else torch.device("cpu")
-    )
-    with torch.no_grad():
-        all_detections = []
-        all_targets = []
-        for imgs, annotations in test_dataloader:
-            imgs = list(img.to(device) for img in imgs)
-            targets = [
-                {k: v.to(device) for k, v in t.items()} for t in annotations
-            ]
-            detections = trained_model(imgs)
-
-            all_detections.extend(detections)
-            all_targets.extend(targets)
-
-        class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
-        class_stats = compute_confusion_metrics(
-            all_targets,  # one elem per image
-            all_detections,
-            ious_threshold,
-            class_stats,
-        )
-
-        print(type(class_stats))
-
-        # Calculate precision, recall, and F1 score for each threshold
-        compute_precision_recall(class_stats)
-
-        save_images_with_boxes(
-            test_dataloader, trained_model, score_threshold, device
-        )
+    compute_precision_recall(class_stats)
