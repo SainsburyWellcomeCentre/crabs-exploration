@@ -117,7 +117,7 @@ def main(args) -> None:
     data_module = data_module = CustomDataModule(
         main_dir, annotation, config, args.seed_n
     )
-    data_module.setup()
+    data_module.setup("test")
     data_loader = data_module.test_dataloader()
 
     evaluator = Detector_Evaluation(args, data_loader)

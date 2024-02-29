@@ -134,7 +134,7 @@ class CustomDataModule(pl.LightningDataModule):
         """
         pass
 
-    def setup(self, stage=None):
+    def setup(self, stage):
         """
         Sets up the data loader for the specified stage
         'fit' for training stage or 'test' for evaluation stage.
@@ -159,7 +159,7 @@ class CustomDataModule(pl.LightningDataModule):
                 if video_file not in exclude_video_file_list:
                     all_ids.append(image_id)
 
-            if stage == "fit" or stage is None:
+            if stage == "fit":
                 train_ids, _ = train_test_split(
                     all_ids,
                     train_size=1 - (self.config["test_size"]),
@@ -167,7 +167,7 @@ class CustomDataModule(pl.LightningDataModule):
                     random_state=self.seed_n,
                 )
                 self.train_ids = train_ids
-            if stage == "test" or stage is None:
+            if stage == "test":
                 _, test_ids = train_test_split(
                     all_ids,
                     test_size=self.config["test_size"],
