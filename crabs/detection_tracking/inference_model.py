@@ -7,12 +7,7 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 from sort import Sort
-from crabs.detection_tracking.detection_utils import draw_bbox, coco_category
-from crabs.detection_tracking.datamodule import get_test_transform
-# select device (whether GPU or CPU)
-device = (
-    torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-)
+from crabs.detection_tracking.detection_utils import draw_bbox
 
 
 class DetectorInference:
@@ -30,20 +25,6 @@ class DetectorInference:
         score_threshold (float): The confidence threshold for detection scores.
         sort_crab (Sort): An instance of the sorting algorithm used for tracking.
         trained_model: The pre-trained subject classification model.
-
-    Methods:
-        _load_pretrain_model(self) -> None:
-            Load the pre-trained subject classification model.
-
-        __inference(self, frame, video_file, frame_id) -> None:
-            Perform inference on a single frame of the video.
-
-        _load_video(self) -> None:
-            Load the input video and perform inference on its frames.
-
-        inference_model(self) -> None:
-            Perform object detection or tracking inference on the input video.
-
     """
 
     def __init__(self, args: argparse.Namespace) -> None:
