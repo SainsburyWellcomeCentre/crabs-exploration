@@ -13,10 +13,7 @@ from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
     get_list_of_sleap_videos,
 )
 
-
-@pytest.fixture()
-def input_data_dir() -> str:
-    return str(Path(__file__).parents[1] / "data" / "clips")
+INPUT_DATA_DIR = str(Path(__file__).parents[1] / "data" / "clips")
 
 
 @pytest.fixture()
@@ -111,17 +108,12 @@ def cli_inputs_list(cli_inputs_dict: dict) -> list:
 
 
 @pytest.fixture()
-def video_extensions_flipped(input_data_dir: str) -> list:
-    """Extracts the extensions of video files in input_data_dir
+def video_extensions_flipped() -> list:
+    """Extracts the extensions of video files in INPUT_DATA_DIR
     and flips their case (uppercase -> lowercase and viceversa).
 
     The file extensions would be provided by the user in the
     typical use case.
-
-    Parameters
-    ----------
-    input_data_dir : str
-        path to the directory containing the video files
 
     Returns
     -------
@@ -129,7 +121,7 @@ def video_extensions_flipped(input_data_dir: str) -> list:
         list of file extensions
     """
     # build list of video files
-    list_files = list_files_in_dir(input_data_dir)
+    list_files = list_files_in_dir(INPUT_DATA_DIR)
 
     # get unique extensions for all files
     list_unique_extensions = list({f.suffix[1:] for f in list_files})
@@ -300,7 +292,6 @@ def check_output_files(list_input_videos: list, cli_dict: dict) -> None:
 )
 def test_frame_extraction_one_video(
     input_video: str,
-    input_data_dir: str,
     cli_inputs_list: list,
     cli_inputs_dict: dict,
 ) -> None:
@@ -310,8 +301,6 @@ def test_frame_extraction_one_video(
     ----------
     input_video : str
         input video filename
-    input_data_dir : str
-        path to input video directory
     cli_inputs_list : list
         command line input arguments for frame extraction as a list
     cli_inputs_dict : dict
@@ -322,7 +311,7 @@ def test_frame_extraction_one_video(
 
     # invoke app
     runner = CliRunner()
-    input_video_path = str(Path(input_data_dir) / input_video)
+    input_video_path = str(Path(INPUT_DATA_DIR) / input_video)
     result = runner.invoke(app, args=[input_video_path] + cli_inputs_list)
 
     # check exit code
@@ -341,7 +330,6 @@ def test_frame_extraction_one_video(
 )
 def test_frame_extraction_one_video_defaults(
     input_video: str,
-    input_data_dir: str,
     cli_inputs_dict: dict,
     mock_extract_frames_app: typer.main.Typer,
 ) -> None:
@@ -351,8 +339,6 @@ def test_frame_extraction_one_video_defaults(
     ----------
     input_video : str
         input video filename
-    input_data_dir : str
-        path to input video directory
     cli_inputs_dict : dict
         command line input arguments as a dictionary, for validation
     mock_extract_frames_app: typer.main.Typer
@@ -363,7 +349,7 @@ def test_frame_extraction_one_video_defaults(
 
     # call mocked app
     runner = CliRunner()
-    input_video_path = str(Path(input_data_dir) / input_video)
+    input_video_path = str(Path(INPUT_DATA_DIR) / input_video)
     result = runner.invoke(app, args=input_video_path)
     assert result.exit_code == 0
 
@@ -372,7 +358,6 @@ def test_frame_extraction_one_video_defaults(
 
 
 def test_frame_extraction_one_dir(
-    input_data_dir: str,
     cli_inputs_list: list,
     cli_inputs_dict: dict,
 ) -> None:
@@ -383,8 +368,6 @@ def test_frame_extraction_one_dir(
 
     Parameters
     ----------
-    input_data_dir : str
-        path to input video directory
     cli_inputs_list : list
         command line input arguments for frame extraction as a list
     cli_inputs_dict : dict
@@ -395,14 +378,14 @@ def test_frame_extraction_one_dir(
 
     # invoke app
     runner = CliRunner()
-    result = runner.invoke(app, args=[input_data_dir] + cli_inputs_list)
+    result = runner.invoke(app, args=[INPUT_DATA_DIR] + cli_inputs_list)
 
     # check exit code
     assert result.exit_code == 0
 
     # check files
     # list of input videos
-    list_input_videos = list_files_in_dir(input_data_dir)
+    list_input_videos = list_files_in_dir(INPUT_DATA_DIR)
     list_input_videos = [
         f
         for f in list_input_videos
@@ -417,7 +400,6 @@ def test_frame_extraction_one_dir(
 
 
 def test_frame_extraction_one_dir_defaults(
-    input_data_dir: str,
     cli_inputs_dict: dict,
     mock_extract_frames_app: typer.main.Typer,
 ) -> None:
@@ -429,8 +411,6 @@ def test_frame_extraction_one_dir_defaults(
 
     Parameters
     ----------
-    input_data_dir : str
-        path to input video directory
     cli_inputs_dict : dict
         command line input arguments as a dictionary, for validation
     mock_extract_frames_app : typer.main.Typer
@@ -441,14 +421,14 @@ def test_frame_extraction_one_dir_defaults(
 
     # invoke app
     runner = CliRunner()
-    result = runner.invoke(app, args=input_data_dir)
+    result = runner.invoke(app, args=INPUT_DATA_DIR)
 
     # check exit code
     assert result.exit_code == 0
 
     # check files
     # list of input videos
-    list_input_videos = list_files_in_dir(input_data_dir)
+    list_input_videos = list_files_in_dir(INPUT_DATA_DIR)
     list_input_videos = [
         f
         for f in list_input_videos
@@ -462,26 +442,19 @@ def test_frame_extraction_one_dir_defaults(
     check_output_files(list_input_videos, cli_inputs_dict)
 
 
-def test_extension_case_insensitive(
-    input_data_dir: str, video_extensions_flipped: list
-) -> None:
+def test_extension_case_insensitive(video_extensions_flipped: list) -> None:
     """
     Tests that the function that computes the list of SLEAP videos
     is case-insensitive for the user-provided extension.
-
-    Parameters
-    ----------
-    input_video_dir : pathlib.Path
-        path to the input video directory
     """
 
     # build list of video files in dir
-    list_files = list_files_in_dir(input_data_dir)
+    list_files = list_files_in_dir(INPUT_DATA_DIR)
 
     # compute list of SLEAP videos for the given user extensions;
     # the extensions are passed with the opposite case as the file extensions
     list_sleap_videos = get_list_of_sleap_videos(
-        [input_data_dir],
+        [INPUT_DATA_DIR],
         video_extensions_flipped,
     )
 
