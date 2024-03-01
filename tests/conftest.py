@@ -1,1 +1,3 @@
-from tests.fixtures.frame_extraction import *  # noqa: F403
+pytest_plugins = [
+    "tests.fixtures.frame_extraction",
+]
