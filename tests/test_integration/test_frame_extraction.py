@@ -24,16 +24,6 @@ def cli_inputs_dict(tmp_path: Path) -> dict:
     extract frames CLI command. The output path is
     set to Pytest's temporary directory to manage
     teardown.
-
-    Parameters
-    ----------
-    tmp_path : Path
-        Pytest fixture providing a temporary path
-
-    Returns
-    -------
-    dict
-        a dictionary with parameters for the frame extraction
     """
     return {
         "output-path": str(tmp_path),
@@ -49,18 +39,7 @@ def cli_inputs_dict(tmp_path: Path) -> dict:
 
 @pytest.fixture()
 def cli_inputs_list(cli_inputs_dict: dict) -> list:
-    """Returns the command line input arguments as a list.
-
-    Parameters
-    ----------
-    cli_inputs_dict : dict
-        a dictionary with parameters for the frame extraction
-
-    Returns
-    -------
-    list
-        a list with parameters for the frame extraction
-    """
+    """Returns the command line input arguments as a list."""
 
     def cli_inputs_dict_to_list(input_params: dict) -> list:
         """Transforms a dictionary of parameters into a list of CLI arguments.
@@ -114,11 +93,6 @@ def video_extensions_flipped() -> list:
 
     The file extensions would be provided by the user in the
     typical use case.
-
-    Returns
-    -------
-    list
-        list of file extensions
     """
     # build list of video files
     list_files = list_files_in_dir(INPUT_DATA_DIR)
@@ -140,17 +114,6 @@ def mock_extract_frames_app(
     """Monkeypatches the extract-frames app to modify its default values.
 
     We modify the defaults with values that are more convenient for testing.
-
-    Parameters
-    ----------
-    cli_inputs_dict : dict
-        a dictionary with parameters for the frame extraction
-
-    Returns
-    -------
-    typer.main.Typer
-        an app with the same functionality as the one defined for
-        `compute_and_extract_frames_to_label` but with different default values.
     """
     from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
         compute_and_extract_frames_to_label,
