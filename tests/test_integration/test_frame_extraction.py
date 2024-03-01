@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pytest
 import typer
+
+# from tests.fixtures.frame_extraction import *
 from typer.testing import CliRunner
 
 from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
