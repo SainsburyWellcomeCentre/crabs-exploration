@@ -117,6 +117,18 @@ if __name__ == "__main__":
         default=42,
         help="seed for random state",
     )
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="gpu",
+        help="accelerator for pytorch lightning",
+    )
+    parser.add_argument(
+        "--seed_n",
+        type=int,
+        default=42,
+        help="seed for random state",
+    )
     args = parser.parse_args()
     torch.set_float32_matmul_precision("medium")
     main(args)

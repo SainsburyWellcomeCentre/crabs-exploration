@@ -126,6 +126,7 @@ class CustomDataModule(pl.LightningDataModule):
         self.main_dirs = main_dirs
         # print(self.main_dirs)
         self.annotations = annotations
+
         self.config = config
         self.seed_n = seed_n
 
@@ -135,7 +136,7 @@ class CustomDataModule(pl.LightningDataModule):
         """
         pass
 
-    def setup(self, stage=None):
+    def setup(self, stage):
         """
         Sets up the data loader for the specified stage
         'fit' for training stage or 'test' for evaluation stage.
@@ -217,6 +218,7 @@ class CustomDataModule(pl.LightningDataModule):
             transforms=get_train_transform(self.config),
         )
         print(len(train_dataset))
+
         return DataLoader(
             train_dataset,
             batch_size=self.config["batch_size"],

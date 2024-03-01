@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -33,7 +34,8 @@ def read_json_file(
 
 
 def combine_multiple_via_jsons(
-    list_json_files: list,
+    list_input_json_files: list,
+    exclude_pattern: Optional[str] = None,
     json_out_filename: str = "VIA_JSON_combined.json",
     json_out_dir: Optional[str] = None,
     via_default_dir: Optional[str] = None,
@@ -54,8 +56,11 @@ def combine_multiple_via_jsons(
 
     Parameters
     ----------
-    list_json_files : list
+    list_input_json_files : list
         list of paths to VIA JSON files
+    exclude_pattern : Optional[str], optional
+        a regex pattern to exclude specific files from the input list.
+        By default, None. E.g.: "\w+_coco_gen.json$"
     json_out_filename : str, optional
         name of the combined VIA JSON file, by default "VIA_JSON_combined.json"
     json_out_dir : Optional[str], optional
@@ -64,7 +69,7 @@ def combine_multiple_via_jsons(
     via_default_dir : Optional[str], optional
         The default directory in which to look for images for the VIA project.
         If None, the value specified in the first VIA JSON file is used.
-        A full path is required.
+        If a path is provided it needs to be a full path.
     via_project_name : Optional[str], optional
         The name of the VIA project.
         If None, the value specified in the first VIA JSON file is used.
@@ -79,8 +84,17 @@ def combine_multiple_via_jsons(
     dict_of_via_img_metadata = {}
     list_of_via_img_id_list = []
 
+    # Apply exclude pattern if required
+    if exclude_pattern:
+        list_input_json_files = [
+            js
+            for js in list_input_json_files
+            if not re.search(exclude_pattern, str(js))
+        ]
+    list_input_json_files.sort()
+
     # loop through the input VIA JSON files
-    for k, js_path in enumerate(list_json_files):
+    for k, js_path in enumerate(list_input_json_files):
         # open VIA JSON file
         via_data = read_json_file(js_path)
 
@@ -128,7 +142,7 @@ def combine_multiple_via_jsons(
     # if no output directory is passed, use the parent directory
     # of the first VIA JSON file in the list
     if not json_out_dir:
-        json_out_dir = str(Path(list_json_files[0]).parent)
+        json_out_dir = str(Path(list_input_json_files[0]).parent)
     json_out_fullpath = Path(json_out_dir) / json_out_filename
 
     with open(json_out_fullpath, "w") as combined_file:
@@ -178,7 +192,7 @@ def convert_via_json_to_coco(
     Returns
     -------
     str
-        path to the COCO json file. By default, the file
+        path to the COCO json file.
     """
     # Load the annotation data in VIA JSON format
     with open(json_file_path) as json_file:

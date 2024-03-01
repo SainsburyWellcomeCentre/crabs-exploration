@@ -63,7 +63,6 @@ class DetectorEvaluation:
             torch.device("cuda")
             if torch.cuda.is_available()
             else torch.device("cpu")
-        )
 
         all_detections = []
         all_targets = []
@@ -93,6 +92,33 @@ class DetectorEvaluation:
             device,
         )
 
+        with torch.no_grad():
+            all_detections = []
+            all_targets = []
+            for imgs, annotations in self.evaluate_dataloader:
+                imgs = list(img.to(device) for img in imgs)
+                targets = [
+                    {k: v.to(device) for k, v in t.items()}
+                    for t in annotations
+                ]
+                detections = self.trained_model(imgs)
+
+                all_detections.extend(detections)
+                all_targets.extend(targets)
+
+            compute_confusion_matrix_elements(
+                all_targets,  # one elem per image
+                all_detections,
+                self.ious_threshold,
+            )
+
+            save_images_with_boxes(
+                self.evaluate_dataloader,
+                self.trained_model,
+                self.score_threshold,
+                device,
+            )
+
 
 def main(args) -> None:
     """
@@ -107,7 +133,6 @@ def main(args) -> None:
     -------
         None
     """
-
     main_dirs = args.main_dir
     annotation_files = args.annotation_file
     annotations = []
