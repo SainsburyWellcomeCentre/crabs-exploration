@@ -29,7 +29,7 @@ def combine_VIA_and_convert_to_COCO(
         a regex pattern that matches files to exclude.
         By default, None.  E.g.: "\w+_coco_gen.json$"
     via_default_dir : str
-        he default directory in which to look for images for the VIA project.
+        The default directory in which to look for images for the VIA project.
         If None, the value specified in the first VIA JSON file is used.
         If a path is provided it needs to be a full path.
     via_project_name : str
