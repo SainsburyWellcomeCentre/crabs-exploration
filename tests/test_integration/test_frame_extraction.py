@@ -18,18 +18,7 @@ INPUT_DATA_DIR = str(Path(__file__).parents[1] / "data" / "clips")
 
 
 def list_files_in_dir(input_dir: str) -> list:
-    """Lists files in input directory
-
-    Parameters
-    ----------
-    input_dir : str
-        path to directory
-
-    Returns
-    -------
-    list
-        list of files in input directory
-    """
+    """Lists files in input directory"""
 
     return [
         f
@@ -135,7 +124,7 @@ def video_extensions_flipped() -> list:
     ],
 )
 @pytest.mark.parametrize(
-    "cli_inputs",
+    "cli_inputs_fixture",
     [
         "cli_inputs_list",
         "cli_inputs_list_empty",
@@ -143,32 +132,25 @@ def video_extensions_flipped() -> list:
 )
 def test_frame_extraction_one_video(
     input_video: str,
-    cli_inputs,
+    cli_inputs_fixture: str,
     cli_inputs_dict: dict,
     mock_extract_frames_app: typer.main.Typer,
-    request,
+    request: pytest.FixtureRequest,
 ) -> None:
-    """Test frame extraction on one video, using default CLI arguments
+    """Test frame extraction on one video, using default CLI arguments.
 
-    Parameters
-    ----------
-    input_video : str
-        input video filename
-    cli_inputs_dict : dict
-        command line input arguments as a dictionary, for validation
-    mock_extract_frames_app: typer.main.Typer
-        a monkeypatched app with convenient defaults for testing
+    It uses a monkeypatched app with convenient defaults for testing.
     """
     # import mocked app
     app = mock_extract_frames_app
 
     # prepare cli inputs
-    cli_inputs_param = request.getfixturevalue(cli_inputs)
+    cli_inputs = request.getfixturevalue(cli_inputs_fixture)
 
     # call mocked app
     runner = CliRunner()
     input_video_path = str(Path(INPUT_DATA_DIR) / input_video)
-    result = runner.invoke(app, args=[input_video_path] + cli_inputs_param)
+    result = runner.invoke(app, args=[input_video_path] + cli_inputs)
     assert result.exit_code == 0
 
     # check output files
@@ -176,40 +158,34 @@ def test_frame_extraction_one_video(
 
 
 @pytest.mark.parametrize(
-    "cli_inputs",
+    "cli_inputs_fixture",
     [
         "cli_inputs_list",
         "cli_inputs_list_empty",
     ],
 )
 def test_frame_extraction_one_dir(
-    cli_inputs,
+    cli_inputs_fixture: str,
     cli_inputs_dict: dict,
     mock_extract_frames_app: typer.main.Typer,
-    request,
+    request: pytest.FixtureRequest,
 ) -> None:
     """Test frame extraction on one input directory, using default
     CLI arguments.
 
     Frames are extracted from all video files in the input
-    directory.
-
-    Parameters
-    ----------
-    cli_inputs_dict : dict
-        command line input arguments as a dictionary, for validation
-    mock_extract_frames_app : typer.main.Typer
-        a monkeypatched app with convenient defaults for testing.
+    directory. It uses a monkeypatched app with convenient defaults
+    for testing.
     """
     # import mock app
     app = mock_extract_frames_app
 
     # call cli inputs
-    cli_inputs_list = request.getfixturevalue(cli_inputs)
+    cli_inputs = request.getfixturevalue(cli_inputs_fixture)
 
     # invoke app
     runner = CliRunner()
-    result = runner.invoke(app, args=[INPUT_DATA_DIR] + cli_inputs_list)
+    result = runner.invoke(app, args=[INPUT_DATA_DIR] + cli_inputs)
 
     # check exit code
     assert result.exit_code == 0
