@@ -223,7 +223,7 @@ def list_files_in_dir(input_dir: str) -> list:
     ]
 
 
-def check_output_files(list_input_videos: list, cli_dict: dict):
+def check_output_files(list_input_videos: list, cli_dict: dict) -> None:
     """Run assertions on output files from frame extraction
 
     Parameters
@@ -303,7 +303,7 @@ def test_frame_extraction_one_video(
     input_data_dir: str,
     cli_inputs_list: list,
     cli_inputs_dict: dict,
-):
+) -> None:
     """Test frame extraction on one video
 
     Parameters
@@ -344,7 +344,7 @@ def test_frame_extraction_one_video_defaults(
     input_data_dir: str,
     cli_inputs_dict: dict,
     mock_extract_frames_app: typer.main.Typer,
-):
+) -> None:
     """Test frame extraction on one video, using default CLI arguments
 
     Parameters
@@ -375,7 +375,7 @@ def test_frame_extraction_one_dir(
     input_data_dir: str,
     cli_inputs_list: list,
     cli_inputs_dict: dict,
-):
+) -> None:
     """Test frame extraction on one input directory.
 
     Frames are extracted from all video files in the input
@@ -420,7 +420,7 @@ def test_frame_extraction_one_dir_defaults(
     input_data_dir: str,
     cli_inputs_dict: dict,
     mock_extract_frames_app: typer.main.Typer,
-):
+) -> None:
     """Test frame extraction on one input directory, using default
     CLI arguments.
 
@@ -464,7 +464,7 @@ def test_frame_extraction_one_dir_defaults(
 
 def test_extension_case_insensitive(
     input_data_dir: str, video_extensions_flipped: list
-):
+) -> None:
     """
     Tests that the function that computes the list of SLEAP videos
     is case-insensitive for the user-provided extension.
