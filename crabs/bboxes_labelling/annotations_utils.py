@@ -86,17 +86,15 @@ def combine_multiple_via_jsons(
 
     # Apply exclude pattern if required
     if exclude_pattern:
-        list_json_files = [
+        list_input_json_files = [
             js
             for js in list_input_json_files
             if not re.search(exclude_pattern, str(js))
         ]
-    else:
-        list_json_files = list_input_json_files.copy()
-    list_json_files.sort()
+    list_input_json_files.sort()
 
     # loop through the input VIA JSON files
-    for k, js_path in enumerate(list_json_files):
+    for k, js_path in enumerate(list_input_json_files):
         # open VIA JSON file
         via_data = read_json_file(js_path)
 
@@ -144,7 +142,7 @@ def combine_multiple_via_jsons(
     # if no output directory is passed, use the parent directory
     # of the first VIA JSON file in the list
     if not json_out_dir:
-        json_out_dir = str(Path(list_json_files[0]).parent)
+        json_out_dir = str(Path(list_input_json_files[0]).parent)
     json_out_fullpath = Path(json_out_dir) / json_out_filename
 
     with open(json_out_fullpath, "w") as combined_file:

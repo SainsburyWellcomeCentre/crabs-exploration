@@ -43,10 +43,9 @@ def combine_VIA_and_convert_to_COCO(
     """
 
     # Get list of all JSON files in directory
+    all_files = Path(parent_dir_via_jsons).glob("*")
     list_input_json_files = [
-        x
-        for x in Path(parent_dir_via_jsons).glob("*")
-        if x.is_file() and str(x).endswith(".json")
+        x for x in all_files if x.is_file() and str(x).endswith(".json")
     ]
 
     # Combine VIA JSON files (excluding those with pattern if required)
