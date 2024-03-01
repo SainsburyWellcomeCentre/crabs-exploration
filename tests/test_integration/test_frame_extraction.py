@@ -132,48 +132,19 @@ def video_extensions_flipped() -> list:
         "NINJAV_S001_S001_T003_subclip_p2_05s.MP4",
     ],
 )
-def test_frame_extraction_one_video(
-    input_video: str,
-    cli_inputs_list: list,
-    cli_inputs_dict: dict,
-) -> None:
-    """Test frame extraction on one video
-
-    Parameters
-    ----------
-    input_video : str
-        input video filename
-    cli_inputs_list : list
-        command line input arguments for frame extraction as a list
-    cli_inputs_dict : dict
-        command line input arguments as a dictionary, for validation
-    """
-    # import app
-    from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import app
-
-    # invoke app
-    runner = CliRunner()
-    input_video_path = str(Path(INPUT_DATA_DIR) / input_video)
-    result = runner.invoke(app, args=[input_video_path] + cli_inputs_list)
-
-    # check exit code
-    assert result.exit_code == 0
-
-    # check output files
-    check_output_files([input_video_path], cli_inputs_dict)
-
-
 @pytest.mark.parametrize(
-    "input_video",
+    "cli_inputs",
     [
-        "NINJAV_S001_S001_T003_subclip_p1_05s.mp4",
-        "NINJAV_S001_S001_T003_subclip_p2_05s.MP4",
+        "cli_inputs_list",
+        "cli_inputs_list_empty",
     ],
 )
-def test_frame_extraction_one_video_defaults(
+def test_frame_extraction_one_video(
     input_video: str,
+    cli_inputs,
     cli_inputs_dict: dict,
     mock_extract_frames_app: typer.main.Typer,
+    request,
 ) -> None:
     """Test frame extraction on one video, using default CLI arguments
 
@@ -189,61 +160,31 @@ def test_frame_extraction_one_video_defaults(
     # import mocked app
     app = mock_extract_frames_app
 
+    # prepare cli inputs
+    cli_inputs_param = request.getfixturevalue(cli_inputs)
+
     # call mocked app
     runner = CliRunner()
     input_video_path = str(Path(INPUT_DATA_DIR) / input_video)
-    result = runner.invoke(app, args=input_video_path)
+    result = runner.invoke(app, args=[input_video_path] + cli_inputs_param)
     assert result.exit_code == 0
 
     # check output files
     check_output_files([input_video_path], cli_inputs_dict)
 
 
+@pytest.mark.parametrize(
+    "cli_inputs",
+    [
+        "cli_inputs_list",
+        "cli_inputs_list_empty",
+    ],
+)
 def test_frame_extraction_one_dir(
-    cli_inputs_list: list,
-    cli_inputs_dict: dict,
-) -> None:
-    """Test frame extraction on one input directory.
-
-    Frames are extracted from all video files in the input
-    directory.
-
-    Parameters
-    ----------
-    cli_inputs_list : list
-        command line input arguments for frame extraction as a list
-    cli_inputs_dict : dict
-        command line input arguments as a dictionary, for validation
-    """
-    # import app
-    from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import app
-
-    # invoke app
-    runner = CliRunner()
-    result = runner.invoke(app, args=[INPUT_DATA_DIR] + cli_inputs_list)
-
-    # check exit code
-    assert result.exit_code == 0
-
-    # check files
-    # list of input videos
-    list_input_videos = list_files_in_dir(INPUT_DATA_DIR)
-    list_input_videos = [
-        f
-        for f in list_input_videos
-        if any(
-            [
-                str(f).lower().endswith(ext)
-                for ext in cli_inputs_dict["video-extensions"]
-            ]
-        )
-    ]
-    check_output_files(list_input_videos, cli_inputs_dict)
-
-
-def test_frame_extraction_one_dir_defaults(
+    cli_inputs,
     cli_inputs_dict: dict,
     mock_extract_frames_app: typer.main.Typer,
+    request,
 ) -> None:
     """Test frame extraction on one input directory, using default
     CLI arguments.
@@ -261,9 +202,12 @@ def test_frame_extraction_one_dir_defaults(
     # import mock app
     app = mock_extract_frames_app
 
+    # call cli inputs
+    cli_inputs_list = request.getfixturevalue(cli_inputs)
+
     # invoke app
     runner = CliRunner()
-    result = runner.invoke(app, args=INPUT_DATA_DIR)
+    result = runner.invoke(app, args=[INPUT_DATA_DIR] + cli_inputs_list)
 
     # check exit code
     assert result.exit_code == 0

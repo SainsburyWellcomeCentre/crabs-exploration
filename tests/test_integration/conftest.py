@@ -76,6 +76,11 @@ def cli_inputs_list(cli_inputs_dict: dict) -> list:
 
 
 @pytest.fixture()
+def cli_inputs_list_empty():
+    return []
+
+
+@pytest.fixture()
 def mock_extract_frames_app(
     cli_inputs_dict: dict,
 ) -> typer.main.Typer:
