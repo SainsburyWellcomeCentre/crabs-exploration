@@ -6,28 +6,15 @@ from pathlib import Path
 
 import pytest
 import typer
-
-# from tests.fixtures.frame_extraction import *
 from typer.testing import CliRunner
 
 from crabs.bboxes_labelling.extract_frames_to_label_w_sleap import (
     get_list_of_sleap_videos,
 )
-
-INPUT_DATA_DIR = str(Path(__file__).parents[1] / "data" / "clips")
-
-
-def list_files_in_dir(input_dir: str) -> list:
-    """Lists files in input directory"""
-
-    return [
-        f
-        for f in Path(input_dir).glob("*")
-        if f.is_file() and not f.name.startswith(".")
-    ]
+from tests.fixtures.frame_extraction import INPUT_DATA_DIR, list_files_in_dir
 
 
-def check_output_files(list_input_videos: list, cli_dict: dict) -> None:
+def assert_output_files(list_input_videos: list, cli_dict: dict) -> None:
     """Run assertions on output files from frame extraction
 
     Parameters
@@ -95,27 +82,6 @@ def check_output_files(list_input_videos: list, cli_dict: dict) -> None:
         assert n_extracted_frames == len(list_imgs)
 
 
-@pytest.fixture()
-def video_extensions_flipped() -> list:
-    """Extracts the extensions of video files in INPUT_DATA_DIR
-    and flips their case (uppercase -> lowercase and viceversa).
-
-    The file extensions would be provided by the user in the
-    typical use case.
-    """
-    # build list of video files
-    list_files = list_files_in_dir(INPUT_DATA_DIR)
-
-    # get unique extensions for all files
-    list_unique_extensions = list({f.suffix[1:] for f in list_files})
-
-    # flip the case of the extensions
-    list_extensions_flipped = [ext.lower() for ext in list_unique_extensions]
-    list_extensions_flipped = list(set(list_extensions_flipped))
-
-    return list_extensions_flipped
-
-
 @pytest.mark.parametrize(
     "input_video",
     [
@@ -154,7 +120,7 @@ def test_frame_extraction_one_video(
     assert result.exit_code == 0
 
     # check output files
-    check_output_files([input_video_path], cli_inputs_dict)
+    assert_output_files([input_video_path], cli_inputs_dict)
 
 
 @pytest.mark.parametrize(
@@ -203,7 +169,7 @@ def test_frame_extraction_one_dir(
             ]
         )
     ]
-    check_output_files(list_input_videos, cli_inputs_dict)
+    assert_output_files(list_input_videos, cli_inputs_dict)
 
 
 def test_extension_case_insensitive(video_extensions_flipped: list) -> None:

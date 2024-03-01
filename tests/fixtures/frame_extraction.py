@@ -4,6 +4,18 @@ from typing import Optional
 import pytest
 import typer
 
+INPUT_DATA_DIR = str(Path(__file__).parents[1] / "data" / "clips")
+
+
+def list_files_in_dir(input_dir: str) -> list:
+    """Lists files in input directory"""
+
+    return [
+        f
+        for f in Path(input_dir).glob("*")
+        if f.is_file() and not f.name.startswith(".")
+    ]
+
 
 @pytest.fixture()
 def cli_inputs_dict(tmp_path: Path) -> dict:
@@ -128,3 +140,24 @@ def mock_extract_frames_app(
         )
 
     return app
+
+
+@pytest.fixture()
+def video_extensions_flipped() -> list:
+    """Extracts the extensions of video files in INPUT_DATA_DIR
+    and flips their case (uppercase -> lowercase and viceversa).
+
+    The file extensions would be provided by the user in the
+    typical use case.
+    """
+    # build list of video files
+    list_files = list_files_in_dir(INPUT_DATA_DIR)
+
+    # get unique extensions for all files
+    list_unique_extensions = list({f.suffix[1:] for f in list_files})
+
+    # flip the case of the extensions
+    list_extensions_flipped = [ext.lower() for ext in list_unique_extensions]
+    list_extensions_flipped = list(set(list_extensions_flipped))
+
+    return list_extensions_flipped
