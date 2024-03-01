@@ -212,7 +212,7 @@ class CustomDataModule(pl.LightningDataModule):
 
         train_dataset = CustomFasterRCNNDataset(
             self.train_file_paths,
-            self.annotations,  # Assuming all annotations are in the first annotation file
+            self.annotations,
             transforms=get_train_transform(self.config),
         )
         print(len(train_dataset))
@@ -237,7 +237,7 @@ class CustomDataModule(pl.LightningDataModule):
         """
         test_dataset = CustomFasterRCNNDataset(
             self.test_file_paths,
-            self.annotations,  # Assuming all annotations are in the first annotation file
+            self.annotations,
             transforms=get_test_transform(),
         )
         return DataLoader(
