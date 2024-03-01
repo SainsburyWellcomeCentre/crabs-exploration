@@ -15,14 +15,14 @@ from tests.fixtures.frame_extraction import INPUT_DATA_DIR, list_files_in_dir
 
 
 def assert_output_files(list_input_videos: list, cli_dict: dict) -> None:
-    """Run assertions on output files from frame extraction
+    """Run assertions on output files from frame extraction.
 
     Parameters
     ----------
     list_input_videos : list
-        list of videos used for frame extraction
+        List of videos used for frame extraction.
     cli_dict : dict
-        a dictionary with the parameters of the frame extraction
+        A validation dictionary with the parameters of the frame extraction.
     """
     # check name of directory with extracted frames
     list_subfolders = [
