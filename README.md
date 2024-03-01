@@ -31,6 +31,7 @@ For evaluation
 ```bash
 python crabs/detection_tracking/evaluate_model.py --model_dir {directory_to_saved_model} --main_dir {parent_directory_of_frames_and_annotation} --annotation_file {annotation_file.json}
 ```
+
 For tracking
 
 ```bash

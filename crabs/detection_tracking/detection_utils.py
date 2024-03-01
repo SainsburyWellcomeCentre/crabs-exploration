@@ -251,11 +251,6 @@ def calculate_iou(box1, box2) -> float:
 
     return iou
 
-    Returns
-    ----------
-    np.ndarray
-        Image(s) with bounding boxes drawn on them.
-    """
 
 def gt_tracking(
     ground_truths: dict,

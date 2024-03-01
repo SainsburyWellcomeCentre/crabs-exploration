@@ -169,8 +169,6 @@ class CustomDataModule(pl.LightningDataModule):
 
                     if video_file not in exclude_video_file_list:
                         all_ids.append(image_id)
-                    else:
-                        print(video_file)
 
                 if stage == "fit":
                     train_ids, _ = train_test_split(
