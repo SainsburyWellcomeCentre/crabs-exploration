@@ -1,4 +1,4 @@
-num_epochs: 1
+num_epochs: 50
 learning_rate: 0.00005
 wdecay: 0.00005
 batch_size: 2
@@ -17,6 +17,7 @@ gaussian_blur_params:
     - 0.1
     - 5.0
 exclude_video_file_list:
-  - "09.08.2023-03-Left"
-  - "10.08.2023-01-Left"
-  - "10.08.2023-01-Right"
+  - "09.08_09.08.2023-03-Left_frame"
+  - "10.08_10.08.2023-01-Left_frame"
+  - "10.08_10.08.2023-01-Right_frame"
+  - "05.09.2023-05-Left_RE_frame"

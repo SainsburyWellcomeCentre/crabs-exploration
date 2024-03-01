@@ -1,6 +1,6 @@
 import json
 from typing import Any, List, Optional, Tuple
-import os
+
 import lightning as pl
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
@@ -155,18 +155,23 @@ class CustomDataModule(pl.LightningDataModule):
         for main_dir, annotation in zip(self.main_dirs, self.annotations):
             with open(annotation) as json_file:
                 coco_data = json.load(json_file)
-                exclude_video_file_list = self.config["exclude_video_file_list"]
+                exclude_video_file_list = self.config[
+                    "exclude_video_file_list"
+                ]
                 all_ids = []
 
                 for image_info in coco_data["images"]:
                     image_id = image_info["id"]
                     image_file = image_info["file_name"]
-                    video_file = image_file.split("_")[1]
+                    parts = image_file.split("_")
+                    video_file = "_".join(parts[:3])
 
                     if video_file not in exclude_video_file_list:
                         all_ids.append(image_id)
+                    else:
+                        print(video_file)
 
-                if stage == "fit" or stage is None:
+                if stage == "fit":
                     train_ids, _ = train_test_split(
                         all_ids,
                         train_size=1 - self.config["test_size"],
@@ -174,10 +179,14 @@ class CustomDataModule(pl.LightningDataModule):
                         random_state=self.seed_n,
                     )
                     self.train_ids.extend(train_ids)
-                    train_file_paths = [f"{main_dir}/frames/{image_info['file_name']}" for image_info in coco_data["images"] if image_info['id'] in train_ids]
+                    train_file_paths = [
+                        f"{main_dir}/frames/{image_info['file_name']}"
+                        for image_info in coco_data["images"]
+                        if image_info["id"] in train_ids
+                    ]
                     self.train_file_paths.extend(train_file_paths)
-                
-                elif stage == "test" or stage is None:
+
+                elif stage == "test":
                     _, test_ids = train_test_split(
                         all_ids,
                         test_size=self.config["test_size"],
@@ -185,7 +194,11 @@ class CustomDataModule(pl.LightningDataModule):
                         random_state=self.seed_n,
                     )
                     self.test_ids.extend(test_ids)
-                    test_file_paths = [f"{main_dir}/frames/{image_info['file_name']}" for image_info in coco_data["images"] if image_info['id'] in test_ids]
+                    test_file_paths = [
+                        f"{main_dir}/frames/{image_info['file_name']}"
+                        for image_info in coco_data["images"]
+                        if image_info["id"] in test_ids
+                    ]
                     self.test_file_paths.extend(test_file_paths)
 
     def train_dataloader(self) -> DataLoader:
@@ -224,7 +237,7 @@ class CustomDataModule(pl.LightningDataModule):
         """
         test_dataset = CustomFasterRCNNDataset(
             self.test_file_paths,
-            self.annotations[0],  # Assuming all annotations are in the first annotation file
+            self.annotations,  # Assuming all annotations are in the first annotation file
             transforms=get_test_transform(),
         )
         return DataLoader(

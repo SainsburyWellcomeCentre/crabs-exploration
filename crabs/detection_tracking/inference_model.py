@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 from sort import Sort
+
 from crabs.detection_tracking.detection_utils import draw_bbox
 
 
@@ -15,23 +16,28 @@ class DetectorInference:
     A class for performing object detection or tracking inference on a video
     using a pre-trained model.
 
-    Args:
+    Parameters:
         args (argparse.Namespace): Command-line arguments containing
         configuration settings.
 
     Attributes:
         args (argparse.Namespace): The command-line arguments provided.
         vid_dir (str): The path to the input video.
-        score_threshold (float): The confidence threshold for detection scores.
+        iou_threshold (float): The iou threshold for tracking.
+        score_threshold (float): The score confidence threshold for tracking.
         sort_crab (Sort): An instance of the sorting algorithm used for tracking.
-        trained_model: The pre-trained subject classification model.
     """
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.vid_dir = args.vid_dir
         self.score_threshold = args.score_threshold
-        self.sort_tracker = Sort()
+        self.iou_threshold = args.iou_threshold
+        self.sort_tracker = Sort(
+            max_age=args.max_age,
+            min_hits=args.min_hits,
+            iou_threshold=self.iou_threshold,
+        )
 
     def _load_trained_model(self) -> torch.nn.Module:
         """
@@ -41,29 +47,45 @@ class DetectorInference:
         -------
         None
         """
-        model = torch.load(self.args.model_dir, map_location=torch.device(self.args.accelerator))
+        model = torch.load(
+            self.args.model_dir,
+            map_location=torch.device(self.args.accelerator),
+        )
         model.eval()
         return model
-    
+
     def _track_objects(self, prediction):
+        """
+        Track objects in the predicted bounding boxes.
+
+        Parameters
+        ----------
+        prediction : dict
+            The dictionary containing predicted bounding boxes, scores, and labels.
+
+        Returns
+        -------
+        np.ndarray:
+            An array containing sorted bounding boxes of detected objects.
+        """
         pred_boxes = prediction[0]["boxes"].detach().cpu().numpy()
         pred_scores = prediction[0]["scores"].detach().cpu().numpy()
         pred_labels = prediction[0]["labels"].detach().cpu().numpy()
 
         pred_sort = []
         for box, score, label in zip(pred_boxes, pred_scores, pred_labels):
-            if label == 1 and score > self.score_threshold:  # Assuming label 1 represents "crab"
+            if label == 1 and score > self.score_threshold:
                 bbox = np.concatenate((box, [score]))
                 pred_sort.append(bbox)
 
         return np.asarray(pred_sort)
-    
+
     def load_video(self) -> None:
         """
         Load the input video and and prepare the output video.
         """
         self.trained_model = self._load_trained_model()
-        
+
         self.video = cv2.VideoCapture(self.vid_dir)
         if not self.video.isOpened():
             raise Exception("Error opening video file")
@@ -83,14 +105,26 @@ class DetectorInference:
         )
 
     def run_inference(self):
-
+        """
+        Run object detection or tracking inference on the video frames.
+        """
         transform = transforms.Compose([transforms.ToTensor()])
+
+        if self.args.gt_dir:
+            from crabs.detection_tracking.detection_utils import (
+                load_ground_truth,
+            )
+
+            ground_truths = load_ground_truth(self.args.gt_dir)
+            frame_number = 1
 
         while self.video.isOpened():
             ret, frame = self.video.read()
             if not ret:
                 print("No frame read. Exiting...")
                 break
+
+            frame_copy = frame.copy()
 
             img = transform(frame).to(self.args.accelerator)
             img = img.unsqueeze(0)
@@ -99,15 +133,38 @@ class DetectorInference:
 
             tracked_boxes = self.sort_tracker.update(pred_sort)
 
-            for bbox in tracked_boxes:
-                x1, y1, x2, y2, _ = bbox
-                id_label = f"id : {bbox[4]}"
-                draw_bbox(frame, int(x1), int(y1), int(x2), int(y2), (0, 0, 255), id_label)
+            if self.args.gt_dir:
+                from crabs.detection_tracking.detection_utils import (
+                    gt_tracking,
+                )
+
+                gt_tracking(
+                    ground_truths,
+                    frame_number,
+                    tracked_boxes,
+                    self.iou_threshold,
+                    frame_copy,
+                )
+                frame_number += 1
+
+            else:
+                for bbox in tracked_boxes:
+                    x1, y1, x2, y2, _ = bbox
+                    id_label = f"id : {bbox[4]}"
+                    draw_bbox(
+                        frame_copy,
+                        int(x1),
+                        int(y1),
+                        int(x2),
+                        int(y2),
+                        (0, 0, 255),
+                        id_label,
+                    )
+
+            cv2.imshow("frame", frame_copy)
 
             if self.args.save:
-                self.out.write(frame)
-
-            cv2.imshow("frame", frame)
+                self.out.write(frame_copy)
 
             if cv2.waitKey(30) & 0xFF == 27:
                 break
@@ -151,6 +208,12 @@ if __name__ == "__main__":
         help="location of images and coco annotation",
     )
     parser.add_argument(
+        "--gt_dir",
+        type=str,
+        required=False,
+        help="location of ground truth data",
+    )
+    parser.add_argument(
         "--save",
         type=bool,
         default=True,
@@ -165,8 +228,26 @@ if __name__ == "__main__":
     parser.add_argument(
         "--score_threshold",
         type=float,
-        default=0.5,
+        default=0.1,
         help="threshold for prediction score",
+    )
+    parser.add_argument(
+        "--iou_threshold",
+        type=float,
+        default=0.1,
+        help="threshold for prediction score",
+    )
+    parser.add_argument(
+        "--max_age",
+        type=int,
+        default=1,
+        help="Maximum number of frames to keep alive a track without associated detections.",
+    )
+    parser.add_argument(
+        "--min_hits",
+        type=int,
+        default=3,
+        help="Minimum number of associated detections before track is initialised.",
     )
     parser.add_argument(
         "--accelerator",

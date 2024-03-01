@@ -9,7 +9,7 @@ from crabs.detection_tracking.detection_utils import save_model
 from crabs.detection_tracking.models import FasterRCNN
 
 
-class Dectector_Train:
+class DectectorTrain:
     """Training class for detector algorithm
 
     Parameters
@@ -40,14 +40,17 @@ class Dectector_Train:
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
-    
-    
+
     def train_model(self):
         annotations = []
-        for main_dir, annotation_file in zip(self.main_dirs, self.annotation_files):
+        for main_dir, annotation_file in zip(
+            self.main_dirs, self.annotation_files
+        ):
             annotations.append(f"{main_dir}/annotations/{annotation_file}")
 
-        data_module = CustomDataModule(self.main_dirs, annotations, self.config, self.seed_n)
+        data_module = CustomDataModule(
+            self.main_dirs, annotations, self.config, self.seed_n
+        )
 
         lightning_model = FasterRCNN(self.config)
 
@@ -78,7 +81,7 @@ def main(args) -> None:
     ----------
     None
     """
-    trainer = Dectector_Train(args)
+    trainer = DectectorTrain(args)
     trainer.train_model()
 
 

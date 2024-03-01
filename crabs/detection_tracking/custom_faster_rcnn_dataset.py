@@ -1,5 +1,6 @@
+import os
 from pathlib import Path
-import os 
+
 import torch
 from PIL import Image
 from pycocotools.coco import COCO
@@ -48,9 +49,7 @@ class CustomFasterRCNNDataset(torch.utils.data.Dataset):
 
     """
 
-    def __init__(
-        self, file_paths, annotations, transforms=None
-    ):
+    def __init__(self, file_paths, annotations, transforms=None):
         self.file_paths = file_paths
         self.annotations = [COCO(annotation) for annotation in annotations]
         self.transforms = transforms
@@ -106,34 +105,46 @@ class CustomFasterRCNNDataset(torch.utils.data.Dataset):
                     xmax = xmin + ann["bbox"][2]
                     ymax = ymin + ann["bbox"][3]
                     boxes = [xmin, ymin, xmax, ymax]
-                    combined_annotations.append({
-                        "boxes": boxes,
-                        "labels": ann["category_id"],
-                        "image_id": img_id,
-                        "area": ann["area"],
-                        "iscrowd": ann["iscrowd"]
-                    })
+                    combined_annotations.append(
+                        {
+                            "boxes": boxes,
+                            "labels": ann["category_id"],
+                            "image_id": img_id,
+                            "area": ann["area"],
+                            "iscrowd": ann["iscrowd"],
+                        }
+                    )
 
         # Convert to tensors
-        boxes = torch.tensor([ann["boxes"] for ann in combined_annotations], dtype=torch.float32)
-        labels = torch.tensor([ann["labels"] for ann in combined_annotations], dtype=torch.int64)
-        img_id = torch.tensor([ann["image_id"] for ann in combined_annotations], dtype=torch.int64)
-        areas = torch.tensor([ann["area"] for ann in combined_annotations], dtype=torch.float32)
-        iscrowd = torch.tensor([ann["iscrowd"] for ann in combined_annotations], dtype=torch.int64)
+        boxes = torch.tensor(
+            [ann["boxes"] for ann in combined_annotations], dtype=torch.float32
+        )
+        labels = torch.tensor(
+            [ann["labels"] for ann in combined_annotations], dtype=torch.int64
+        )
+        img_id = torch.tensor(
+            [ann["image_id"] for ann in combined_annotations],
+            dtype=torch.int64,
+        )
+        areas = torch.tensor(
+            [ann["area"] for ann in combined_annotations], dtype=torch.float32
+        )
+        iscrowd = torch.tensor(
+            [ann["iscrowd"] for ann in combined_annotations], dtype=torch.int64
+        )
 
         my_annotation = {
             "boxes": boxes,
             "labels": labels,
             "image_id": img_id,
             "area": areas,
-            "iscrowd": iscrowd
+            "iscrowd": iscrowd,
         }
 
         if self.transforms is not None:
             img = self.transforms(img)
-    
-        return img, my_annotation
 
+        return img, my_annotation
 
     def __len__(self):
         """Get the total number of samples in the dataset.

@@ -31,3 +31,8 @@ For evaluation
 ```bash
 python crabs/detection_tracking/train_model.py --model_dir {directory_to_saved_model} --main_dir {parent_directory_of_frames_and_annotation} --annotation_file {annotation_file.json}
 ```
+For tracking
+
+```bash
+python crabs/detection_tracking/inference_model.py --model_dir {directory_to_saved_model} --vid_dir {parent_directory_of_a_video}
+```
