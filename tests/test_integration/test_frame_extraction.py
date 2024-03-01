@@ -103,7 +103,7 @@ def test_frame_extraction_one_video(
     mock_extract_frames_app: typer.main.Typer,
     request: pytest.FixtureRequest,
 ) -> None:
-    """Test frame extraction on one video, using default CLI arguments.
+    """Test frame extraction on one video.
 
     It uses a monkeypatched app with convenient defaults for testing.
     """
@@ -136,8 +136,7 @@ def test_frame_extraction_one_dir(
     mock_extract_frames_app: typer.main.Typer,
     request: pytest.FixtureRequest,
 ) -> None:
-    """Test frame extraction on one input directory, using default
-    CLI arguments.
+    """Test frame extraction on one input directory.
 
     Frames are extracted from all video files in the input
     directory. It uses a monkeypatched app with convenient defaults
