@@ -118,12 +118,6 @@ if __name__ == "__main__":
         help="seed for random state",
     )
     parser.add_argument(
-        "--accelerator",
-        type=str,
-        default="gpu",
-        help="accelerator for pytorch lightning",
-    )
-    parser.add_argument(
         "--seed_n",
         type=int,
         default=42,
