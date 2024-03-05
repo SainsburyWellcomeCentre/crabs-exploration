@@ -3,7 +3,7 @@ import csv
 import logging
 import os
 from pathlib import Path
-import pdb
+
 import cv2
 import numpy as np
 import torch
@@ -14,9 +14,9 @@ from crabs.detection_tracking.detection_utils import draw_bbox
 
 
 class MyDialect(csv.Dialect):
-    delimiter = ','  # Set your delimiter
+    delimiter = ","  # Set your delimiter
     quotechar = '"'  # Set your quote character
-    # lineterminator = 
+    # lineterminator =
     quoting = csv.QUOTE_MINIMAL  # Set quoting behavior
 
 
@@ -126,7 +126,7 @@ class DetectorInference:
                 str(tracking_output_dir / "tracking_output.csv"), "w"
             )
             csv_writer = csv.writer(csv_file)
-                                    # dialect=MyDialect, lineterminator="\r\n")
+            # dialect=MyDialect, lineterminator="\r\n")
             csv_writer.writerow(
                 (
                     "filename",
@@ -185,7 +185,7 @@ class DetectorInference:
                             frame.size,
                             # str({"\"clip\"": 123}),
                             # '"{}"'.format({"clip": 123}),
-                            {"\"clip\"": 123},
+                            {'"clip"': 123},
                             1,
                             0,
                             {
