@@ -23,7 +23,7 @@ class MyDialect(csv.Dialect):
 class DetectorInference:
     """
     A class for performing object detection or tracking inference on a video
-    using a pre-trained model.
+    using a trained model.
 
     Parameters:
         args (argparse.Namespace): Command-line arguments containing
@@ -34,7 +34,7 @@ class DetectorInference:
         vid_dir (str): The path to the input video.
         iou_threshold (float): The iou threshold for tracking.
         score_threshold (float): The score confidence threshold for tracking.
-        sort_crab (Sort): An instance of the sorting algorithm used for tracking.
+        sort_tracker (Sort): An instance of the sorting algorithm used for tracking.
     """
 
     def __init__(self, args: argparse.Namespace) -> None:
@@ -55,7 +55,7 @@ class DetectorInference:
 
         Returns
         -------
-        None
+        torch.nn.Module
         """
         model = torch.load(
             self.args.model_dir,
@@ -66,7 +66,7 @@ class DetectorInference:
 
     def prep_sort(self, prediction):
         """
-        Track objects in the predicted bounding boxes.
+        Put predictions in format expected by SORT
 
         Parameters
         ----------
@@ -84,7 +84,7 @@ class DetectorInference:
 
         pred_sort = []
         for box, score, label in zip(pred_boxes, pred_scores, pred_labels):
-            if label == 1 and score > self.score_threshold:
+            if score > self.score_threshold:
                 bbox = np.concatenate((box, [score]))
                 pred_sort.append(bbox)
 
@@ -92,18 +92,22 @@ class DetectorInference:
 
     def load_video(self) -> None:
         """
-        Load the input video and and prepare the output video.
+        Load the input video, and prepare the output video if required.
         """
+        # load trained model
         self.trained_model = self.load_trained_model()
 
+        # load input video
         self.video = cv2.VideoCapture(self.vid_dir)
         if not self.video.isOpened():
             raise Exception("Error opening video file")
 
+        # read input video parameters
         frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
         frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap_fps = self.video.get(cv2.CAP_PROP_FPS)
 
+        # prepare output video writer if required
         if self.args.save_video:
             output_file = f"{self.video_file_root}output_video.mp4"
             output_codec = cv2.VideoWriter_fourcc(*"mp4v")
@@ -113,11 +117,15 @@ class DetectorInference:
 
     def run_inference(self):
         """
-        Run object detection or tracking inference on the video frames.
+        Run object detection + tracking on the video frames.
         """
+        # Get transform to tensor
         transform = transforms.Compose([transforms.ToTensor()])
+
+        # ini frame counter
         frame_number = 1
 
+        # initialise csv writer if required
         if self.args.save_csv_and_frames:
             tracking_output_dir = Path("tracking_output")
             tracking_output_dir.mkdir(parents=True, exist_ok=True)
@@ -126,7 +134,9 @@ class DetectorInference:
                 str(tracking_output_dir / "tracking_output.csv"), "w"
             )
             csv_writer = csv.writer(csv_file)
-            # dialect=MyDialect, lineterminator="\r\n")
+
+            # write header following VIA convention
+            # https://www.robots.ox.ac.uk/~vgg/software/via/docs/face_track_annotation.html
             csv_writer.writerow(
                 (
                     "filename",
@@ -139,27 +149,36 @@ class DetectorInference:
                 )
             )
 
+        # loop thru frames of clip
         while self.video.isOpened():
-            if frame_number > 1:
+            # ------------------
+            if frame_number > 50:
                 break
+            # ------------------
+
+            # read frame
             ret, frame = self.video.read()
             if not ret:
                 print("No frame read. Exiting...")
                 break
-            # pdb.set_trace()
+
             if self.args.save_video:
                 frame_copy = frame.copy()
 
+            # run prediction
             img = transform(frame).to(self.args.accelerator)
             img = img.unsqueeze(0)
             prediction = self.trained_model(img)
-            pred_sort = self.prep_sort(prediction)
 
+            # run tracking
+            pred_sort = self.prep_sort(prediction)
             tracked_boxes = self.sort_tracker.update(pred_sort)
 
+            # Save annotations as csv
             for bbox in tracked_boxes:
                 xmin, ymin, xmax, ymax, id = bbox
                 id_label = f"id : {int(id)}"
+
                 if self.args.save_video:
                     draw_bbox(
                         frame_copy,
