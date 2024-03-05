@@ -1,18 +1,18 @@
 # %%
 import csv
-from pathlib import Path
 
 # %%
-tracking_output_dir = Path(".")
-csv_file = open(str(tracking_output_dir / "tracking_output.csv"), "w")
+
+csv_file = open("tracking_output.csv", "w")
 csv_writer = csv.writer(
     csv_file,
     delimiter=",",
-    quotechar="'",
+    quotechar="'",  # interpret this as the quoting char
     doublequote=True,
     skipinitialspace=False,
     lineterminator="\n",
-    quoting=csv.QUOTE_MINIMAL,
+    quoting=csv.QUOTE_MINIMAL,  # when a field contains either the quotechar or the delimiter
+    # https://github.com/python/cpython/blob/e7ba6e9dbe5433b4a0bcb0658da6a68197c28630/Lib/csv.py#L46
     # dialect=csv.unix_dialect(),
     # delimiter=',',
     # quotechar='"',
