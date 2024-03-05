@@ -3,7 +3,7 @@ import csv
 import logging
 import os
 from pathlib import Path
-
+import pdb
 import cv2
 import numpy as np
 import torch
@@ -11,6 +11,13 @@ import torchvision.transforms as transforms
 from sort import Sort
 
 from crabs.detection_tracking.detection_utils import draw_bbox
+
+
+class MyDialect(csv.Dialect):
+    delimiter = ','  # Set your delimiter
+    quotechar = '"'  # Set your quote character
+    # lineterminator = 
+    quoting = csv.QUOTE_MINIMAL  # Set quoting behavior
 
 
 class DetectorInference:
@@ -119,6 +126,7 @@ class DetectorInference:
                 str(tracking_output_dir / "tracking_output.csv"), "w"
             )
             csv_writer = csv.writer(csv_file)
+                                    # dialect=MyDialect, lineterminator="\r\n")
             csv_writer.writerow(
                 (
                     "filename",
@@ -132,14 +140,15 @@ class DetectorInference:
             )
 
         while self.video.isOpened():
-            if frame_number > 50:
+            if frame_number > 1:
                 break
             ret, frame = self.video.read()
             if not ret:
                 print("No frame read. Exiting...")
                 break
-
-            frame_copy = frame.copy()
+            # pdb.set_trace()
+            if self.args.save_video:
+                frame_copy = frame.copy()
 
             img = transform(frame).to(self.args.accelerator)
             img = img.unsqueeze(0)
@@ -151,15 +160,16 @@ class DetectorInference:
             for bbox in tracked_boxes:
                 xmin, ymin, xmax, ymax, id = bbox
                 id_label = f"id : {int(id)}"
-                draw_bbox(
-                    frame_copy,
-                    int(xmin),
-                    int(ymin),
-                    int(xmax),
-                    int(ymax),
-                    (0, 0, 255),
-                    id_label,
-                )
+                if self.args.save_video:
+                    draw_bbox(
+                        frame_copy,
+                        int(xmin),
+                        int(ymin),
+                        int(xmax),
+                        int(ymax),
+                        (0, 0, 255),
+                        id_label,
+                    )
                 if self.args.save_csv_and_frames:
                     frame_name = (
                         f"{self.video_file_root}frame_{frame_number:08d}.png"
@@ -167,12 +177,15 @@ class DetectorInference:
 
                     width_box = int(xmax - xmin)
                     height_box = int(ymax - ymin)
-
+                    # quoted_columns = [2, 4, 5]
+                    # quoted_row = ['"{}"'.format(cell) if i in quoted_columns else cell for i, cell in enumerate(row)]
                     csv_writer.writerow(
                         (
                             frame_name,
-                            0,
-                            {"clip": 123},
+                            frame.size,
+                            # str({"\"clip\"": 123}),
+                            # '"{}"'.format({"clip": 123}),
+                            {"\"clip\"": 123},
                             1,
                             0,
                             {
