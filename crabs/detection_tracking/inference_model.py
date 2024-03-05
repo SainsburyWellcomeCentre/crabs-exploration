@@ -31,7 +31,7 @@ class DetectorInference:
 
     Attributes:
         args (argparse.Namespace): The command-line arguments provided.
-        vid_dir (str): The path to the input video.
+        vid_path (str): The path to the input video.
         iou_threshold (float): The iou threshold for tracking.
         score_threshold (float): The score confidence threshold for tracking.
         sort_tracker (Sort): An instance of the sorting algorithm used for tracking.
@@ -39,7 +39,7 @@ class DetectorInference:
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-        self.vid_dir = args.vid_dir
+        self.vid_path = args.vid_path
         self.score_threshold = args.score_threshold
         self.iou_threshold = args.iou_threshold
         self.sort_tracker = Sort(
@@ -47,7 +47,7 @@ class DetectorInference:
             min_hits=args.min_hits,
             iou_threshold=self.iou_threshold,
         )
-        self.video_file_root = f"{Path(self.vid_dir).stem}_"
+        self.video_file_root = f"{Path(self.vid_path).stem}_"
 
     def load_trained_model(self) -> torch.nn.Module:
         """
@@ -98,7 +98,7 @@ class DetectorInference:
         self.trained_model = self.load_trained_model()
 
         # load input video
-        self.video = cv2.VideoCapture(self.vid_dir)
+        self.video = cv2.VideoCapture(self.vid_path)
         if not self.video.isOpened():
             raise Exception("Error opening video file")
 
@@ -279,7 +279,7 @@ if __name__ == "__main__":
         help="location of trained model",
     )
     parser.add_argument(
-        "--vid_dir",
+        "--vid_path",
         type=str,
         required=True,
         help="location of images and coco annotation",
