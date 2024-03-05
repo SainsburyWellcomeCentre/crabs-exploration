@@ -105,8 +105,6 @@ class CustomFasterRCNNDataset(torch.utils.data.Dataset):
         for i in range(num_objs):
             xmin = coco_annotation[i]["bbox"][0]
             ymin = coco_annotation[i]["bbox"][1]
-            # xmax = xmin + width
-            # ymax = xmin + height
             xmax = xmin + coco_annotation[i]["bbox"][2]
             ymax = ymin + coco_annotation[i]["bbox"][3]
             boxes.append([xmin, ymin, xmax, ymax])
