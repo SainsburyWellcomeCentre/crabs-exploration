@@ -1,7 +1,8 @@
 import argparse
 import os
+import csv
 from pathlib import Path
-
+import pdb
 import cv2
 import numpy as np
 import torch
@@ -118,6 +119,11 @@ class DetectorInference:
             ground_truths = load_ground_truth(self.args.gt_dir)
             frame_number = 1
 
+        if self.args.save_csv:
+            csv_file = open("tracking_output.csv", "w")
+            csv_writer = csv.writer(csv_file)
+            csv_writer.writerow(("filename","file_size","file_attributes","region_count","region_id","region_shape_attributes","region_attributes"))
+
         while self.video.isOpened():
             ret, frame = self.video.read()
             if not ret:
@@ -132,6 +138,8 @@ class DetectorInference:
             pred_sort = self._track_objects(prediction)
 
             tracked_boxes = self.sort_tracker.update(pred_sort)
+            pdb.set_trace()
+
 
             if self.args.gt_dir:
                 from crabs.detection_tracking.detection_utils import (
@@ -172,6 +180,9 @@ class DetectorInference:
         self.video.release()
         self.out.release()
         cv2.destroyAllWindows()
+        # if args.save_csv:
+
+
 
 
 def main(args) -> None:
@@ -254,6 +265,11 @@ if __name__ == "__main__":
         type=str,
         default="gpu",
         help="accelerator for pytorch lightning",
+    )
+    parser.add_argument(
+        "--save_csv",
+        action="store_true",
+        help="save predicted tracks in VIA csv format.",
     )
     args = parser.parse_args()
     main(args)
