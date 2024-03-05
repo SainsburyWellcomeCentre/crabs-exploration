@@ -122,7 +122,7 @@ class DetectorInference:
         # Get transform to tensor
         transform = transforms.Compose([transforms.ToTensor()])
 
-        # ini frame counter
+        # initialise frame counter
         frame_number = 1
 
         # initialise csv writer if required
@@ -174,28 +174,18 @@ class DetectorInference:
             pred_sort = self.prep_sort(prediction)
             tracked_boxes = self.sort_tracker.update(pred_sort)
 
-            # Save annotations as csv
+            # save tracks as csv
             for bbox in tracked_boxes:
                 xmin, ymin, xmax, ymax, id = bbox
-                id_label = f"id : {int(id)}"
 
-                if self.args.save_video:
-                    draw_bbox(
-                        frame_copy,
-                        int(xmin),
-                        int(ymin),
-                        int(xmax),
-                        int(ymax),
-                        (0, 0, 255),
-                        id_label,
-                    )
+                # save tracking output for manual labelling if required
                 if self.args.save_csv_and_frames:
                     frame_name = (
                         f"{self.video_file_root}frame_{frame_number:08d}.png"
                     )
-
                     width_box = int(xmax - xmin)
                     height_box = int(ymax - ymin)
+
                     # quoted_columns = [2, 4, 5]
                     # quoted_row = ['"{}"'.format(cell) if i in quoted_columns else cell for i, cell in enumerate(row)]
                     csv_writer.writerow(
@@ -218,25 +208,43 @@ class DetectorInference:
                         )
                     )
 
-                    file_path = tracking_output_dir / frame_name
-                    img_saved = cv2.imwrite(str(file_path), frame)
+                    # save frame
+                    frame_path = tracking_output_dir / frame_name
+                    img_saved = cv2.imwrite(str(frame_path), frame)
                     if img_saved:
                         logging.info(
-                            f"frame {frame_number} saved at {file_path}"
+                            f"frame {frame_number} saved at {frame_path}"
                         )
                     else:
                         logging.info(
                             f"ERROR saving {frame_name}, frame {frame_number}"
                             "...skipping",
                         )
-                        continue
+                        break
 
-            frame_number += 1
+                # write annotated frame to video if required
+                if self.args.save_video:
+                    draw_bbox(
+                        frame_copy,
+                        int(xmin),
+                        int(ymin),
+                        int(xmax),
+                        int(ymax),
+                        (0, 0, 255),
+                        f"id : {int(id)}",
+                    )
 
+            # add frame to output video if required
             if self.args.save_video:
                 self.out.write(frame_copy)
 
+            # update frame
+            frame_number += 1
+
+        # Close input video
         self.video.release()
+
+        # Close outputs
         if self.args.save_video:
             self.out.release()
         if args.save_csv_and_frames:
