@@ -1,8 +1,9 @@
 import argparse
-import os
 import csv
+import logging
+import os
 from pathlib import Path
-import pdb
+
 import cv2
 import numpy as np
 import torch
@@ -39,11 +40,9 @@ class DetectorInference:
             min_hits=args.min_hits,
             iou_threshold=self.iou_threshold,
         )
-        self.video_file_root = (
-            f"{Path(self.vid_dir).stem}_"
-        )
+        self.video_file_root = f"{Path(self.vid_dir).stem}_"
 
-    def _load_trained_model(self) -> torch.nn.Module:
+    def load_trained_model(self) -> torch.nn.Module:
         """
         Load the trained model.
 
@@ -58,7 +57,7 @@ class DetectorInference:
         model.eval()
         return model
 
-    def _track_objects(self, prediction):
+    def prep_sort(self, prediction):
         """
         Track objects in the predicted bounding boxes.
 
@@ -88,7 +87,7 @@ class DetectorInference:
         """
         Load the input video and and prepare the output video.
         """
-        self.trained_model = self._load_trained_model()
+        self.trained_model = self.load_trained_model()
 
         self.video = cv2.VideoCapture(self.vid_dir)
         if not self.video.isOpened():
@@ -98,11 +97,12 @@ class DetectorInference:
         frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap_fps = self.video.get(cv2.CAP_PROP_FPS)
 
-        output_file = f"{self.video_file_root}output_video.mp4"
-        output_codec = cv2.VideoWriter_fourcc(*"mp4v")
-        self.out = cv2.VideoWriter(
-            output_file, output_codec, cap_fps, (frame_width, frame_height)
-        )
+        if self.args.save_video:
+            output_file = f"{self.video_file_root}output_video.mp4"
+            output_codec = cv2.VideoWriter_fourcc(*"mp4v")
+            self.out = cv2.VideoWriter(
+                output_file, output_codec, cap_fps, (frame_width, frame_height)
+            )
 
     def run_inference(self):
         """
@@ -111,22 +111,30 @@ class DetectorInference:
         transform = transforms.Compose([transforms.ToTensor()])
         frame_number = 1
 
-        if self.args.gt_dir:
-            from crabs.detection_tracking.detection_utils import (
-                load_ground_truth,
+        if self.args.save_csv_and_frames:
+            tracking_output_dir = Path("tracking_output")
+            tracking_output_dir.mkdir(parents=True, exist_ok=True)
+
+            csv_file = open(
+                str(tracking_output_dir / "tracking_output.csv"), "w"
+            )
+            csv_writer = csv.writer(csv_file)
+            csv_writer.writerow(
+                (
+                    "filename",
+                    "file_size",
+                    "file_attributes",
+                    "region_count",
+                    "region_id",
+                    "region_shape_attributes",
+                    "region_attributes",
+                )
             )
 
-            ground_truths = load_ground_truth(self.args.gt_dir)
-            
-
-        if self.args.save_csv:
-            csv_file = open("tracking_output.csv", "w")
-            csv_writer = csv.writer(csv_file)
-            csv_writer.writerow(("filename","file_size","file_attributes","region_count","region_id","region_shape_attributes","region_attributes"))
-
         while self.video.isOpened():
+            if frame_number > 50:
+                break
             ret, frame = self.video.read()
-            # pdb.set_trace()
             if not ret:
                 print("No frame read. Exiting...")
                 break
@@ -136,62 +144,71 @@ class DetectorInference:
             img = transform(frame).to(self.args.accelerator)
             img = img.unsqueeze(0)
             prediction = self.trained_model(img)
-            pred_sort = self._track_objects(prediction)
+            pred_sort = self.prep_sort(prediction)
 
             tracked_boxes = self.sort_tracker.update(pred_sort)
-            # pdb.set_trace()
 
-
-            if self.args.gt_dir:
-                from crabs.detection_tracking.detection_utils import (
-                    gt_tracking,
-                )
-
-                gt_tracking(
-                    ground_truths,
-                    frame_number,
-                    tracked_boxes,
-                    self.iou_threshold,
+            for bbox in tracked_boxes:
+                xmin, ymin, xmax, ymax, id = bbox
+                id_label = f"id : {int(id)}"
+                draw_bbox(
                     frame_copy,
+                    int(xmin),
+                    int(ymin),
+                    int(xmax),
+                    int(ymax),
+                    (0, 0, 255),
+                    id_label,
                 )
-                
-
-            else:
-                for bbox in tracked_boxes:
-                    xmin, ymin, xmax, ymax, id = bbox
-                    id_label = f"id : {int(id)}"
-                    draw_bbox(
-                        frame_copy,
-                        int(xmin),
-                        int(ymin),
-                        int(xmax),
-                        int(ymax),
-                        (0, 0, 255),
-                        id_label,
+                if self.args.save_csv_and_frames:
+                    frame_name = (
+                        f"{self.video_file_root}frame_{frame_number:08d}.png"
                     )
-                    if self.args.save_csv:
-                        frame_name = f"{self.video_file_root}frame_{frame_number:08d}.png"
-                        
-                        width_box = int(xmax-xmin)
-                        height_box = int(ymax-ymin)
 
-                        csv_writer.writerow((frame_name, 0, {"clip":123}, 1, 0, {"name":"rect","x":int(xmin),"y":int(ymin),"width":width_box,"height":height_box},{"track":int(id)}))
+                    width_box = int(xmax - xmin)
+                    height_box = int(ymax - ymin)
+
+                    csv_writer.writerow(
+                        (
+                            frame_name,
+                            0,
+                            {"clip": 123},
+                            1,
+                            0,
+                            {
+                                "name": "rect",
+                                "x": int(xmin),
+                                "y": int(ymin),
+                                "width": width_box,
+                                "height": height_box,
+                            },
+                            {"track": int(id)},
+                        )
+                    )
+
+                    file_path = tracking_output_dir / frame_name
+                    img_saved = cv2.imwrite(str(file_path), frame)
+                    if img_saved:
+                        logging.info(
+                            f"frame {frame_number} saved at {file_path}"
+                        )
+                    else:
+                        logging.info(
+                            f"ERROR saving {frame_name}, frame {frame_number}"
+                            "...skipping",
+                        )
+                        continue
 
             frame_number += 1
-            cv2.imshow("frame", frame_copy)
 
-            if self.args.save:
+            if self.args.save_video:
                 self.out.write(frame_copy)
 
-            if cv2.waitKey(30) & 0xFF == 27:
-                break
-
         self.video.release()
-        self.out.release()
-        cv2.destroyAllWindows()
-        # if args.save_csv:
-
-
+        if self.args.save_video:
+            self.out.release()
+        if args.save_csv_and_frames:
+            csv_file.close()
 
 
 def main(args) -> None:
@@ -228,15 +245,8 @@ if __name__ == "__main__":
         help="location of images and coco annotation",
     )
     parser.add_argument(
-        "--gt_dir",
-        type=str,
-        required=False,
-        help="location of ground truth data",
-    )
-    parser.add_argument(
-        "--save",
-        type=bool,
-        default=True,
+        "--save_video",
+        action="store_true",
         help="save video inference",
     )
     parser.add_argument(
@@ -276,7 +286,7 @@ if __name__ == "__main__":
         help="accelerator for pytorch lightning",
     )
     parser.add_argument(
-        "--save_csv",
+        "--save_csv_and_frames",
         action="store_true",
         help="save predicted tracks in VIA csv format.",
     )
