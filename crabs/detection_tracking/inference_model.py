@@ -39,6 +39,9 @@ class DetectorInference:
             min_hits=args.min_hits,
             iou_threshold=self.iou_threshold,
         )
+        self.video_file_root = (
+            f"{Path(self.vid_dir).stem}_"
+        )
 
     def _load_trained_model(self) -> torch.nn.Module:
         """
@@ -95,11 +98,7 @@ class DetectorInference:
         frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap_fps = self.video.get(cv2.CAP_PROP_FPS)
 
-        video_file = (
-            f"{Path(self.vid_dir).parent.stem}_" f"{Path(self.vid_dir).stem}_"
-        )
-
-        output_file = f"{video_file}_output_video.mp4"
+        output_file = f"{self.video_file_root}output_video.mp4"
         output_codec = cv2.VideoWriter_fourcc(*"mp4v")
         self.out = cv2.VideoWriter(
             output_file, output_codec, cap_fps, (frame_width, frame_height)
@@ -110,6 +109,7 @@ class DetectorInference:
         Run object detection or tracking inference on the video frames.
         """
         transform = transforms.Compose([transforms.ToTensor()])
+        frame_number = 1
 
         if self.args.gt_dir:
             from crabs.detection_tracking.detection_utils import (
@@ -117,7 +117,7 @@ class DetectorInference:
             )
 
             ground_truths = load_ground_truth(self.args.gt_dir)
-            frame_number = 1
+            
 
         if self.args.save_csv:
             csv_file = open("tracking_output.csv", "w")
@@ -126,6 +126,7 @@ class DetectorInference:
 
         while self.video.isOpened():
             ret, frame = self.video.read()
+            # pdb.set_trace()
             if not ret:
                 print("No frame read. Exiting...")
                 break
@@ -138,7 +139,7 @@ class DetectorInference:
             pred_sort = self._track_objects(prediction)
 
             tracked_boxes = self.sort_tracker.update(pred_sort)
-            pdb.set_trace()
+            # pdb.set_trace()
 
 
             if self.args.gt_dir:
@@ -153,22 +154,30 @@ class DetectorInference:
                     self.iou_threshold,
                     frame_copy,
                 )
-                frame_number += 1
+                
 
             else:
                 for bbox in tracked_boxes:
-                    x1, y1, x2, y2, _ = bbox
-                    id_label = f"id : {bbox[4]}"
+                    xmin, ymin, xmax, ymax, id = bbox
+                    id_label = f"id : {int(id)}"
                     draw_bbox(
                         frame_copy,
-                        int(x1),
-                        int(y1),
-                        int(x2),
-                        int(y2),
+                        int(xmin),
+                        int(ymin),
+                        int(xmax),
+                        int(ymax),
                         (0, 0, 255),
                         id_label,
                     )
+                    if self.args.save_csv:
+                        frame_name = f"{self.video_file_root}frame_{frame_number:08d}.png"
+                        
+                        width_box = int(xmax-xmin)
+                        height_box = int(ymax-ymin)
 
+                        csv_writer.writerow((frame_name, 0, {"clip":123}, 1, 0, {"name":"rect","x":int(xmin),"y":int(ymin),"width":width_box,"height":height_box},{"track":int(id)}))
+
+            frame_number += 1
             cv2.imshow("frame", frame_copy)
 
             if self.args.save:
