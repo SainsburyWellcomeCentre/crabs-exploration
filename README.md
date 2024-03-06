@@ -18,6 +18,14 @@ requires Python 3.9 or 3.10 or 3.11.
 
 <!-- How to build or install the application. -->
 
+### Data Structure
+
+```
+|_ Dataset
+    |_ frames
+    |_ annotations
+```
+
 ### Running Locally
 
 For training
@@ -26,10 +34,22 @@ For training
 python crabs/detection_tracking/train_model.py --main_dir {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_file {annotation_file.json} {optional_second_annotation_file.json}
 ```
 
+Example:
+
+```bash
+python crabs/detection_tracking/evaluate_model.py --main_dir /home/data/dataset1 /home/data/dataset2 --annotation_file annotation_dataset1.json annotation_dataset2.json
+```
+
 For evaluation
 
 ```bash
 python crabs/detection_tracking/evaluate_model.py --model_dir {directory_to_saved_model} --main_dir {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_file {annotation_file.json} {optional_second_annotation_file.json}
+```
+
+Example:
+
+```bash
+python crabs/detection_tracking/evaluate_model.py --model_dir model/model_00.pt --main_dir /home/data/dataset1 /home/data/dataset2 --annotation_file annotation_dataset1.json annotation_dataset2.json
 ```
 
 For running inference
