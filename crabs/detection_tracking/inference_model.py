@@ -178,7 +178,7 @@ class DetectorInference:
         # loop thru frames of clip
         while self.video.isOpened():
             # break if beyond end frame (mostly for debugging)
-            if self.arg.max_frames_to_read:
+            if self.args.max_frames_to_read:
                 if frame_number > self.arg.max_frames_to_read:
                     break
 
