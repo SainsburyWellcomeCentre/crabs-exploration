@@ -35,5 +35,5 @@ python crabs/detection_tracking/evaluate_model.py --model_dir {directory_to_save
 For running inference
 
 ```bash
-python crabs/detection_tracking/inference_model.py --model_dir {directory_to_saved_model} --vid_dir {parent_directory_of_a_video}
+python crabs/detection_tracking/inference_model.py --model_dir {oath_to_trained_model} --vid_path {path_to_input_video}
 ```
