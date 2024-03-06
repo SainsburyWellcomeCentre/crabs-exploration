@@ -110,11 +110,8 @@ class DetectorInference:
             )
 
     def prep_csv_writer(self):
-        """Prepare csv writer to output tracking results
-
-        Returns:
-            csv_writer
-            csv_file
+        """
+        Prepare csv writer to output tracking results
         """
         self.tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -140,18 +137,8 @@ class DetectorInference:
         return csv_writer, csv_file
 
     def write_bbox_to_csv(self, bbox, frame, frame_name, csv_writer):
-        """Write bounding box annotation to csv
-
-        Parameters
-        ----------
-        bbox : _type_
-            _description_
-        frame : _type_
-            _description_
-        frame_number : _type_
-            _description_
-        csv_writer : _type_
-            _description_
+        """
+        Write bounding box annotation to csv
         """
 
         # Bounding box geometry
