@@ -32,7 +32,7 @@ For evaluation
 python crabs/detection_tracking/evaluate_model.py --model_dir {directory_to_saved_model} --main_dir {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_file {annotation_file.json} {optional_second_annotation_file.json}
 ```
 
-For tracking
+For running inference
 
 ```bash
 python crabs/detection_tracking/inference_model.py --model_dir {directory_to_saved_model} --vid_dir {parent_directory_of_a_video}
