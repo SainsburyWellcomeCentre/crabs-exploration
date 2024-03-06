@@ -335,7 +335,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_csv_and_frames",
         action="store_true",
-        help="save predicted tracks in VIA csv format.",
+        help=(
+            "Save predicted tracks in VIA csv format and export corresponding frames. "
+            "This is useful to prepare for manual labelling of tracks."
+        ),
     )
     parser.add_argument(
         "--max_frames_to_read",
