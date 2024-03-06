@@ -91,39 +91,13 @@ class DetectorEvaluation:
             self.ious_threshold,
         )
 
-        save_images_with_boxes(
-            self.evaluate_dataloader,
-            self.trained_model,
-            self.score_threshold,
-            device,
-        )
-
-        # with torch.no_grad():
-        #     all_detections = []
-        #     all_targets = []
-        #     for imgs, annotations in self.evaluate_dataloader:
-        #         imgs = list(img.to(device) for img in imgs)
-        #         targets = [
-        #             {k: v.to(device) for k, v in t.items()}
-        #             for t in annotations
-        #         ]
-        #         detections = self.trained_model(imgs)
-
-        #         all_detections.extend(detections)
-        #         all_targets.extend(targets)
-
-        #     compute_confusion_matrix_elements(
-        #         all_targets,  # one elem per image
-        #         all_detections,
-        #         self.ious_threshold,
-        #     )
-
-        #     save_images_with_boxes(
-        #         self.evaluate_dataloader,
-        #         self.trained_model,
-        #         self.score_threshold,
-        #         device,
-        #     )
+        if self.args.save_frames:
+            save_images_with_boxes(
+                self.evaluate_dataloader,
+                self.trained_model,
+                self.score_threshold,
+                device,
+            )
 
 
 def main(args) -> None:
@@ -212,6 +186,13 @@ if __name__ == "__main__":
         type=int,
         default=42,
         help="seed for random state",
+    )
+    parser.add_argument(
+        "--save_frames",
+        action="store_true",
+        help=(
+            "Save predicted frames with bbox."
+        ),
     )
 
     args = parser.parse_args()
