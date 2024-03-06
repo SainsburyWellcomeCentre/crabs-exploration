@@ -252,7 +252,7 @@ def calculate_iou(box1, box2) -> float:
     return iou
 
 
-def gt_tracking(
+def draw_gt_boxes(
     ground_truths: dict,
     frame_number: int,
     tracked_boxes: np.ndarray,
