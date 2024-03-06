@@ -13,13 +13,6 @@ from sort import Sort
 from crabs.detection_tracking.detection_utils import draw_bbox
 
 
-class MyDialect(csv.Dialect):
-    delimiter = ","  # Set your delimiter
-    quotechar = '"'  # Set your quote character
-    # lineterminator =
-    quoting = csv.QUOTE_MINIMAL  # Set quoting behavior
-
-
 class DetectorInference:
     """
     A class for performing object detection or tracking inference on a video
@@ -186,25 +179,17 @@ class DetectorInference:
                     width_box = int(xmax - xmin)
                     height_box = int(ymax - ymin)
 
-                    # quoted_columns = [2, 4, 5]
-                    # quoted_row = ['"{}"'.format(cell) if i in quoted_columns else cell for i, cell in enumerate(row)]
                     csv_writer.writerow(
                         (
                             frame_name,
                             frame.size,
-                            # str({"\"clip\"": 123}),
-                            # '"{}"'.format({"clip": 123}),
-                            {'"clip"': 123},
+                            '{{"clip":{}}}'.format("123"),
                             1,
                             0,
-                            {
-                                "name": "rect",
-                                "x": int(xmin),
-                                "y": int(ymin),
-                                "width": width_box,
-                                "height": height_box,
-                            },
-                            {"track": int(id)},
+                            '{{"name":"rect","x":{},"y":{},"width":{},"height":{}}}'.format(
+                                xmin, ymin, width_box, height_box
+                            ),
+                            '{{"track":{}}}'.format(id),
                         )
                     )
 
