@@ -41,6 +41,7 @@ class DetectorInference:
             iou_threshold=self.iou_threshold,
         )
         self.video_file_root = f"{Path(self.vid_path).stem}_"
+        self.tracking_output_dir = Path("tracking_output")
 
     def load_trained_model(self) -> torch.nn.Module:
         """
@@ -108,6 +109,36 @@ class DetectorInference:
                 output_file, output_codec, cap_fps, (frame_width, frame_height)
             )
 
+    def prep_csv_writer(self):
+        """Prepare csv writer to output tracking results
+
+        Returns:
+            csv_writer
+            csv_file
+        """
+        self.tracking_output_dir.mkdir(parents=True, exist_ok=True)
+
+        csv_file = open(
+            str(self.tracking_output_dir / "tracking_output.csv"), "w"
+        )
+        csv_writer = csv.writer(csv_file)
+
+        # write header following VIA convention
+        # https://www.robots.ox.ac.uk/~vgg/software/via/docs/face_track_annotation.html
+        csv_writer.writerow(
+            (
+                "filename",
+                "file_size",
+                "file_attributes",
+                "region_count",
+                "region_id",
+                "region_shape_attributes",
+                "region_attributes",
+            )
+        )
+
+        return csv_writer, csv_file
+
     def run_inference(self):
         """
         Run object detection + tracking on the video frames.
@@ -120,27 +151,7 @@ class DetectorInference:
 
         # initialise csv writer if required
         if self.args.save_csv_and_frames:
-            tracking_output_dir = Path("tracking_output")
-            tracking_output_dir.mkdir(parents=True, exist_ok=True)
-
-            csv_file = open(
-                str(tracking_output_dir / "tracking_output.csv"), "w"
-            )
-            csv_writer = csv.writer(csv_file)
-
-            # write header following VIA convention
-            # https://www.robots.ox.ac.uk/~vgg/software/via/docs/face_track_annotation.html
-            csv_writer.writerow(
-                (
-                    "filename",
-                    "file_size",
-                    "file_attributes",
-                    "region_count",
-                    "region_id",
-                    "region_shape_attributes",
-                    "region_attributes",
-                )
-            )
+            csv_writer, csv_file = self.prep_csv_writer()
 
         # loop thru frames of clip
         while self.video.isOpened():
@@ -154,9 +165,6 @@ class DetectorInference:
             if not ret:
                 print("No frame read. Exiting...")
                 break
-
-            if self.args.save_video:
-                frame_copy = frame.copy()
 
             # run prediction
             img = transform(frame).to(self.args.accelerator)
@@ -194,7 +202,7 @@ class DetectorInference:
                     )
 
                     # save frame
-                    frame_path = tracking_output_dir / frame_name
+                    frame_path = self.tracking_output_dir / frame_name
                     img_saved = cv2.imwrite(str(frame_path), frame)
                     if img_saved:
                         logging.info(
@@ -209,6 +217,8 @@ class DetectorInference:
 
                 # write annotated frame to video if required
                 if self.args.save_video:
+                    frame_copy = frame.copy()
+
                     draw_bbox(
                         frame_copy,
                         int(xmin),
