@@ -144,10 +144,10 @@ class DetectorInference:
 
         # loop thru frames of clip
         while self.video.isOpened():
-            # ------------------
-            if frame_number > 50:
-                break
-            # ------------------
+            # break if beyond end frame (mostly for debugging)
+            if self.arg.max_frames_to_read:
+                if frame_number > self.arg.max_frames_to_read:
+                    break
 
             # read frame
             ret, frame = self.video.read()
@@ -314,6 +314,12 @@ if __name__ == "__main__":
         "--save_csv_and_frames",
         action="store_true",
         help="save predicted tracks in VIA csv format.",
+    )
+    parser.add_argument(
+        "--max_frames_to_read",
+        type=int,
+        default=None,
+        help="Maximum number of frames to read (mostly for debugging).",
     )
     args = parser.parse_args()
     main(args)
