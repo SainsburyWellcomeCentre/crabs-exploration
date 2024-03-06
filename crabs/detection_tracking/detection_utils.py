@@ -260,7 +260,7 @@ def gt_tracking(
     frame_copy: np.ndarray,
 ) -> None:
     """
-    Track ground truth objects in the frame and draw bounding boxes.
+    Plot ground truth bounding boxes.
 
     Parameters
     ----------
