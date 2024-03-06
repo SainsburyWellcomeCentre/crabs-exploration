@@ -139,6 +139,41 @@ class DetectorInference:
 
         return csv_writer, csv_file
 
+    def write_bbox_to_csv(self, bbox, frame, frame_name, csv_writer):
+        """Write bounding box annotation to csv
+
+        Parameters
+        ----------
+        bbox : _type_
+            _description_
+        frame : _type_
+            _description_
+        frame_number : _type_
+            _description_
+        csv_writer : _type_
+            _description_
+        """
+
+        # Bounding box geometry
+        xmin, ymin, xmax, ymax, id = bbox
+        width_box = int(xmax - xmin)
+        height_box = int(ymax - ymin)
+
+        # Add to csv
+        csv_writer.writerow(
+            (
+                frame_name,
+                frame.size,
+                '{{"clip":{}}}'.format("123"),
+                1,
+                0,
+                '{{"name":"rect","x":{},"y":{},"width":{},"height":{}}}'.format(
+                    xmin, ymin, width_box, height_box
+                ),
+                '{{"track":{}}}'.format(id),
+            )
+        )
+
     def run_inference(self):
         """
         Run object detection + tracking on the video frames.
@@ -175,33 +210,19 @@ class DetectorInference:
             pred_sort = self.prep_sort(prediction)
             tracked_boxes = self.sort_tracker.update(pred_sort)
 
-            # save tracks as csv
-            for bbox in tracked_boxes:
-                xmin, ymin, xmax, ymax, id = bbox
-
-                # save tracking output for manual labelling if required
-                if self.args.save_csv_and_frames:
+            # save tracking output (for manual labelling) if required
+            if self.args.save_csv_and_frames:
+                # loop thru tracked bounding boxes per frame
+                for bbox in tracked_boxes:
+                    # get frame name
                     frame_name = (
                         f"{self.video_file_root}frame_{frame_number:08d}.png"
                     )
-                    width_box = int(xmax - xmin)
-                    height_box = int(ymax - ymin)
 
-                    csv_writer.writerow(
-                        (
-                            frame_name,
-                            frame.size,
-                            '{{"clip":{}}}'.format("123"),
-                            1,
-                            0,
-                            '{{"name":"rect","x":{},"y":{},"width":{},"height":{}}}'.format(
-                                xmin, ymin, width_box, height_box
-                            ),
-                            '{{"track":{}}}'.format(id),
-                        )
-                    )
+                    # add bbox to csv
+                    self.write_bbox_to_csv(bbox, frame, frame_name, csv_writer)
 
-                    # save frame
+                    # save frame as png
                     frame_path = self.tracking_output_dir / frame_name
                     img_saved = cv2.imwrite(str(frame_path), frame)
                     if img_saved:
@@ -215,21 +236,25 @@ class DetectorInference:
                         )
                         break
 
-                # write annotated frame to video if required
-                if self.args.save_video:
-                    frame_copy = frame.copy()
+                    # add each annotation to output video frame if required
+                    if self.args.save_video:
+                        frame_copy = frame.copy()
 
-                    draw_bbox(
-                        frame_copy,
-                        int(xmin),
-                        int(ymin),
-                        int(xmax),
-                        int(ymax),
-                        (0, 0, 255),
-                        f"id : {int(id)}",
-                    )
+                        # parse bbox
+                        xmin, ymin, xmax, ymax, id = bbox
 
-            # add frame to output video if required
+                        # plot
+                        draw_bbox(
+                            frame_copy,
+                            int(xmin),
+                            int(ymin),
+                            int(xmax),
+                            int(ymax),
+                            (0, 0, 255),
+                            f"id : {int(id)}",
+                        )
+
+            # add frame with all annotations to output video if required
             if self.args.save_video:
                 self.out.write(frame_copy)
 
