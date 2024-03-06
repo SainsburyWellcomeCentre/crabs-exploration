@@ -63,11 +63,11 @@ class CustomFasterRCNNDataset(torch.utils.data.Dataset):
             Index of the sample to retrieve.
 
         Returns
-        ----------
+        -------
         tuple: A tuple containing the image tensor and a dictionary of annotations.
 
-        Note
-        ----------
+        Notes
+        -----
         The annotations dictionary contains the following keys:
             - 'image': The image tensor.
             - 'annotations': A dictionary containing object annotations with keys:
