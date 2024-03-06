@@ -124,7 +124,6 @@ class CustomDataModule(pl.LightningDataModule):
     def __init__(self, main_dirs, annotations, config, seed_n):
         super().__init__()
         self.main_dirs = main_dirs
-        # print(self.main_dirs)
         self.annotations = annotations
 
         self.config = config
