@@ -62,9 +62,7 @@ class DectectorTrain:
             tracking_uri="file:./ml-runs",
         )
 
-        mlf_logger.log_hyperparams(
-            self.config
-        )
+        mlf_logger.log_hyperparams(self.config)
 
         lightning_model = FasterRCNN(self.config)
 

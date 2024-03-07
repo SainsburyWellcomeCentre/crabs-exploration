@@ -59,6 +59,7 @@ python crabs/detection_tracking/inference_model.py --model_dir {oath_to_trained_
 ```
 
 ### MLFLow
+
 We are using [MLflow](https://mlflow.org) to log our training loss and the hyperparameters used.
 To run MLflow, execute the following command in your terminal:
 
