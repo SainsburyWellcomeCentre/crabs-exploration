@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import torch
@@ -48,14 +49,10 @@ class CustomFasterRCNNDataset(torch.utils.data.Dataset):
 
     """
 
-    def __init__(
-        self, main_dir, train_file_paths, annotation, transforms=None
-    ):
-        self.main_dir = main_dir
-        self.file_paths = train_file_paths
-        self.coco = COCO(annotation)
+    def __init__(self, file_paths, annotations, transforms=None):
+        self.file_paths = file_paths
+        self.annotations = [COCO(annotation) for annotation in annotations]
         self.transforms = transforms
-        self.ids = list(sorted(self.coco.imgs.keys()))
 
     def __getitem__(self, index):
         """Get the image and associated annotations at the specified index.
@@ -66,11 +63,11 @@ class CustomFasterRCNNDataset(torch.utils.data.Dataset):
             Index of the sample to retrieve.
 
         Returns
-        ----------
+        -------
         tuple: A tuple containing the image tensor and a dictionary of annotations.
 
-        Note
-        ----------
+        Notes
+        -----
         The annotations dictionary contains the following keys:
             - 'image': The image tensor.
             - 'annotations': A dictionary containing object annotations with keys:
@@ -83,48 +80,70 @@ class CustomFasterRCNNDataset(torch.utils.data.Dataset):
         - In pytorch, the input should be [xmin, ymin, xmax, ymax]
         """
 
-        file_name = self.file_paths[index]
-        file_path = get_file_path(self.main_dir, file_name)
-        img = Image.open(file_path).convert("RGB")
+        file_name = os.path.basename(self.file_paths[index])
+        img = Image.open(self.file_paths[index]).convert("RGB")
 
-        img_id = [
-            img_info["id"]
-            for img_info in self.coco.imgs.values()
-            if img_info["file_name"] == file_name
-        ][0]
+        # create coco_annotation list to append the annotations associated
+        # with each image from the COCO-style annotation files.
+        coco_annotations = []
+        for annotation in self.annotations:
+            img_id = [
+                img_info["id"]
+                for img_info in annotation.imgs.values()
+                if img_info["file_name"] == file_name
+            ]
+            if not img_id:
+                coco_annotations.append(None)
+            else:
+                ann_ids = annotation.getAnnIds(imgIds=img_id[0])
+                coco_annotations.append(annotation.loadAnns(ann_ids))
 
-        ann_ids = self.coco.getAnnIds(imgIds=img_id)
-        coco_annotation = self.coco.loadAnns(ann_ids)
+        # create combined_annotation list to store annotations converted to match the PyTorch format
+        # for compatibility with PyTorch-based object detection models.
+        combined_annotations = []
+        for annotations in coco_annotations:
+            if annotations:
+                for ann in annotations:
+                    xmin = ann["bbox"][0]
+                    ymin = ann["bbox"][1]
+                    xmax = xmin + ann["bbox"][2]
+                    ymax = ymin + ann["bbox"][3]
+                    boxes = [xmin, ymin, xmax, ymax]
+                    combined_annotations.append(
+                        {
+                            "boxes": boxes,
+                            "labels": ann["category_id"],
+                            "image_id": img_id,
+                            "area": ann["area"],
+                            "iscrowd": ann["iscrowd"],
+                        }
+                    )
 
-        if not coco_annotation:
-            return None
+        # Convert to tensors
+        boxes = torch.tensor(
+            [ann["boxes"] for ann in combined_annotations], dtype=torch.float32
+        )
+        labels = torch.tensor(
+            [ann["labels"] for ann in combined_annotations], dtype=torch.int64
+        )
+        img_id = torch.tensor(
+            [ann["image_id"] for ann in combined_annotations],
+            dtype=torch.int64,
+        )
+        areas = torch.tensor(
+            [ann["area"] for ann in combined_annotations], dtype=torch.float32
+        )
+        iscrowd = torch.tensor(
+            [ann["iscrowd"] for ann in combined_annotations], dtype=torch.int64
+        )
 
-        num_objs = len(coco_annotation)
-
-        boxes = []
-        for i in range(num_objs):
-            xmin = coco_annotation[i]["bbox"][0]
-            ymin = coco_annotation[i]["bbox"][1]
-            xmax = xmin + coco_annotation[i]["bbox"][2]
-            ymax = ymin + coco_annotation[i]["bbox"][3]
-            boxes.append([xmin, ymin, xmax, ymax])
-        boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        labels = torch.ones((num_objs,), dtype=torch.int64)
-        img_id = torch.tensor([img_id])
-
-        areas = []
-        for i in range(num_objs):
-            areas.append(coco_annotation[i]["area"])
-
-        areas = torch.as_tensor(areas, dtype=torch.float32)
-        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
-
-        my_annotation = {}
-        my_annotation["boxes"] = boxes
-        my_annotation["labels"] = labels
-        my_annotation["image_id"] = img_id
-        my_annotation["area"] = areas
-        my_annotation["iscrowd"] = iscrowd
+        my_annotation = {
+            "boxes": boxes,
+            "labels": labels,
+            "image_id": img_id,
+            "area": areas,
+            "iscrowd": iscrowd,
+        }
 
         if self.transforms is not None:
             img = self.transforms(img)

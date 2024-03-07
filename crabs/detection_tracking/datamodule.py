@@ -121,10 +121,11 @@ class CustomDataModule(pl.LightningDataModule):
         Random seed for data splitting.
     """
 
-    def __init__(self, main_dir, annotation, config, seed_n):
+    def __init__(self, main_dirs, annotations, config, seed_n):
         super().__init__()
-        self.main_dir = main_dir
-        self.annotation = annotation
+        self.main_dirs = main_dirs
+        self.annotations = annotations
+
         self.config = config
         self.seed_n = seed_n
 
@@ -146,63 +147,57 @@ class CustomDataModule(pl.LightningDataModule):
         ----------
         None
         """
-        with open(self.annotation) as json_file:
-            self.coco_data = json.load(json_file)
-            exclude_video_file_list = self.config["exclude_video_file_list"]
-            all_ids = []
+        self.train_ids = []
+        self.test_ids = []
+        self.train_file_paths = []
+        self.test_file_paths = []
 
-            for image_info in self.coco_data["images"]:
-                image_id = image_info["id"]
-                image_file = image_info["file_name"]
-                video_file = image_file.split("_")[1]
+        for main_dir, annotation in zip(self.main_dirs, self.annotations):
+            with open(annotation) as json_file:
+                coco_data = json.load(json_file)
+                exclude_video_file_list = self.config[
+                    "exclude_video_file_list"
+                ]
+                all_ids = []
 
-                if video_file not in exclude_video_file_list:
-                    all_ids.append(image_id)
+                for image_info in coco_data["images"]:
+                    image_id = image_info["id"]
+                    image_file = image_info["file_name"]
+                    parts = image_file.split("_")
+                    video_file = "_".join(parts[:3])
 
-            if stage == "fit":
-                train_ids, _ = train_test_split(
-                    all_ids,
-                    train_size=1 - (self.config["test_size"]),
-                    shuffle=True,
-                    random_state=self.seed_n,
-                )
-                self.train_ids = train_ids
-            if stage == "test":
-                _, test_ids = train_test_split(
-                    all_ids,
-                    test_size=self.config["test_size"],
-                    shuffle=True,
-                    random_state=self.seed_n,
-                )
-                self.test_ids = test_ids
+                    if video_file not in exclude_video_file_list:
+                        all_ids.append(image_id)
 
-    def get_file_paths(self, image_ids: List[int]) -> List[str]:
-        """
-        Generate file paths for the given image IDs.
+                if stage == "fit":
+                    train_ids, _ = train_test_split(
+                        all_ids,
+                        train_size=1 - self.config["test_size"],
+                        shuffle=True,
+                        random_state=self.seed_n,
+                    )
+                    self.train_ids.extend(train_ids)
+                    train_file_paths = [
+                        f"{main_dir}/frames/{image_info['file_name']}"
+                        for image_info in coco_data["images"]
+                        if image_info["id"] in train_ids
+                    ]
+                    self.train_file_paths.extend(train_file_paths)
 
-        Parameters
-        ----------
-        image_ids : list
-            List of image IDs.
-
-        Returns
-        -------
-        list
-            List of file paths corresponding to the image IDs.
-        """
-        file_paths = []
-        for image_id in image_ids:
-            image_info = next(
-                (
-                    info
-                    for info in self.coco_data["images"]
-                    if info["id"] == image_id
-                ),
-                None,  # Default value if no match is found
-            )
-            if image_info is not None:
-                file_paths.append(image_info["file_name"])
-        return file_paths
+                elif stage == "test":
+                    _, test_ids = train_test_split(
+                        all_ids,
+                        test_size=self.config["test_size"],
+                        shuffle=True,
+                        random_state=self.seed_n,
+                    )
+                    self.test_ids.extend(test_ids)
+                    test_file_paths = [
+                        f"{main_dir}/frames/{image_info['file_name']}"
+                        for image_info in coco_data["images"]
+                        if image_info["id"] in test_ids
+                    ]
+                    self.test_file_paths.extend(test_file_paths)
 
     def train_dataloader(self) -> DataLoader:
         """
@@ -213,13 +208,14 @@ class CustomDataModule(pl.LightningDataModule):
         DataLoader
             DataLoader for the training set.
         """
-        file_paths = self.get_file_paths(self.train_ids)
+
         train_dataset = CustomFasterRCNNDataset(
-            self.main_dir,
-            file_paths,
-            self.annotation,
+            self.train_file_paths,
+            self.annotations,
             transforms=get_train_transform(self.config),
         )
+        print(len(train_dataset))
+
         return DataLoader(
             train_dataset,
             batch_size=self.config["batch_size"],
@@ -238,11 +234,9 @@ class CustomDataModule(pl.LightningDataModule):
         DataLoader
             DataLoader for the evaluation set.
         """
-        file_paths = self.get_file_paths(self.test_ids)
         test_dataset = CustomFasterRCNNDataset(
-            self.main_dir,
-            file_paths,
-            self.annotation,
+            self.test_file_paths,
+            self.annotations,
             transforms=get_test_transform(),
         )
         return DataLoader(

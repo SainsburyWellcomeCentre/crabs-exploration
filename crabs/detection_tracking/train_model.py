@@ -9,7 +9,7 @@ from crabs.detection_tracking.detection_utils import save_model
 from crabs.detection_tracking.models import FasterRCNN
 
 
-class Dectector_Train:
+class DectectorTrain:
     """Training class for detector algorithm
 
     Parameters
@@ -21,19 +21,20 @@ class Dectector_Train:
     ----------
     config_file : str
         Path to the directory containing configuration file.
-    main_dir : str
-        Path to the main directory of the dataset.
+    main_dirs : List[str]
+        List of paths to the main directories of the datasets.
+    annotation_files : List[str]
+        List of filenames for the COCO annotations.
     model_name : str
         The model use to train the detector.
     """
 
     def __init__(self, args):
         self.config_file = args.config_file
-        self.main_dir = args.main_dir
-        self.annotation_file = args.annotation_file
+        self.main_dirs = args.main_dir
+        self.annotation_files = args.annotation_file
         self.accelerator = args.accelerator
         self.seed_n = args.seed_n
-        self.annotation = f"{self.main_dir}/annotations/{self.annotation_file}"
         self.load_config_yaml()
 
     def load_config_yaml(self):
@@ -41,8 +42,14 @@ class Dectector_Train:
             self.config = yaml.safe_load(f)
 
     def train_model(self):
+        annotations = []
+        for main_dir, annotation_file in zip(
+            self.main_dirs, self.annotation_files
+        ):
+            annotations.append(f"{main_dir}/annotations/{annotation_file}")
+
         data_module = CustomDataModule(
-            self.main_dir, self.annotation, self.config, self.seed_n
+            self.main_dirs, annotations, self.config, self.seed_n
         )
 
         lightning_model = FasterRCNN(self.config)
@@ -74,7 +81,7 @@ def main(args) -> None:
     ----------
     None
     """
-    trainer = Dectector_Train(args)
+    trainer = DectectorTrain(args)
     trainer.train_model()
 
 
@@ -88,15 +95,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--main_dir",
-        type=str,
+        nargs="+",
         required=True,
-        help="location of images and coco annotation",
+        help="list of locations of images and coco annotations",
     )
     parser.add_argument(
         "--annotation_file",
-        type=str,
+        nargs="+",
         required=True,
-        help="filename for coco annotation",
+        help="list of filenames for coco annotations",
     )
     parser.add_argument(
         "--accelerator",

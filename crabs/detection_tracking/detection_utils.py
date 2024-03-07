@@ -53,7 +53,7 @@ def save_model(model: torch.nn.Module):
 
 
 def draw_bbox(
-    image_with_boxes,
+    frame,
     top_pt,
     left_pt,
     bottom_pt,
@@ -87,23 +87,26 @@ def draw_bbox(
     ----------
     None
     """
-
+    # Draw bounding box
     cv2.rectangle(
-        image_with_boxes,
+        frame,
         (top_pt, left_pt),
         (bottom_pt, right_pt),
         colour,
         thickness=2,
     )
+
+    # Add label text if provided
     if label_text:
         cv2.putText(
-            image_with_boxes,
+            frame,
             label_text,
             (top_pt, left_pt),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             colour,
-            thickness=2,
+            1,
+            cv2.LINE_AA,
         )
 
 
@@ -186,5 +189,102 @@ def draw_detection(
                         (0, 0, 255),
                         label_text,
                     )
-
     return image_with_boxes
+
+
+def calculate_iou(box1, box2) -> float:
+    """
+    Calculate IoU (Intersection over Union) of two bounding boxes.
+
+    Parameters:
+    box1 (list): Coordinates [x1, y1, x2, y2] of the first bounding box.
+    box2 (list): Coordinates [x1, y1, x2, y2] of the second bounding box.
+
+    Returns:
+    float: IoU value.
+    """
+    x1_box1, y1_box1, x2_box1, y2_box1 = box1
+    x1_box2, y1_box2, x2_box2, y2_box2 = box2
+
+    # Calculate intersection coordinates
+    x1_intersect = max(x1_box1, x1_box2)
+    y1_intersect = max(y1_box1, y1_box2)
+    x2_intersect = min(x2_box1, x2_box2)
+    y2_intersect = min(y2_box1, y2_box2)
+
+    # Calculate area of intersection rectangle
+    intersect_width = max(0, x2_intersect - x1_intersect + 1)
+    intersect_height = max(0, y2_intersect - y1_intersect + 1)
+    intersect_area = intersect_width * intersect_height
+
+    # Calculate area of individual bounding boxes
+    box1_area = (x2_box1 - x1_box1 + 1) * (y2_box1 - y1_box1 + 1)
+    box2_area = (x2_box2 - x1_box2 + 1) * (y2_box2 - y1_box2 + 1)
+
+    iou = intersect_area / float(box1_area + box2_area - intersect_area)
+
+    return iou
+
+
+def draw_gt_boxes(
+    ground_truths: dict,
+    frame_number: int,
+    tracked_boxes: np.ndarray,
+    iou_threshold: float,
+    frame_copy: np.ndarray,
+) -> None:
+    """
+    Plot ground truth bounding boxes.
+
+    Parameters
+    ----------
+    ground_truths : dict
+        A dictionary mapping object IDs to their corresponding ground truth annotations.
+    frame_number : int
+        The frame number to track.
+    tracked_boxes : np.ndarray
+        An array containing sorted bounding boxes of detected objects.
+    iou_threshold : float
+        The intersection over union threshold for considering a match.
+    frame_copy : np.ndarray
+        A copy of the input frame for drawing bounding boxes.
+    """
+
+    for object_id, gt_data in ground_truths.items():
+        gt_annotations = gt_data.get("annotations", [])
+        for gt_box in gt_annotations:
+            if gt_box["image_id"] == frame_number:
+                x_gt, y_gt, width_gt, height_gt = gt_box["bbox"]
+                x2_gt, y2_gt = x_gt + width_gt, y_gt + height_gt
+                x_gt, y_gt, x2_gt, y2_gt = (
+                    int(x_gt),
+                    int(y_gt),
+                    int(x2_gt),
+                    int(y2_gt),
+                )
+
+                for bbox in tracked_boxes:
+                    x1_track, y1_track, x2_track, y2_track, _ = bbox
+                    iou = calculate_iou(
+                        [x_gt, y_gt, x2_gt, y2_gt],
+                        [x1_track, y1_track, x2_track, y2_track],
+                    )
+
+                    if iou > iou_threshold:
+                        cv2.rectangle(
+                            frame_copy,
+                            (x_gt, y_gt),
+                            (x2_gt, y2_gt),
+                            (0, 255, 0),
+                            2,
+                        )
+                        id_label = f"id : {object_id}"
+                        draw_bbox(
+                            frame_copy,
+                            int(x1_track),
+                            int(y1_track),
+                            int(x2_track),
+                            int(y2_track),
+                            (0, 0, 255),
+                            id_label,
+                        )

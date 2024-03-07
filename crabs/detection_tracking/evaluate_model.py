@@ -10,7 +10,7 @@ from crabs.detection_tracking.evaluate import (
 )
 
 
-class Detector_Evaluation:
+class DetectorEvaluation:
     """
     A class for evaluating an object detector using trained model.
 
@@ -58,16 +58,22 @@ class Detector_Evaluation:
         None
         """
         self._load_trained_model()
+
+        # set model in eval mode
         self.trained_model.eval()
+
+        # select device
         device = (
             torch.device("cuda")
             if torch.cuda.is_available()
             else torch.device("cpu")
         )
 
+        all_detections = []
+        all_targets = []
+        print(len(self.evaluate_dataloader))
+
         with torch.no_grad():
-            all_detections = []
-            all_targets = []
             for imgs, annotations in self.evaluate_dataloader:
                 imgs = list(img.to(device) for img in imgs)
                 targets = [
@@ -79,12 +85,13 @@ class Detector_Evaluation:
                 all_detections.extend(detections)
                 all_targets.extend(targets)
 
-            compute_confusion_matrix_elements(
-                all_targets,  # one elem per image
-                all_detections,
-                self.ious_threshold,
-            )
+        compute_confusion_matrix_elements(
+            all_targets,  # one elem per image
+            all_detections,
+            self.ious_threshold,
+        )
 
+        if self.args.save_frames:
             save_images_with_boxes(
                 self.evaluate_dataloader,
                 self.trained_model,
@@ -106,21 +113,25 @@ def main(args) -> None:
     -------
         None
     """
+    main_dirs = args.main_dir
 
-    main_dir = args.main_dir
-    annotation_file = args.annotation_file
-    annotation = f"{main_dir}/annotations/{annotation_file}"
+    # get annotations
+    annotation_files = args.annotation_file
+    annotations = []
+    for main_dir, annotation_file in zip(main_dirs, annotation_files):
+        annotations.append(f"{main_dir}/annotations/{annotation_file}")
 
+    # get config
     with open(args.config_file, "r") as f:
         config = yaml.safe_load(f)
 
-    data_module = data_module = CustomDataModule(
-        main_dir, annotation, config, args.seed_n
-    )
+    # get dataloader
+    data_module = CustomDataModule(main_dirs, annotations, config, args.seed_n)
     data_module.setup("test")
     data_loader = data_module.test_dataloader()
 
-    evaluator = Detector_Evaluation(args, data_loader)
+    # evaluator
+    evaluator = DetectorEvaluation(args, data_loader)
     evaluator.evaluate_model()
 
 
@@ -141,12 +152,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--main_dir",
         type=str,
+        nargs="+",
         required=True,
         help="main location of images and coco annotation",
     )
     parser.add_argument(
         "--annotation_file",
         type=str,
+        nargs="+",
         required=True,
         help="filename for coco annotation",
     )
@@ -173,6 +186,11 @@ if __name__ == "__main__":
         type=int,
         default=42,
         help="seed for random state",
+    )
+    parser.add_argument(
+        "--save_frames",
+        action="store_true",
+        help=("Save predicted frames with bbox."),
     )
 
     args = parser.parse_args()
