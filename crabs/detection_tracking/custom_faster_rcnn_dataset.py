@@ -83,6 +83,8 @@ class CustomFasterRCNNDataset(torch.utils.data.Dataset):
         file_name = os.path.basename(self.file_paths[index])
         img = Image.open(self.file_paths[index]).convert("RGB")
 
+        # create coco_annotation list to append the annotations associated
+        # with each image from the COCO-style annotation files.
         coco_annotations = []
         for annotation in self.annotations:
             img_id = [
@@ -96,6 +98,8 @@ class CustomFasterRCNNDataset(torch.utils.data.Dataset):
                 ann_ids = annotation.getAnnIds(imgIds=img_id[0])
                 coco_annotations.append(annotation.loadAnns(ann_ids))
 
+        # create combined_annotation list to store annotations converted to match the PyTorch format
+        # for compatibility with PyTorch-based object detection models.
         combined_annotations = []
         for annotations in coco_annotations:
             if annotations:

@@ -1,5 +1,4 @@
 import datetime
-import json
 import os
 
 import cv2
@@ -191,31 +190,6 @@ def draw_detection(
                         label_text,
                     )
     return image_with_boxes
-
-
-def load_ground_truth(ground_truth_paths: str) -> dict:
-    """
-    Load ground truth annotations from JSON files.
-
-    Parameters
-    ----------
-    ground_truth_paths : str
-        The directory containing the ground truth JSON files.
-
-    Returns
-    -------
-    dict
-        A dictionary mapping object IDs to their corresponding ground truth annotations.
-    """
-    ground_truths = {}
-    for filename in os.listdir(ground_truth_paths):
-        if filename.endswith(".json"):
-            object_id = filename.split("_")[-1].split(".")[
-                0
-            ]  # Extract object ID from filename
-            with open(os.path.join(ground_truth_paths, filename), "r") as f:
-                ground_truths[object_id] = json.load(f)
-    return ground_truths
 
 
 def calculate_iou(box1, box2) -> float:
