@@ -4,7 +4,7 @@ import json
 import logging
 import os
 from pathlib import Path
-import pandas as pd
+
 import cv2
 import numpy as np
 import torch
@@ -18,29 +18,33 @@ from crabs.detection_tracking.detection_utils import draw_bbox
 def apply_nms(prediction, threshold=0.1):
     """
     Apply Non-Maximum Suppression (NMS) to a single prediction dictionary.
-    
+
     Args:
         prediction: Dictionary containing 'boxes', 'labels', and 'scores' tensors.
         threshold: IoU threshold for NMS.
-        
+
     Returns:
         Dictionary containing filtered bounding boxes, labels, and scores after NMS.
     """
-    boxes = [pred['boxes'] for pred in prediction]
-    scores = [pred['scores'] for pred in prediction]
+    boxes = [pred["boxes"] for pred in prediction]
+    scores = [pred["scores"] for pred in prediction]
 
     # Apply NMS
     nms_threshold = 0.2  # You can adjust this threshold as needed
     keep_indices = torchvision.ops.nms(boxes[0], scores[0], nms_threshold)
 
     # Select only the boxes, labels, and scores that survived NMS
-    filtered_boxes = prediction[0]['boxes'][keep_indices]
-    filtered_labels = prediction[0]['labels'][keep_indices]
-    filtered_scores = prediction[0]['scores'][keep_indices]
+    filtered_boxes = prediction[0]["boxes"][keep_indices]
+    filtered_labels = prediction[0]["labels"][keep_indices]
+    filtered_scores = prediction[0]["scores"][keep_indices]
 
-    filtered_prediction = [{'boxes': filtered_boxes,
-                            'labels': filtered_labels,
-                            'scores': filtered_scores}]
+    filtered_prediction = [
+        {
+            "boxes": filtered_boxes,
+            "labels": filtered_labels,
+            "scores": filtered_scores,
+        }
+    ]
 
     return filtered_prediction
 
@@ -269,7 +273,6 @@ class DetectorInference:
                     }
                 )
         return ground_truth_data
-    
 
     def run_inference(self):
         """
@@ -286,9 +289,6 @@ class DetectorInference:
             csv_writer, csv_file = self.prep_csv_writer()
 
         if self.args.gt_dir:
-            from crabs.detection_tracking.detection_utils import (
-                draw_gt_tracking,
-            )
             # from trackeval.metrics import HOTA
 
             ground_truth_data = self.get_ground_truth_data()
@@ -316,11 +316,11 @@ class DetectorInference:
             prediction = self.trained_model(img)
             # print(prediction)
 
-            # perform Non-Maximum Suppression (NMS)
-            nms_prediction = apply_nms(prediction)
+            # # perform Non-Maximum Suppression (NMS)
+            # nms_prediction = apply_nms(prediction)
 
             # run tracking
-            pred_sort = self.prep_sort(nms_prediction)
+            pred_sort = self.prep_sort(prediction)
             tracked_boxes = self.sort_tracker.update(pred_sort)
 
             if self.args.gt_dir:
@@ -412,7 +412,6 @@ class DetectorInference:
         # cv2.destroyAllWindows()
 
 
-
 def main(args) -> None:
     """
     Main function to run the inference on video based on the trained model.
@@ -472,13 +471,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_age",
         type=int,
-        default=5,
+        default=10,
         help="Maximum number of frames to keep alive a track without associated detections.",
     )
     parser.add_argument(
         "--min_hits",
         type=int,
-        default=3,
+        default=1,
         help="Minimum number of associated detections before track is initialised.",
     )
     parser.add_argument(
