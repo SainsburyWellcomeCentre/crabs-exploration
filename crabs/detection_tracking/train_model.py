@@ -54,7 +54,7 @@ class DectectorTrain:
         )
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        run_name = f"experiment_{timestamp}"
+        run_name = f"run_{timestamp}"
 
         mlf_logger = pl.pytorch.loggers.MLFlowLogger(
             run_name=run_name,
