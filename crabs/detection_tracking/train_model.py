@@ -124,7 +124,7 @@ if __name__ == "__main__":
         "--experiment_name",
         type=str,
         default="Sept2023",
-        help="the run name for mlflow for example the dataset used for the run",
+        help="the name for the experiment in MLflow, under which the current run will be logged. For example, the name of the dataset could be used, to group runs using the same data.",
     )
     parser.add_argument(
         "--seed_n",
