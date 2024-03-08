@@ -105,7 +105,7 @@ def draw_bbox(
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             colour,
-            1,
+            2,
             cv2.LINE_AA,
         )
 

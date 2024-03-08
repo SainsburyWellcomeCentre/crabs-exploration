@@ -4,14 +4,45 @@ import json
 import logging
 import os
 from pathlib import Path
-
+import pandas as pd
 import cv2
 import numpy as np
 import torch
+import torchvision
 import torchvision.transforms as transforms
 from sort import Sort
 
 from crabs.detection_tracking.detection_utils import draw_bbox
+
+
+def apply_nms(prediction, threshold=0.1):
+    """
+    Apply Non-Maximum Suppression (NMS) to a single prediction dictionary.
+    
+    Args:
+        prediction: Dictionary containing 'boxes', 'labels', and 'scores' tensors.
+        threshold: IoU threshold for NMS.
+        
+    Returns:
+        Dictionary containing filtered bounding boxes, labels, and scores after NMS.
+    """
+    boxes = [pred['boxes'] for pred in prediction]
+    scores = [pred['scores'] for pred in prediction]
+
+    # Apply NMS
+    nms_threshold = 0.2  # You can adjust this threshold as needed
+    keep_indices = torchvision.ops.nms(boxes[0], scores[0], nms_threshold)
+
+    # Select only the boxes, labels, and scores that survived NMS
+    filtered_boxes = prediction[0]['boxes'][keep_indices]
+    filtered_labels = prediction[0]['labels'][keep_indices]
+    filtered_scores = prediction[0]['scores'][keep_indices]
+
+    filtered_prediction = [{'boxes': filtered_boxes,
+                            'labels': filtered_labels,
+                            'scores': filtered_scores}]
+
+    return filtered_prediction
 
 
 class DetectorInference:
@@ -238,6 +269,7 @@ class DetectorInference:
                     }
                 )
         return ground_truth_data
+    
 
     def run_inference(self):
         """
@@ -248,7 +280,6 @@ class DetectorInference:
 
         # initialise frame counter
         frame_number = 1
-        print(self.args.save_video)
 
         # initialise csv writer if required
         if self.args.save_csv_and_frames:
@@ -258,8 +289,13 @@ class DetectorInference:
             from crabs.detection_tracking.detection_utils import (
                 draw_gt_tracking,
             )
+            # from trackeval.metrics import HOTA
 
             ground_truth_data = self.get_ground_truth_data()
+            # # Define the HOTA metric
+            # hota_metric = HOTA()
+
+            # all_sequence_results = []
 
         # loop thru frames of clip
         while self.video.isOpened():
@@ -278,9 +314,13 @@ class DetectorInference:
             img = transform(frame).to(self.args.accelerator)
             img = img.unsqueeze(0)
             prediction = self.trained_model(img)
+            # print(prediction)
+
+            # perform Non-Maximum Suppression (NMS)
+            nms_prediction = apply_nms(prediction)
 
             # run tracking
-            pred_sort = self.prep_sort(prediction)
+            pred_sort = self.prep_sort(nms_prediction)
             tracked_boxes = self.sort_tracker.update(pred_sort)
 
             if self.args.gt_dir:
@@ -297,18 +337,32 @@ class DetectorInference:
                             )
                         )
                 gt_boxes = np.asarray(gt_boxes)
-                frame_copy = frame.copy()
-                frame_copy = draw_gt_tracking(
-                    gt_boxes,
-                    tracked_boxes,
-                    frame_number,
-                    self.iou_threshold,
-                    frame_copy,
-                )
-                self.out.write(frame_copy)
-                cv2.imshow("frame", frame_copy)
-                if cv2.waitKey(30) & 0xFF == 27:
-                    break
+
+                # # Evaluate HOTA metric for the current frame
+                # # sequence_data = (tracked_boxes, gt_boxes)
+                # sequence_data = {
+                #     'num_tracker_ids': len(np.unique(tracked_boxes[:, -1])),
+                #     'num_gt_ids': len(np.unique(gt_boxes[:, -1])),
+                #     'tracker_ids': np.array(tracked_boxes[:, -1], dtype=np.float64),  # Convert to numpy array and set data type
+                #     'gt_ids': np.array(gt_boxes[:, -1], dtype=np.float64),  # Convert to numpy array and set data type
+                #     'similarity_scores': np.random.rand(len(gt_boxes), len(tracked_boxes)).astype(np.float64),  # Placeholder for similarity scores with explicit data type
+                # }
+                # print(sequence_data)
+                # sequence_results = hota_metric.eval_sequence(sequence_data)
+                # all_sequence_results.append(sequence_results)
+
+                # # frame_copy = frame.copy()
+                # # frame_copy = draw_gt_tracking(
+                # #     gt_boxes,
+                # #     tracked_boxes,
+                # #     frame_number,
+                # #     self.iou_threshold,
+                # #     frame_copy,
+                # # )
+                # # self.out.write(frame_copy)
+                # # cv2.imshow("frame", frame_copy)
+                # # if cv2.waitKey(30) & 0xFF == 27:
+                # #     break
 
             if self.args.save_csv_and_frames:
                 if self.args.save_video:
@@ -342,7 +396,11 @@ class DetectorInference:
             # update frame
             frame_number += 1
 
-        # Close input video
+        # if self.args.gt_dir:
+        #     # Combine results across all sequences
+        #     combined_results = hota_metric.combine_sequences(all_sequence_results)
+        #     print(combined_results)
+        # # Close input video
         self.video.release()
 
         # Close outputs
@@ -351,7 +409,8 @@ class DetectorInference:
 
         if args.save_csv_and_frames:
             csv_file.close()
-        cv2.destroyAllWindows()
+        # cv2.destroyAllWindows()
+
 
 
 def main(args) -> None:
@@ -413,7 +472,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_age",
         type=int,
-        default=1,
+        default=5,
         help="Maximum number of frames to keep alive a track without associated detections.",
     )
     parser.add_argument(
