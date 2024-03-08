@@ -1,5 +1,6 @@
 import argparse
 import csv
+import json
 import logging
 import os
 from pathlib import Path
@@ -102,9 +103,9 @@ class DetectorInference:
         cap_fps = self.video.get(cv2.CAP_PROP_FPS)
 
         # prepare output video writer if required
-        if self.args.save_video:
+        if self.args.save_video or self.args.gt_dir:
             output_file = f"{self.video_file_root}output_video.mp4"
-            output_codec = cv2.VideoWriter_fourcc(*"mp4v")
+            output_codec = cv2.VideoWriter_fourcc(*"H264")
             self.out = cv2.VideoWriter(
                 output_file, output_codec, cap_fps, (frame_width, frame_height)
             )
@@ -161,6 +162,44 @@ class DetectorInference:
             )
         )
 
+    def get_ground_truth_data(self):
+        # Initialize a list to store the extracted data
+        ground_truth_data = []
+
+        # Open the CSV file and read its contents line by line
+        with open(self.args.gt_dir, "r") as csvfile:
+            csvreader = csv.reader(csvfile)
+            next(csvreader)  # Skip the header row
+            for row in csvreader:
+                # Extract relevant information from each row
+                filename = row[0]
+                region_shape_attributes = json.loads(row[5])
+                region_attributes = json.loads(row[6])
+
+                # Extract bounding box coordinates and object ID
+                x = region_shape_attributes["x"]
+                y = region_shape_attributes["y"]
+                width = region_shape_attributes["width"]
+                height = region_shape_attributes["height"]
+                track_id = region_attributes["track"]
+
+                # Compute the frame number from the filename
+                frame_number = int(filename.split("_")[-1].split(".")[0])
+
+                # Append the extracted data to the list
+                ground_truth_data.append(
+                    {
+                        "filename": filename,
+                        "frame_number": frame_number,
+                        "x": x,
+                        "y": y,
+                        "width": width,
+                        "height": height,
+                        "id": track_id,
+                    }
+                )
+        return ground_truth_data
+
     def run_inference(self):
         """
         Run object detection + tracking on the video frames.
@@ -170,16 +209,24 @@ class DetectorInference:
 
         # initialise frame counter
         frame_number = 1
+        print(self.args.save_video)
 
         # initialise csv writer if required
         if self.args.save_csv_and_frames:
             csv_writer, csv_file = self.prep_csv_writer()
 
+        if self.args.gt_dir:
+            from crabs.detection_tracking.detection_utils import (
+                draw_gt_tracking,
+            )
+
+            ground_truth_data = self.get_ground_truth_data()
+
         # loop thru frames of clip
         while self.video.isOpened():
             # break if beyond end frame (mostly for debugging)
             if self.args.max_frames_to_read:
-                if frame_number > self.arg.max_frames_to_read:
+                if frame_number > self.args.max_frames_to_read:
                     break
 
             # read frame
@@ -196,6 +243,33 @@ class DetectorInference:
             # run tracking
             pred_sort = self.prep_sort(prediction)
             tracked_boxes = self.sort_tracker.update(pred_sort)
+
+            if self.args.gt_dir:
+                gt_boxes = []
+                for gt_data in ground_truth_data:
+                    if gt_data["frame_number"] == frame_number:
+                        gt_boxes.append(
+                            (
+                                gt_data["x"],
+                                gt_data["y"],
+                                gt_data["x"] + gt_data["width"],
+                                gt_data["y"] + gt_data["height"],
+                                gt_data["id"],
+                            )
+                        )
+                gt_boxes = np.asarray(gt_boxes)
+                frame_copy = frame.copy()
+                frame_copy = draw_gt_tracking(
+                    gt_boxes,
+                    tracked_boxes,
+                    frame_number,
+                    self.iou_threshold,
+                    frame_copy,
+                )
+                self.out.write(frame_copy)
+                cv2.imshow("frame", frame_copy)
+                if cv2.waitKey(30) & 0xFF == 27:
+                    break
 
             # save tracking output (for manual labelling) if required
             if self.args.save_csv_and_frames:
@@ -223,26 +297,23 @@ class DetectorInference:
                         )
                         break
 
-                    # add each annotation to output video frame if required
-                    if self.args.save_video:
-                        frame_copy = frame.copy()
-
-                        # parse bbox
-                        xmin, ymin, xmax, ymax, id = bbox
-
-                        # plot
-                        draw_bbox(
-                            frame_copy,
-                            int(xmin),
-                            int(ymin),
-                            int(xmax),
-                            int(ymax),
-                            (0, 0, 255),
-                            f"id : {int(id)}",
-                        )
-
-            # add frame with all annotations to output video if required
+            # add each annotation to output video frame if required
             if self.args.save_video:
+                frame_copy = frame.copy()
+                for bbox in tracked_boxes:
+                    xmin, ymin, xmax, ymax, id = bbox
+
+                    # plot
+                    draw_bbox(
+                        frame_copy,
+                        int(xmin),
+                        int(ymin),
+                        int(xmax),
+                        int(ymax),
+                        (0, 0, 255),
+                        f"id : {int(id)}",
+                    )
+
                 self.out.write(frame_copy)
 
             # update frame
@@ -252,10 +323,12 @@ class DetectorInference:
         self.video.release()
 
         # Close outputs
-        if self.args.save_video:
+        if self.args.save_video or self.args.gt_dir:
             self.out.release()
+
         if args.save_csv_and_frames:
             csv_file.close()
+        cv2.destroyAllWindows()
 
 
 def main(args) -> None:
@@ -345,6 +418,12 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="Maximum number of frames to read (mostly for debugging).",
+    )
+    parser.add_argument(
+        "--gt_dir",
+        type=str,
+        default=None,
+        help="Directory contains ground truth annotations.",
     )
     args = parser.parse_args()
     main(args)

@@ -1,4 +1,5 @@
 import argparse
+import datetime
 
 import lightning as pl
 import torch
@@ -52,11 +53,19 @@ class DectectorTrain:
             self.main_dirs, annotations, self.config, self.seed_n
         )
 
-        lightning_model = FasterRCNN(self.config)
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        run_name = f"experiment_{timestamp}"
 
         mlf_logger = pl.pytorch.loggers.MLFlowLogger(
-            experiment_name="lightning_logs", tracking_uri="file:./ml-runs"
+            run_name=run_name,
+            experiment_name=args.experiment_name,
+            tracking_uri="file:./ml-runs",
         )
+
+        mlf_logger.log_hyperparams(self.config)
+
+        lightning_model = FasterRCNN(self.config)
+
         trainer = pl.Trainer(
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
@@ -110,6 +119,12 @@ if __name__ == "__main__":
         type=str,
         default="gpu",
         help="accelerator for pytorch lightning",
+    )
+    parser.add_argument(
+        "--experiment_name",
+        type=str,
+        default="Sept2023",
+        help="the run name for mlflow for example the dataset used for the run",
     )
     parser.add_argument(
         "--seed_n",

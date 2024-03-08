@@ -226,65 +226,63 @@ def calculate_iou(box1, box2) -> float:
     return iou
 
 
-def draw_gt_boxes(
-    ground_truths: dict,
-    frame_number: int,
+def draw_gt_tracking(
+    gt_boxes: np.ndarray,
     tracked_boxes: np.ndarray,
+    frame_number: int,
     iou_threshold: float,
     frame_copy: np.ndarray,
 ) -> None:
     """
-    Plot ground truth bounding boxes.
+    Track ground truth objects in the frame and draw bounding boxes.
 
     Parameters
     ----------
-    ground_truths : dict
-        A dictionary mapping object IDs to their corresponding ground truth annotations.
-    frame_number : int
-        The frame number to track.
+    gt_boxes : np.ndarray
+        An array containing ground truth bounding boxes of objects for the current frame.
     tracked_boxes : np.ndarray
         An array containing sorted bounding boxes of detected objects.
+    frame_number : int
+        The frame number to track.
     iou_threshold : float
         The intersection over union threshold for considering a match.
     frame_copy : np.ndarray
         A copy of the input frame for drawing bounding boxes.
     """
 
-    for object_id, gt_data in ground_truths.items():
-        gt_annotations = gt_data.get("annotations", [])
-        for gt_box in gt_annotations:
-            if gt_box["image_id"] == frame_number:
-                x_gt, y_gt, width_gt, height_gt = gt_box["bbox"]
-                x2_gt, y2_gt = x_gt + width_gt, y_gt + height_gt
-                x_gt, y_gt, x2_gt, y2_gt = (
-                    int(x_gt),
-                    int(y_gt),
-                    int(x2_gt),
-                    int(y2_gt),
+    for gt_box in gt_boxes:
+        x_gt, y_gt, x2_gt, y2_gt, gt_id = gt_box
+
+        for tracked_box in tracked_boxes:
+            x1_track, y1_track, x2_track, y2_track, track_id = tracked_box
+            iou = calculate_iou(
+                [x_gt, y_gt, x2_gt, y2_gt],
+                [x1_track, y1_track, x2_track, y2_track],
+            )
+            x_gt, y_gt, x2_gt, y2_gt = map(int, [x_gt, y_gt, x2_gt, y2_gt])
+            x1_track, y1_track, x2_track, y2_track = map(
+                int, [x1_track, y1_track, x2_track, y2_track]
+            )
+
+            if iou > iou_threshold:
+                draw_bbox(
+                    frame_copy,
+                    x_gt,
+                    y_gt,
+                    x2_gt,
+                    y2_gt,
+                    (0, 255, 0),
+                    f"gt id : {int(gt_id)}",
                 )
 
-                for bbox in tracked_boxes:
-                    x1_track, y1_track, x2_track, y2_track, _ = bbox
-                    iou = calculate_iou(
-                        [x_gt, y_gt, x2_gt, y2_gt],
-                        [x1_track, y1_track, x2_track, y2_track],
-                    )
+                draw_bbox(
+                    frame_copy,
+                    x1_track,
+                    y1_track,
+                    x2_track,
+                    y2_track,
+                    (0, 0, 255),
+                    f"track id : {int(track_id)}",
+                )
 
-                    if iou > iou_threshold:
-                        cv2.rectangle(
-                            frame_copy,
-                            (x_gt, y_gt),
-                            (x2_gt, y2_gt),
-                            (0, 255, 0),
-                            2,
-                        )
-                        id_label = f"id : {object_id}"
-                        draw_bbox(
-                            frame_copy,
-                            int(x1_track),
-                            int(y1_track),
-                            int(x2_track),
-                            int(y2_track),
-                            (0, 0, 255),
-                            id_label,
-                        )
+    return frame_copy
