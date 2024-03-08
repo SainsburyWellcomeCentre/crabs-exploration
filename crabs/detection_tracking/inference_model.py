@@ -162,6 +162,45 @@ class DetectorInference:
             )
         )
 
+    # Common functionality for saving frames and CSV
+    def save_frame_and_csv(
+        self, tracked_boxes, frame, frame_number, csv_writer, save_plot=True
+    ):
+        frame_copy = frame.copy()
+
+        for bbox in tracked_boxes:
+            # Get frame name
+            frame_name = f"{self.video_file_root}frame_{frame_number:08d}.png"
+
+            # Add bbox to csv
+            self.write_bbox_to_csv(bbox, frame, frame_name, csv_writer)
+
+            # Save frame as PNG
+            frame_path = self.tracking_output_dir / frame_name
+            img_saved = cv2.imwrite(str(frame_path), frame)
+            if img_saved:
+                logging.info(f"Frame {frame_number} saved at {frame_path}")
+            else:
+                logging.info(
+                    f"ERROR saving {frame_name}, frame {frame_number}...skipping"
+                )
+                break
+
+            if save_plot:
+                # Plot
+                xmin, ymin, xmax, ymax, id = bbox
+                draw_bbox(
+                    frame_copy,
+                    int(xmin),
+                    int(ymin),
+                    int(xmax),
+                    int(ymax),
+                    (0, 0, 255),
+                    f"id : {int(id)}",
+                )
+
+        return frame_copy
+
     def get_ground_truth_data(self):
         # Initialize a list to store the extracted data
         ground_truth_data = []
@@ -271,39 +310,24 @@ class DetectorInference:
                 if cv2.waitKey(30) & 0xFF == 27:
                     break
 
-            # save tracking output (for manual labelling) if required
             if self.args.save_csv_and_frames:
-                # loop thru tracked bounding boxes per frame
-                for bbox in tracked_boxes:
-                    # get frame name
-                    frame_name = (
-                        f"{self.video_file_root}frame_{frame_number:08d}.png"
+                if self.args.save_video:
+                    frame_copy = self.save_frame_and_csv(
+                        tracked_boxes, frame, frame_number, csv_writer
                     )
-
-                    # add bbox to csv
-                    self.write_bbox_to_csv(bbox, frame, frame_name, csv_writer)
-
-                    # save frame as png
-                    frame_path = self.tracking_output_dir / frame_name
-                    img_saved = cv2.imwrite(str(frame_path), frame)
-                    if img_saved:
-                        logging.info(
-                            f"frame {frame_number} saved at {frame_path}"
-                        )
-                    else:
-                        logging.info(
-                            f"ERROR saving {frame_name}, frame {frame_number}"
-                            "...skipping",
-                        )
-                        break
-
-            # add each annotation to output video frame if required
-            if self.args.save_video:
+                    self.out.write(frame_copy)
+                else:
+                    self.save_frame_and_csv(
+                        tracked_boxes,
+                        frame,
+                        frame_number,
+                        csv_writer,
+                        save_plot=False,
+                    )
+            elif self.args.save_video:
                 frame_copy = frame.copy()
                 for bbox in tracked_boxes:
                     xmin, ymin, xmax, ymax, id = bbox
-
-                    # plot
                     draw_bbox(
                         frame_copy,
                         int(xmin),
@@ -313,7 +337,6 @@ class DetectorInference:
                         (0, 0, 255),
                         f"id : {int(id)}",
                     )
-
                 self.out.write(frame_copy)
 
             # update frame
