@@ -203,6 +203,8 @@ def calculate_iou(box1, box2) -> float:
     Returns:
     float: IoU value.
     """
+    # print(box1)
+    # print(box2)
     x1_box1, y1_box1, x2_box1, y2_box1 = box1
     x1_box2, y1_box2, x2_box2, y2_box2 = box2
 

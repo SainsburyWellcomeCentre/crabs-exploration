@@ -8,45 +8,83 @@ from pathlib import Path
 import cv2
 import numpy as np
 import torch
-import torchvision
 import torchvision.transforms as transforms
 from sort import Sort
 
-from crabs.detection_tracking.detection_utils import draw_bbox
+from crabs.detection_tracking.detection_utils import calculate_iou, draw_bbox
 
 
-def apply_nms(prediction, threshold=0.1):
+def evaluate_tracking(gt_boxes_list, tracked_boxes_list, iou_threshold):
+    mota_values = []
+    for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
+        mota = evaluate_mota(gt_boxes, tracked_boxes, iou_threshold)
+        mota_values.append(mota)
+    return mota_values
+
+
+def evaluate_mota(gt_boxes, tracked_boxes, iou_threshold):
+    total_gt = len(gt_boxes)
+    false_alarms = 0
+
+    # List to store indices of tracked boxes to remove
+    indices_to_remove = []
+
+    for i, tracked_box in enumerate(tracked_boxes):
+        best_iou = 0
+        best_match = None
+
+        for j, gt_box in enumerate(gt_boxes):
+            iou = calculate_iou(gt_box[:4], tracked_box[:4])
+            if iou > iou_threshold and iou > best_iou:
+                best_iou = iou
+                best_match = j
+        if best_match is not None:
+            gt_boxes[best_match] = None
+            indices_to_remove.append(i)
+        else:
+            false_alarms += 1
+
+    # Remove tracked boxes marked for removal
+    tracked_boxes = np.delete(tracked_boxes, indices_to_remove, axis=0)
+
+    missed_detections = 0
+    for box in gt_boxes:
+        if box is not None and not np.all(np.isnan(box)):
+            missed_detections += 1
+
+    num_switches = count_identity_switches(gt_boxes, tracked_boxes)
+    mota = 1 - (missed_detections + false_alarms + num_switches) / total_gt
+    return mota
+
+
+def count_identity_switches(ids_prev_frame, ids_current_frame):
     """
-    Apply Non-Maximum Suppression (NMS) to a single prediction dictionary.
-
-    Args:
-        prediction: Dictionary containing 'boxes', 'labels', and 'scores' tensors.
-        threshold: IoU threshold for NMS.
-
-    Returns:
-        Dictionary containing filtered bounding boxes, labels, and scores after NMS.
+    Count the number of identity switches between two sets of object IDs.
     """
-    boxes = [pred["boxes"] for pred in prediction]
-    scores = [pred["scores"] for pred in prediction]
+    # Convert NumPy arrays to tuples
+    ids_prev_frame_tuples = [tuple(box) for box in ids_prev_frame]
+    ids_current_frame_tuples = [tuple(box) for box in ids_current_frame]
 
-    # Apply NMS
-    nms_threshold = 0.2  # You can adjust this threshold as needed
-    keep_indices = torchvision.ops.nms(boxes[0], scores[0], nms_threshold)
+    # Create dictionaries to track object IDs in each frame
+    id_to_index_prev = {id_: i for i, id_ in enumerate(ids_prev_frame_tuples)}
+    id_to_index_current = {
+        id_: i for i, id_ in enumerate(ids_current_frame_tuples)
+    }
 
-    # Select only the boxes, labels, and scores that survived NMS
-    filtered_boxes = prediction[0]["boxes"][keep_indices]
-    filtered_labels = prediction[0]["labels"][keep_indices]
-    filtered_scores = prediction[0]["scores"][keep_indices]
+    # Initialize count of identity switches
+    num_switches = 0
 
-    filtered_prediction = [
-        {
-            "boxes": filtered_boxes,
-            "labels": filtered_labels,
-            "scores": filtered_scores,
-        }
-    ]
+    # Loop through object IDs in the current frame
+    for id_current, index_current in id_to_index_current.items():
+        # Check if the object ID exists in the previous frame
+        if id_current in id_to_index_prev:
+            # Get the corresponding index in the previous frame
+            index_prev = id_to_index_prev[id_current]
+            # If the index is different, it indicates an identity switch
+            if index_current != index_prev:
+                num_switches += 1
 
-    return filtered_prediction
+    return num_switches
 
 
 class DetectorInference:
@@ -138,7 +176,7 @@ class DetectorInference:
         cap_fps = self.video.get(cv2.CAP_PROP_FPS)
 
         # prepare output video writer if required
-        if self.args.save_video or self.args.gt_dir:
+        if self.args.save_video:
             output_file = f"{self.video_file_root}output_video.mp4"
             output_codec = cv2.VideoWriter_fourcc(*"H264")
             self.out = cv2.VideoWriter(
@@ -239,6 +277,7 @@ class DetectorInference:
     def get_ground_truth_data(self):
         # Initialize a list to store the extracted data
         ground_truth_data = []
+        max_frame_number = 0
 
         # Open the CSV file and read its contents line by line
         with open(self.args.gt_dir, "r") as csvfile:
@@ -259,11 +298,14 @@ class DetectorInference:
 
                 # Compute the frame number from the filename
                 frame_number = int(filename.split("_")[-1].split(".")[0])
+                frame_number = frame_number - 1
+
+                # Update max_frame_number
+                max_frame_number = max(max_frame_number, frame_number)
 
                 # Append the extracted data to the list
                 ground_truth_data.append(
                     {
-                        "filename": filename,
                         "frame_number": frame_number,
                         "x": x,
                         "y": y,
@@ -272,7 +314,29 @@ class DetectorInference:
                         "id": track_id,
                     }
                 )
-        return ground_truth_data
+
+        # Initialize a list to store the ground truth bounding boxes for each frame
+        gt_boxes_list = [np.array([]) for _ in range(max_frame_number + 1)]
+
+        # Organize ground truth data into gt_boxes_list
+        for data in ground_truth_data:
+            frame_number = data["frame_number"]
+            bbox = np.array(
+                [
+                    data["x"],
+                    data["y"],
+                    data["x"] + data["width"],
+                    data["y"] + data["height"],
+                    data["id"],
+                ]
+            )
+            gt_boxes_list[frame_number] = (
+                np.vstack([gt_boxes_list[frame_number], bbox])
+                if gt_boxes_list[frame_number].size
+                else bbox
+            )
+
+        return gt_boxes_list
 
     def run_inference(self):
         """
@@ -289,13 +353,8 @@ class DetectorInference:
             csv_writer, csv_file = self.prep_csv_writer()
 
         if self.args.gt_dir:
-            # from trackeval.metrics import HOTA
-
-            ground_truth_data = self.get_ground_truth_data()
-            # # Define the HOTA metric
-            # hota_metric = HOTA()
-
-            # all_sequence_results = []
+            gt_boxes_list = self.get_ground_truth_data()
+            tracked_list = []
 
         # loop thru frames of clip
         while self.video.isOpened():
@@ -314,55 +373,12 @@ class DetectorInference:
             img = transform(frame).to(self.args.accelerator)
             img = img.unsqueeze(0)
             prediction = self.trained_model(img)
-            # print(prediction)
-
-            # # perform Non-Maximum Suppression (NMS)
-            # nms_prediction = apply_nms(prediction)
 
             # run tracking
             pred_sort = self.prep_sort(prediction)
             tracked_boxes = self.sort_tracker.update(pred_sort)
-
-            if self.args.gt_dir:
-                gt_boxes = []
-                for gt_data in ground_truth_data:
-                    if gt_data["frame_number"] == frame_number:
-                        gt_boxes.append(
-                            (
-                                gt_data["x"],
-                                gt_data["y"],
-                                gt_data["x"] + gt_data["width"],
-                                gt_data["y"] + gt_data["height"],
-                                gt_data["id"],
-                            )
-                        )
-                gt_boxes = np.asarray(gt_boxes)
-
-                # # Evaluate HOTA metric for the current frame
-                # # sequence_data = (tracked_boxes, gt_boxes)
-                # sequence_data = {
-                #     'num_tracker_ids': len(np.unique(tracked_boxes[:, -1])),
-                #     'num_gt_ids': len(np.unique(gt_boxes[:, -1])),
-                #     'tracker_ids': np.array(tracked_boxes[:, -1], dtype=np.float64),  # Convert to numpy array and set data type
-                #     'gt_ids': np.array(gt_boxes[:, -1], dtype=np.float64),  # Convert to numpy array and set data type
-                #     'similarity_scores': np.random.rand(len(gt_boxes), len(tracked_boxes)).astype(np.float64),  # Placeholder for similarity scores with explicit data type
-                # }
-                # print(sequence_data)
-                # sequence_results = hota_metric.eval_sequence(sequence_data)
-                # all_sequence_results.append(sequence_results)
-
-                # # frame_copy = frame.copy()
-                # # frame_copy = draw_gt_tracking(
-                # #     gt_boxes,
-                # #     tracked_boxes,
-                # #     frame_number,
-                # #     self.iou_threshold,
-                # #     frame_copy,
-                # # )
-                # # self.out.write(frame_copy)
-                # # cv2.imshow("frame", frame_copy)
-                # # if cv2.waitKey(30) & 0xFF == 27:
-                # #     break
+            # print(tracked_boxes.shape)
+            tracked_list.append(tracked_boxes)
 
             if self.args.save_csv_and_frames:
                 if self.args.save_video:
@@ -396,15 +412,18 @@ class DetectorInference:
             # update frame
             frame_number += 1
 
-        # if self.args.gt_dir:
-        #     # Combine results across all sequences
-        #     combined_results = hota_metric.combine_sequences(all_sequence_results)
-        #     print(combined_results)
+        if self.args.gt_dir:
+            mota_values = evaluate_tracking(
+                gt_boxes_list, tracked_list, self.iou_threshold
+            )
+            overall_mota = np.mean(mota_values)
+            print("Overall MOTA:", overall_mota)
+
         # # Close input video
         self.video.release()
 
         # Close outputs
-        if self.args.save_video or self.args.gt_dir:
+        if self.args.save_video:
             self.out.release()
 
         if args.save_csv_and_frames:
