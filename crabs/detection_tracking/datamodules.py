@@ -1,11 +1,8 @@
 import lightning as L
 import torch
 from torch.utils.data import DataLoader, random_split
+from torchvision.datasets import CocoDetection, wrap_dataset_for_transforms_v2
 from torchvision.transforms import transforms
-
-from crabs.detection_tracking.custom_faster_rcnn_dataset import (
-    CustomFasterRCNNDataset,
-)
 
 
 class CrabsDataModule(L.LightningDataModule):
@@ -52,6 +49,46 @@ class CrabsDataModule(L.LightningDataModule):
 
         return tuple(zip(*batch))
 
+    def _compute_splits(self):
+        # Compute train/test/val splits
+        # - define split
+        # - make shuffles if required? -- via seed? log in mlflow?
+        # - exclude relevant files
+
+        # Optionally fix the generator for reproducible results
+        generator = None
+        if self.config["dataset_split_seed"]:
+            generator = torch.Generator().manual_seed(
+                self.config["dataset_split_seed"]
+            )
+
+        # Instantiate dataset
+        # exclude files here? or when creating the dataset?
+        full_dataset = CocoDetection(  # CustomFasterRCNNDataset(  # call COCO
+            self.data_dir,
+            self.annotations,
+            transforms=self.train_transform,
+            # exclude_files_w_regex------------------
+        )
+        full_dataset = wrap_dataset_for_transforms_v2(full_dataset)
+
+        # Split data into train/test-val
+        # can we specify what to have in train/test?
+        train_dataset, test_val_dataset = random_split(
+            full_dataset,
+            [self.config["train_fraction"], 1 - self.config["train_fraction"]],
+            generator=generator,
+        )
+
+        # Split test/val in equal parts?
+        # define val but not use for now?
+        test_dataset, val_dataset = random_split(
+            test_val_dataset,
+            [0.5, 0.5],  # can I pass zero here?
+        )
+
+        return train_dataset, test_dataset, val_dataset
+
     def prepare_data(self):
         # download, IO, etc. Useful with shared filesystems
         # only called on 1 GPU/TPU in distributed
@@ -77,38 +114,14 @@ class CrabsDataModule(L.LightningDataModule):
         # make assignments here (val/train/test split)
         # called on every process in DDP (?)
 
-        # transforms ---define in config?
+        # Assign transforms
         self.train_transform = self._get_train_transform()
         self.test_transform = self._get_test_val_transform()
         self.val_transform = self._get_test_val_transform()
 
-        # Compute train/test/val splits
-        # Optionally fix the generator for reproducible results
-        # - define split
-        # - make shuffles if required?
-        # - exclude relevant files
-        generator = None
-        if self.config["dataset_seed"]:
-            generator = torch.Generator().manual_seed(
-                self.config["dataset_seed"]
-            )
-
-        full_dataset = CustomFasterRCNNDataset(
-            self.data_dir, self.annotations, transforms=self.train_transform
-        )
-
-        train_dataset, test_val_dataset = random_split(
-            full_dataset,
-            [self.config["train_fraction"], 1 - self.config["train_fraction"]],
-            generator=generator,
-        )
-
-        test_dataset, val_dataset = random_split(
-            test_val_dataset,
-            [0.5, 0.5],
-        )  # define val but not use for now?
-
-        # Assign datasets for dataloader depending on stage -- omit predict for now
+        # Assign datasets for dataloader depending on stage
+        # -- omit predict for now
+        train_dataset, test_dataset, val_dataset = self._compute_splits()
         if stage == "fit":
             self.train_dataset = train_dataset
             self.val_dataset = val_dataset
@@ -118,11 +131,8 @@ class CrabsDataModule(L.LightningDataModule):
 
     def train_dataloader(self):
         # https://github.com/pytorch/vision/blob/423a1b0ebdea077cc69478812890845741048d2e/references/detection/train.py#L209
-        # return DataLoader(
-        #     self.train_set, batch_size=config["train_batch_size"]
-        # )
         return DataLoader(
-            self.train_set,
+            self.train_dataset,
             batch_size=self.config["train_batch_size"],
             shuffle=True,  # A sequential or shuffled sampler will be automatically constructed based on the shuffle argument
             num_workers=self.config["num_workers"],  # set to auto?
