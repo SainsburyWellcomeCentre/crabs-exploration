@@ -151,7 +151,7 @@ class CrabsDataModule(L.LightningDataModule):
             # if they persist, workers stay with their state
         )
 
-    def val_dataloader(self, config):
+    def val_dataloader(self):
         return DataLoader(
             self.val_dataset,
             batch_size=self.config["batch_size_val"],
@@ -160,7 +160,7 @@ class CrabsDataModule(L.LightningDataModule):
             collate_fn=lambda batch: tuple(zip(*batch)),
         )
 
-    def test_dataloader(self, config):
+    def test_dataloader(self):
         return DataLoader(
             self.test_dataset,
             batch_size=self.config["batch_size_test"],
