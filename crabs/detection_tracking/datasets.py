@@ -38,11 +38,11 @@ class CrabsCocoDetection(
         self.__dict__ = dataset_transformed.__dict__
 
 
-def plot(imgs, row_title=None, **imshow_kwargs):
+def plot_sample(imgs, row_title=None, **imshow_kwargs):
     """
-    Plot samples from dataset
+    Plot a sample from the dataset.
 
-    Helper function from https://github.com/pytorch/vision/tree/main/gallery/
+    From https://github.com/pytorch/vision/blob/main/gallery/transforms/helpers.py
     """
     if not isinstance(imgs[0], list):
         # Make a 2d grid even if there's just 1 row
