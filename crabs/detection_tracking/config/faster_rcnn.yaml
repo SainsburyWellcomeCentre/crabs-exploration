@@ -1,11 +1,12 @@
 num_epochs: 250
 learning_rate: 0.00005
 wdecay: 0.00005
-batch_size: 2
+batch_size_train: 2
 batch_size_test: 1
 num_classes: 2
 save: True
-test_size: 0.2
+train_fraction: 0.8
+val_over_test_fraction: 0
 num_workers: 4
 transform_brightness: 0.5
 transform_hue: 0.3
