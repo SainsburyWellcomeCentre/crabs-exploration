@@ -4,7 +4,7 @@ import lightning as pl
 import torch
 import yaml  # type: ignore
 
-from crabs.detection_tracking.datamodule import CustomDataModule
+from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import save_model
 from crabs.detection_tracking.models import FasterRCNN
 
@@ -48,7 +48,7 @@ class DectectorTrain:
         ):
             annotations.append(f"{main_dir}/annotations/{annotation_file}")
 
-        data_module = CustomDataModule(
+        data_module = CrabsDataModule(
             self.main_dirs, annotations, self.config, self.seed_n
         )
 

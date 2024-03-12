@@ -3,7 +3,7 @@ import argparse
 import torch
 import yaml  # type: ignore
 
-from crabs.detection_tracking.datamodule import CustomDataModule
+from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.evaluate import (
     compute_confusion_matrix_elements,
     save_images_with_boxes,
@@ -126,7 +126,7 @@ def main(args) -> None:
         config = yaml.safe_load(f)
 
     # get dataloader
-    data_module = CustomDataModule(main_dirs, annotations, config, args.seed_n)
+    data_module = CrabsDataModule(main_dirs, annotations, config, args.seed_n)
     data_module.setup("test")
     data_loader = data_module.test_dataloader()
 
