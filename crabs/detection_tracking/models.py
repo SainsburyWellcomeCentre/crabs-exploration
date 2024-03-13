@@ -1,5 +1,6 @@
 import torch
 import torchvision
+from torch.optim.lr_scheduler import StepLR
 from lightning import LightningModule
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
@@ -57,4 +58,13 @@ class FasterRCNN(LightningModule):
             lr=self.config["learning_rate"],
             weight_decay=self.config["wdecay"],
         )
-        return optimizer
+        scheduler = StepLR(optimizer, step_size=1, gamma=0.1)
+        # return optimizer
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'interval': 'epoch',
+                'frequency': 1
+            }
+        }

@@ -65,12 +65,19 @@ class DectectorTrain:
         mlf_logger.log_hyperparams(self.config)
 
         lightning_model = FasterRCNN(self.config)
+        # lr_finder = LearningRateFinder()
 
         trainer = pl.Trainer(
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
             logger=mlf_logger,
+            # callbacks=[lr_finder]
         )
+
+        # trainer.tune(lightning_model, dataloaders=data_module)  # Pass dataloaders argument
+
+        # suggested_lr = lr_finder.best_lr
+        # print("Suggested Learning Rate:", suggested_lr)
 
         trainer.fit(lightning_model, data_module)
         if self.config["save"]:
