@@ -65,23 +65,13 @@ class CrabsDataModule(L.LightningDataModule):
         if self.split_seed:
             generator = torch.Generator().manual_seed(self.split_seed)
 
-        # Instantiate datasets
-        # exclude files here? or when creating the dataset?
-        list_datasets = []
-        for img_dir, annotation_file in zip(
-            self.list_img_dirs, self.list_annotation_files
-        ):
-            list_datasets.append(
-                CrabsCocoDetection(
-                    img_dir,  # TODO: could be a list
-                    annotation_file,  # TODO: could be a list
-                    transforms=self.train_transform,
-                    # exclude_files_w_regex------------------
-                )
-            )
-
-        # Concatenate datasets here?
-        full_dataset = torch.utils.data.ConcatDataset(list_datasets)
+        # Create dataset (combining all datasets passed)
+        full_dataset = CrabsCocoDetection(
+            self.list_img_dirs,
+            self.list_annotation_files,
+            transforms=self.train_transform,
+            # exclude_files_w_regex------------------
+        )
 
         # Split data into train/test-val
         # can we specify what to have in train/test?

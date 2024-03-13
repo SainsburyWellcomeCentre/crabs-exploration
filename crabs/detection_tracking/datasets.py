@@ -4,17 +4,14 @@
 
 import matplotlib.pyplot as plt
 import torch
-import torchvision
 from torchvision import tv_tensors
 from torchvision.datasets import CocoDetection, wrap_dataset_for_transforms_v2
 from torchvision.transforms.v2 import functional as F
 from torchvision.utils import draw_bounding_boxes, draw_segmentation_masks
 
 
-class CrabsCocoDetection(
-    torchvision.tv_tensors._dataset_wrapper.VisionDatasetTVTensorWrapper
-):
-    def __init__(self, images_path, annotations_path, transforms=None):
+class CrabsCocoDetection(torch.utils.data.ConcatDataset):
+    def __init__(self, list_img_dirs, list_annotation_files, transforms=None):
         """
         CocoDetection dataset wrapped for transforms_v2.
 
@@ -29,13 +26,26 @@ class CrabsCocoDetection(
         > dataset = wrap_dataset_for_transforms_v2(CocoDetection(IMAGES_PATH, ANNOTATIONS_PATH))
         """
 
-        # Exclude images based on regex?
+        # Create list of transformed-COCO datasets
+        list_datasets = []
+        for img_dir, annotation_file in zip(
+            list_img_dirs, list_annotation_files
+        ):
+            dataset_coco = CocoDetection(
+                img_dir,
+                annotation_file,
+                transforms=transforms,
+                # exclude_files_w_regex------------------
+            )
+            dataset_transformed = wrap_dataset_for_transforms_v2(dataset_coco)
+            list_datasets.append(dataset_transformed)
 
-        dataset_coco = CocoDetection(images_path, annotations_path, transforms)
-        dataset_transformed = wrap_dataset_for_transforms_v2(dataset_coco)
+        # Concatenate datasets
+        full_dataset = torch.utils.data.ConcatDataset(list_datasets)
 
-        self.__class__ = dataset_transformed.__class__
-        self.__dict__ = dataset_transformed.__dict__
+        # Update class
+        self.__class__ = full_dataset.__class__
+        self.__dict__ = full_dataset.__dict__
 
 
 def plot_sample(imgs, row_title=None, **imshow_kwargs):
