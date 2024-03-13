@@ -1,4 +1,6 @@
+import csv
 import datetime
+import json
 import os
 
 import cv2
@@ -203,8 +205,6 @@ def calculate_iou(box1, box2) -> float:
     Returns:
     float: IoU value.
     """
-    # print(box1)
-    # print(box2)
     x1_box1, y1_box1, x2_box1, y2_box1 = box1
     x1_box2, y1_box2, x2_box2, y2_box2 = box2
 
@@ -288,3 +288,128 @@ def draw_gt_tracking(
                 )
 
     return frame_copy
+
+
+def count_identity_switches(ids_prev_frame, ids_current_frame):
+    """
+    Count the number of identity switches between two sets of object IDs.
+    """
+    # Convert NumPy arrays to tuples
+    ids_prev_frame_tuples = [tuple(box) for box in ids_prev_frame]
+    ids_current_frame_tuples = [tuple(box) for box in ids_current_frame]
+
+    # Create dictionaries to track object IDs in each frame
+    id_to_index_prev = {id_: i for i, id_ in enumerate(ids_prev_frame_tuples)}
+    id_to_index_current = {
+        id_: i for i, id_ in enumerate(ids_current_frame_tuples)
+    }
+
+    # Initialize count of identity switches
+    num_switches = 0
+
+    # Loop through object IDs in the current frame
+    for id_current, index_current in id_to_index_current.items():
+        # Check if the object ID exists in the previous frame
+        if id_current in id_to_index_prev:
+            # Get the corresponding index in the previous frame
+            index_prev = id_to_index_prev[id_current]
+            # If the index is different, it indicates an identity switch
+            if index_current != index_prev:
+                num_switches += 1
+
+    return num_switches
+
+
+def evaluate_mota(gt_boxes, tracked_boxes, iou_threshold):
+    total_gt = len(gt_boxes)
+    false_alarms = 0
+
+    for i, tracked_box in enumerate(tracked_boxes):
+        best_iou = 0
+        best_match = None
+
+        for j, gt_box in enumerate(gt_boxes):
+            iou = calculate_iou(gt_box[:4], tracked_box[:4])
+            if iou > iou_threshold and iou > best_iou:
+                best_iou = iou
+                best_match = j
+        if best_match is not None:
+            gt_boxes[best_match] = None
+        else:
+            false_alarms += 1
+
+    missed_detections = 0
+    for box in gt_boxes:
+        if box is not None and not np.all(np.isnan(box)):
+            missed_detections += 1
+
+    num_switches = count_identity_switches(gt_boxes, tracked_boxes)
+    if num_switches > 0:
+        print(num_switches)
+    mota = 1 - (missed_detections + false_alarms + num_switches) / total_gt
+    return mota
+
+
+def get_ground_truth_data(gt_dir):
+    # Initialize a list to store the extracted data
+    ground_truth_data = []
+    max_frame_number = 0
+
+    # Open the CSV file and read its contents line by line
+    with open(gt_dir, "r") as csvfile:
+        csvreader = csv.reader(csvfile)
+        next(csvreader)  # Skip the header row
+        for row in csvreader:
+            # Extract relevant information from each row
+            filename = row[0]
+            region_shape_attributes = json.loads(row[5])
+            region_attributes = json.loads(row[6])
+
+            # Extract bounding box coordinates and object ID
+            x = region_shape_attributes["x"]
+            y = region_shape_attributes["y"]
+            width = region_shape_attributes["width"]
+            height = region_shape_attributes["height"]
+            track_id = region_attributes["track"]
+
+            # Compute the frame number from the filename
+            frame_number = int(filename.split("_")[-1].split(".")[0])
+            frame_number = frame_number - 1
+
+            # Update max_frame_number
+            max_frame_number = max(max_frame_number, frame_number)
+
+            # Append the extracted data to the list
+            ground_truth_data.append(
+                {
+                    "frame_number": frame_number,
+                    "x": x,
+                    "y": y,
+                    "width": width,
+                    "height": height,
+                    "id": track_id,
+                }
+            )
+
+    # Initialize a list to store the ground truth bounding boxes for each frame
+    gt_boxes_list = [np.array([]) for _ in range(max_frame_number + 1)]
+
+    # Organize ground truth data into gt_boxes_list
+    for data in ground_truth_data:
+        frame_number = data["frame_number"]
+        bbox = np.array(
+            [
+                data["x"],
+                data["y"],
+                data["x"] + data["width"],
+                data["y"] + data["height"],
+                data["id"],
+            ]
+        )
+        gt_boxes_list[frame_number] = (
+            np.vstack([gt_boxes_list[frame_number], bbox])
+            if gt_boxes_list[frame_number].size
+            else bbox
+        )
+
+    return gt_boxes_list

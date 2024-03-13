@@ -1,6 +1,5 @@
 import argparse
 import csv
-import json
 import logging
 import os
 from pathlib import Path
@@ -11,80 +10,9 @@ import torch
 import torchvision.transforms as transforms
 from sort import Sort
 
-from crabs.detection_tracking.detection_utils import calculate_iou, draw_bbox
-
-
-def evaluate_tracking(gt_boxes_list, tracked_boxes_list, iou_threshold):
-    mota_values = []
-    for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
-        mota = evaluate_mota(gt_boxes, tracked_boxes, iou_threshold)
-        mota_values.append(mota)
-    return mota_values
-
-
-def evaluate_mota(gt_boxes, tracked_boxes, iou_threshold):
-    total_gt = len(gt_boxes)
-    false_alarms = 0
-
-    # List to store indices of tracked boxes to remove
-    indices_to_remove = []
-
-    for i, tracked_box in enumerate(tracked_boxes):
-        best_iou = 0
-        best_match = None
-
-        for j, gt_box in enumerate(gt_boxes):
-            iou = calculate_iou(gt_box[:4], tracked_box[:4])
-            if iou > iou_threshold and iou > best_iou:
-                best_iou = iou
-                best_match = j
-        if best_match is not None:
-            gt_boxes[best_match] = None
-            indices_to_remove.append(i)
-        else:
-            false_alarms += 1
-
-    # Remove tracked boxes marked for removal
-    tracked_boxes = np.delete(tracked_boxes, indices_to_remove, axis=0)
-
-    missed_detections = 0
-    for box in gt_boxes:
-        if box is not None and not np.all(np.isnan(box)):
-            missed_detections += 1
-
-    num_switches = count_identity_switches(gt_boxes, tracked_boxes)
-    mota = 1 - (missed_detections + false_alarms + num_switches) / total_gt
-    return mota
-
-
-def count_identity_switches(ids_prev_frame, ids_current_frame):
-    """
-    Count the number of identity switches between two sets of object IDs.
-    """
-    # Convert NumPy arrays to tuples
-    ids_prev_frame_tuples = [tuple(box) for box in ids_prev_frame]
-    ids_current_frame_tuples = [tuple(box) for box in ids_current_frame]
-
-    # Create dictionaries to track object IDs in each frame
-    id_to_index_prev = {id_: i for i, id_ in enumerate(ids_prev_frame_tuples)}
-    id_to_index_current = {
-        id_: i for i, id_ in enumerate(ids_current_frame_tuples)
-    }
-
-    # Initialize count of identity switches
-    num_switches = 0
-
-    # Loop through object IDs in the current frame
-    for id_current, index_current in id_to_index_current.items():
-        # Check if the object ID exists in the previous frame
-        if id_current in id_to_index_prev:
-            # Get the corresponding index in the previous frame
-            index_prev = id_to_index_prev[id_current]
-            # If the index is different, it indicates an identity switch
-            if index_current != index_prev:
-                num_switches += 1
-
-    return num_switches
+from crabs.detection_tracking.detection_utils import (
+    draw_bbox,
+)
 
 
 class DetectorInference:
@@ -170,13 +98,12 @@ class DetectorInference:
         if not self.video.isOpened():
             raise Exception("Error opening video file")
 
-        # read input video parameters
-        frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        cap_fps = self.video.get(cv2.CAP_PROP_FPS)
-
         # prepare output video writer if required
         if self.args.save_video:
+            # read input video parameters
+            frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            cap_fps = self.video.get(cv2.CAP_PROP_FPS)
             output_file = f"{self.video_file_root}output_video.mp4"
             output_codec = cv2.VideoWriter_fourcc(*"H264")
             self.out = cv2.VideoWriter(
@@ -274,69 +201,16 @@ class DetectorInference:
 
         return frame_copy
 
-    def get_ground_truth_data(self):
-        # Initialize a list to store the extracted data
-        ground_truth_data = []
-        max_frame_number = 0
+    def evaluate_tracking(
+        self, gt_boxes_list, tracked_boxes_list, iou_threshold
+    ):
+        from crabs.detection_tracking.detection_utils import evaluate_mota
 
-        # Open the CSV file and read its contents line by line
-        with open(self.args.gt_dir, "r") as csvfile:
-            csvreader = csv.reader(csvfile)
-            next(csvreader)  # Skip the header row
-            for row in csvreader:
-                # Extract relevant information from each row
-                filename = row[0]
-                region_shape_attributes = json.loads(row[5])
-                region_attributes = json.loads(row[6])
-
-                # Extract bounding box coordinates and object ID
-                x = region_shape_attributes["x"]
-                y = region_shape_attributes["y"]
-                width = region_shape_attributes["width"]
-                height = region_shape_attributes["height"]
-                track_id = region_attributes["track"]
-
-                # Compute the frame number from the filename
-                frame_number = int(filename.split("_")[-1].split(".")[0])
-                frame_number = frame_number - 1
-
-                # Update max_frame_number
-                max_frame_number = max(max_frame_number, frame_number)
-
-                # Append the extracted data to the list
-                ground_truth_data.append(
-                    {
-                        "frame_number": frame_number,
-                        "x": x,
-                        "y": y,
-                        "width": width,
-                        "height": height,
-                        "id": track_id,
-                    }
-                )
-
-        # Initialize a list to store the ground truth bounding boxes for each frame
-        gt_boxes_list = [np.array([]) for _ in range(max_frame_number + 1)]
-
-        # Organize ground truth data into gt_boxes_list
-        for data in ground_truth_data:
-            frame_number = data["frame_number"]
-            bbox = np.array(
-                [
-                    data["x"],
-                    data["y"],
-                    data["x"] + data["width"],
-                    data["y"] + data["height"],
-                    data["id"],
-                ]
-            )
-            gt_boxes_list[frame_number] = (
-                np.vstack([gt_boxes_list[frame_number], bbox])
-                if gt_boxes_list[frame_number].size
-                else bbox
-            )
-
-        return gt_boxes_list
+        mota_values = []
+        for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
+            mota = evaluate_mota(gt_boxes, tracked_boxes, iou_threshold)
+            mota_values.append(mota)
+        return mota_values
 
     def run_inference(self):
         """
@@ -353,7 +227,11 @@ class DetectorInference:
             csv_writer, csv_file = self.prep_csv_writer()
 
         if self.args.gt_dir:
-            gt_boxes_list = self.get_ground_truth_data()
+            from crabs.detection_tracking.detection_utils import (
+                get_ground_truth_data,
+            )
+
+            gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
             tracked_list = []
 
         # loop thru frames of clip
@@ -413,7 +291,7 @@ class DetectorInference:
             frame_number += 1
 
         if self.args.gt_dir:
-            mota_values = evaluate_tracking(
+            mota_values = self.evaluate_tracking(
                 gt_boxes_list, tracked_list, self.iou_threshold
             )
             overall_mota = np.mean(mota_values)
