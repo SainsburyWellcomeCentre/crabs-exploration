@@ -10,8 +10,8 @@ from crabs.detection_tracking.datasets import CrabsCocoDetection
 class CrabsDataModule(L.LightningDataModule):
     def __init__(
         self,
-        list_img_dirs: str,  # TODO: could be a list
-        list_annotation_files: str,  # TODO: could be a list
+        list_img_dirs: list[str],
+        list_annotation_files: list[str],
         config: dict,
         split_seed=None,
     ):
