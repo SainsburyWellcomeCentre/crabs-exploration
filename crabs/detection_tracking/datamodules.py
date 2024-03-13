@@ -10,21 +10,18 @@ from crabs.detection_tracking.datasets import CrabsCocoDetection
 class CrabsDataModule(L.LightningDataModule):
     def __init__(
         self,
-        imgs_path: str,
-        annotations_path: str,
+        list_img_dirs: str,  # TODO: could be a list
+        list_annotation_files: str,  # TODO: could be a list
         config: dict,
         split_seed=None,
     ):
         super().__init__()
-        self.imgs_path = imgs_path
-        self.annotations_path = annotations_path
+        self.list_img_dirs = list_img_dirs
+        self.list_annotation_files = list_annotation_files
         self.split_seed = split_seed
         self.config = config
 
     def _get_train_transform(self):
-        # see https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
-        # https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
-
         train_transforms = transforms.Compose(
             [
                 transforms.ToImage(),
@@ -46,6 +43,8 @@ class CrabsDataModule(L.LightningDataModule):
         return train_transforms
 
     def _get_test_val_transform(self):
+        # see https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
+        # https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
         test_transforms = []
         test_transforms.append(transforms.ToTensor())
         return test_transforms
@@ -53,11 +52,6 @@ class CrabsDataModule(L.LightningDataModule):
     def _collate_fn(self, batch):
         # https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#data-loading-and-training-loop
         # We need a custom fn because the number of bounding boxes varies between images of the same batch
-        # why would a sample be None?
-        # batch = [sample for sample in batch if sample is not None]
-
-        # if len(batch) == 0:
-        #     return tuple()
         return tuple(zip(*batch))
 
     def _compute_splits(self):
@@ -71,14 +65,23 @@ class CrabsDataModule(L.LightningDataModule):
         if self.split_seed:
             generator = torch.Generator().manual_seed(self.split_seed)
 
-        # Instantiate dataset
+        # Instantiate datasets
         # exclude files here? or when creating the dataset?
-        full_dataset = CrabsCocoDetection(
-            self.imgs_path,
-            self.annotations_path,
-            transforms=self.train_transform,
-            # exclude_files_w_regex------------------
-        )
+        list_datasets = []
+        for img_dir, annotation_file in zip(
+            self.list_img_dirs, self.list_annotation_files
+        ):
+            list_datasets.append(
+                CrabsCocoDetection(
+                    img_dir,  # TODO: could be a list
+                    annotation_file,  # TODO: could be a list
+                    transforms=self.train_transform,
+                    # exclude_files_w_regex------------------
+                )
+            )
+
+        # Concatenate datasets here?
+        full_dataset = torch.utils.data.ConcatDataset(list_datasets)
 
         # Split data into train/test-val
         # can we specify what to have in train/test?
@@ -149,7 +152,10 @@ class CrabsDataModule(L.LightningDataModule):
             num_workers=self.config["num_workers"],  # set to auto?
             collate_fn=self._collate_fn,
             persistent_workers=True,
-            # multiprocessing_context='fork' if torch.backends.mps.is_available() else None
+            multiprocessing_context="fork"
+            if torch.backends.mps.is_available()
+            else None,
+            # see https://github.com/pytorch/pytorch/issues/87688
             # --- why do we need it? to use the same workers across epochs (after loader is exhausted)
             # interesting if it takes a lot of time to spawn workers at the start of the epoch
             # if they persist, workers stay with their state
