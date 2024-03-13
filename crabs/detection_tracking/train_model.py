@@ -32,8 +32,8 @@ class DectectorTrain:
 
     def __init__(self, args):
         self.config_file = args.config_file
-        self.main_dirs = args.main_dir
-        self.annotation_files = args.annotation_file
+        self.images_dirs = args.images_dirs  # list of paths
+        self.annotation_files = args.annotation_files  # list of paths
         self.accelerator = args.accelerator
         self.seed_n = args.seed_n
         self.load_config_yaml()
@@ -43,19 +43,18 @@ class DectectorTrain:
             self.config = yaml.safe_load(f)
 
     def train_model(self):
-        annotations = []
-        for main_dir, annotation_file in zip(
-            self.main_dirs, self.annotation_files
-        ):
-            annotations.append(f"{main_dir}/annotations/{annotation_file}")
-
+        # Create data module
         data_module = CrabsDataModule(
-            self.main_dirs, annotations, self.config, self.seed_n
+            self.images_dirs,  # list of paths
+            self.annotation_files,  # list of paths
+            self.config,
+            self.seed_n,
         )
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         run_name = f"run_{timestamp}"
 
+        # Initialise MLflow logger
         mlf_logger = pl.pytorch.loggers.MLFlowLogger(
             run_name=run_name,
             experiment_name=args.experiment_name,
@@ -72,7 +71,10 @@ class DectectorTrain:
             logger=mlf_logger,
         )
 
+        # Run training
         trainer.fit(lightning_model, data_module)
+
+        # Save model if required
         if self.config["save"]:
             save_model(lightning_model)
 
@@ -103,16 +105,16 @@ if __name__ == "__main__":
         help="location of YAML config to control training",
     )
     parser.add_argument(
-        "--main_dir",
+        "--images_dirs",
         nargs="+",
         required=True,
-        help="list of locations of images and coco annotations",
+        help="list of paths to images directories",
     )
     parser.add_argument(
-        "--annotation_file",
+        "--annotation_files",
         nargs="+",
         required=True,
-        help="list of filenames for coco annotations",
+        help="list of paths to annotation files",
     )
     parser.add_argument(
         "--accelerator",
