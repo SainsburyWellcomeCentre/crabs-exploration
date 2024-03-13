@@ -71,13 +71,12 @@ class DetectorEvaluation:
 
         all_detections = []
         all_targets = []
-        print(len(self.evaluate_dataloader))
 
         with torch.no_grad():
             for imgs, annotations in self.evaluate_dataloader:
                 imgs = list(img.to(device) for img in imgs)
                 targets = [
-                    {k: v.to(device) for k, v in t.items()}
+                    {k: v.to(device) for k, v in t.items() if k != "image_id"}
                     for t in annotations
                 ]
                 detections = self.trained_model(imgs)
@@ -116,14 +115,17 @@ def main(args) -> None:
     list_images_dirs = args.images_dirs
 
     # get annotations
-    list_annotations_files = args.annotation_file
+    list_annotations_files = args.annotation_files
     # get config
     with open(args.config_file, "r") as f:
         config = yaml.safe_load(f)
 
     # get dataloader
     data_module = CrabsDataModule(
-        list_images_dirs, list_annotations_files, config, args.seed_n
+        list_images_dirs,
+        list_annotations_files,
+        config,
+        args.seed_n,
     )
     data_module.setup("test")
     data_loader = data_module.test_dataloader()
