@@ -33,7 +33,7 @@ We assume the following structure for the dataset directory:
 For training
 
 ```bash
-python crabs/detection_tracking/train_model.py ----images_dirs {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_files {path_to_annotation_file.json} {path_to_optional_second_annotation_file.json}
+python crabs/detection_tracking/train_model.py --images_dirs {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_files {path_to_annotation_file.json} {path_to_optional_second_annotation_file.json}
 ```
 
 Example:

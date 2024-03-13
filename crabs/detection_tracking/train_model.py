@@ -121,7 +121,7 @@ if __name__ == "__main__":
         "--seed_n",
         type=int,
         default=42,
-        help="seed for random state",
+        help="seed for dataset splits",
     )
     args = parser.parse_args()
     torch.set_float32_matmul_precision("medium")
