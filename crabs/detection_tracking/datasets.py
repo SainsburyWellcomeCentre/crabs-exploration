@@ -2,6 +2,11 @@
 # The PyTorch Dataset represents a map from keys to data samples.
 # dataloader: The PyTorch DataLoader represents a Python iterable over a DataSet.
 
+import datetime
+import json
+from pathlib import Path
+from typing import Callable, Optional
+
 import matplotlib.pyplot as plt
 import torch
 from torchvision import tv_tensors
@@ -11,7 +16,13 @@ from torchvision.utils import draw_bounding_boxes, draw_segmentation_masks
 
 
 class CrabsCocoDetection(torch.utils.data.ConcatDataset):
-    def __init__(self, list_img_dirs, list_annotation_files, transforms=None):
+    def __init__(
+        self,
+        list_img_dirs: list[str],
+        list_annotation_files: list[str],
+        transforms: Optional[Callable] = None,
+        list_exclude_files: Optional[list[str]] = None,
+    ):
         """
         CocoDetection dataset wrapped for transforms_v2.
 
@@ -31,24 +42,82 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         for img_dir, annotation_file in zip(
             list_img_dirs, list_annotation_files
         ):
+            # exclude files if required
+            if list_exclude_files:
+                annotation_file = self.exclude_files(
+                    annotation_file, list_exclude_files
+                )
+
+            # create coco dataset
             dataset_coco = CocoDetection(
                 img_dir,
                 annotation_file,
                 transforms=transforms,
-                # exclude_files_w_regex------------------
             )
+
+            # transform for "transforms v2"
             dataset_transformed = wrap_dataset_for_transforms_v2(dataset_coco)
             list_datasets.append(dataset_transformed)
 
         # Concatenate datasets
         full_dataset = torch.utils.data.ConcatDataset(list_datasets)
 
-        # Update class
+        # Update class for this instance
         self.__class__ = full_dataset.__class__
         self.__dict__ = full_dataset.__dict__
 
+    def exclude_files(
+        self,
+        annotation_file: str,
+        list_files_to_exclude: list[str],
+    ) -> str:
+        # read annotation file as a dataset dict
+        with open(annotation_file, "r") as f:
+            dataset = json.load(f)
 
-def plot_sample(imgs, row_title=None, **imshow_kwargs):
+        # determine images to exclude
+        slc_images_to_exclude = [
+            im["file_name"] in list_files_to_exclude
+            for im in dataset["images"]
+        ]
+        image_ids_to_exclude = [
+            im["id"]
+            for im, slc in zip(dataset["images"], slc_images_to_exclude)
+            if slc
+        ]
+
+        # determine annotations to exclude
+        slc_annotations_to_exclude = [
+            ann["image_id"] in image_ids_to_exclude
+            for ann in dataset["annotations"]
+        ]
+
+        # update dataset dict
+        dataset["images"] = [
+            im
+            for im, slc in zip(dataset["images"], slc_images_to_exclude)
+            if not slc
+        ]
+        dataset["annotations"] = [
+            annot
+            for annot, slc in zip(
+                dataset["annotations"], slc_annotations_to_exclude
+            )
+            if not slc
+        ]
+
+        # write to new file under the same location as original annotation file
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_filename = Path(annotation_file).parent / Path(
+            Path(annotation_file).stem + "_filt_" + timestamp + ".json"
+        )
+        with open(out_filename, "w") as f:
+            json.dump(dataset, f)
+
+        return str(out_filename)
+
+
+def plot_sample(imgs, row_title: Optional[str] = None, **imshow_kwargs):
     """
     Plot a sample from the dataset.
 
