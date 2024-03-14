@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from crabs.detection_tracking.train_model import (
-    DEFAULT_ANNOTATIONS_FILE_REL,
+    DEFAULT_ANNOTATIONS_FILENAME,
     train_parse_args,
 )
 
@@ -37,7 +37,16 @@ def test_prep_img_directories(dataset_dirs_input: list):
 @pytest.mark.parametrize(
     "annotation_files_input,expected",
     [
-        ([], [str(Path(SAMPLE_DATASET_DIR) / DEFAULT_ANNOTATIONS_FILE_REL)]),
+        (
+            [],
+            [
+                str(
+                    Path(SAMPLE_DATASET_DIR)
+                    / "annotations"
+                    / DEFAULT_ANNOTATIONS_FILENAME
+                )
+            ],
+        ),
         (["annotations1.json"], [SAMPLE_ANNOTATION_FILE_1]),
         ([SAMPLE_ANNOTATION_FILE_2], [SAMPLE_ANNOTATION_FILE_2]),
     ],
