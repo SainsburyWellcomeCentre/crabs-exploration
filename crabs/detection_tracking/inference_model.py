@@ -222,6 +222,8 @@ class DetectorInference:
         # initialise frame counter
         frame_number = 1
 
+        tracked_list = []
+
         # initialise csv writer if required
         if self.args.save_csv_and_frames:
             csv_writer, csv_file = self.prep_csv_writer()
@@ -232,8 +234,7 @@ class DetectorInference:
             )
 
             gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
-            tracked_list = []
-
+            
         # loop thru frames of clip
         while self.video.isOpened():
             # break if beyond end frame (mostly for debugging)
