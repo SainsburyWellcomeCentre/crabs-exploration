@@ -51,7 +51,7 @@ python crabs/detection_tracking/evaluate_model.py --model_dir {directory_to_save
 Example:
 
 ```bash
-python crabs/detection_tracking/evaluate_model.py --model_dir model/model_00.pt --main_dir /home/data/dataset1/frames /home/data/dataset2/frames --annotation_file /home/data/dataset1/annotations/annotation_dataset1.json /home/data/dataset2/annotations/annotation_dataset2.json
+python crabs/detection_tracking/evaluate_model.py --model_dir model/model_00.pt --main_dir /home/data/dataset1/frames /home/data/dataset2/frames --annotation_files /home/data/dataset1/annotations/annotation_dataset1.json /home/data/dataset2/annotations/annotation_dataset2.json
 ```
 
 For running inference
