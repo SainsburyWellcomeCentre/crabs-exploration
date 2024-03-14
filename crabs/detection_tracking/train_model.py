@@ -11,7 +11,7 @@ from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import save_model
 from crabs.detection_tracking.models import FasterRCNN
 
-DEFAULT_ANNOTATIONS_SUBDIR = (
+DEFAULT_ANNOTATIONS_FILE_REL = (
     Path("annotations") / "VIA_JSON_combined_coco_gen.json"
 )
 
@@ -39,7 +39,7 @@ class DectectorTrain:
     def __init__(self, args):
         self.config_file = args.config_file
         self.images_dirs = self.prep_img_directories(
-            args.dataset_dirs
+            args.dataset_dirs  # args only?
         )  # list of paths
         self.annotation_files = self.prep_annotation_files(
             args.annotation_files, args.dataset_dirs
@@ -70,7 +70,7 @@ class DectectorTrain:
         if not input_annotation_files:
             for dataset in dataset_dirs:
                 annotation_files.append(
-                    str(dataset / DEFAULT_ANNOTATIONS_SUBDIR)
+                    str(dataset / DEFAULT_ANNOTATIONS_FILE_REL)
                 )
 
         # if a list of annotation files/filepaths is passed
@@ -86,7 +86,7 @@ class DectectorTrain:
                 else:
                     annotation_files.append(annot)
 
-        self.annotation_files = annotation_files
+        return annotation_files
 
     def train_model(self):
         # Create data module
