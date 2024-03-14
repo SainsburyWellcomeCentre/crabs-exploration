@@ -234,7 +234,7 @@ class DetectorInference:
             )
 
             gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
-            
+
         # loop thru frames of clip
         while self.video.isOpened():
             # break if beyond end frame (mostly for debugging)
