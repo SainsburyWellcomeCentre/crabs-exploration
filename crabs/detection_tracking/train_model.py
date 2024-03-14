@@ -108,6 +108,7 @@ class DectectorTrain:
         )
 
         mlf_logger.log_hyperparams(self.config)
+        mlf_logger.log_param("split_seed", self.seed_n)
 
         lightning_model = FasterRCNN(self.config)
 
