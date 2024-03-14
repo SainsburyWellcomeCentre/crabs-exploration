@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import sys
 from pathlib import Path
 
 import lightning as pl
@@ -37,27 +38,30 @@ class DectectorTrain:
 
     def __init__(self, args):
         self.config_file = args.config_file
-        self.images_dirs = self.prep_list_img_directories(
+        self.images_dirs = self.prep_img_directories(
             args.dataset_dirs
         )  # list of paths
-        self.annotation_files = self.prep_list_annotation_files(
+        self.annotation_files = self.prep_annotation_files(
             args.annotation_files, args.dataset_dirs
         )  # list of paths
         self.accelerator = args.accelerator
         self.seed_n = args.seed_n
+        self.experiment_name = args.experiment_name
         self.load_config_yaml()
 
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
-    def prep_list_img_directories(self, dataset_dirs):
+    def prep_img_directories(self, dataset_dirs: list[str]):
         images_dirs = []
         for dataset in dataset_dirs:
-            images_dirs.append(Path(dataset) / "frames")
+            images_dirs.append(str(Path(dataset) / "frames"))
         return images_dirs
 
-    def prep_list_annotation_files(self, input_annotation_files, dataset_dirs):
+    def prep_annotation_files(
+        self, input_annotation_files: list[str], dataset_dirs: list[str]
+    ):
         # prepare list of annotation files
         annotation_files = []
 
@@ -71,7 +75,7 @@ class DectectorTrain:
 
         # if a list of annotation files/filepaths is passed
         else:
-            for annot, dataset in zip(input_annotation_files, dataset):
+            for annot, dataset in zip(input_annotation_files, dataset_dirs):
                 # if the annotation is only filename:
                 # assume under 'annotation' (should fail if a path is passed)
                 if Path(annot).name == annot:
@@ -99,7 +103,7 @@ class DectectorTrain:
         # Initialise MLflow logger
         mlf_logger = pl.pytorch.loggers.MLFlowLogger(
             run_name=run_name,
-            experiment_name=args.experiment_name,
+            experiment_name=self.experiment_name,
             tracking_uri="file:./ml-runs",
         )
 
@@ -138,12 +142,13 @@ def main(args) -> None:
     trainer.train_model()
 
 
-if __name__ == "__main__":
+def train_parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file",
         type=str,
-        default="crabs/detection_tracking/config/faster_rcnn.yaml",
+        default=str(Path(__file__).parents[1])
+        + "/detection_tracking/config/faster_rcnn.yaml",
         help="location of YAML config to control training",
     )
     parser.add_argument(
@@ -155,7 +160,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--annotation_files",
         nargs="+",
-        required=True,
+        default=[],
         help="list of paths to annotation files. The full path or the filename can be provided. If only filename is provided, it is assumed to be under dataset/annotations.",
     )
     parser.add_argument(
@@ -176,6 +181,11 @@ if __name__ == "__main__":
         default=42,
         help="seed for dataset splits",
     )
-    args = parser.parse_args()
+    return parser.parse_args(args)
+
+
+if __name__ == "__main__":
     torch.set_float32_matmul_precision("medium")
-    main(args)
+
+    train_args = train_parse_args(sys.argv[1:])
+    main(train_args)
