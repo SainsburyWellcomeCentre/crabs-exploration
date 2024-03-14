@@ -1,7 +1,3 @@
-# https://pytorch.org/tutorials/beginner/basics/data_tutorial.html#creating-a-custom-dataset-for-your-files
-# The PyTorch Dataset represents a map from keys to data samples.
-# dataloader: The PyTorch DataLoader represents a Python iterable over a DataSet.
-
 import datetime
 import json
 from pathlib import Path
@@ -48,7 +44,7 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
                     annotation_file, list_exclude_files
                 )
 
-            # create coco dataset
+            # create COCO dataset for detection
             dataset_coco = CocoDetection(
                 img_dir,
                 annotation_file,
@@ -71,6 +67,23 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         annotation_file: str,
         list_files_to_exclude: list[str],
     ) -> str:
+        """Exclude images from annotation file.
+
+        A new annotation file is created without the images to exclude,
+        and without the annotations for that image.
+
+        Parameters
+        ----------
+        annotation_file : str
+            _description_
+        list_files_to_exclude : list[str]
+            _description_
+
+        Returns
+        -------
+        str
+            _description_
+        """
         # read annotation file as a dataset dict
         with open(annotation_file, "r") as f:
             dataset = json.load(f)
