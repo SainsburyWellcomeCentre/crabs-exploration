@@ -29,7 +29,7 @@ We assume the following structure for the dataset directory:
         |_ VIA_JSON_combined_coco_gen.json
 ```
 
-The default name assumed for the annotations file is `VIA_JSON_combined_coco_gen.json`, but other filenames can be passed with the `--annotation_files` command-line argument
+The default name assumed for the annotations file is `VIA_JSON_combined_coco_gen.json`. This is used if no input files are passed. Other filenames (or fullpaths) can be passed with the `--annotation_files` command-line argument.
 
 ### Running Locally
 
@@ -39,10 +39,22 @@ For training
 python crabs/detection_tracking/train_model.py --dataset_dirs {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_files {path_to_annotation_file.json} {path_to_optional_second_annotation_file.json}
 ```
 
-Example (if using annotation filenames different from default):
+Example (using default annotation file and one dataset):
 
 ```bash
-python crabs/detection_tracking/evaluate_model.py --dataset_dirs /home/data/dataset1 /home/data/dataset2 --annotation_files annotation_dataset1.json annotation_dataset2.json
+python crabs/detection_tracking/train_model.py --dataset_dirs /home/data/dataset1
+```
+
+Example (passing the full path of the annotation file):
+
+```bash
+python crabs/detection_tracking/train_model.py --dataset_dirs /home/data/dataset1 --annotation_files /home/user/annotations/annotations42.json
+```
+
+Example (passing several datasets with annotation filenames different from the default):
+
+```bash
+python crabs/detection_tracking/train_model.py --dataset_dirs /home/data/dataset1 /home/data/dataset2 --annotation_files annotation_dataset1.json annotation_dataset2.json
 ```
 
 For evaluation
