@@ -45,8 +45,12 @@ class CrabsDataModule(L.LightningDataModule):
     def _get_test_val_transform(self):
         # see https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
         # https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
-        test_transforms = []
-        test_transforms.append(transforms.ToTensor())
+        test_transforms = transforms.Compose(
+            [
+                transforms.ToImage(),
+                transforms.ToDtype(torch.float32, scale=True),
+            ]
+        )
         return test_transforms
 
     def _collate_fn(self, batch):
@@ -70,7 +74,7 @@ class CrabsDataModule(L.LightningDataModule):
             self.list_img_dirs,
             self.list_annotation_files,
             transforms=self.train_transform,
-            # exclude_files_w_regex------------------
+            # exclude_files_w_regex #------------------
         )
 
         # Split data into train/test-val
