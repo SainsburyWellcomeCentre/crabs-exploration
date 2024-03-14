@@ -150,8 +150,7 @@ def train_parse_args(args):
     parser.add_argument(
         "--config_file",
         type=str,
-        default=str(Path(__file__).parents[1])
-        + "/detection_tracking/config/faster_rcnn.yaml",
+        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
         help="location of YAML config to control training",
     )
     parser.add_argument(
