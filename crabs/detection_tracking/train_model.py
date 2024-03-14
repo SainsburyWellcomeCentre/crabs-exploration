@@ -97,7 +97,7 @@ class DectectorTrain:
             self.seed_n,
         )
 
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = f"run_{timestamp}"
 
         # Initialise MLflow logger
