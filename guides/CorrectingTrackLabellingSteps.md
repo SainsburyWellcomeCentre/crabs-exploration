@@ -75,25 +75,28 @@ If we are launching the tool for the first time for a new project:
 - Make sure the track id is shown instead of the image number. 
     - To do so, press up key, it will toggle between `region label cleared `or `region label set to region attribute [track]`. We want the second one `region label set to region attribute [track]`
     - Pressing bottom key will change the colour of the bounding box.
-- If it is easier to go by track id, go from id 1 follow the id in between frames. You can just press the right key and see the movement of the bounding box and the track id
+- If it is easier to go by track id, go from id 1 follow the id in between frames. You can just press the right key and see the movement of the bounding box and the track id.
 - If you cannot easily find the number you want, click toggle annotation editor, go to the track you want, it will be highlighted in the frame. 
-    - Be careful now, when it is highlighted, if you press right key, the bbox will be shifted to the right. Just click anywhere to disable the highlight.
-- If the id you are following is missing the bounding box, you can copy `ctrl+c` from the previous frame and then paste `ctrl+v` on the current frame, you can adjust the bbox to where the crab is.
-- If the if the id you are following has been re-id:
+    - Be careful now, when it is highlighted, if you press right key, the bounding box will be shifted to the right. Just click anywhere to disable the highlight.
+- If the id you are following is missing the bounding box, you can copy `ctrl+c` from the previous frame and then paste `ctrl+v` on the current frame, you can adjust the bounding box to where the crab is either by dragging with your mouse or use arrow keys.
+- If the id you are following has been re-id (assign to a new id):
     - Go to the menu bar, choose the 6th icon after `help` (it looks like grid). 
     - All the frames will be group in a grid style. 
     - Choose `Group by` `region [track]` - the track number will be popped up next to it. 
     - Choose the track number the id has been re-id.
+        - For example: the original id is 9, the crab is now been re-id to 78.
+        - Choose `78/188: track = 78`
     - Click Toggle Annotation Editor at the side. 
-        - if you has this shown, click and unclick again. 
-        - make sure the track shows the track you choose only instead of xxx different values:...)
+        - if you has this shown, unclick and click again. 
+        - make sure the track shows the track you choose only instead of `xxx different values:...`
     - Change the track in there, from the one is being re-id to the original one. 
-    - Then click anywhere and click the same icon again so you will get one frame back. 
+        - for example from 78 to 9
+    - Then click anywhere and click the same icon again so you will get only one frame back. 
     - See if the changes happened correctly.
     - You do not need to wait the grid images finished loading before doing any of the step above.
-- If the crab has been re-id for one frame and then lost track again, maybe, change in that frame will be easier. 
+- If the crab has been re-id for one frame and then lost track again, maybe, change in that frame will be easier than the grid method. 
     - Just click the bounding box to get it highlighted. 
-    - The box with track will be appeared (make sure the toggle annotation editor is closed by clicking the toggle annotation editor). 
+    - The box with track and track number will be appeared (make sure the toggle annotation editor is closed by clicking the toggle annotation editor). 
     - Simply key in the correct id there.
 
 > [!TIP]
