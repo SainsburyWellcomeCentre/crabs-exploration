@@ -2,6 +2,7 @@ import csv
 import datetime
 import json
 import os
+from typing import Any, Dict, List, Optional
 
 import cv2
 import numpy as np
@@ -55,38 +56,36 @@ def save_model(model: torch.nn.Module):
 
 
 def draw_bbox(
-    frame,
-    top_pt,
-    left_pt,
-    bottom_pt,
-    right_pt,
-    colour,
-    label_text=None,
+    frame: np.ndarray,
+    top_pt: int,
+    left_pt: int,
+    bottom_pt: int,
+    right_pt: int,
+    colour: tuple,
+    label_text: Optional[str] = None,
 ) -> None:
     """
-    Draw the bounding boxes on the image, based on detection results.
-    To draw a rectangle in OpenCV:
-        Specify the top-left and bottom-right corners of the rectangle.
+    Draw bounding boxes on the image based on detection results.
 
     Parameters
     ----------
-    image_with_boxes : np.ndarray
+    frame : np.ndarray
         Image with bounding boxes drawn on it.
-    top_pt : tuple
-        Coordinates of the top-left corner of the bounding box.
-    left_pt : tuple
-        Coordinates of the top-left corner of the bounding box.
-    bottom_pt : tuple
-        Coordinates of the bottom-right corner of the bounding box.
-    right_pt : tuple
-        Coordinates of the bottom-right corner of the bounding box.
+    top_pt : int
+        Y-coordinate of the top-left corner of the bounding box.
+    left_pt : int
+        X-coordinate of the top-left corner of the bounding box.
+    bottom_pt : int
+        Y-coordinate of the bottom-right corner of the bounding box.
+    right_pt : int
+        X-coordinate of the bottom-right corner of the bounding box.
     colour : tuple
         Color of the bounding box in BGR format.
     label_text : str, optional
         Text to display alongside the bounding box, indicating class and score.
 
     Returns
-    ----------
+    -------
     None
     """
     # Draw bounding box
@@ -113,7 +112,10 @@ def draw_bbox(
 
 
 def draw_detection(
-    imgs, annotations=None, detections=None, score_threshold=None
+    imgs: list,
+    annotations: Optional[Dict[Any, Any]] = None,
+    detections: Optional[Dict[Any, Any]] = None,
+    score_threshold: Optional[float] = None,
 ) -> np.ndarray:
     """
     Draw the results based on the detection.
@@ -130,7 +132,7 @@ def draw_detection(
         The confidence threshold for detection scores.
 
     Returns
-    ----------
+    -------
     np.ndarray
         Image(s) with bounding boxes drawn on them.
     """
@@ -194,47 +196,13 @@ def draw_detection(
     return image_with_boxes
 
 
-def calculate_iou(box1, box2) -> float:
-    """
-    Calculate IoU (Intersection over Union) of two bounding boxes.
-
-    Parameters:
-    box1 (list): Coordinates [x1, y1, x2, y2] of the first bounding box.
-    box2 (list): Coordinates [x1, y1, x2, y2] of the second bounding box.
-
-    Returns:
-    float: IoU value.
-    """
-    x1_box1, y1_box1, x2_box1, y2_box1 = box1
-    x1_box2, y1_box2, x2_box2, y2_box2 = box2
-
-    # Calculate intersection coordinates
-    x1_intersect = max(x1_box1, x1_box2)
-    y1_intersect = max(y1_box1, y1_box2)
-    x2_intersect = min(x2_box1, x2_box2)
-    y2_intersect = min(y2_box1, y2_box2)
-
-    # Calculate area of intersection rectangle
-    intersect_width = max(0, x2_intersect - x1_intersect + 1)
-    intersect_height = max(0, y2_intersect - y1_intersect + 1)
-    intersect_area = intersect_width * intersect_height
-
-    # Calculate area of individual bounding boxes
-    box1_area = (x2_box1 - x1_box1 + 1) * (y2_box1 - y1_box1 + 1)
-    box2_area = (x2_box2 - x1_box2 + 1) * (y2_box2 - y1_box2 + 1)
-
-    iou = intersect_area / float(box1_area + box2_area - intersect_area)
-
-    return iou
-
-
 def draw_gt_tracking(
     gt_boxes: np.ndarray,
     tracked_boxes: np.ndarray,
     frame_number: int,
     iou_threshold: float,
     frame_copy: np.ndarray,
-) -> None:
+) -> np.ndarray:
     """
     Track ground truth objects in the frame and draw bounding boxes.
 
@@ -250,6 +218,11 @@ def draw_gt_tracking(
         The intersection over union threshold for considering a match.
     frame_copy : np.ndarray
         A copy of the input frame for drawing bounding boxes.
+
+    Returns
+    -------
+    np.ndarray
+        A copy of the input frame with bounding boxes drawn on it.
     """
 
     for gt_box in gt_boxes:
@@ -290,18 +263,58 @@ def draw_gt_tracking(
     return frame_copy
 
 
-def count_identity_switches(ids_prev_frame, ids_current_frame):
+def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
+    """
+    Calculate IoU (Intersection over Union) of two bounding boxes.
+
+    Parameters:
+    box1 (np.ndarray): Coordinates [x1, y1, x2, y2] of the first bounding box.
+    box2 (np.ndarray): Coordinates [x1, y1, x2, y2] of the second bounding box.
+
+    Returns:
+    float: IoU value.
+    """
+    x1_box1, y1_box1, x2_box1, y2_box1 = box1
+    x1_box2, y1_box2, x2_box2, y2_box2 = box2
+
+    # Calculate intersection coordinates
+    x1_intersect = max(x1_box1, x1_box2)
+    y1_intersect = max(y1_box1, y1_box2)
+    x2_intersect = min(x2_box1, x2_box2)
+    y2_intersect = min(y2_box1, y2_box2)
+
+    # Calculate area of intersection rectangle
+    intersect_width = max(0, x2_intersect - x1_intersect + 1)
+    intersect_height = max(0, y2_intersect - y1_intersect + 1)
+    intersect_area = intersect_width * intersect_height
+
+    # Calculate area of individual bounding boxes
+    box1_area = (x2_box1 - x1_box1 + 1) * (y2_box1 - y1_box1 + 1)
+    box2_area = (x2_box2 - x1_box2 + 1) * (y2_box2 - y1_box2 + 1)
+
+    iou = intersect_area / float(box1_area + box2_area - intersect_area)
+
+    return iou
+
+
+def count_identity_switches(
+    prev_frame: Optional[List[List[float]]], current_frame: List[List[float]]
+) -> int:
     """
     Count the number of identity switches between two sets of object IDs.
     """
-    # Convert NumPy arrays to tuples
-    ids_prev_frame_tuples = [tuple(box) for box in ids_prev_frame]
-    ids_current_frame_tuples = [tuple(box) for box in ids_current_frame]
+    if prev_frame is None:
+        # If there are no previous frame IDs, return 0 switches
+        return 0
+
+    # Convert tracked boxes to tuples for comparison
+    prev_frame_tuples = [tuple(box) for box in prev_frame]
+    current_frame_tuples = [tuple(box) for box in current_frame]
 
     # Create dictionaries to track object IDs in each frame
-    id_to_index_prev = {id_: i for i, id_ in enumerate(ids_prev_frame_tuples)}
+    id_to_index_prev = {id_: i for i, id_ in enumerate(prev_frame_tuples)}
     id_to_index_current = {
-        id_: i for i, id_ in enumerate(ids_current_frame_tuples)
+        id_: i for i, id_ in enumerate(current_frame_tuples)
     }
 
     # Initialize count of identity switches
@@ -320,12 +333,31 @@ def count_identity_switches(ids_prev_frame, ids_current_frame):
     return num_switches
 
 
-def evaluate_mota(gt_boxes, tracked_boxes, iou_threshold):
+def evaluate_mota(
+    gt_boxes: np.ndarray,
+    tracked_boxes: np.ndarray,
+    iou_threshold: float,
+    prev_frame: List[List[float]],
+) -> float:
+    """
+    Evaluate MOTA (Multiple Object Tracking Accuracy).
+
+    MOTA is a metric used to evaluate the performance of object tracking algorithms.
+
+    Parameters:
+    gt_boxes (List[Tuple[int, int, int, int]]): Ground truth bounding boxes of objects.
+    tracked_boxes (List[Tuple[int, int, int, int]]): Tracked bounding boxes of objects.
+    iou_threshold (float): Intersection over Union (IoU) threshold for considering a match.
+    prev_frame (List[List[int]]): Previous frame data for identity switch detection.
+
+    Returns:
+    float: MOTA value.
+    """
     total_gt = len(gt_boxes)
     false_alarms = 0
 
     for i, tracked_box in enumerate(tracked_boxes):
-        best_iou = 0
+        best_iou = 0.0
         best_match = None
 
         for j, gt_box in enumerate(gt_boxes):
@@ -343,14 +375,12 @@ def evaluate_mota(gt_boxes, tracked_boxes, iou_threshold):
         if box is not None and not np.all(np.isnan(box)):
             missed_detections += 1
 
-    num_switches = count_identity_switches(gt_boxes, tracked_boxes)
-    if num_switches > 0:
-        print(num_switches)
+    num_switches = count_identity_switches(prev_frame, tracked_boxes)
     mota = 1 - (missed_detections + false_alarms + num_switches) / total_gt
     return mota
 
 
-def get_ground_truth_data(gt_dir):
+def get_ground_truth_data(gt_dir: str) -> list:
     # Initialize a list to store the extracted data
     ground_truth_data = []
     max_frame_number = 0
@@ -404,12 +434,13 @@ def get_ground_truth_data(gt_dir):
                 data["x"] + data["width"],
                 data["y"] + data["height"],
                 data["id"],
-            ]
+            ],
+            dtype=np.float32,
         )
+        # print(bbox)
         gt_boxes_list[frame_number] = (
             np.vstack([gt_boxes_list[frame_number], bbox])
             if gt_boxes_list[frame_number].size
             else bbox
         )
-
     return gt_boxes_list
