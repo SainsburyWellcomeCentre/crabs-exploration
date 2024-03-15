@@ -1,13 +1,21 @@
 import lightning as L
 import torch
+import torchvision
 import torchvision.transforms.v2 as transforms
 from torch.utils.data import DataLoader, random_split
 
-# from torchvision.transforms import v2
 from crabs.detection_tracking.datasets import CrabsCocoDetection
 
 
 class CrabsDataModule(L.LightningDataModule):
+    """A Lightning DataModule class for the crabs data.
+
+    It encapsulate all the steps needed to process the data:
+    - computing dataset splits
+    - defining the data augmentation transforms
+    - defining the dataloaders
+    """
+
     def __init__(
         self,
         list_img_dirs: list[str],
@@ -21,7 +29,14 @@ class CrabsDataModule(L.LightningDataModule):
         self.split_seed = split_seed
         self.config = config
 
-    def _get_train_transform(self):
+    def _get_train_transform(self) -> torchvision.transforms:
+        """Define data augmentation transforms for the train set
+
+        Using transforms.v2, see:
+        https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
+        https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
+
+        """
         train_transforms = transforms.Compose(
             [
                 transforms.ToImage(),
@@ -39,12 +54,16 @@ class CrabsDataModule(L.LightningDataModule):
             ]
         )
 
-        # train_transforms.append(transforms.ToTensor())  # ToImage()?
         return train_transforms
 
-    def _get_test_val_transform(self):
-        # see https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
-        # https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
+    def _get_test_val_transform(self) -> torchvision.transforms:
+        """Define data augmentation transforms for the test set
+
+        Using transforms.v2, see:
+        https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
+        https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
+
+        """
         test_transforms = transforms.Compose(
             [
                 transforms.ToImage(),
@@ -53,16 +72,46 @@ class CrabsDataModule(L.LightningDataModule):
         )
         return test_transforms
 
-    def _collate_fn(self, batch):
-        # https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#data-loading-and-training-loop
-        # We need a custom fn because the number of bounding boxes varies between images of the same batch
+    def _collate_fn(self, batch: tuple) -> tuple:
+        """Collate function used for dataloaders.
+
+        A custom function is needed for detection
+        because the number of bounding boxes varies
+        between images of the same batch.
+        See https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#data-loading-and-training-loop
+
+        Parameters
+        ----------
+        batch : tuple
+            a tuple of 2 tuples, the first one holding all images in the batch,
+            and the second one holding the corresponding annotations.
+
+        Returns
+        -------
+        tuple
+            a tuple of length = batch size, made up of (image, annotations)
+            tuples.
+        """
         return tuple(zip(*batch))
 
-    def _compute_splits(self):
-        # Compute train/test/val splits
-        # - define split
-        # - make shuffles if required? -- via seed? log in mlflow?
-        # - exclude relevant files
+    def _compute_splits(self):  # -> CrabsCocoDetection:
+        """Compute train/test/validation splits.
+
+        The split is reproducible if the same seed is passed.
+
+        The fraction of samples to use in the train set is defined by
+        the `train_fraction` in the config file.
+
+        The remaining samples are split between test and validation.
+        The fraction of samples to use for validation, over the total
+        of samples to use for train+validation is defined by the
+        `val_over_test_fraction` parameter in the config file.
+
+        Returns
+        -------
+        CrabsCocoDetection
+            _description_
+        """
 
         # Optionally fix the generator for a reproducible split of data
         generator = None
@@ -74,7 +123,6 @@ class CrabsDataModule(L.LightningDataModule):
             self.list_img_dirs,
             self.list_annotation_files,
             transforms=self.train_transform,
-            # exclude_files_w_regex #------------------
         )
 
         # Split data into train/test-val
