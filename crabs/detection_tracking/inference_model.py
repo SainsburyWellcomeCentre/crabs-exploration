@@ -1,9 +1,8 @@
 import argparse
 import csv
-import logging
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional, TextIO, Tuple, Union
 
 import cv2
 import numpy as np
@@ -13,6 +12,7 @@ from sort import Sort
 
 from crabs.detection_tracking.detection_utils import (
     draw_bbox,
+    save_frame_and_csv,
 )
 
 
@@ -22,15 +22,22 @@ class DetectorInference:
     using a trained model.
 
     Parameters:
-        args (argparse.Namespace): Command-line arguments containing
-        configuration settings.
+    ----------
+    args : argparse.Namespace)
+        Command-line arguments containing configuration settings.
 
     Attributes:
-        args (argparse.Namespace): The command-line arguments provided.
-        vid_path (str): The path to the input video.
-        iou_threshold (float): The iou threshold for tracking.
-        score_threshold (float): The score confidence threshold for tracking.
-        sort_tracker (Sort): An instance of the sorting algorithm used for tracking.
+    ----------
+    args : argparse.Namespace
+        The command-line arguments provided.
+    vid_path : str
+        The path to the input video.
+    iou_threshold : float
+        The iou threshold for tracking.
+    score_threshold : float
+        The score confidence threshold for tracking.
+    sort_tracker : Sort
+        An instance of the sorting algorithm used for tracking.
     """
 
     def __init__(self, args: argparse.Namespace) -> None:
@@ -60,11 +67,11 @@ class DetectorInference:
         model.eval()
         return model
 
-    def prep_sort(self, prediction):
+    def prep_sort(self, prediction: dict) -> np.ndarray:
         """
         Put predictions in format expected by SORT
 
-        Parameters
+        Parameters:
         ----------
         prediction : dict
             The dictionary containing predicted bounding boxes, scores, and labels.
@@ -110,7 +117,7 @@ class DetectorInference:
                 output_file, output_codec, cap_fps, (frame_width, frame_height)
             )
 
-    def prep_csv_writer(self):
+    def prep_csv_writer(self) -> Tuple[Any, TextIO]:
         """
         Prepare csv writer to output tracking results
         """
@@ -118,7 +125,6 @@ class DetectorInference:
         self.tracking_output_dir = (
             Path("crabs_tracks_label") / self.video_file_root
         )
-        print(self.tracking_output_dir)
         crabs_tracks_label_dir = Path("crabs_tracks_label")
         crabs_tracks_label_dir.mkdir(parents=True, exist_ok=True)
 
@@ -126,7 +132,8 @@ class DetectorInference:
         self.tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
         csv_file = open(
-            str(self.tracking_output_dir / "tracking_output.csv"), "w"
+            f"{str(self.tracking_output_dir)}/{str(self.video_file_root)}_0.csv",
+            "w",
         )
         csv_writer = csv.writer(csv_file)
 
@@ -146,108 +153,120 @@ class DetectorInference:
 
         return csv_writer, csv_file
 
-    def write_bbox_to_csv(self, bbox, frame, frame_name, csv_writer):
-        """
-        Write bounding box annotation to csv
-        """
-
-        # Bounding box geometry
-        xmin, ymin, xmax, ymax, id = bbox
-        width_box = int(xmax - xmin)
-        height_box = int(ymax - ymin)
-
-        # Add to csv
-        csv_writer.writerow(
-            (
-                frame_name,
-                frame.size,
-                '{{"clip":{}}}'.format("123"),
-                1,
-                0,
-                '{{"name":"rect","x":{},"y":{},"width":{},"height":{}}}'.format(
-                    xmin, ymin, width_box, height_box
-                ),
-                '{{"track":"{}"}}'.format(id),
-            )
-        )
-
-    # Common functionality for saving frames and CSV
-    def save_frame_and_csv(
-        self, tracked_boxes, frame, frame_number, csv_writer, save_plot=True
-    ):
-        frame_copy = frame.copy()
-
-        for bbox in tracked_boxes:
-            # Get frame name
-            frame_name = f"{self.video_file_root}frame_{frame_number:08d}.png"
-
-            # Add bbox to csv
-            self.write_bbox_to_csv(bbox, frame, frame_name, csv_writer)
-
-            # Save frame as PNG
-            frame_path = self.tracking_output_dir / frame_name
-            img_saved = cv2.imwrite(str(frame_path), frame)
-            if img_saved:
-                logging.info(f"Frame {frame_number} saved at {frame_path}")
-            else:
-                logging.info(
-                    f"ERROR saving {frame_name}, frame {frame_number}...skipping"
-                )
-                break
-
-            if save_plot:
-                # Plot
-                xmin, ymin, xmax, ymax, id = bbox
-                draw_bbox(
-                    frame_copy,
-                    int(xmin),
-                    int(ymin),
-                    int(xmax),
-                    int(ymax),
-                    (0, 0, 255),
-                    f"id : {int(id)}",
-                )
-
-        return frame_copy
-
     def evaluate_tracking(
         self,
         gt_boxes_list: list,
         tracked_boxes_list: list,
         iou_threshold: float,
-    ):
+    ) -> List[float]:
+        """
+        Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
+
+        Parameters:
+        -----------
+        gt_boxes_list : List[list]
+            List of ground truth bounding boxes for each frame.
+        tracked_boxes_list : List[list]
+            List of tracked bounding boxes for each frame.
+        iou_threshold : float
+            The IoU threshold used to determine matches between ground truth and tracked boxes.
+
+        Returns:
+        --------
+        float:
+            The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
+        """
         from crabs.detection_tracking.detection_utils import evaluate_mota
 
         mota_values = []
+        prev_frame: Union[Optional[List[List[float]]], None] = None
         for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
             mota = evaluate_mota(
-                gt_boxes, tracked_boxes, iou_threshold, self.prev_frame
+                gt_boxes, tracked_boxes, iou_threshold, prev_frame
             )
             mota_values.append(mota)
             # Update previous frame IDs for the next iteration
-            self.prev_frame = [tuple(box) for box in tracked_boxes]
+            prev_frame = [list(box) for box in tracked_boxes]
 
         return mota_values
 
-    def get_prediction(self, frame):
+    def get_prediction(self, frame: np.ndarray) -> torch.Tensor:
+        """
+        Get prediction from the trained model for a given frame.
+
+        Parameters:
+        -----------
+        frame : np.ndarray
+            The input frame for which prediction is to be obtained.
+
+        Returns:
+        --------
+        torch.Tensor:
+            The prediction tensor from the trained model.
+        """
         transform = transforms.Compose([transforms.ToTensor()])
         img = transform(frame).to(self.args.accelerator)
         img = img.unsqueeze(0)
         return self.trained_model(img)
 
-    def update_tracking(self, prediction):
+    def update_tracking(self, prediction: dict) -> List[List[float]]:
+        """
+        Update the tracking system with the latest prediction.
+
+        Parameters:
+        -----------
+        prediction : dict
+            Dictionary containing predicted bounding boxes, scores, and labels.
+
+        Returns:
+        --------
+        List[List[float]]:
+            List of tracked bounding boxes after updating the tracking system.
+        """
         pred_sort = self.prep_sort(prediction)
         tracked_boxes = self.sort_tracker.update(pred_sort)
         self.tracked_list.append(tracked_boxes)
         return tracked_boxes
 
-    def handle_output(self, tracked_boxes, frame, frame_number, csv_writer):
+    def handle_output(
+        self,
+        tracked_boxes: List[List[float]],
+        frame: np.ndarray,
+        frame_number: int,
+    ) -> None:
+        """
+        Handle the output based argument options.
+
+        Parameters:
+        -----------
+        tracked_boxes : List[List[float]]
+            List of tracked bounding boxes.
+        frame : np.ndarray
+            The current frame.
+        frame_number : int
+            The frame number.
+        """
         if self.args.save_csv_and_frames:
             if self.args.save_video:
-                frame_copy = self.save_frame_and_csv(tracked_boxes, frame, frame_number, csv_writer)
+                frame_copy = save_frame_and_csv(
+                    self.video_file_root,
+                    self.tracking_output_dir,
+                    tracked_boxes,
+                    frame,
+                    frame_number,
+                    self.csv_writer,
+                )
                 self.out.write(frame_copy)
             else:
-                self.save_frame_and_csv(tracked_boxes, frame, frame_number, csv_writer, save_plot=False)
+                save_frame_and_csv(
+                    self.video_file_root,
+                    self.tracking_output_dir,
+                    tracked_boxes,
+                    frame,
+                    frame_number,
+                    self.csv_writer,
+                    save_plot=False,
+                )
         elif self.args.save_video:
             frame_copy = frame.copy()
             for bbox in tracked_boxes:
@@ -276,7 +295,7 @@ class DetectorInference:
 
         # initialise csv writer if required
         if self.args.save_csv_and_frames:
-            csv_writer, csv_file = self.prep_csv_writer()
+            self.csv_writer, csv_file = self.prep_csv_writer()
 
         if self.args.gt_dir:
             from crabs.detection_tracking.detection_utils import (
@@ -303,13 +322,12 @@ class DetectorInference:
             # run tracking
             self.prep_sort(prediction)
             tracked_boxes = self.update_tracking(prediction)
-            self.handle_output(tracked_boxes, frame, frame_number, csv_writer)
+            self.handle_output(tracked_boxes, frame, frame_number)
 
             # update frame
             frame_number += 1
 
         if self.args.gt_dir:
-            self.prev_frame: Optional[List[List[float]]] = None
             mota_values = self.evaluate_tracking(
                 gt_boxes_list, self.tracked_list, self.iou_threshold
             )

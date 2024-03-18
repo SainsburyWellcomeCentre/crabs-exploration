@@ -1,8 +1,10 @@
 import csv
 import datetime
 import json
+import logging
 import os
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 import cv2
 import numpy as np
@@ -337,21 +339,12 @@ def evaluate_mota(
     gt_boxes: np.ndarray,
     tracked_boxes: np.ndarray,
     iou_threshold: float,
-    prev_frame: List[List[float]],
+    prev_frame: Union[Optional[List[List[float]]], None],
 ) -> float:
     """
     Evaluate MOTA (Multiple Object Tracking Accuracy).
 
     MOTA is a metric used to evaluate the performance of object tracking algorithms.
-
-    Parameters:
-    gt_boxes (List[Tuple[int, int, int, int]]): Ground truth bounding boxes of objects.
-    tracked_boxes (List[Tuple[int, int, int, int]]): Tracked bounding boxes of objects.
-    iou_threshold (float): Intersection over Union (IoU) threshold for considering a match.
-    prev_frame (List[List[int]]): Previous frame data for identity switch detection.
-
-    Returns:
-    float: MOTA value.
     """
     total_gt = len(gt_boxes)
     false_alarms = 0
@@ -381,7 +374,19 @@ def evaluate_mota(
 
 
 def get_ground_truth_data(gt_dir: str) -> list:
-    # Initialize a list to store the extracted data
+    """
+    Extract ground truth bounding box data from a CSV file.
+
+    Parameters:
+    -----------
+    gt_dir : str
+        The path to the CSV file containing ground truth data.
+
+    Returns:
+    --------
+    list:
+        A list containing ground truth bounding box data organized by frame number.
+    """
     ground_truth_data = []
     max_frame_number = 0
 
@@ -444,3 +449,94 @@ def get_ground_truth_data(gt_dir: str) -> list:
             else bbox
         )
     return gt_boxes_list
+
+
+def write_bbox_to_csv(
+    bbox: np.ndarray,
+    frame: np.ndarray,
+    frame_name: str,
+    csv_writer: Any,
+) -> None:
+    """
+    Write bounding box annotation to a CSV file.
+
+    Parameters:
+    -----------
+    bbox : np.ndarray
+        A numpy array containing the bounding box coordinates
+        (xmin, ymin, xmax, ymax, id).
+    frame : np.ndarray
+        The frame to which the bounding box belongs.
+    frame_name : str
+        The name of the frame.
+    csv_writer : Any
+        The CSV writer object to write the annotation.
+    """
+
+    # Bounding box geometry
+    xmin, ymin, xmax, ymax, id = bbox
+    width_box = int(xmax - xmin)
+    height_box = int(ymax - ymin)
+
+    # Add to csv
+    csv_writer.writerow(
+        (
+            frame_name,
+            frame.size,
+            '{{"clip":{}}}'.format("123"),
+            1,
+            0,
+            '{{"name":"rect","x":{},"y":{},"width":{},"height":{}}}'.format(
+                xmin, ymin, width_box, height_box
+            ),
+            '{{"track":"{}"}}'.format(id),
+        )
+    )
+
+
+def save_frame_and_csv(
+    video_file_root: str,
+    tracking_output_dir: Path,
+    tracked_boxes: List[List[float]],
+    frame: np.ndarray,
+    frame_number: int,
+    csv_writer: Any,
+    save_plot: bool = True,
+) -> np.ndarray:
+    """
+    Common functionality for saving frames and CSV
+    """
+    frame_copy = frame.copy()
+
+    for bbox in tracked_boxes:
+        # Get frame name
+        frame_name = f"{video_file_root}frame_{frame_number:08d}.png"
+
+        # Add bbox to csv
+        write_bbox_to_csv(bbox, frame, frame_name, csv_writer)
+
+        # Save frame as PNG
+        frame_path = tracking_output_dir / frame_name
+        img_saved = cv2.imwrite(str(frame_path), frame)
+        if img_saved:
+            logging.info(f"Frame {frame_number} saved at {frame_path}")
+        else:
+            logging.info(
+                f"ERROR saving {frame_name}, frame {frame_number}...skipping"
+            )
+            break
+
+        if save_plot:
+            # Plot
+            xmin, ymin, xmax, ymax, id = bbox
+            draw_bbox(
+                frame_copy,
+                int(xmin),
+                int(ymin),
+                int(xmax),
+                int(ymax),
+                (0, 0, 255),
+                f"id : {int(id)}",
+            )
+
+    return frame_copy
