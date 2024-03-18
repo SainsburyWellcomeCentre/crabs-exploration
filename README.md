@@ -20,36 +20,53 @@ requires Python 3.9 or 3.10 or 3.11.
 
 ### Data Structure
 
+We assume the following structure for the dataset directory:
+
 ```
 |_ Dataset
     |_ frames
     |_ annotations
+        |_ VIA_JSON_combined_coco_gen.json
 ```
+
+The default name assumed for the annotations file is `VIA_JSON_combined_coco_gen.json`. This is used if no input files are passed. Other filenames (or fullpaths) can be passed with the `--annotation_files` command-line argument.
 
 ### Running Locally
 
 For training
 
 ```bash
-python crabs/detection_tracking/train_model.py --main_dir {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_file {annotation_file.json} {optional_second_annotation_file.json}
+python crabs/detection_tracking/train_model.py --dataset_dirs {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_files {path_to_annotation_file.json} {path_to_optional_second_annotation_file.json}
 ```
 
-Example:
+Example (using default annotation file and one dataset):
 
 ```bash
-python crabs/detection_tracking/evaluate_model.py --main_dir /home/data/dataset1 /home/data/dataset2 --annotation_file annotation_dataset1.json annotation_dataset2.json
+python crabs/detection_tracking/train_model.py --dataset_dirs /home/data/dataset1
+```
+
+Example (passing the full path of the annotation file):
+
+```bash
+python crabs/detection_tracking/train_model.py --dataset_dirs /home/data/dataset1 --annotation_files /home/user/annotations/annotations42.json
+```
+
+Example (passing several datasets with annotation filenames different from the default):
+
+```bash
+python crabs/detection_tracking/train_model.py --dataset_dirs /home/data/dataset1 /home/data/dataset2 --annotation_files annotation_dataset1.json annotation_dataset2.json
 ```
 
 For evaluation
 
 ```bash
-python crabs/detection_tracking/evaluate_model.py --model_dir {directory_to_saved_model} --main_dir {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_file {annotation_file.json} {optional_second_annotation_file.json}
+python crabs/detection_tracking/evaluate_model.py --model_dir {directory_to_saved_model} --images_dirs {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_files {annotation_file.json} {optional_second_annotation_file.json}
 ```
 
 Example:
 
 ```bash
-python crabs/detection_tracking/evaluate_model.py --model_dir model/model_00.pt --main_dir /home/data/dataset1 /home/data/dataset2 --annotation_file annotation_dataset1.json annotation_dataset2.json
+python crabs/detection_tracking/evaluate_model.py --model_dir model/model_00.pt --main_dir /home/data/dataset1/frames /home/data/dataset2/frames --annotation_files /home/data/dataset1/annotations/annotation_dataset1.json /home/data/dataset2/annotations/annotation_dataset2.json
 ```
 
 For running inference
