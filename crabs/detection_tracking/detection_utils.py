@@ -115,7 +115,7 @@ def draw_bbox(
 
 def draw_detection(
     imgs: list,
-    annotations: Optional[Dict[Any, Any]] = None,
+    annotations: dict,
     detections: Optional[Dict[Any, Any]] = None,
     score_threshold: Optional[float] = None,
 ) -> np.ndarray:
@@ -126,7 +126,7 @@ def draw_detection(
     ----------
     imgs : list
         List of images.
-    annotations : dict, optional
+    annotations : dict
         Ground truth annotations.
     detections : dict, optional
         Detected objects.
@@ -138,33 +138,30 @@ def draw_detection(
     np.ndarray
         Image(s) with bounding boxes drawn on them.
     """
-
     coco_list = coco_category()
     image_with_boxes = None
 
     for image, label, prediction in zip(
-        imgs, annotations or [], detections or []
+        imgs, annotations, detections or [None] * len(imgs)
     ):
         image = image.cpu().numpy().transpose(1, 2, 0)
         image = (image * 255).astype("uint8")
         image_with_boxes = image.copy()
 
-        if label:
-            target_boxes = [
-                [(i[0], i[1]), (i[2], i[3])]
-                for i in list(label["boxes"].detach().cpu().numpy())
-            ]
+        target_boxes = [
+            [(i[0], i[1]), (i[2], i[3])]
+            for i in list(label["boxes"].detach().cpu().numpy())
+        ]
 
-            for i in range(len(target_boxes)):
-                draw_bbox(
-                    image_with_boxes,
-                    int((target_boxes[i][0])[0]),
-                    int((target_boxes[i][0])[1]),
-                    int((target_boxes[i][1])[0]),
-                    int((target_boxes[i][1])[1]),
-                    colour=(0, 255, 0),
-                )
-
+        for i in range(len(target_boxes)):
+            draw_bbox(
+                image_with_boxes,
+                int((target_boxes[i][0])[0]),
+                int((target_boxes[i][0])[1]),
+                int((target_boxes[i][1])[0]),
+                int((target_boxes[i][1])[1]),
+                colour=(0, 255, 0),
+            )
         if prediction:
             pred_score = list(prediction["scores"].detach().cpu().numpy())
             pred_t = [pred_score.index(x) for x in pred_score][-1]
