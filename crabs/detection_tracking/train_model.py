@@ -54,7 +54,7 @@ class DectectorTrain:
         )
 
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        run_name = f"experiment_{timestamp}"
+        run_name = f"run_{timestamp}"
 
         mlf_logger = pl.pytorch.loggers.MLFlowLogger(
             run_name=run_name,
@@ -124,7 +124,7 @@ if __name__ == "__main__":
         "--experiment_name",
         type=str,
         default="Sept2023",
-        help="the run name for mlflow for example the dataset used for the run",
+        help="the name for the experiment in MLflow, under which the current run will be logged. For example, the name of the dataset could be used, to group runs using the same data.",
     )
     parser.add_argument(
         "--seed_n",

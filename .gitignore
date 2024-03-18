@@ -95,4 +95,5 @@ venv/
 
 # python
 model/
-mlruns/
+ml-runs/
+lightning_logs
