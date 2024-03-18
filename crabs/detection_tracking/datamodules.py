@@ -1,3 +1,5 @@
+from typing import Optional
+
 import lightning as L
 import torch
 import torchvision
@@ -21,7 +23,7 @@ class CrabsDataModule(L.LightningDataModule):
         list_img_dirs: list[str],
         list_annotation_files: list[str],
         config: dict,
-        split_seed=None,
+        split_seed: Optional[int] = None,
     ):
         super().__init__()
         self.list_img_dirs = list_img_dirs
@@ -30,9 +32,9 @@ class CrabsDataModule(L.LightningDataModule):
         self.config = config
 
     def _get_train_transform(self) -> torchvision.transforms:
-        """Define data augmentation transforms for the train set
+        """Define data augmentation transforms for the train set.
 
-        Using transforms.v2, see:
+        Using transforms.v2, for more details see:
         https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
         https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
 
@@ -57,9 +59,9 @@ class CrabsDataModule(L.LightningDataModule):
         return train_transforms
 
     def _get_test_val_transform(self) -> torchvision.transforms:
-        """Define data augmentation transforms for the test set
+        """Define data augmentation transforms for the test set.
 
-        Using transforms.v2, see:
+        Using transforms.v2, for more details see:
         https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
         https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
 
@@ -94,7 +96,9 @@ class CrabsDataModule(L.LightningDataModule):
         """
         return tuple(zip(*batch))
 
-    def _compute_splits(self):  # -> CrabsCocoDetection:
+    def _compute_splits(
+        self,
+    ) -> tuple[CrabsCocoDetection, CrabsCocoDetection, CrabsCocoDetection]:
         """Compute train/test/validation splits.
 
         The split is reproducible if the same seed is passed.
@@ -109,8 +113,8 @@ class CrabsDataModule(L.LightningDataModule):
 
         Returns
         -------
-        CrabsCocoDetection
-            _description_
+        tuple
+            A tuple with the train, test and validation datasets
         """
 
         # Optionally fix the generator for a reproducible split of data
@@ -125,22 +129,21 @@ class CrabsDataModule(L.LightningDataModule):
             transforms=self.train_transform,
         )
 
-        # Split data into train/test-val
-        # can we specify what to have in train/test?
+        # Split data into train and test-val sets
+        # TODO: split based on video
         train_dataset, test_val_dataset = random_split(
             full_dataset,
             [self.config["train_fraction"], 1 - self.config["train_fraction"]],
             generator=generator,
         )
 
-        # Split test/val in equal parts?
-        # define val but not use for now?
+        # Split test/val sets from the remainder
         test_dataset, val_dataset = random_split(
             test_val_dataset,
             [
                 1 - self.config["val_over_test_fraction"],
                 self.config["val_over_test_fraction"],
-            ],  # [0.5, 0.5],  # can I pass zero here?
+            ],
         )
 
         return train_dataset, test_dataset, val_dataset
@@ -153,21 +156,16 @@ class CrabsDataModule(L.LightningDataModule):
         pass
 
     def setup(self, stage: str):
-        """Define transforms for data augmentation and
-        assign train/val datasets for use in dataloaders.
+        """Setup the data for training or testing.
 
-        Sets up the data loader for the specified stage
-        'fit' for training stage or 'test' for evaluation stage.
-        If stage is not specified (i.e., stage is None),
-        both blocks of code will execute, which means that the method
-        will set up both the training and testing data loaders.
+        - Define transforms for data augmentation
+        - Define train/test/val datasets as required
 
         Parameters
         ----------
         stage : str
-            _description_
-        config : dict
-            _description_
+            Identifies whether to apply the setup for training (stage='fit')
+            or testing (stage='test').
         """
 
         # Assign transforms
@@ -178,32 +176,29 @@ class CrabsDataModule(L.LightningDataModule):
         # Assign datasets for dataloader depending on stage
         # omitting "predict" stage for now
         train_dataset, test_dataset, val_dataset = self._compute_splits()
-        if stage == "fit":  # or stage=='train':
+        if stage == "fit":
             self.train_dataset = train_dataset
             self.val_dataset = val_dataset
 
         if stage == "test":
             self.test_dataset = test_dataset
 
-    def train_dataloader(self):
-        # https://github.com/pytorch/vision/blob/423a1b0ebdea077cc69478812890845741048d2e/references/detection/train.py#L209
+    def train_dataloader(self) -> DataLoader:
+        """Define dataloader for the training set"""
         return DataLoader(
             self.train_dataset,
             batch_size=self.config["batch_size_train"],
-            shuffle=True,  # A sequential or shuffled sampler will be automatically constructed based on the shuffle argument
-            num_workers=self.config["num_workers"],  # set to auto?
+            shuffle=True,  # a shuffled sampler will be constructed
+            num_workers=self.config["num_workers"],
             collate_fn=self._collate_fn,
             persistent_workers=True,
             multiprocessing_context="fork"
             if torch.backends.mps.is_available()
-            else None,
-            # see https://github.com/pytorch/pytorch/issues/87688
-            # --- why do we need it? to use the same workers across epochs (after loader is exhausted)
-            # interesting if it takes a lot of time to spawn workers at the start of the epoch
-            # if they persist, workers stay with their state
+            else None,  # see https://github.com/pytorch/pytorch/issues/87688
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self) -> DataLoader:
+        """Define dataloader for the validation set"""
         return DataLoader(
             self.val_dataset,
             batch_size=self.config["batch_size_val"],
@@ -212,7 +207,8 @@ class CrabsDataModule(L.LightningDataModule):
             collate_fn=self._collate_fn,
         )
 
-    def test_dataloader(self):
+    def test_dataloader(self) -> DataLoader:
+        """Define dataloader for the test set"""
         return DataLoader(
             self.test_dataset,
             batch_size=self.config["batch_size_test"],
