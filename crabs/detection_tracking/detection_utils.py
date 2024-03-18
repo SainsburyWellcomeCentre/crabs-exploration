@@ -442,7 +442,6 @@ def get_ground_truth_data(gt_dir: str) -> list:
             ],
             dtype=np.float32,
         )
-        # print(bbox)
         gt_boxes_list[frame_number] = (
             np.vstack([gt_boxes_list[frame_number], bbox])
             if gt_boxes_list[frame_number].size

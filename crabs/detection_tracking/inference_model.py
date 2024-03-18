@@ -132,7 +132,7 @@ class DetectorInference:
         self.tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
         csv_file = open(
-            f"{str(self.tracking_output_dir)}/{str(self.video_file_root)}_0.csv",
+            f"{str(self.tracking_output_dir)}/{str(self.video_file_root)}.csv",
             "w",
         )
         csv_writer = csv.writer(csv_file)
@@ -256,6 +256,17 @@ class DetectorInference:
                     frame_number,
                     self.csv_writer,
                 )
+                for bbox in tracked_boxes:
+                    xmin, ymin, xmax, ymax, id = bbox
+                    draw_bbox(
+                        frame_copy,
+                        int(xmin),
+                        int(ymin),
+                        int(xmax),
+                        int(ymax),
+                        (0, 0, 255),
+                        f"id : {int(id)}",
+                    )
                 self.out.write(frame_copy)
             else:
                 save_frame_and_csv(
@@ -280,7 +291,7 @@ class DetectorInference:
                     (0, 0, 255),
                     f"id : {int(id)}",
                 )
-            self.out.write(frame)
+            self.out.write(frame_copy)
 
     def run_inference(self):
         """
