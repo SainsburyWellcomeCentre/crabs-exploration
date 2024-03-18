@@ -1,6 +1,3 @@
-import datetime
-import json
-from pathlib import Path
 from typing import Callable, Optional
 
 import matplotlib.pyplot as plt
@@ -34,15 +31,10 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
 
         # Create list of transformed-COCO datasets
         list_datasets = []
+        dict_cocos = {}
         for img_dir, annotation_file in zip(
             list_img_dirs, list_annotation_files
         ):
-            # exclude files if required
-            if list_exclude_files:
-                annotation_file = self.exclude_files(
-                    annotation_file, list_exclude_files
-                )
-
             # create COCO dataset for detection
             dataset_coco = CocoDetection(
                 img_dir,
@@ -50,9 +42,18 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
                 transforms=transforms,
             )
 
+            # exclude ids of certain files if required
+            if list_exclude_files:
+                dataset_coco = self.exclude_files(
+                    dataset_coco, list_exclude_files
+                )
+
             # transform for "transforms v2"
             dataset_transformed = wrap_dataset_for_transforms_v2(dataset_coco)
             list_datasets.append(dataset_transformed)
+
+            # add COCO object of this dataset to dictionary
+            dict_cocos[str(img_dir)] = dataset_transformed.coco
 
         # Concatenate datasets
         full_dataset = torch.utils.data.ConcatDataset(list_datasets)
@@ -61,9 +62,13 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         self.__class__ = full_dataset.__class__
         self.__dict__ = full_dataset.__dict__
 
+        # add dictionary of COCO objects per dataset as an attribute
+        # this doesnt account for any excluded files!
+        self._coco_obj_per_dataset = dict_cocos
+
     def exclude_files(
         self,
-        annotation_file: str,
+        dataset_coco,
         list_files_to_exclude: list[str],
     ) -> str:
         """Remove selected images from annotation file and save new file.
@@ -83,50 +88,27 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         str
             path to new annotation file
         """
-        # Read annotation file as a dataset dict
-        with open(annotation_file, "r") as f:
-            dataset = json.load(f)
 
-        # Determine images to exclude
-        slc_images_to_exclude = [
-            im["file_name"] in list_files_to_exclude
-            for im in dataset["images"]
-        ]
-        image_ids_to_exclude = [
-            im["id"]
-            for im, slc in zip(dataset["images"], slc_images_to_exclude)
-            if slc
-        ]
+        # map filename to image ID
+        map_filename_to_img_id = {
+            val["file_name"]: val["id"]
+            for ky, val in dataset_coco.coco.imgs.items()
+        }
 
-        # Determine annotations to exclude
-        slc_annotations_to_exclude = [
-            ann["image_id"] in image_ids_to_exclude
-            for ann in dataset["annotations"]
+        # find image IDs to keep/remove files
+        img_ids_to_remove = [
+            map_filename_to_img_id[k] for k in list_files_to_exclude
+        ]
+        img_ids_to_keep = [
+            id for id in dataset_coco.ids if id not in img_ids_to_remove
         ]
 
-        # Update dataset dict
-        dataset["images"] = [
-            im
-            for im, slc in zip(dataset["images"], slc_images_to_exclude)
-            if not slc
-        ]
-        dataset["annotations"] = [
-            annot
-            for annot, slc in zip(
-                dataset["annotations"], slc_annotations_to_exclude
-            )
-            if not slc
-        ]
+        # overwrite indices
+        # self.dataset = dataset
+        # self.createIndex()
+        dataset_coco.ids = img_ids_to_keep
 
-        # Write to new file under the same location as original annotation file
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_filename = Path(annotation_file).parent / Path(
-            Path(annotation_file).stem + "_filt_" + timestamp + ".json"
-        )
-        with open(out_filename, "w") as f:
-            json.dump(dataset, f)
-
-        return str(out_filename)
+        return dataset_coco
 
 
 def plot_sample(imgs: list, row_title: Optional[str] = None, **imshow_kwargs):
