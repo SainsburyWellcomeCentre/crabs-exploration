@@ -22,15 +22,14 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         """
         CocoDetection dataset wrapped for transforms_v2.
 
-        Example:
-        > dataset = CrabsCocoDetection(IMAGES_PATH, ANNOTATIONS_PATH)
-
+        Example usage:
+        > dataset = CrabsCocoDetection([IMAGES_PATH], [ANNOTATIONS_PATH])
         > sample = dataset[0]
         > img, annotations = sample
         > print(type(annotations))  # this is a dictionary
 
-        Should be equivalent to the dataset obtain with:
-        > dataset = wrap_dataset_for_transforms_v2(CocoDetection(IMAGES_PATH, ANNOTATIONS_PATH))
+        Should produce a dataset equivalent to one obtained with:
+        > dataset = wrap_dataset_for_transforms_v2(CocoDetection([IMAGES_PATH], [ANNOTATIONS_PATH]))
         """
 
         # Create list of transformed-COCO datasets
@@ -67,28 +66,28 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         annotation_file: str,
         list_files_to_exclude: list[str],
     ) -> str:
-        """Exclude images from annotation file.
+        """Remove selected images from annotation file and save new file.
 
-        A new annotation file is created without the images to exclude,
-        and without the annotations for that image.
+        A new annotation file is created, excluding the required images,
+        and without the annotations for those images.
 
         Parameters
         ----------
         annotation_file : str
-            _description_
+            file with annotations
         list_files_to_exclude : list[str]
-            _description_
+            list of filenames to exclude from the dataset
 
         Returns
         -------
         str
-            _description_
+            path to new annotation file
         """
-        # read annotation file as a dataset dict
+        # Read annotation file as a dataset dict
         with open(annotation_file, "r") as f:
             dataset = json.load(f)
 
-        # determine images to exclude
+        # Determine images to exclude
         slc_images_to_exclude = [
             im["file_name"] in list_files_to_exclude
             for im in dataset["images"]
@@ -99,13 +98,13 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
             if slc
         ]
 
-        # determine annotations to exclude
+        # Determine annotations to exclude
         slc_annotations_to_exclude = [
             ann["image_id"] in image_ids_to_exclude
             for ann in dataset["annotations"]
         ]
 
-        # update dataset dict
+        # Update dataset dict
         dataset["images"] = [
             im
             for im, slc in zip(dataset["images"], slc_images_to_exclude)
@@ -119,7 +118,7 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
             if not slc
         ]
 
-        # write to new file under the same location as original annotation file
+        # Write to new file under the same location as original annotation file
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         out_filename = Path(annotation_file).parent / Path(
             Path(annotation_file).stem + "_filt_" + timestamp + ".json"
@@ -130,9 +129,15 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         return str(out_filename)
 
 
-def plot_sample(imgs, row_title: Optional[str] = None, **imshow_kwargs):
+def plot_sample(imgs: list, row_title: Optional[str] = None, **imshow_kwargs):
     """
-    Plot a sample from the dataset.
+    Plot a sample (image & annotations) from a dataset.
+
+    Example usage:
+    > full_dataset = CrabsCocoDetection([IMAGES_PATH],[ANNOTATIONS_PATH])
+    > sample = full_dataset[0]
+    > plt.figure()
+    > plot_sample([sample])
 
     From https://github.com/pytorch/vision/blob/main/gallery/transforms/helpers.py
     """
