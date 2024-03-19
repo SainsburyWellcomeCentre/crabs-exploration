@@ -45,7 +45,7 @@ module load miniconda
 conda create -n crabs-dev -y python=3.10
 conda activate crabs-dev
 
-cd $CRABS_REPO_LOCATION
+cd $CRABS_REPO_LOCATION # artifacts/outputs will be here? (ml-runs and ml-runs/models)
 pip install -e .[dev]  # can omit -e if not debugging
 
 
@@ -58,3 +58,8 @@ python "$CRABS_REPO_LOCATION"/crabs/detection_tracking/train_model.py  \
  --accelerator gpu \
  --experiment_name "Sept2023_base_data_augm" \
  --seed_n $SEED_SPLIT \
+
+
+# -----------------------------------
+# Copy logs/artifacts somewhere else
+# -----------------------------------
