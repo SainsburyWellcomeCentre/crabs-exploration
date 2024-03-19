@@ -372,11 +372,12 @@ def get_ground_truth_data(gt_dir: str) -> list:
             ],
             dtype=np.float32,
         )
-        gt_boxes_list[frame_number] = (
-            np.vstack([gt_boxes_list[frame_number], bbox])
-            if gt_boxes_list[frame_number].size
-            else bbox
-        )
+        
+        if gt_boxes_list[frame_number].size == 0:
+            gt_boxes_list[frame_number] = bbox.reshape(1, -1)  # Initialize as a 2D array
+        else:
+            gt_boxes_list[frame_number] = np.vstack([gt_boxes_list[frame_number], bbox])
+
     return gt_boxes_list
 
 
