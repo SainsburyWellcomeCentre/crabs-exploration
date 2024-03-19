@@ -5,6 +5,8 @@
 #SBATCH --mem 8G # memory pool for all cores
 #SBATCH -n 2 # number of cores
 #SBATCH -t 3-00:00 # time (D-HH:MM)
+#SBATCH -o slurm_array.%N.%A-%a.out
+#SBATCH -e slurm_array.%N.%A-%a.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minanon@ucl.ac.uk
 #SBATCH --array=0-2%3
@@ -13,6 +15,15 @@
 # NOTE on SBATCH command for array jobs
 # with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
 # the number of array jobs should match the number of input files
+
+# -----------------------------
+# Error settings for bash
+# -----------------------------
+# see https://wizardzines.com/comics/bash-errors/
+set -e  # do not continue after errors
+set -u  # throw error if variable is unset
+set -o pipefail  # make the pipe fail if any part of it fails
+
 
 
 # ---------------------
@@ -26,6 +37,8 @@ TRAIN_CONFIG_FILE=/ceph/scratch/sminano/faster_rcnn.yaml
 
 LIST_SEEDS=($(echo {42..44}))
 SEED_SPLIT=${LIST_SEEDS[${SLURM_ARRAY_TASK_ID}]}
+
+ENV_NAME=crabs-dev-$SEED_SPLIT
 
 # --------------------
 # Check inputs
@@ -42,11 +55,11 @@ fi
 # -----------------------------
 module load miniconda
 
-conda create -n crabs-dev -y python=3.10
-conda activate crabs-dev
+conda create -y -n $ENV_NAME python=3.10
+source activate $ENV_NAME
 
-cd $CRABS_REPO_LOCATION # artifacts/outputs will be here? (ml-runs and ml-runs/models)
-pip install -e .[dev]  # can omit -e if not debugging
+cd $CRABS_REPO_LOCATION
+python -m pip install .[dev]  # can omit -e if not debugging
 
 
 # -------------------
@@ -58,8 +71,3 @@ python "$CRABS_REPO_LOCATION"/crabs/detection_tracking/train_model.py  \
  --accelerator gpu \
  --experiment_name "Sept2023_base_data_augm" \
  --seed_n $SEED_SPLIT \
-
-
-# -----------------------------------
-# Copy logs/artifacts somewhere else
-# -----------------------------------
