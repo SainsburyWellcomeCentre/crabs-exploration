@@ -228,7 +228,7 @@ class DetectorInference:
         self.tracked_list.append(tracked_boxes)
         return tracked_boxes
 
-    def handle_output(
+    def save_required_output(
         self,
         tracked_boxes: List[List[float]],
         frame: np.ndarray,
