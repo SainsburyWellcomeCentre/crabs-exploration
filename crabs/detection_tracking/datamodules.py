@@ -127,7 +127,9 @@ class CrabsDataModule(L.LightningDataModule):
             self.list_img_dirs,
             self.list_annotation_files,
             transforms=self.train_transform,
-            list_exclude_files=self.config["exclude_video_file_list"],
+            list_exclude_files=self.config.get(
+                "exclude_video_file_list"
+            ),  # only if key exists
         )
 
         # Split data into train and test-val sets
