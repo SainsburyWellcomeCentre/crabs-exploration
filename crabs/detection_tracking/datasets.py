@@ -38,6 +38,7 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
             list_img_dirs, list_annotation_files
         ):
             # exclude files if required
+            # TODO: exclude files only if they are in this annotation file!
             if list_exclude_files:
                 annotation_file = self.exclude_files(
                     annotation_file, list_exclude_files
@@ -74,7 +75,7 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         Parameters
         ----------
         annotation_file : str
-            file with annotations
+            path to file with annotations
         list_files_to_exclude : list[str]
             list of filenames to exclude from the dataset
 
@@ -92,41 +93,48 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
             im["file_name"] in list_files_to_exclude
             for im in dataset["images"]
         ]
-        image_ids_to_exclude = [
-            im["id"]
-            for im, slc in zip(dataset["images"], slc_images_to_exclude)
-            if slc
-        ]
 
-        # Determine annotations to exclude
-        slc_annotations_to_exclude = [
-            ann["image_id"] in image_ids_to_exclude
-            for ann in dataset["annotations"]
-        ]
+        # If there are no images to exclude: return
+        # the original annotation file
+        if not any(slc_images_to_exclude):
+            return annotation_file
+        # else create a new one
+        else:
+            image_ids_to_exclude = [
+                im["id"]
+                for im, slc in zip(dataset["images"], slc_images_to_exclude)
+                if slc
+            ]
 
-        # Update dataset dict
-        dataset["images"] = [
-            im
-            for im, slc in zip(dataset["images"], slc_images_to_exclude)
-            if not slc
-        ]
-        dataset["annotations"] = [
-            annot
-            for annot, slc in zip(
-                dataset["annotations"], slc_annotations_to_exclude
+            # Determine annotations to exclude
+            slc_annotations_to_exclude = [
+                ann["image_id"] in image_ids_to_exclude
+                for ann in dataset["annotations"]
+            ]
+
+            # Update dataset dict
+            dataset["images"] = [
+                im
+                for im, slc in zip(dataset["images"], slc_images_to_exclude)
+                if not slc
+            ]
+            dataset["annotations"] = [
+                annot
+                for annot, slc in zip(
+                    dataset["annotations"], slc_annotations_to_exclude
+                )
+                if not slc
+            ]
+
+            # Write to new file under the same location as original annotation file
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            out_filename = Path(annotation_file).parent / Path(
+                Path(annotation_file).stem + "_filt_" + timestamp + ".json"
             )
-            if not slc
-        ]
+            with open(out_filename, "w") as f:
+                json.dump(dataset, f)
 
-        # Write to new file under the same location as original annotation file
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_filename = Path(annotation_file).parent / Path(
-            Path(annotation_file).stem + "_filt_" + timestamp + ".json"
-        )
-        with open(out_filename, "w") as f:
-            json.dump(dataset, f)
-
-        return str(out_filename)
+            return str(out_filename)
 
 
 def plot_sample(imgs: list, row_title: Optional[str] = None, **imshow_kwargs):
