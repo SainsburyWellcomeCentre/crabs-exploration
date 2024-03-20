@@ -203,7 +203,12 @@ class DetectorInference:
         torch.Tensor:
             The prediction tensor from the trained model.
         """
-        transform = transforms.Compose([transforms.ToTensor()])
+        transform = transforms.Compose(
+            [
+                transforms.ToImage(),
+                transforms.ToDtype(torch.float32, scale=True),
+            ]
+        )
         img = transform(frame).to(self.args.accelerator)
         img = img.unsqueeze(0)
         return self.trained_model(img)
@@ -272,9 +277,6 @@ class DetectorInference:
         """
         Run object detection + tracking on the video frames.
         """
-        # Get transform to tensor
-        transforms.Compose([transforms.ToTensor()])
-
         # initialisation
         frame_number = 1
         self.tracked_list = []

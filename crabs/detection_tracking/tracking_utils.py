@@ -12,8 +12,8 @@ def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
     """
     Calculate IoU (Intersection over Union) of two bounding boxes.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     box1 (np.ndarray):
         Coordinates [x1, y1, x2, y2] of the first bounding box.
         Here, (x1, y1) represents the top-left corner, and (x2, y2) represents the bottom-right corner.
@@ -21,8 +21,8 @@ def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
         Coordinates [x1, y1, x2, y2] of the second bounding box.
         Here, (x1, y1) represents the top-left corner, and (x2, y2) represents the bottom-right corner.
 
-    Returns:
-    --------
+    Returns
+    -------
     float:
         IoU value.
     """
@@ -56,15 +56,15 @@ def count_identity_switches(
     """
     Count the number of identity switches between two sets of object IDs.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     prev_frame_ids : Optional[List[List[int]]]
         List of object IDs in the previous frame.
     current_frame_ids : Optional[List[List[int]]]
         List of object IDs in the current frame.
 
-    Returns:
-    --------
+    Returns
+    -------
     int
         The number of identity switches between the two sets of object IDs.
     """
@@ -95,8 +95,8 @@ def evaluate_mota(
 
     MOTA is a metric used to evaluate the performance of object tracking algorithms.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     gt_boxes : np.ndarray
         Ground truth bounding boxes of objects.
     tracked_boxes : np.ndarray
@@ -106,13 +106,27 @@ def evaluate_mota(
     prev_frame_ids : Optional[List[List[int]]]
         IDs from the previous frame for identity switch detection.
 
-    Returns:
-    --------
+    Returns
+    -------
     float
         The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
+
+    Notes
+    -----
+    MOTA is calculated using the following formula:
+
+    MOTA = 1 - (Missed Detections + False Positives + Identity Switches) / Total Ground Truth
+
+    - Missed Detections: Instances where the ground truth objects were not detected by the tracking algorithm.
+    - False Positives: Instances where the tracking algorithm produces a detection where there is no corresponding ground truth object.
+    - Identity Switches: Instances where the tracking algorithm assigns a different ID to an object compared to its ID in the previous frame.
+    - Total Ground Truth: The total number of ground truth objects in the scene.
+
+    The MOTA score ranges from 0 to 1, with higher values indicating better tracking performance.
+    A MOTA score of 1 indicates perfect tracking, where there are no missed detections, false positives, or identity switches.
     """
     total_gt = len(gt_boxes)
-    false_alarms = 0
+    false_positive = 0
 
     for i, tracked_box in enumerate(tracked_boxes):
         best_iou = 0.0
@@ -128,7 +142,7 @@ def evaluate_mota(
             # set the corresponding ground truth box to None.
             gt_boxes[best_match] = None
         else:
-            false_alarms += 1
+            false_positive += 1
 
     missed_detections = 0
     for box in gt_boxes:
@@ -139,7 +153,7 @@ def evaluate_mota(
     tracked_ids = [[int(box[-1]) for box in tracked_boxes]]
 
     num_switches = count_identity_switches(prev_frame_ids, tracked_ids)
-    mota = 1 - (missed_detections + false_alarms + num_switches) / total_gt
+    mota = 1 - (missed_detections + false_positive + num_switches) / total_gt
     return mota
 
 
@@ -147,13 +161,13 @@ def extract_bounding_box_info(row: List[str]) -> Dict[str, Any]:
     """
     Extracts bounding box information from a row of data.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     row : List[str]
         A list representing a row of data containing information about a bounding box.
 
-    Returns:
-    --------
+    Returns
+    -------
     Dict[str, Any]:
         A dictionary containing the extracted bounding box information.
     """
@@ -184,15 +198,15 @@ def create_gt_list(
     """
     Creates a list of ground truth bounding boxes organized by frame number.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     ground_truth_data : List[Dict[str, Any]]
         A list containing ground truth bounding box data organized by frame number.
     gt_boxes_list : List[np.ndarray]
         A list to store the ground truth bounding boxes for each frame.
 
-    Returns:
-    --------
+    Returns
+    -------
     List[np.ndarray]:
         A list containing ground truth bounding boxes organized by frame number.
     """
@@ -223,13 +237,13 @@ def get_ground_truth_data(gt_dir: str) -> List[np.ndarray]:
     """
     Extract ground truth bounding box data from a CSV file.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     gt_dir : str
         The path to the CSV file containing ground truth data.
 
-    Returns:
-    --------
+    Returns
+    -------
     List[np.ndarray]:
         A list containing ground truth bounding box data organized by frame number.
         The numpy array represent the coordinates and ID of the bounding box in the order:
@@ -263,8 +277,8 @@ def write_tracked_bbox_to_csv(
     """
     Write bounding box annotation to a CSV file.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     bbox : np.ndarray
         A numpy array containing the bounding box coordinates
         (xmin, ymin, xmax, ymax, id).
@@ -308,8 +322,8 @@ def save_frame_and_csv(
     """
     Save tracked bounding boxes as frames and write to a CSV file.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     video_file_root : str
         The root path of the video file.
     tracking_output_dir : Path
@@ -323,8 +337,8 @@ def save_frame_and_csv(
     csv_writer : Any
         CSV writer object for writing bounding box data.
 
-    Returns:
-    --------
+    Returns
+    -------
     None
     """
     for bbox in tracked_boxes:
@@ -337,10 +351,9 @@ def save_frame_and_csv(
         # Save frame as PNG
         frame_path = tracking_output_dir / frame_name
         img_saved = cv2.imwrite(str(frame_path), frame)
-        if img_saved:
-            logging.info(f"Frame {frame_number} saved at {frame_path}")
-        else:
-            logging.info(
-                f"ERROR saving {frame_name}, frame {frame_number}...skipping"
+        if not img_saved:
+            logging.error(
+                f"Didn't save {frame_name}, frame {frame_number}, Skipping."
             )
             break
+        logging.info(f"Frame {frame_number} saved at {frame_path}")
