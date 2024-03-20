@@ -1,14 +1,11 @@
 import csv
-import datetime
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import cv2
 import numpy as np
-import torch
 
 
 def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:

@@ -1,6 +1,6 @@
 import datetime
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -55,10 +55,8 @@ def save_model(model: torch.nn.Module):
 
 def draw_bbox(
     frame: np.ndarray,
-    top_pt: int,
-    left_pt: int,
-    bottom_pt: int,
-    right_pt: int,
+    top_left: Tuple[int, int],
+    bottom_right: Tuple[int, int],
     colour: tuple,
     label_text: Optional[str] = None,
 ) -> None:
@@ -69,14 +67,10 @@ def draw_bbox(
     ----------
     frame : np.ndarray
         Image with bounding boxes drawn on it.
-    top_pt : int
-        Y-coordinate of the top-left corner of the bounding box.
-    left_pt : int
-        X-coordinate of the top-left corner of the bounding box.
-    bottom_pt : int
-        Y-coordinate of the bottom-right corner of the bounding box.
-    right_pt : int
-        X-coordinate of the bottom-right corner of the bounding box.
+    top_left : Tuple[int, int]
+        Tuple containing (x, y) coordinates of the top-left corner of the bounding box.
+    bottom_right : Tuple[int, int]
+        Tuple containing (x, y) coordinates of the bottom-right corner of the bounding box.
     colour : tuple
         Color of the bounding box in BGR format.
     label_text : str, optional
@@ -89,8 +83,8 @@ def draw_bbox(
     # Draw bounding box
     cv2.rectangle(
         frame,
-        (top_pt, left_pt),
-        (bottom_pt, right_pt),
+        (top_left[0], top_left[1]),
+        (bottom_right[0], bottom_right[1]),
         colour,
         thickness=2,
     )
@@ -100,7 +94,7 @@ def draw_bbox(
         cv2.putText(
             frame,
             label_text,
-            (top_pt, left_pt),
+            (top_left[0], top_left[1]),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             colour,
@@ -152,10 +146,8 @@ def draw_detection(
         for i in range(len(target_boxes)):
             draw_bbox(
                 image_with_boxes,
-                int((target_boxes[i][0])[0]),
-                int((target_boxes[i][0])[1]),
-                int((target_boxes[i][1])[0]),
-                int((target_boxes[i][1])[1]),
+                (int((target_boxes[i][0])[0]), int((target_boxes[i][0])[1])),
+                (int((target_boxes[i][1])[0]), int((target_boxes[i][1])[1])),
                 colour=(0, 255, 0),
             )
         if prediction:
@@ -181,10 +173,14 @@ def draw_detection(
                     label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
                     draw_bbox(
                         image_with_boxes,
-                        int((pred_boxes[i][0])[0]),
-                        int((pred_boxes[i][0])[1]),
-                        int((pred_boxes[i][1])[0]),
-                        int((pred_boxes[i][1])[1]),
+                        (
+                            int((pred_boxes[i][0])[0]),
+                            int((pred_boxes[i][0])[1]),
+                        ),
+                        (
+                            int((pred_boxes[i][1])[0]),
+                            int((pred_boxes[i][1])[1]),
+                        ),
                         (0, 0, 255),
                         label_text,
                     )

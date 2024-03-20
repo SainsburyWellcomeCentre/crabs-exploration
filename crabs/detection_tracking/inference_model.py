@@ -24,12 +24,12 @@ class DetectorInference:
     A class for performing object detection or tracking inference on a video
     using a trained model.
 
-    Parameters:
+    Parameters
     ----------
     args : argparse.Namespace)
         Command-line arguments containing configuration settings.
 
-    Attributes:
+    Attributes
     ----------
     args : argparse.Namespace
         The command-line arguments provided.
@@ -74,7 +74,7 @@ class DetectorInference:
         """
         Put predictions in format expected by SORT
 
-        Parameters:
+        Parameters
         ----------
         prediction : dict
             The dictionary containing predicted bounding boxes, scores, and labels.
@@ -165,8 +165,8 @@ class DetectorInference:
         """
         Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         gt_boxes_list : List[List[float]]
             List of ground truth bounding boxes for each frame.
         tracked_boxes_list : List[List[float]]
@@ -174,8 +174,8 @@ class DetectorInference:
         iou_threshold : float
             The IoU threshold used to determine matches between ground truth and tracked boxes.
 
-        Returns:
-        --------
+        Returns
+        -------
         List[float]:
             The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
         """
@@ -196,13 +196,13 @@ class DetectorInference:
         """
         Get prediction from the trained model for a given frame.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         frame : np.ndarray
             The input frame for which prediction is to be obtained.
 
-        Returns:
-        --------
+        Returns
+        -------
         torch.Tensor:
             The prediction tensor from the trained model.
         """
@@ -215,13 +215,13 @@ class DetectorInference:
         """
         Update the tracking system with the latest prediction.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         prediction : dict
             Dictionary containing predicted bounding boxes, scores, and labels.
 
-        Returns:
-        --------
+        Returns
+        -------
         List[List[float]]:
             List of tracked bounding boxes after updating the tracking system.
         """
@@ -239,8 +239,8 @@ class DetectorInference:
         """
         Handle the output based argument options.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         tracked_boxes : List[List[float]]
             List of tracked bounding boxes.
         frame : np.ndarray
@@ -264,10 +264,8 @@ class DetectorInference:
                 xmin, ymin, xmax, ymax, id = bbox
                 draw_bbox(
                     frame_copy,
-                    int(xmin),
-                    int(ymin),
-                    int(xmax),
-                    int(ymax),
+                    (int(xmin), int(ymin)),
+                    (int(xmax), int(ymax)),
                     (0, 0, 255),
                     f"id : {int(id)}",
                 )
