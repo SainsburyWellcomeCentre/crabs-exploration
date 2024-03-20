@@ -124,12 +124,10 @@ class DetectorInference:
         Prepare csv writer to output tracking results
         """
 
-        self.tracking_output_dir = (
-            Path("crabs_tracks_label") / self.video_file_root
-        )
         crabs_tracks_label_dir = Path("crabs_tracks_label")
-        crabs_tracks_label_dir.mkdir(parents=True, exist_ok=True)
-
+        self.tracking_output_dir = (
+            crabs_tracks_label_dir / self.video_file_root
+        )
         # Create the subdirectory for the specific video file root
         self.tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
