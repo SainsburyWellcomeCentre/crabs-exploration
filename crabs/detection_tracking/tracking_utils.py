@@ -150,9 +150,10 @@ def evaluate_mota(
             # if true ground truth box was not matched with any tracked box
             missed_detections += 1
 
-    tracked_ids = [[int(box[-1]) for box in tracked_boxes]]
+    tracked_ids = [[box[-1] for box in tracked_boxes]]
 
     num_switches = count_identity_switches(prev_frame_ids, tracked_ids)
+
     mota = 1 - (missed_detections + false_positive + num_switches) / total_gt
     return mota
 
@@ -289,7 +290,6 @@ def write_tracked_bbox_to_csv(
     csv_writer : Any
         The CSV writer object to write the annotation.
     """
-
     # Bounding box geometry
     xmin, ymin, xmax, ymax, id = bbox
     width_box = int(xmax - xmin)
@@ -341,19 +341,17 @@ def save_frame_and_csv(
     -------
     None
     """
-    for bbox in tracked_boxes:
-        # Get frame name
-        frame_name = f"{video_file_root}frame_{frame_number:08d}.png"
+    frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
 
+    for bbox in tracked_boxes:
         # Add bbox to csv
         write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer)
 
-        # Save frame as PNG
-        frame_path = tracking_output_dir / frame_name
-        img_saved = cv2.imwrite(str(frame_path), frame)
-        if not img_saved:
-            logging.error(
-                f"Didn't save {frame_name}, frame {frame_number}, Skipping."
-            )
-            break
-        logging.info(f"Frame {frame_number} saved at {frame_path}")
+    # Save frame as PNG
+    frame_path = tracking_output_dir / frame_name
+    img_saved = cv2.imwrite(str(frame_path), frame)
+    if not img_saved:
+        logging.error(
+            f"Didn't save {frame_name}, frame {frame_number}, Skipping."
+        )
+    logging.info(f"Frame {frame_number} saved at {frame_path}")

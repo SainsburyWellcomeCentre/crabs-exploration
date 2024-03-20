@@ -185,7 +185,7 @@ class DetectorInference:
             )
             mota_values.append(mota)
             # Update previous frame IDs for the next iteration
-            prev_frame_ids = [[int(box[-1]) for box in tracked_boxes]]
+            prev_frame_ids = [[box[-1] for box in tracked_boxes]]
 
         return mota_values
 
