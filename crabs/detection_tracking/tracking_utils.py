@@ -75,7 +75,7 @@ def count_identity_switches(
     # Initialize count of identity switches
     num_switches = 0
 
-    prev_ids = set(prev_frame_ids[0]) if prev_frame_ids else set()
+    prev_ids = set(prev_frame_ids[0])
     current_ids = set(current_frame_ids[0])
 
     # Calculate the number of switches by finding the difference in IDs
@@ -232,6 +232,8 @@ def get_ground_truth_data(gt_dir: str) -> List[np.ndarray]:
     --------
     List[np.ndarray]:
         A list containing ground truth bounding box data organized by frame number.
+        The numpy array represent the coordinates and ID of the bounding box in the order:
+        x, y, x + width, y + height, ID
     """
     ground_truth_data = []
     max_frame_number = 0
