@@ -83,8 +83,8 @@ def draw_bbox(
     # Draw bounding box
     cv2.rectangle(
         frame,
-        (top_left[0], top_left[1]),
-        (bottom_right[0], bottom_right[1]),
+        (int(top_left[0]), int(top_left[1])),
+        (int(bottom_right[0]), int(bottom_right[1])),
         colour,
         thickness=2,
     )
@@ -94,7 +94,7 @@ def draw_bbox(
         cv2.putText(
             frame,
             label_text,
-            (top_left[0], top_left[1]),
+            (int(top_left[0]), int(top_left[1])),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             colour,
@@ -146,8 +146,8 @@ def draw_detection(
         for i in range(len(target_boxes)):
             draw_bbox(
                 image_with_boxes,
-                (int((target_boxes[i][0])[0]), int((target_boxes[i][0])[1])),
-                (int((target_boxes[i][1])[0]), int((target_boxes[i][1])[1])),
+                ((target_boxes[i][0])[0], (target_boxes[i][0])[1]),
+                ((target_boxes[i][1])[0], (target_boxes[i][1])[1]),
                 colour=(0, 255, 0),
             )
         if prediction:
@@ -174,12 +174,12 @@ def draw_detection(
                     draw_bbox(
                         image_with_boxes,
                         (
-                            int((pred_boxes[i][0])[0]),
-                            int((pred_boxes[i][0])[1]),
+                            (pred_boxes[i][0])[0],
+                            (pred_boxes[i][0])[1],
                         ),
                         (
-                            int((pred_boxes[i][1])[0]),
-                            int((pred_boxes[i][1])[1]),
+                            (pred_boxes[i][1])[0],
+                            (pred_boxes[i][1])[1],
                         ),
                         (0, 0, 255),
                         label_text,

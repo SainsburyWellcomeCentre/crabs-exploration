@@ -13,11 +13,18 @@ def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
     Calculate IoU (Intersection over Union) of two bounding boxes.
 
     Parameters:
-    box1 (np.ndarray): Coordinates [x1, y1, x2, y2] of the first bounding box.
-    box2 (np.ndarray): Coordinates [x1, y1, x2, y2] of the second bounding box.
+    -----------
+    box1 (np.ndarray):
+        Coordinates [x1, y1, x2, y2] of the first bounding box.
+        Here, (x1, y1) represents the top-left corner, and (x2, y2) represents the bottom-right corner.
+    box2 (np.ndarray):
+        Coordinates [x1, y1, x2, y2] of the second bounding box.
+        Here, (x1, y1) represents the top-left corner, and (x2, y2) represents the bottom-right corner.
 
     Returns:
-    float: IoU value.
+    --------
+    float:
+        IoU value.
     """
     x1_box1, y1_box1, x2_box1, y2_box1 = box1
     x1_box2, y1_box2, x2_box2, y2_box2 = box2

@@ -16,6 +16,7 @@ from crabs.detection_tracking.detection_utils import (
 from crabs.detection_tracking.tracking_utils import (
     evaluate_mota,
     save_frame_and_csv,
+    get_ground_truth_data
 )
 
 
@@ -264,8 +265,8 @@ class DetectorInference:
                 xmin, ymin, xmax, ymax, id = bbox
                 draw_bbox(
                     frame_copy,
-                    (int(xmin), int(ymin)),
-                    (int(xmax), int(ymax)),
+                    (xmin, ymin),
+                    (xmax, ymax),
                     (0, 0, 255),
                     f"id : {int(id)}",
                 )
@@ -285,13 +286,6 @@ class DetectorInference:
         # initialise csv writer if required
         if self.args.save_csv_and_frames:
             self.csv_writer, csv_file = self.prep_csv_writer()
-
-        if self.args.gt_dir:
-            from crabs.detection_tracking.detection_utils import (
-                get_ground_truth_data,
-            )
-
-            gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
 
         # loop thru frames of clip
         while self.video.isOpened():
@@ -317,6 +311,7 @@ class DetectorInference:
             frame_number += 1
 
         if self.args.gt_dir:
+            gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
             mota_values = self.evaluate_tracking(
                 gt_boxes_list, self.tracked_list, self.iou_threshold
             )
@@ -426,7 +421,7 @@ if __name__ == "__main__":
         "--gt_dir",
         type=str,
         default=None,
-        help="Directory contains ground truth annotations.",
+        help="Location of json file containing ground truth annotations.",
     )
     args = parser.parse_args()
     main(args)
