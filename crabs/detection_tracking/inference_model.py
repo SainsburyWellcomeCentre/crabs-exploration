@@ -316,7 +316,7 @@ class DetectorInference:
             overall_mota = np.mean(mota_values)
             print("Overall MOTA:", overall_mota)
 
-        # # Close input video
+        # Close input video
         self.video.release()
 
         # Close outputs
