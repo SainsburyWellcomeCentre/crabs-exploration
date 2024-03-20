@@ -128,7 +128,7 @@ def test_false_positives(gt_boxes, tracked_boxes, prev_frame_ids):
 
 def test_identity_switches(gt_boxes, tracked_boxes, prev_frame_ids):
     # Change ID of one tracked box to simulate an identity switch
-    tracked_boxes[0][-1] = 5  # Change ID from 1 to 2
+    tracked_boxes[0][-1] = 5
     mota = evaluate_mota(
         gt_boxes,
         tracked_boxes,
@@ -213,7 +213,6 @@ def test_create_gt_list(ground_truth_data, gt_boxes_list):
         for frame_number in range(len(gt_created)):
             gt_data = ground_truth_data[i]
             gt_boxes = gt_created[frame_number]
-            print(gt_boxes)
 
             assert gt_boxes[0] == gt_data["x"]
             assert gt_boxes[1] == gt_data["y"]
@@ -272,8 +271,8 @@ def csv_writer(csv_output):
 
 
 def test_write_tracked_bbox_to_csv(csv_writer, csv_output):
-    bbox = np.array([10, 20, 50, 80, 1])  # Example bbox
-    frame = np.zeros((100, 100, 3), dtype=np.uint8)  # Example frame
+    bbox = np.array([10, 20, 50, 80, 1])
+    frame = np.zeros((100, 100, 3), dtype=np.uint8)
     frame_name = "frame_0001.png"
 
     write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer)

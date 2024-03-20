@@ -347,7 +347,7 @@ def save_frame_and_csv(
         # Add bbox to csv
         write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer)
 
-    # Save frame as PNG
+    # Save frame as PNG - once as per frame
     frame_path = tracking_output_dir / frame_name
     img_saved = cv2.imwrite(str(frame_path), frame)
     if not img_saved:
