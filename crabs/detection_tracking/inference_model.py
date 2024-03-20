@@ -7,7 +7,7 @@ from typing import Any, List, Optional, TextIO, Tuple
 import cv2
 import numpy as np
 import torch
-import torchvision.transforms as transforms
+import torchvision.transforms.v2 as transforms
 from sort import Sort
 
 from crabs.detection_tracking.detection_utils import (
