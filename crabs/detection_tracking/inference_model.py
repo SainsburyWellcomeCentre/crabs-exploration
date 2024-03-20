@@ -2,7 +2,7 @@ import argparse
 import csv
 import os
 from pathlib import Path
-from typing import Any, List, Optional, TextIO, Tuple, Union
+from typing import Any, List, Optional, TextIO, Tuple
 
 import cv2
 import numpy as np
@@ -12,6 +12,7 @@ from sort import Sort
 
 from crabs.detection_tracking.detection_utils import (
     draw_bbox,
+    evaluate_mota,
     save_frame_and_csv,
 )
 
@@ -164,29 +165,28 @@ class DetectorInference:
 
         Parameters:
         -----------
-        gt_boxes_list : List[list]
+        gt_boxes_list : List[List[float]]
             List of ground truth bounding boxes for each frame.
-        tracked_boxes_list : List[list]
+        tracked_boxes_list : List[List[float]]
             List of tracked bounding boxes for each frame.
         iou_threshold : float
             The IoU threshold used to determine matches between ground truth and tracked boxes.
 
         Returns:
         --------
-        float:
+        List[float]:
             The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
         """
-        from crabs.detection_tracking.detection_utils import evaluate_mota
-
         mota_values = []
-        prev_frame: Union[Optional[List[List[float]]], None] = None
+        prev_frame_ids: Optional[List[List[int]]] = None
+        # prev_frame_ids = None
         for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
             mota = evaluate_mota(
-                gt_boxes, tracked_boxes, iou_threshold, prev_frame
+                gt_boxes, tracked_boxes, iou_threshold, prev_frame_ids
             )
             mota_values.append(mota)
             # Update previous frame IDs for the next iteration
-            prev_frame = [list(box) for box in tracked_boxes]
+            prev_frame_ids = [[int(box[-1]) for box in tracked_boxes]]
 
         return mota_values
 
@@ -228,7 +228,7 @@ class DetectorInference:
         self.tracked_list.append(tracked_boxes)
         return tracked_boxes
 
-    def handle_output(
+    def save_required_output(
         self,
         tracked_boxes: List[List[float]],
         frame: np.ndarray,
@@ -247,38 +247,16 @@ class DetectorInference:
             The frame number.
         """
         if self.args.save_csv_and_frames:
-            if self.args.save_video:
-                frame_copy = save_frame_and_csv(
-                    self.video_file_root,
-                    self.tracking_output_dir,
-                    tracked_boxes,
-                    frame,
-                    frame_number,
-                    self.csv_writer,
-                )
-                for bbox in tracked_boxes:
-                    xmin, ymin, xmax, ymax, id = bbox
-                    draw_bbox(
-                        frame_copy,
-                        int(xmin),
-                        int(ymin),
-                        int(xmax),
-                        int(ymax),
-                        (0, 0, 255),
-                        f"id : {int(id)}",
-                    )
-                self.out.write(frame_copy)
-            else:
-                save_frame_and_csv(
-                    self.video_file_root,
-                    self.tracking_output_dir,
-                    tracked_boxes,
-                    frame,
-                    frame_number,
-                    self.csv_writer,
-                    save_plot=False,
-                )
-        elif self.args.save_video:
+            save_frame_and_csv(
+                self.video_file_root,
+                self.tracking_output_dir,
+                tracked_boxes,
+                frame,
+                frame_number,
+                self.csv_writer,
+            )
+
+        if self.args.save_video:
             frame_copy = frame.copy()
             for bbox in tracked_boxes:
                 xmin, ymin, xmax, ymax, id = bbox
@@ -333,7 +311,7 @@ class DetectorInference:
             # run tracking
             self.prep_sort(prediction)
             tracked_boxes = self.update_tracking(prediction)
-            self.handle_output(tracked_boxes, frame, frame_number)
+            self.save_required_output(tracked_boxes, frame, frame_number)
 
             # update frame
             frame_number += 1
