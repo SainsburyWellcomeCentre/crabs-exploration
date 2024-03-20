@@ -79,7 +79,7 @@ def count_identity_switches(
     current_ids = set(current_frame_ids[0])
 
     # Calculate the number of switches by finding the difference in IDs
-    num_switches = len(current_ids - prev_ids) - len(prev_ids - current_ids)
+    num_switches = len(prev_ids.symmetric_difference(current_ids))
 
     return num_switches
 
@@ -124,6 +124,8 @@ def evaluate_mota(
                 best_iou = iou
                 best_match = j
         if best_match is not None:
+            # successfully found a matching ground truth box for the tracked box.
+            # set the corresponding ground truth box to None.
             gt_boxes[best_match] = None
         else:
             false_alarms += 1
@@ -131,6 +133,7 @@ def evaluate_mota(
     missed_detections = 0
     for box in gt_boxes:
         if box is not None and not np.all(np.isnan(box)):
+            # if true ground truth box was not matched with any tracked box
             missed_detections += 1
 
     tracked_ids = [[int(box[-1]) for box in tracked_boxes]]
@@ -249,7 +252,7 @@ def get_ground_truth_data(gt_dir: str) -> List[np.ndarray]:
     return gt_boxes_list
 
 
-def write_bbox_to_csv(
+def write_tracked_bbox_to_csv(
     bbox: np.ndarray,
     frame: np.ndarray,
     frame_name: str,
@@ -301,14 +304,33 @@ def save_frame_and_csv(
     csv_writer: Any,
 ) -> None:
     """
-    Common functionality for saving frames and CSV
+    Save tracked bounding boxes as frames and write to a CSV file.
+
+    Parameters:
+    -----------
+    video_file_root : str
+        The root path of the video file.
+    tracking_output_dir : Path
+        The directory where tracked frames and CSV file will be saved.
+    tracked_boxes : List[List[float]]
+        List of bounding boxes to be saved.
+    frame : np.ndarray
+        The frame image.
+    frame_number : int
+        The frame number.
+    csv_writer : Any
+        CSV writer object for writing bounding box data.
+
+    Returns:
+    --------
+    None
     """
     for bbox in tracked_boxes:
         # Get frame name
         frame_name = f"{video_file_root}frame_{frame_number:08d}.png"
 
         # Add bbox to csv
-        write_bbox_to_csv(bbox, frame, frame_name, csv_writer)
+        write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer)
 
         # Save frame as PNG
         frame_path = tracking_output_dir / frame_name

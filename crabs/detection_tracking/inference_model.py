@@ -15,8 +15,8 @@ from crabs.detection_tracking.detection_utils import (
 )
 from crabs.detection_tracking.tracking_utils import (
     evaluate_mota,
+    get_ground_truth_data,
     save_frame_and_csv,
-    get_ground_truth_data
 )
 
 
@@ -55,6 +55,7 @@ class DetectorInference:
             iou_threshold=self.iou_threshold,
         )
         self.video_file_root = f"{Path(self.vid_path).stem}"
+        self.trained_model = self.load_trained_model()
 
     def load_trained_model(self) -> torch.nn.Module:
         """
@@ -101,9 +102,6 @@ class DetectorInference:
         """
         Load the input video, and prepare the output video if required.
         """
-        # load trained model
-        self.trained_model = self.load_trained_model()
-
         # load input video
         self.video = cv2.VideoCapture(self.vid_path)
         if not self.video.isOpened():

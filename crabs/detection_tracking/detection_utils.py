@@ -55,8 +55,8 @@ def save_model(model: torch.nn.Module):
 
 def draw_bbox(
     frame: np.ndarray,
-    top_left: Tuple[int, int],
-    bottom_right: Tuple[int, int],
+    top_left: Tuple[float, float],
+    bottom_right: Tuple[float, float],
     colour: tuple,
     label_text: Optional[str] = None,
 ) -> None:
