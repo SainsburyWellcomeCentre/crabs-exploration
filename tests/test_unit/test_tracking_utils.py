@@ -1,8 +1,6 @@
 import csv
 import io
-import cv2
-from pathlib import Path
-from unittest.mock import MagicMock
+
 import numpy as np
 import pytest
 
@@ -14,7 +12,6 @@ from crabs.detection_tracking.tracking_utils import (
     extract_bounding_box_info,
     get_ground_truth_data,
     write_tracked_bbox_to_csv,
-    save_frame_and_csv
 )
 
 
@@ -274,9 +271,7 @@ def csv_writer(csv_output):
     return csv.writer(csv_output)
 
 
-def test_write_tracked_bbox_to_csv(
-    csv_writer, csv_output
-): 
+def test_write_tracked_bbox_to_csv(csv_writer, csv_output):
     bbox = np.array([10, 20, 50, 80, 1])  # Example bbox
     frame = np.zeros((100, 100, 3), dtype=np.uint8)  # Example frame
     frame_name = "frame_0001.png"
