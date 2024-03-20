@@ -132,7 +132,7 @@ class DetectorInference:
         self.tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
         csv_file = open(
-            f"{str(self.tracking_output_dir)}/{str(self.video_file_root)}.csv",
+            f"{str(self.tracking_output_dir / self.video_file_root)}.csv",
             "w",
         )
         csv_writer = csv.writer(csv_file)
