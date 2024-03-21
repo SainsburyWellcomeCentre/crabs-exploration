@@ -82,6 +82,8 @@ If we are launching the tool for the first time for a new project:
 - Make sure the track id is shown instead of the bounding box number.
 
   - To do so, press the up key. The Up key toggles between `region label cleared `or `region label set to region attribute [track]`. To show the track ID, we want the second one: `region label set to region attribute [track]`.
+    | ![](./images/example_toggle.png) |
+    | :------------------------------: |
 
 > [!TIP]
 > Pressing the bottom key will change the colour of the bounding box, but notice that the colour is not consistent across frames. However, it may be helpful to disentangle boxes when they are overlapping.
