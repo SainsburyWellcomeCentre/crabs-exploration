@@ -36,7 +36,7 @@ def save_images_with_boxes(
             imgs = list(img.to(device) for img in imgs)
             detections = trained_model(imgs)
 
-            image_with_boxes = drawing_detection(
+            image_with_boxes = draw_detection(
                 imgs, annotations, detections, score_threshold
             )
             directory = "results"
