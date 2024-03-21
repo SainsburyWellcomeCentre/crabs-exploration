@@ -15,11 +15,11 @@ Below we outline the steps on how to correct the data.
 ### 0. Mount the server from `ceph` with the frames and tracks to correct
 
 - Remember that to mount the server you need to be connected to the SWC network (or SWC VPN)
-- In Mac, mounting the server can be done in the Finder app, pressing CMD+K and writing the following address:
+- In Mac, mounting the server can be done in the Finder app, by pressing CMD+K and writing the following address:
   ```
   smb://ceph-gw02.hpc.swc.ucl.ac.uk
   ```
-- Once the directory with the csv file is mounted, we can access it under `Volumes` in Mac. For example, for an escape clip called `09.08.2023-01-Right-Triggered1.mov`, the path could look like:
+- Once the directory with the csv file is mounted, we can access it under `Volumes` on Mac. For example, for an escape clip called `09.08.2023-01-Right-Triggered1.mov`, the path could look like:
   ```
   /Volumes/zoo/users/sminano/crabs_tracks_label/09.08.2023-01-Right-Triggered1/
   ```
@@ -68,7 +68,7 @@ If we are launching the tool for the first time for a new project:
 
 - If the frames aren't loaded automatically:
 
-  - On the left hand side, find the `Project` section and click on the `Add Files` button
+  - On the left-hand side, find the `Project` section and click on the `Add Files` button
   - Select the frames to load. Multiple selection is allowed, and also across folders at the same level (at least in Mac 🍎)
 
 - Once loaded, use the left/right arrows to navigate through the images
@@ -81,7 +81,7 @@ If we are launching the tool for the first time for a new project:
 
 - Make sure the track id is shown instead of the bounding box number.
 
-  - To do so, press the up key. The Up key toggles between `region label cleared `or `region label set to region attribute [track]`. To show the track ID, we want the second one `region label set to region attribute [track]`.
+  - To do so, press the up key. The Up key toggles between `region label cleared `or `region label set to region attribute [track]`. To show the track ID, we want the second one: `region label set to region attribute [track]`.
 
 > [!TIP]
 > Pressing the bottom key will change the colour of the bounding box, but notice that the colour is not consistent across frames. However, it may be helpful to disentangle boxes when they are overlapping.
@@ -94,7 +94,7 @@ If we are launching the tool for the first time for a new project:
 - Select a crab ID to follow across frames.
 
   - You can highlight the crab with a certain ID by using the Annotation editor. To show this editor, click under `Attributes` > `Toggle Annotation Editor`. Then click on the row with the track ID of interest.
-  - Be careful now, when it is highlighted, if you press right key, the bounding box will be shifted to the right. Just click anywhere to disable the highlight.
+  - Be careful now, when it is highlighted, if you press the right-arrow key, the bounding box will be shifted to the right. Just click anywhere to disable the highlight.
 
 - If the crab you are following has no bounding box in one of the frames: copy the box from the previous frame.
 
@@ -102,9 +102,9 @@ If we are launching the tool for the first time for a new project:
 
 - If the crab you are following is assigned to a new ID for a large number of frames (i.e., it has been re-IDed/there was an ID switch): change all the annotations to match the ID in the previous frames.
 
-  - In the menu bar, select the grid icon (6th icon after `Help` menu).
+  - In the menu bar, select the grid icon (6th icon after the `Help` menu).
     - All the frames will be shown in a grid style.
-    - You do not need to wait until the grid images are finished loading before doing any of the step below.
+    - You do not need to wait until the grid images are finished loading before doing any of the steps below.
   - Choose `Group by` `region [track]` - a selector for the track number will pop up next to it.
   - In the selector, choose the track you want to edit.
     - For example: if the original ID is 9, and the crab has now been re-IDed to 12, then choose `12/79: track = 12`.
@@ -113,13 +113,13 @@ If we are launching the tool for the first time for a new project:
     - You should see the Annotation Editor panel with the track ID field at the bottom of the screen.
     - If the track ID field is not editable:
       - Make sure the subset of frames shown in the grid are selected.
-      - If they are and the ID is still not editable, try clicking a few times in the `Toggle Annotation Editor` button (it may show something like `xxx different values:...`).
+      - If they are and the ID is still not editable, try clicking a few times on the `Toggle Annotation Editor` button (it may show something like `xxx different values:...`).
   - Edit the track ID in the Annotation Editor field.
     - You want to change the ID from the one is being re-id to the original one (for example from 12 to 9)
     - To input the value click anywhere in the Annotation Editor.
     - There should be a notification at the bottom of the window saying `updated region attribute of <how many> region` (this seems to be flaky on Chrome tho - you may need to toggle the Annotation Editor for the change to take effect).
   - Check the ID change took effect:
-    - You can go back to the usual one-frame visualisation by clicking on the grid icon (now crossed-out).
+    - You can go back to the usual one-frame visualisation by clicking on the grid icon (now crossed out).
     - See if the changes happened correctly.
 
 - If the crab has been re-ID for only a few frames: it may be easier to edit the ID in each frame (rather than following the grid method).
@@ -136,7 +136,7 @@ If we are launching the tool for the first time for a new project:
 
 - Notice that some crabs appear at later frames (not all crabs are present in frame 1), and their tracks should be checked too.
 - If there are false positives whose tracks are not very long-lived (under 6 frames), we will discard them, so don't worry about deleting them.
-- We saw some small crabs that are not detected. We wouldn't recommend to label and track these ones, as we don't think they were labelled in the detector dataset.
+- We saw some small crabs that are not detected. We wouldn't recommend labelling and tracking these, as we don't think they were labelled in the detector dataset.
 
 > [!TIP]
 >
@@ -151,7 +151,7 @@ If we are launching the tool for the first time for a new project:
 > [!TIP]
 >
 > - Some convenient shortcuts for track correction:
->   - Press `Up` arrow to toggle between the track ID of the bounding box and the bounding box number.
+>   - Press the `Up` arrow to toggle between the track ID of the bounding box and the bounding box number.
 
 > [!CAUTION]
 > There is no undo action in the annotation tool!
