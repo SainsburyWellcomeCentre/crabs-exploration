@@ -89,7 +89,13 @@ If we are launching the tool for the first time for a new project:
 #### 4.1 Recommended approach:
 
 > [!CAUTION]
-> Remember there is no undo action, so make sure you save often, especially before correcting ID switches.
+> There is no undo action in the annotation tool!
+>
+> - Be sure to save frequently, at least every labelled frame.
+> - The easiest way to save is as a VIA json file (click `Project` > `Save`) - this captures the full project.
+> - If you are using the "copy+paste" approach to reuse the annotations of the previous frame: note that the copied annotations stay in the clipboard after pasting!
+
+The idea is to repeat the following steps for all crab IDs in the clip.
 
 - Select a crab ID to follow across frames.
 
@@ -107,8 +113,13 @@ If we are launching the tool for the first time for a new project:
     - You do not need to wait until the grid images are finished loading before doing any of the steps below.
   - Choose `Group by` `region [track]` - a selector for the track number will pop up next to it.
   - In the selector, choose the track you want to edit.
+
     - For example: if the original ID is 9, and the crab has now been re-IDed to 12, then choose `12/79: track = 12`.
-    - Notice that the first number shown in the dropdown menu options does not necessarily match the second one (this usually happens at the end of the list, you may see e.g. `78/79: track = 86`). The one we care about is the track ID, so the second one.
+    - Notice that the first number shown in the dropdown menu options does not necessarily match the second one - see the figures below for two examples. This usually happens at the end of the list (you may see e.g. `78/79: track = 86`). The one we care about is the track ID (shown in red).
+
+    | ![](./images/example_dropdown_1.png) | ![](./images/example_dropdown_2.png) |
+    | :----------------------------------: | :----------------------------------: |
+
   - Toggle the Annotation Editor to edit the tracks.
     - You should see the Annotation Editor panel with the track ID field at the bottom of the screen.
     - If the track ID field is not editable:
@@ -128,9 +139,11 @@ If we are launching the tool for the first time for a new project:
   - Click on the bounding box whose ID we need to edit: a box with the track number will appear next to it.
   - Simply edit the correct ID there.
 
-- If there is a false positive crab:
-  - Follow the steps above to edit the track ID, but instead delete it.
-  - If you cannot delete it (we saw this happen in Firefox), edit the track ID to be `_` (underscore).
+- If there is a false positive (something incorrectly detected as a crab):
+  - If it is tracked for a few (<= 2) frames only: delete the bounding box in those frames.
+  - If it is tracked for more than 2 frames: you cannot easily delete boxes in bulk, so we recommend to
+    - Follow the steps above to edit the track ID, but instead delete it.
+    - If you cannot delete it (we saw this happen in Firefox), edit the track ID to be `_` (underscore).
 
 #### 4.2 Notes:
 
@@ -152,13 +165,6 @@ If we are launching the tool for the first time for a new project:
 >
 > - Some convenient shortcuts for track correction:
 >   - Press the `Up` arrow to toggle between the track ID of the bounding box and the bounding box number.
-
-> [!CAUTION]
-> There is no undo action in the annotation tool!
->
-> - Be sure to save frequently, at least every labelled frame.
-> - The easiest way to save is as a VIA json file (click `Project` > `Save`) - this captures the full project.
-> - If you are using the "copy+paste" approach to reuse the annotations of the previous frame: note that the copied annotations stay in the clipboard after pasting!
 
 ### 5. Save and reloading an unfinished project
 
