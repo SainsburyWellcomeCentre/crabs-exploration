@@ -1,8 +1,8 @@
+import numpy as np
 import pytest
 import torch
-from torchvision import transforms
-import numpy as np
 from PIL import Image
+from torchvision import transforms
 
 from crabs.detection_tracking.datamodule import *
 
@@ -52,7 +52,6 @@ def test_val_dataloader(data_module):
 
 
 def test_get_train_transform():
-
     transform = get_train_transform()
 
     assert isinstance(transform, transforms.Compose)
@@ -71,7 +70,6 @@ def test_get_train_transform():
 
 
 def test_get_eval_transform():
-
     transform = get_eval_transform()
 
     assert isinstance(transform, transforms.Compose)

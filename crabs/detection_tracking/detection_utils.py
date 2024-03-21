@@ -1,10 +1,6 @@
-import csv
 import datetime
-import json
-import logging
 import os
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -59,10 +55,8 @@ def save_model(model: torch.nn.Module):
 
 def draw_bbox(
     frame: np.ndarray,
-    top_pt: int,
-    left_pt: int,
-    bottom_pt: int,
-    right_pt: int,
+    top_left: Tuple[float, float],
+    bottom_right: Tuple[float, float],
     colour: tuple,
     label_text: Optional[str] = None,
 ) -> None:
@@ -73,14 +67,10 @@ def draw_bbox(
     ----------
     frame : np.ndarray
         Image with bounding boxes drawn on it.
-    top_pt : int
-        Y-coordinate of the top-left corner of the bounding box.
-    left_pt : int
-        X-coordinate of the top-left corner of the bounding box.
-    bottom_pt : int
-        Y-coordinate of the bottom-right corner of the bounding box.
-    right_pt : int
-        X-coordinate of the bottom-right corner of the bounding box.
+    top_left : Tuple[int, int]
+        Tuple containing (x, y) coordinates of the top-left corner of the bounding box.
+    bottom_right : Tuple[int, int]
+        Tuple containing (x, y) coordinates of the bottom-right corner of the bounding box.
     colour : tuple
         Color of the bounding box in BGR format.
     label_text : str, optional
@@ -93,8 +83,8 @@ def draw_bbox(
     # Draw bounding box
     cv2.rectangle(
         frame,
-        (top_pt, left_pt),
-        (bottom_pt, right_pt),
+        (int(top_left[0]), int(top_left[1])),
+        (int(bottom_right[0]), int(bottom_right[1])),
         colour,
         thickness=2,
     )
@@ -104,7 +94,7 @@ def draw_bbox(
         cv2.putText(
             frame,
             label_text,
-            (top_pt, left_pt),
+            (int(top_left[0]), int(top_left[1])),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             colour,
@@ -156,10 +146,8 @@ def draw_detection(
         for i in range(len(target_boxes)):
             draw_bbox(
                 image_with_boxes,
-                int((target_boxes[i][0])[0]),
-                int((target_boxes[i][0])[1]),
-                int((target_boxes[i][1])[0]),
-                int((target_boxes[i][1])[1]),
+                ((target_boxes[i][0])[0], (target_boxes[i][0])[1]),
+                ((target_boxes[i][1])[0], (target_boxes[i][1])[1]),
                 colour=(0, 255, 0),
             )
         if prediction:
@@ -185,288 +173,15 @@ def draw_detection(
                     label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
                     draw_bbox(
                         image_with_boxes,
-                        int((pred_boxes[i][0])[0]),
-                        int((pred_boxes[i][0])[1]),
-                        int((pred_boxes[i][1])[0]),
-                        int((pred_boxes[i][1])[1]),
+                        (
+                            (pred_boxes[i][0])[0],
+                            (pred_boxes[i][0])[1],
+                        ),
+                        (
+                            (pred_boxes[i][1])[0],
+                            (pred_boxes[i][1])[1],
+                        ),
                         (0, 0, 255),
                         label_text,
                     )
     return image_with_boxes
-
-
-def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
-    """
-    Calculate IoU (Intersection over Union) of two bounding boxes.
-
-    Parameters:
-    box1 (np.ndarray): Coordinates [x1, y1, x2, y2] of the first bounding box.
-    box2 (np.ndarray): Coordinates [x1, y1, x2, y2] of the second bounding box.
-
-    Returns:
-    float: IoU value.
-    """
-    x1_box1, y1_box1, x2_box1, y2_box1 = box1
-    x1_box2, y1_box2, x2_box2, y2_box2 = box2
-
-    # Calculate intersection coordinates
-    x1_intersect = max(x1_box1, x1_box2)
-    y1_intersect = max(y1_box1, y1_box2)
-    x2_intersect = min(x2_box1, x2_box2)
-    y2_intersect = min(y2_box1, y2_box2)
-
-    # Calculate area of intersection rectangle
-    intersect_width = max(0, x2_intersect - x1_intersect + 1)
-    intersect_height = max(0, y2_intersect - y1_intersect + 1)
-    intersect_area = intersect_width * intersect_height
-
-    # Calculate area of individual bounding boxes
-    box1_area = (x2_box1 - x1_box1 + 1) * (y2_box1 - y1_box1 + 1)
-    box2_area = (x2_box2 - x1_box2 + 1) * (y2_box2 - y1_box2 + 1)
-
-    iou = intersect_area / float(box1_area + box2_area - intersect_area)
-
-    return iou
-
-
-def count_identity_switches(
-    prev_frame: Optional[List[List[float]]], current_frame: List[List[float]]
-) -> int:
-    """
-    Count the number of identity switches between two sets of object IDs.
-    """
-    if prev_frame is None:
-        # If there are no previous frame IDs, return 0 switches
-        return 0
-
-    # Convert tracked boxes to tuples for comparison
-    prev_frame_tuples = [tuple(box) for box in prev_frame]
-    current_frame_tuples = [tuple(box) for box in current_frame]
-
-    # Create dictionaries to track object IDs in each frame
-    id_to_index_prev = {id_: i for i, id_ in enumerate(prev_frame_tuples)}
-    id_to_index_current = {
-        id_: i for i, id_ in enumerate(current_frame_tuples)
-    }
-
-    # Initialize count of identity switches
-    num_switches = 0
-
-    # Loop through object IDs in the current frame
-    for id_current, index_current in id_to_index_current.items():
-        # Check if the object ID exists in the previous frame
-        if id_current in id_to_index_prev:
-            # Get the corresponding index in the previous frame
-            index_prev = id_to_index_prev[id_current]
-            # If the index is different, it indicates an identity switch
-            if index_current != index_prev:
-                num_switches += 1
-
-    return num_switches
-
-
-def evaluate_mota(
-    gt_boxes: np.ndarray,
-    tracked_boxes: np.ndarray,
-    iou_threshold: float,
-    prev_frame: Union[Optional[List[List[float]]], None],
-) -> float:
-    """
-    Evaluate MOTA (Multiple Object Tracking Accuracy).
-
-    MOTA is a metric used to evaluate the performance of object tracking algorithms.
-    """
-    total_gt = len(gt_boxes)
-    false_alarms = 0
-
-    for i, tracked_box in enumerate(tracked_boxes):
-        best_iou = 0.0
-        best_match = None
-
-        for j, gt_box in enumerate(gt_boxes):
-            iou = calculate_iou(gt_box[:4], tracked_box[:4])
-            if iou > iou_threshold and iou > best_iou:
-                best_iou = iou
-                best_match = j
-        if best_match is not None:
-            gt_boxes[best_match] = None
-        else:
-            false_alarms += 1
-
-    missed_detections = 0
-    for box in gt_boxes:
-        if box is not None and not np.all(np.isnan(box)):
-            missed_detections += 1
-
-    num_switches = count_identity_switches(prev_frame, tracked_boxes)
-    mota = 1 - (missed_detections + false_alarms + num_switches) / total_gt
-    return mota
-
-
-def get_ground_truth_data(gt_dir: str) -> list:
-    """
-    Extract ground truth bounding box data from a CSV file.
-
-    Parameters:
-    -----------
-    gt_dir : str
-        The path to the CSV file containing ground truth data.
-
-    Returns:
-    --------
-    list:
-        A list containing ground truth bounding box data organized by frame number.
-    """
-    ground_truth_data = []
-    max_frame_number = 0
-
-    # Open the CSV file and read its contents line by line
-    with open(gt_dir, "r") as csvfile:
-        csvreader = csv.reader(csvfile)
-        next(csvreader)  # Skip the header row
-        for row in csvreader:
-            # Extract relevant information from each row
-            filename = row[0]
-            region_shape_attributes = json.loads(row[5])
-            region_attributes = json.loads(row[6])
-
-            # Extract bounding box coordinates and object ID
-            x = region_shape_attributes["x"]
-            y = region_shape_attributes["y"]
-            width = region_shape_attributes["width"]
-            height = region_shape_attributes["height"]
-            track_id = region_attributes["track"]
-
-            # Compute the frame number from the filename
-            frame_number = int(filename.split("_")[-1].split(".")[0])
-            frame_number = frame_number - 1
-
-            # Update max_frame_number
-            max_frame_number = max(max_frame_number, frame_number)
-
-            # Append the extracted data to the list
-            ground_truth_data.append(
-                {
-                    "frame_number": frame_number,
-                    "x": x,
-                    "y": y,
-                    "width": width,
-                    "height": height,
-                    "id": track_id,
-                }
-            )
-
-    # Initialize a list to store the ground truth bounding boxes for each frame
-    gt_boxes_list = [np.array([]) for _ in range(max_frame_number + 1)]
-
-    # Organize ground truth data into gt_boxes_list
-    for data in ground_truth_data:
-        frame_number = data["frame_number"]
-        bbox = np.array(
-            [
-                data["x"],
-                data["y"],
-                data["x"] + data["width"],
-                data["y"] + data["height"],
-                data["id"],
-            ],
-            dtype=np.float32,
-        )
-        
-        if gt_boxes_list[frame_number].size == 0:
-            gt_boxes_list[frame_number] = bbox.reshape(1, -1)  # Initialize as a 2D array
-        else:
-            gt_boxes_list[frame_number] = np.vstack([gt_boxes_list[frame_number], bbox])
-
-    return gt_boxes_list
-
-
-def write_bbox_to_csv(
-    bbox: np.ndarray,
-    frame: np.ndarray,
-    frame_name: str,
-    csv_writer: Any,
-) -> None:
-    """
-    Write bounding box annotation to a CSV file.
-
-    Parameters:
-    -----------
-    bbox : np.ndarray
-        A numpy array containing the bounding box coordinates
-        (xmin, ymin, xmax, ymax, id).
-    frame : np.ndarray
-        The frame to which the bounding box belongs.
-    frame_name : str
-        The name of the frame.
-    csv_writer : Any
-        The CSV writer object to write the annotation.
-    """
-
-    # Bounding box geometry
-    xmin, ymin, xmax, ymax, id = bbox
-    width_box = int(xmax - xmin)
-    height_box = int(ymax - ymin)
-
-    # Add to csv
-    csv_writer.writerow(
-        (
-            frame_name,
-            frame.size,
-            '{{"clip":{}}}'.format("123"),
-            1,
-            0,
-            '{{"name":"rect","x":{},"y":{},"width":{},"height":{}}}'.format(
-                xmin, ymin, width_box, height_box
-            ),
-            '{{"track":"{}"}}'.format(id),
-        )
-    )
-
-
-def save_frame_and_csv(
-    video_file_root: str,
-    tracking_output_dir: Path,
-    tracked_boxes: List[List[float]],
-    frame: np.ndarray,
-    frame_number: int,
-    csv_writer: Any,
-    save_plot: bool = True,
-) -> np.ndarray:
-    """
-    Common functionality for saving frames and CSV
-    """
-    frame_copy = frame.copy()
-
-    for bbox in tracked_boxes:
-        # Get frame name
-        frame_name = f"{video_file_root}frame_{frame_number:08d}.png"
-
-        # Add bbox to csv
-        write_bbox_to_csv(bbox, frame, frame_name, csv_writer)
-
-        # Save frame as PNG
-        frame_path = tracking_output_dir / frame_name
-        img_saved = cv2.imwrite(str(frame_path), frame)
-        if img_saved:
-            logging.info(f"Frame {frame_number} saved at {frame_path}")
-        else:
-            logging.info(
-                f"ERROR saving {frame_name}, frame {frame_number}...skipping"
-            )
-            break
-
-        if save_plot:
-            # Plot
-            xmin, ymin, xmax, ymax, id = bbox
-            draw_bbox(
-                frame_copy,
-                int(xmin),
-                int(ymin),
-                int(xmax),
-                int(ymax),
-                (0, 0, 255),
-                f"id : {int(id)}",
-            )
-
-    return frame_copy
