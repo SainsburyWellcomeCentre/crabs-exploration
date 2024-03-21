@@ -294,7 +294,7 @@ def write_tracked_bbox_to_csv(
     xmin, ymin, xmax, ymax, id = bbox
     width_box = int(xmax - xmin)
     height_box = int(ymax - ymin)
-    
+
     # Add to csv
     csv_writer.writerow(
         (
