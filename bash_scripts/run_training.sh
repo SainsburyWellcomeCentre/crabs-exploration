@@ -3,7 +3,7 @@
 #SBATCH -p gpu # partition
 #SBATCH -N 1   # number of nodes
 #SBATCH -n 2 # number of cores
-#SBATCH --mem 8G # memory pool for all cores
+#SBATCH --mem 64G # memory pool for all cores
 #SBATCH --gres=gpu:1  # any GPU
 #SBATCH -t 3-00:00 # time (D-HH:MM)
 #SBATCH -o slurm_%A-%N.out
