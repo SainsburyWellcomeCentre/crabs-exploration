@@ -43,8 +43,10 @@ CRABS_REPO_LOCATION=/ceph/scratch/sminano/crabs-exploration
 DATASET_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
 TRAIN_CONFIG_FILE=/ceph/scratch/sminano/faster_rcnn.yaml
 
+# seed for the dataset split
 SPLIT_SEED=42
 
+# create a unique environment for this job
 ENV_NAME=crabs-dev-$SPLIT_SEED-$SLURM_JOB_ID
 
 # -----------------------------
@@ -71,3 +73,9 @@ python "$CRABS_REPO_LOCATION"/crabs/detection_tracking/train_model.py  \
  --accelerator gpu \
  --experiment_name "Sept2023_base_data_augm" \
  --seed_n $SEED_SPLIT \
+
+# -----------------------------
+# Delete virtual environment
+# -----------------------------
+conda deactivate
+conda remove -n $ENV_NAME --all
