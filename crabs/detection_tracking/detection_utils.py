@@ -1,5 +1,6 @@
 import datetime
 import os
+from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -53,45 +54,37 @@ def save_model(model: torch.nn.Module):
 
 
 def draw_bbox(
-    frame,
-    top_pt,
-    left_pt,
-    bottom_pt,
-    right_pt,
-    colour,
-    label_text=None,
+    frame: np.ndarray,
+    top_left: Tuple[float, float],
+    bottom_right: Tuple[float, float],
+    colour: tuple,
+    label_text: Optional[str] = None,
 ) -> None:
     """
-    Draw the bounding boxes on the image, based on detection results.
-    To draw a rectangle in OpenCV:
-        Specify the top-left and bottom-right corners of the rectangle.
+    Draw bounding boxes on the image based on detection results.
 
     Parameters
     ----------
-    image_with_boxes : np.ndarray
+    frame : np.ndarray
         Image with bounding boxes drawn on it.
-    top_pt : tuple
-        Coordinates of the top-left corner of the bounding box.
-    left_pt : tuple
-        Coordinates of the top-left corner of the bounding box.
-    bottom_pt : tuple
-        Coordinates of the bottom-right corner of the bounding box.
-    right_pt : tuple
-        Coordinates of the bottom-right corner of the bounding box.
+    top_left : Tuple[int, int]
+        Tuple containing (x, y) coordinates of the top-left corner of the bounding box.
+    bottom_right : Tuple[int, int]
+        Tuple containing (x, y) coordinates of the bottom-right corner of the bounding box.
     colour : tuple
         Color of the bounding box in BGR format.
     label_text : str, optional
         Text to display alongside the bounding box, indicating class and score.
 
     Returns
-    ----------
+    -------
     None
     """
     # Draw bounding box
     cv2.rectangle(
         frame,
-        (top_pt, left_pt),
-        (bottom_pt, right_pt),
+        (int(top_left[0]), int(top_left[1])),
+        (int(bottom_right[0]), int(bottom_right[1])),
         colour,
         thickness=2,
     )
@@ -101,17 +94,20 @@ def draw_bbox(
         cv2.putText(
             frame,
             label_text,
-            (top_pt, left_pt),
+            (int(top_left[0]), int(top_left[1])),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
             colour,
-            1,
+            2,
             cv2.LINE_AA,
         )
 
 
 def draw_detection(
-    imgs, annotations=None, detections=None, score_threshold=None
+    imgs: list,
+    annotations: dict,
+    detections: Optional[Dict[Any, Any]] = None,
+    score_threshold: Optional[float] = None,
 ) -> np.ndarray:
     """
     Draw the results based on the detection.
@@ -120,7 +116,7 @@ def draw_detection(
     ----------
     imgs : list
         List of images.
-    annotations : dict, optional
+    annotations : dict
         Ground truth annotations.
     detections : dict, optional
         Detected objects.
@@ -128,37 +124,32 @@ def draw_detection(
         The confidence threshold for detection scores.
 
     Returns
-    ----------
+    -------
     np.ndarray
         Image(s) with bounding boxes drawn on them.
     """
-
     coco_list = coco_category()
     image_with_boxes = None
 
     for image, label, prediction in zip(
-        imgs, annotations or [], detections or []
+        imgs, annotations, detections or [None] * len(imgs)
     ):
         image = image.cpu().numpy().transpose(1, 2, 0)
         image = (image * 255).astype("uint8")
         image_with_boxes = image.copy()
 
-        if label:
-            target_boxes = [
-                [(i[0], i[1]), (i[2], i[3])]
-                for i in list(label["boxes"].detach().cpu().numpy())
-            ]
+        target_boxes = [
+            [(i[0], i[1]), (i[2], i[3])]
+            for i in list(label["boxes"].detach().cpu().numpy())
+        ]
 
-            for i in range(len(target_boxes)):
-                draw_bbox(
-                    image_with_boxes,
-                    int((target_boxes[i][0])[0]),
-                    int((target_boxes[i][0])[1]),
-                    int((target_boxes[i][1])[0]),
-                    int((target_boxes[i][1])[1]),
-                    colour=(0, 255, 0),
-                )
-
+        for i in range(len(target_boxes)):
+            draw_bbox(
+                image_with_boxes,
+                ((target_boxes[i][0])[0], (target_boxes[i][0])[1]),
+                ((target_boxes[i][1])[0], (target_boxes[i][1])[1]),
+                colour=(0, 255, 0),
+            )
         if prediction:
             pred_score = list(prediction["scores"].detach().cpu().numpy())
             pred_t = [pred_score.index(x) for x in pred_score][-1]
@@ -182,109 +173,15 @@ def draw_detection(
                     label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
                     draw_bbox(
                         image_with_boxes,
-                        int((pred_boxes[i][0])[0]),
-                        int((pred_boxes[i][0])[1]),
-                        int((pred_boxes[i][1])[0]),
-                        int((pred_boxes[i][1])[1]),
+                        (
+                            (pred_boxes[i][0])[0],
+                            (pred_boxes[i][0])[1],
+                        ),
+                        (
+                            (pred_boxes[i][1])[0],
+                            (pred_boxes[i][1])[1],
+                        ),
                         (0, 0, 255),
                         label_text,
                     )
     return image_with_boxes
-
-
-def calculate_iou(box1, box2) -> float:
-    """
-    Calculate IoU (Intersection over Union) of two bounding boxes.
-
-    Parameters:
-    box1 (list): Coordinates [x1, y1, x2, y2] of the first bounding box.
-    box2 (list): Coordinates [x1, y1, x2, y2] of the second bounding box.
-
-    Returns:
-    float: IoU value.
-    """
-    x1_box1, y1_box1, x2_box1, y2_box1 = box1
-    x1_box2, y1_box2, x2_box2, y2_box2 = box2
-
-    # Calculate intersection coordinates
-    x1_intersect = max(x1_box1, x1_box2)
-    y1_intersect = max(y1_box1, y1_box2)
-    x2_intersect = min(x2_box1, x2_box2)
-    y2_intersect = min(y2_box1, y2_box2)
-
-    # Calculate area of intersection rectangle
-    intersect_width = max(0, x2_intersect - x1_intersect + 1)
-    intersect_height = max(0, y2_intersect - y1_intersect + 1)
-    intersect_area = intersect_width * intersect_height
-
-    # Calculate area of individual bounding boxes
-    box1_area = (x2_box1 - x1_box1 + 1) * (y2_box1 - y1_box1 + 1)
-    box2_area = (x2_box2 - x1_box2 + 1) * (y2_box2 - y1_box2 + 1)
-
-    iou = intersect_area / float(box1_area + box2_area - intersect_area)
-
-    return iou
-
-
-def draw_gt_boxes(
-    ground_truths: dict,
-    frame_number: int,
-    tracked_boxes: np.ndarray,
-    iou_threshold: float,
-    frame_copy: np.ndarray,
-) -> None:
-    """
-    Plot ground truth bounding boxes.
-
-    Parameters
-    ----------
-    ground_truths : dict
-        A dictionary mapping object IDs to their corresponding ground truth annotations.
-    frame_number : int
-        The frame number to track.
-    tracked_boxes : np.ndarray
-        An array containing sorted bounding boxes of detected objects.
-    iou_threshold : float
-        The intersection over union threshold for considering a match.
-    frame_copy : np.ndarray
-        A copy of the input frame for drawing bounding boxes.
-    """
-
-    for object_id, gt_data in ground_truths.items():
-        gt_annotations = gt_data.get("annotations", [])
-        for gt_box in gt_annotations:
-            if gt_box["image_id"] == frame_number:
-                x_gt, y_gt, width_gt, height_gt = gt_box["bbox"]
-                x2_gt, y2_gt = x_gt + width_gt, y_gt + height_gt
-                x_gt, y_gt, x2_gt, y2_gt = (
-                    int(x_gt),
-                    int(y_gt),
-                    int(x2_gt),
-                    int(y2_gt),
-                )
-
-                for bbox in tracked_boxes:
-                    x1_track, y1_track, x2_track, y2_track, _ = bbox
-                    iou = calculate_iou(
-                        [x_gt, y_gt, x2_gt, y2_gt],
-                        [x1_track, y1_track, x2_track, y2_track],
-                    )
-
-                    if iou > iou_threshold:
-                        cv2.rectangle(
-                            frame_copy,
-                            (x_gt, y_gt),
-                            (x2_gt, y2_gt),
-                            (0, 255, 0),
-                            2,
-                        )
-                        id_label = f"id : {object_id}"
-                        draw_bbox(
-                            frame_copy,
-                            int(x1_track),
-                            int(y1_track),
-                            int(x2_track),
-                            int(y2_track),
-                            (0, 0, 255),
-                            id_label,
-                        )
