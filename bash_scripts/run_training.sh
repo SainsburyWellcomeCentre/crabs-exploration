@@ -2,9 +2,12 @@
 
 #SBATCH -p gpu # partition
 #SBATCH -N 1   # number of nodes
-#SBATCH --mem 8G # memory pool for all cores
 #SBATCH -n 2 # number of cores
+#SBATCH --mem 8G # memory pool for all cores
+#SBATCH --gres=gpu:1  # any GPU
 #SBATCH -t 3-00:00 # time (D-HH:MM)
+#SBATCH -o slurm_%A-%N.out
+#SBATCH -e slurm_%A-%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minanon@ucl.ac.uk
 
@@ -13,6 +16,13 @@
 # with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
 # the number of array jobs should match the number of input files
 
+# ---------------------
+# Source bashrc
+# ----------------------
+
+# Otherwise which python points to the module
+
+source ~/.bashrc
 
 # ---------------------
 # Define variables
@@ -23,36 +33,24 @@ CRABS_REPO_LOCATION=/ceph/scratch/sminano/crabs-exploration
 DATASET_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
 TRAIN_CONFIG_FILE=/ceph/scratch/sminano/faster_rcnn.yaml
 
-# LIST_SEEDS=(
-#     42
-#     43
-#     44
-#     45
-#     46
-# )
-SEED_SPLIT=42 #${LIST_SEEDS[${SLURM_ARRAY_TASK_ID}]}
+SPLIT_SEED=42
 
-# --------------------
-# Check inputs
-# --------------------
-# Check len(list of input data) matches max SLURM_ARRAY_TASK_COUNT
-# if not, exit
-# if [[ $SLURM_ARRAY_TASK_COUNT -ne ${#LIST_SEEDS[@]} ]]; then
-#     echo "The number of array tasks does not match the number of inputs"
-#     exit 1
-# fi
+ENV_NAME=crabs-dev-$SPLIT_SEED-$SLURM_JOB_ID
 
 # -----------------------------
 # Create virtual environment
 # -----------------------------
+
 module load miniconda
 
-conda create -n crabs-dev -y python=3.10
-conda activate crabs-dev
+conda create -n $ENV_NAME -y python=3.10
+conda activate $ENV_NAME
+
+which python
+which pip
 
 cd $CRABS_REPO_LOCATION
-pip install -e .[dev]  # can omit -e if not debugging
-
+python -m pip install .
 
 # -------------------
 # Run training script
