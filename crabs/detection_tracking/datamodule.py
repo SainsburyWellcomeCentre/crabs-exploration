@@ -125,9 +125,12 @@ class CustomDataModule(pl.LightningDataModule):
         super().__init__()
         self.main_dirs = main_dirs
         self.annotations = annotations
-
         self.config = config
         self.seed_n = seed_n
+        self.train_ids = []
+        self.test_ids = []
+        self.train_file_paths = []
+        self.test_file_paths = []
 
     def prepare_data(self):
         """
@@ -147,11 +150,6 @@ class CustomDataModule(pl.LightningDataModule):
         ----------
         None
         """
-        self.train_ids = []
-        self.test_ids = []
-        self.train_file_paths = []
-        self.test_file_paths = []
-
         for main_dir, annotation in zip(self.main_dirs, self.annotations):
             with open(annotation) as json_file:
                 coco_data = json.load(json_file)
@@ -214,8 +212,6 @@ class CustomDataModule(pl.LightningDataModule):
             self.annotations,
             transforms=get_train_transform(self.config),
         )
-        print(len(train_dataset))
-
         return DataLoader(
             train_dataset,
             batch_size=self.config["batch_size"],
@@ -223,6 +219,28 @@ class CustomDataModule(pl.LightningDataModule):
             num_workers=self.config["num_workers"],
             collate_fn=collate_fn,
             persistent_workers=True,
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        """
+        Returns the data loader for the validation set.
+
+        Returns
+        -------
+        DataLoader
+            DataLoader for the validation set.
+        """
+        val_dataset = CustomFasterRCNNDataset(
+            self.test_file_paths,
+            self.annotations,
+            transforms=get_test_transform(),
+        )
+        return DataLoader(
+            val_dataset,
+            batch_size=self.config["batch_size_test"],
+            shuffle=False,
+            num_workers=self.config["num_workers"],
+            collate_fn=collate_fn,
         )
 
     def test_dataloader(self) -> DataLoader:

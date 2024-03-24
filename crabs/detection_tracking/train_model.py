@@ -8,6 +8,7 @@ import yaml  # type: ignore
 from crabs.detection_tracking.datamodule import CustomDataModule
 from crabs.detection_tracking.detection_utils import save_model
 from crabs.detection_tracking.models import FasterRCNN
+from crabs.detection_tracking.optuna_fn import optimize_hyperparameters
 
 
 class DectectorTrain:
@@ -49,6 +50,19 @@ class DectectorTrain:
         ):
             annotations.append(f"{main_dir}/annotations/{annotation_file}")
 
+        # Optimize hyperparameters
+        best_hyperparameters = optimize_hyperparameters(
+            self.config,
+            self.main_dirs,
+            annotations,
+            self.accelerator,
+            self.seed_n,
+            args.experiment_name,
+        )
+
+        # Update the config with the best hyperparameters
+        self.config.update(best_hyperparameters)
+
         data_module = CustomDataModule(
             self.main_dirs, annotations, self.config, self.seed_n
         )
@@ -65,23 +79,19 @@ class DectectorTrain:
         mlf_logger.log_hyperparams(self.config)
 
         lightning_model = FasterRCNN(self.config)
-        # lr_finder = LearningRateFinder()
 
         trainer = pl.Trainer(
             max_epochs=self.config["num_epochs"],
+            # max_steps=2,
             accelerator=self.accelerator,
             logger=mlf_logger,
-            # callbacks=[lr_finder]
+            # fast_dev_run=True,
         )
-
-        # trainer.tune(lightning_model, dataloaders=data_module)  # Pass dataloaders argument
-
-        # suggested_lr = lr_finder.best_lr
-        # print("Suggested Learning Rate:", suggested_lr)
 
         trainer.fit(lightning_model, data_module)
         if self.config["save"]:
-            save_model(lightning_model)
+            model_filename = save_model(lightning_model)
+            mlf_logger.log_hyperparams({"model_filename": model_filename})
 
 
 def main(args) -> None:
