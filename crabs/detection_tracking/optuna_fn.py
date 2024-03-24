@@ -56,7 +56,7 @@ def objective(
     test_result = trainer.test(datamodule=data_module)
 
     # Return the evaluation metric to optimize
-    return test_result[0]["test_precision"]
+    return -(test_result[0]["test_precision"])
 
 
 def optimize_hyperparameters(
