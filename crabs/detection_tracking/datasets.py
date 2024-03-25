@@ -34,9 +34,15 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         for img_dir, annotation_file in zip(
             list_img_dirs, list_annotation_files
         ):
-            # exclude files if required
-            if list_exclude_files:
-                # check if this annotation files has images to exclude
+            if not list_exclude_files:
+                dataset_coco = CocoDetection(
+                    img_dir,
+                    annotation_file,
+                    transforms=transforms,
+                )
+
+            else:
+                # Check if this annotation file has images to exclude
                 coco_obj = COCO(annotation_file)
                 n_imgs_to_exclude = sum(
                     [
@@ -45,43 +51,29 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
                     ]
                 )
 
-                # if it has: create temp file with new annotations
-                # and use that to define coco dataset
+                # If it does: create a tmp annotation file without those images
                 if n_imgs_to_exclude > 0:
-                    tmp_file, tmp_file_path = tempfile.mkstemp()
+                    _, tmp_path = tempfile.mkstemp(suffix=".json", text=True)
                     try:
                         # save modified annotations to tmp file
-                        annotation_file = self.create_tmp_annotation_file(
-                            annotation_file,
-                            list_exclude_files,
-                            tmp_file,
-                            tmp_file_path,
+                        annotation_file_filtered = self.save_filt_annotations(
+                            annotation_file, list_exclude_files, tmp_path
                         )
-                        # create COCO dataset for detection
+
+                        # create COCO dataset for detection using tmp file
                         dataset_coco = CocoDetection(
                             img_dir,
-                            annotation_file,
+                            annotation_file_filtered,
                             transforms=transforms,
                         )
+
+                    # ensure tmp path is removed after creating dataset,
+                    # even if there is an error in any previous step.
+                    # See https://security.openstack.org/guidelines/dg_using-temporary-files-securely.html
                     finally:
-                        os.remove(tmp_file_path)
-                else:
-                    # create COCO dataset for detection
-                    dataset_coco = CocoDetection(
-                        img_dir,
-                        annotation_file,
-                        transforms=transforms,
-                    )
+                        os.remove(tmp_path)
 
-            else:
-                # create COCO dataset for detection
-                dataset_coco = CocoDetection(
-                    img_dir,
-                    annotation_file,
-                    transforms=transforms,
-                )
-
-            # transform for "transforms v2"
+            # apply wrapper to use "transforms v2"
             dataset_transformed = wrap_dataset_for_transforms_v2(dataset_coco)
             list_datasets.append(dataset_transformed)
 
@@ -92,12 +84,11 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         self.__class__ = full_dataset.__class__
         self.__dict__ = full_dataset.__dict__
 
-    def create_tmp_annotation_file(
+    def save_filt_annotations(
         self,
         annotation_file: str,
         list_files_to_exclude: list[str],
-        tmp_file,
-        tmp_file_path,
+        out_filename,
     ) -> str:
         """Remove selected images from annotation file and save new file.
 
@@ -126,7 +117,6 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
             for im in dataset["images"]
             if im["file_name"] in list_files_to_exclude
         ]
-
         assert len(image_ids_to_exclude) > 0
 
         # Remove required images from dataset
@@ -150,10 +140,8 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
                 dataset_annotations.remove(annot)
         dataset["annotations"] = dataset_annotations
 
-        # Write new annotations to TEMP file
-        with os.fdopen(tmp_file, "w") as tmp:
-            json.dump(dataset, tmp)
+        # Write new annotations to file
+        with open(out_filename, "w") as f:
+            json.dump(dataset, f)
 
-        return str(tmp_file_path)
-
-        # return dataset
+        return out_filename
