@@ -16,6 +16,15 @@ gaussian_blur_params:
   sigma:
     - 0.1
     - 5.0
+optuna_param:
+  n_trials:
+    - 2
+  learning_rate:
+    - 1e-6
+    - 1e-4
+  num_epochs:
+    - 1
+    - 5
 exclude_video_file_list:
   - "09.08_09.08.2023-03-Left_frame"
   - "10.08_10.08.2023-01-Left_frame"

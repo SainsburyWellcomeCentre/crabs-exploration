@@ -14,9 +14,20 @@ def objective(
     seed_n,
     experiment_name,
 ):
+
     # Sample hyperparameters from the search space
-    learning_rate = trial.suggest_loguniform("learning_rate", 1e-6, 1e-4)
-    num_epochs = trial.suggest_int("num_epochs", 1, 10)
+    learning_rate = trial.suggest_float(
+        "learning_rate",
+        float(config["optuna_param"]["learning_rate"][0]),
+        float(config["optuna_param"]["learning_rate"][1]),
+    )
+    # print(type(float(config["optuna_param"]["learning_rate"][1])))
+    # learning_rate = trial.suggest_loguniform("learning_rate", 1e-6, 1e-4)
+    num_epochs = trial.suggest_int(
+        "num_epochs",
+        config["optuna_param"]["num_epochs"][0],
+        config["optuna_param"]["num_epochs"][1],
+    )
 
     # Update the config with the sampled hyperparameters
     config["learning_rate"] = learning_rate
@@ -56,14 +67,14 @@ def objective(
     test_result = trainer.test(datamodule=data_module)
 
     # Return the evaluation metric to optimize
-    return -(test_result[0]["test_precision"])
+    return test_result[0]["test_precision"]
 
 
 def optimize_hyperparameters(
     config, main_dirs, annotation_files, accelerator, seed_n, experiment_name
 ):
     # Create an Optuna study
-    study = optuna.create_study(direction="minimize")
+    study = optuna.create_study(direction="maximize")
 
     # Define objective function with partial args
     objective_fn = lambda trial: objective(
@@ -75,9 +86,10 @@ def optimize_hyperparameters(
         seed_n,
         experiment_name,
     )
-
     # Optimize the objective function
-    study.optimize(objective_fn, n_trials=3)
+    study.optimize(
+        objective_fn, n_trials=config["optuna_param"]["n_trials"][0]
+    )
 
     # Get the best hyperparameters
     best_params = study.best_params

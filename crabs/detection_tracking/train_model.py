@@ -50,18 +50,19 @@ class DectectorTrain:
         ):
             annotations.append(f"{main_dir}/annotations/{annotation_file}")
 
-        # Optimize hyperparameters
-        best_hyperparameters = optimize_hyperparameters(
-            self.config,
-            self.main_dirs,
-            annotations,
-            self.accelerator,
-            self.seed_n,
-            args.experiment_name,
-        )
+        if args.optuna:
+            # Optimize hyperparameters
+            best_hyperparameters = optimize_hyperparameters(
+                self.config,
+                self.main_dirs,
+                annotations,
+                self.accelerator,
+                self.seed_n,
+                args.experiment_name,
+            )
 
-        # Update the config with the best hyperparameters
-        self.config.update(best_hyperparameters)
+            # Update the config with the best hyperparameters
+            self.config.update(best_hyperparameters)
 
         data_module = CustomDataModule(
             self.main_dirs, annotations, self.config, self.seed_n
@@ -148,6 +149,11 @@ if __name__ == "__main__":
         type=int,
         default=42,
         help="seed for random state",
+    )
+    parser.add_argument(
+        "--optuna",
+        action="store_true",
+        help=("Option to run optuna to do optimization study"),
     )
     args = parser.parse_args()
     torch.set_float32_matmul_precision("medium")
