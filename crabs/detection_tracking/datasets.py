@@ -1,9 +1,10 @@
-import datetime
 import json
-from pathlib import Path
+import os
+import tempfile
 from typing import Callable, Optional
 
 import torch
+from pycocotools.coco import COCO
 from torchvision.datasets import CocoDetection, wrap_dataset_for_transforms_v2
 
 
@@ -35,16 +36,50 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         ):
             # exclude files if required
             if list_exclude_files:
-                annotation_file = self.exclude_files(
-                    annotation_file, list_exclude_files
+                # check if this annotation files has images to exclude
+                coco_obj = COCO(annotation_file)
+                n_imgs_to_exclude = sum(
+                    [
+                        im["file_name"] in list_exclude_files
+                        for _, im in coco_obj.imgs.items()
+                    ]
                 )
 
-            # create COCO dataset for detection
-            dataset_coco = CocoDetection(
-                img_dir,
-                annotation_file,
-                transforms=transforms,
-            )
+                # if it has: create temp file with new annotations
+                # and use that to define coco dataset
+                if n_imgs_to_exclude > 0:
+                    tmp_file, tmp_file_path = tempfile.mkstemp()
+                    try:
+                        # save modified annotations to tmp file
+                        annotation_file = self.create_tmp_annotation_file(
+                            annotation_file,
+                            list_exclude_files,
+                            tmp_file,
+                            tmp_file_path,
+                        )
+                        # create COCO dataset for detection
+                        dataset_coco = CocoDetection(
+                            img_dir,
+                            annotation_file,
+                            transforms=transforms,
+                        )
+                    finally:
+                        os.remove(tmp_file_path)
+                else:
+                    # create COCO dataset for detection
+                    dataset_coco = CocoDetection(
+                        img_dir,
+                        annotation_file,
+                        transforms=transforms,
+                    )
+
+            else:
+                # create COCO dataset for detection
+                dataset_coco = CocoDetection(
+                    img_dir,
+                    annotation_file,
+                    transforms=transforms,
+                )
 
             # transform for "transforms v2"
             dataset_transformed = wrap_dataset_for_transforms_v2(dataset_coco)
@@ -57,10 +92,12 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         self.__class__ = full_dataset.__class__
         self.__dict__ = full_dataset.__dict__
 
-    def exclude_files(
+    def create_tmp_annotation_file(
         self,
         annotation_file: str,
         list_files_to_exclude: list[str],
+        tmp_file,
+        tmp_file_path,
     ) -> str:
         """Remove selected images from annotation file and save new file.
 
@@ -90,40 +127,33 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
             if im["file_name"] in list_files_to_exclude
         ]
 
-        # If there are no images to exclude: return
-        # the original annotation file
-        if len(image_ids_to_exclude) == 0:
-            return annotation_file
+        assert len(image_ids_to_exclude) > 0
 
-        # else create a new one
-        else:
-            # Remove required images from dataset
-            dataset_imgs = dataset["images"].copy()
-            for im in dataset["images"]:
-                if im["id"] in image_ids_to_exclude:
-                    dataset_imgs.remove(im)
-            dataset["images"] = dataset_imgs
+        # Remove required images from dataset
+        dataset_imgs = dataset["images"].copy()
+        for im in dataset["images"]:
+            if im["id"] in image_ids_to_exclude:
+                dataset_imgs.remove(im)
+        dataset["images"] = dataset_imgs
 
-            # Determine annotations to exclude
-            annotation_ids_to_exclude = [
-                ann["id"]
-                for ann in dataset["annotations"]
-                if ann["image_id"] in image_ids_to_exclude
-            ]
+        # Determine annotations to exclude
+        annotation_ids_to_exclude = [
+            ann["id"]
+            for ann in dataset["annotations"]
+            if ann["image_id"] in image_ids_to_exclude
+        ]
 
-            # Remove required annotations from dataset
-            dataset_annotations = dataset["annotations"].copy()
-            for annot in dataset["annotations"]:
-                if annot["id"] in annotation_ids_to_exclude:
-                    dataset_annotations.remove(annot)
-            dataset["annotations"] = dataset_annotations
+        # Remove required annotations from dataset
+        dataset_annotations = dataset["annotations"].copy()
+        for annot in dataset["annotations"]:
+            if annot["id"] in annotation_ids_to_exclude:
+                dataset_annotations.remove(annot)
+        dataset["annotations"] = dataset_annotations
 
-            # Write to new file under the same location as original annotation file
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            out_filename = Path(annotation_file).parent / Path(
-                Path(annotation_file).stem + "_filt_" + timestamp + ".json"
-            )
-            with open(out_filename, "w") as f:
-                json.dump(dataset, f)
+        # Write new annotations to TEMP file
+        with os.fdopen(tmp_file, "w") as tmp:
+            json.dump(dataset, tmp)
 
-            return str(out_filename)
+        return str(tmp_file_path)
+
+        # return dataset
