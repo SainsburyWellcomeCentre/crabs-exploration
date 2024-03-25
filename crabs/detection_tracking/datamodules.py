@@ -39,24 +39,17 @@ class CrabsDataModule(LightningDataModule):
         https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
 
         """
-        train_transforms = transforms.Compose(
-            [
-                transforms.ToImage(),
-                transforms.ColorJitter(
-                    brightness=self.config["transform_brightness"],
-                    hue=self.config["transform_hue"],
-                ),
-                transforms.GaussianBlur(
-                    kernel_size=self.config["gaussian_blur_params"][
-                        "kernel_size"
-                    ],
-                    sigma=self.config["gaussian_blur_params"]["sigma"],
-                ),
-                transforms.ToDtype(torch.float32, scale=True),
-            ]
+        jitter = transforms.ColorJitter(
+            brightness=self.config["transform_brightness"],
+            hue=self.config["transform_hue"],
         )
-
-        return train_transforms
+        gauss = transforms.GaussianBlur(
+            kernel_size=self.config["gaussian_blur_params"]["kernel_size"],
+            sigma=self.config["gaussian_blur_params"]["sigma"],
+        )
+        todtype = transforms.ToDtype(torch.float32, scale=True)
+        train_transforms = [transforms.ToImage(), jitter, gauss, todtype]
+        return transforms.Compose(train_transforms)
 
     def _get_test_val_transform(self) -> torchvision.transforms:
         """Define data augmentation transforms for the test set.
@@ -66,13 +59,11 @@ class CrabsDataModule(LightningDataModule):
         https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
 
         """
-        test_transforms = transforms.Compose(
-            [
-                transforms.ToImage(),
-                transforms.ToDtype(torch.float32, scale=True),
-            ]
-        )
-        return test_transforms
+        test_transforms = [
+            transforms.ToImage(),
+            transforms.ToDtype(torch.float32, scale=True),
+        ]
+        return transforms.Compose(test_transforms)
 
     def _collate_fn(self, batch: tuple) -> tuple:
         """Collate function used for dataloaders.
