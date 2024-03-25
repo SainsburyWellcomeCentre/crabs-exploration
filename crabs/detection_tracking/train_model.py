@@ -93,8 +93,8 @@ class DectectorTrain:
     def train_model(self):
         # Create data module
         data_module = CrabsDataModule(
-            self.images_dirs,  # list of paths
-            self.annotation_files,  # list of paths
+            self.images_dirs,
+            self.annotation_files,
             self.config,
             self.seed_n,
         )
@@ -169,13 +169,20 @@ def train_parse_args(args):
         "--accelerator",
         type=str,
         default="gpu",
-        help="accelerator for pytorch lightning",
+        help=(
+            "accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. "
+            "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "
+            "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"
+        ),
     )
     parser.add_argument(
         "--experiment_name",
         type=str,
         default="Sept2023",
-        help="the name for the experiment in MLflow, under which the current run will be logged. For example, the name of the dataset could be used, to group runs using the same data.",
+        help=(
+            "the name for the experiment in MLflow, under which the current run will be logged. "
+            "For example, the name of the dataset could be used, to group runs using the same data."
+        ),
     )
     parser.add_argument(
         "--seed_n",
