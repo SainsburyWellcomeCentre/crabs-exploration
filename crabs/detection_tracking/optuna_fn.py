@@ -3,6 +3,7 @@ import optuna
 import lightning as pl
 from crabs.detection_tracking.datamodule import CustomDataModule
 from crabs.detection_tracking.models import FasterRCNN
+import mlflow
 
 
 def objective(
@@ -12,17 +13,16 @@ def objective(
     annotation_files,
     accelerator,
     seed_n,
-    experiment_name,
+    mlf_logger,
 ):
 
+    # with mlflow.start_run():
     # Sample hyperparameters from the search space
-    learning_rate = trial.suggest_float(
+    learning_rate = trial.suggest_loguniform(
         "learning_rate",
         float(config["optuna_param"]["learning_rate"][0]),
         float(config["optuna_param"]["learning_rate"][1]),
     )
-    # print(type(float(config["optuna_param"]["learning_rate"][1])))
-    # learning_rate = trial.suggest_loguniform("learning_rate", 1e-6, 1e-4)
     num_epochs = trial.suggest_int(
         "num_epochs",
         config["optuna_param"]["num_epochs"][0],
@@ -39,39 +39,38 @@ def objective(
     # Initialize the model
     lightning_model = FasterRCNN(config)
 
-    # Initialize the MLFlow logger
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    run_name = f"run_{timestamp}"
-    mlf_logger = pl.pytorch.loggers.MLFlowLogger(
-        run_name=run_name,
-        experiment_name=experiment_name,
-        tracking_uri="file:./ml-runs",
+    # Use the MLFlow logger instance passed from the main loop
+    mlf_logger.log_hyperparams(
+        {f"learning_rate_trial_{trial.number}": learning_rate}
     )
-    mlf_logger.log_hyperparams(config)
+    mlf_logger.log_hyperparams(
+        {f"num_epochs_trial_{trial.number}": num_epochs}
+    )
 
     # Initialize the PyTorch Lightning Trainer
     trainer = pl.Trainer(
         max_epochs=config["num_epochs"],
         accelerator=accelerator,
         logger=mlf_logger,
-        # fast_dev_run=True,
     )
 
     # Train the model
-    trainer.fit(
-        lightning_model,
-        data_module,
-    )
+    trainer.fit(lightning_model, data_module)
 
     # Evaluate the model on the test dataset
     test_result = trainer.test(datamodule=data_module)
 
+    # Log the evaluation metric
+    mlflow.log_metric(
+        f"test_precision_trial_{trial.number}",
+        test_result[0]["test_precision"],
+    )
     # Return the evaluation metric to optimize
     return test_result[0]["test_precision"]
 
 
 def optimize_hyperparameters(
-    config, main_dirs, annotation_files, accelerator, seed_n, experiment_name
+    config, main_dirs, annotation_files, accelerator, seed_n, mlf_logger
 ):
     # Create an Optuna study
     study = optuna.create_study(direction="maximize")
@@ -84,7 +83,7 @@ def optimize_hyperparameters(
         annotation_files,
         accelerator,
         seed_n,
-        experiment_name,
+        mlf_logger,
     )
     # Optimize the objective function
     study.optimize(

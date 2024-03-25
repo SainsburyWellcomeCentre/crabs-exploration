@@ -50,6 +50,15 @@ class DectectorTrain:
         ):
             annotations.append(f"{main_dir}/annotations/{annotation_file}")
 
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        run_name = f"run_{timestamp}"
+
+        mlf_logger = pl.pytorch.loggers.MLFlowLogger(
+            run_name=run_name,
+            experiment_name=args.experiment_name,
+            tracking_uri="file:./ml-runs",
+        )
+
         if args.optuna:
             # Optimize hyperparameters
             best_hyperparameters = optimize_hyperparameters(
@@ -58,7 +67,7 @@ class DectectorTrain:
                 annotations,
                 self.accelerator,
                 self.seed_n,
-                args.experiment_name,
+                mlf_logger,
             )
 
             # Update the config with the best hyperparameters
@@ -66,15 +75,6 @@ class DectectorTrain:
 
         data_module = CustomDataModule(
             self.main_dirs, annotations, self.config, self.seed_n
-        )
-
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        run_name = f"run_{timestamp}"
-
-        mlf_logger = pl.pytorch.loggers.MLFlowLogger(
-            run_name=run_name,
-            experiment_name=args.experiment_name,
-            tracking_uri="file:./ml-runs",
         )
 
         mlf_logger.log_hyperparams(self.config)
