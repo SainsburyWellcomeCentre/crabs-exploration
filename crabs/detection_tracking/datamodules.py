@@ -1,15 +1,15 @@
 from typing import Optional
 
-import lightning as L
 import torch
 import torchvision
 import torchvision.transforms.v2 as transforms
+from lightning import LightningDataModule
 from torch.utils.data import DataLoader, random_split
 
 from crabs.detection_tracking.datasets import CrabsCocoDetection
 
 
-class CrabsDataModule(L.LightningDataModule):
+class CrabsDataModule(LightningDataModule):
     """A Lightning DataModule class for the crabs data.
 
     It encapsulate all the steps needed to process the data:
@@ -129,7 +129,7 @@ class CrabsDataModule(L.LightningDataModule):
             transforms=self.train_transform,
             list_exclude_files=self.config.get(
                 "exclude_video_file_list"
-            ),  # only if key exists
+            ),  # get value only if key exists
         )
 
         # Split data into train and test-val sets

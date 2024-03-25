@@ -3,9 +3,10 @@ import datetime
 import sys
 from pathlib import Path
 
-import lightning as pl
+import lightning
 import torch
 import yaml  # type: ignore
+from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import save_model
@@ -64,7 +65,7 @@ class DectectorTrain:
         annotation_files = []
 
         # if none are passed: assume default filename for annotations,
-        # under default location
+        # and default location under `annotations` directory
         if not input_annotation_files:
             for dataset in dataset_dirs:
                 annotation_files.append(
@@ -103,7 +104,7 @@ class DectectorTrain:
         run_name = f"run_{timestamp}"
 
         # Initialise MLflow logger
-        mlf_logger = pl.pytorch.loggers.MLFlowLogger(
+        mlf_logger = MLFlowLogger(
             run_name=run_name,
             experiment_name=self.experiment_name,
             tracking_uri="file:./ml-runs",
@@ -114,7 +115,7 @@ class DectectorTrain:
 
         lightning_model = FasterRCNN(self.config)
 
-        trainer = pl.Trainer(
+        trainer = lightning.Trainer(
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
             logger=mlf_logger,
