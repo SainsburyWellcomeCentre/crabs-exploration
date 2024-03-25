@@ -1,16 +1,23 @@
 import argparse
 import csv
-import logging
 import os
 from pathlib import Path
+from typing import Any, List, Optional, TextIO, Tuple
 
 import cv2
 import numpy as np
 import torch
-import torchvision.transforms as transforms
+import torchvision.transforms.v2 as transforms
 from sort import Sort
 
-from crabs.detection_tracking.detection_utils import draw_bbox
+from crabs.detection_tracking.detection_utils import (
+    draw_bbox,
+)
+from crabs.detection_tracking.tracking_utils import (
+    evaluate_mota,
+    get_ground_truth_data,
+    save_frame_and_csv,
+)
 
 
 class DetectorInference:
@@ -18,16 +25,23 @@ class DetectorInference:
     A class for performing object detection or tracking inference on a video
     using a trained model.
 
-    Parameters:
-        args (argparse.Namespace): Command-line arguments containing
-        configuration settings.
+    Parameters
+    ----------
+    args : argparse.Namespace)
+        Command-line arguments containing configuration settings.
 
-    Attributes:
-        args (argparse.Namespace): The command-line arguments provided.
-        vid_path (str): The path to the input video.
-        iou_threshold (float): The iou threshold for tracking.
-        score_threshold (float): The score confidence threshold for tracking.
-        sort_tracker (Sort): An instance of the sorting algorithm used for tracking.
+    Attributes
+    ----------
+    args : argparse.Namespace
+        The command-line arguments provided.
+    vid_path : str
+        The path to the input video.
+    iou_threshold : float
+        The iou threshold for tracking.
+    score_threshold : float
+        The score confidence threshold for tracking.
+    sort_tracker : Sort
+        An instance of the sorting algorithm used for tracking.
     """
 
     def __init__(self, args: argparse.Namespace) -> None:
@@ -40,8 +54,8 @@ class DetectorInference:
             min_hits=args.min_hits,
             iou_threshold=self.iou_threshold,
         )
-        self.video_file_root = f"{Path(self.vid_path).stem}_"
-        self.tracking_output_dir = Path("tracking_output")
+        self.video_file_root = f"{Path(self.vid_path).stem}"
+        self.trained_model = self.load_trained_model()
 
     def load_trained_model(self) -> torch.nn.Module:
         """
@@ -58,7 +72,7 @@ class DetectorInference:
         model.eval()
         return model
 
-    def prep_sort(self, prediction):
+    def prep_sort(self, prediction: dict) -> np.ndarray:
         """
         Put predictions in format expected by SORT
 
@@ -88,35 +102,38 @@ class DetectorInference:
         """
         Load the input video, and prepare the output video if required.
         """
-        # load trained model
-        self.trained_model = self.load_trained_model()
-
         # load input video
         self.video = cv2.VideoCapture(self.vid_path)
         if not self.video.isOpened():
             raise Exception("Error opening video file")
 
-        # read input video parameters
-        frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        cap_fps = self.video.get(cv2.CAP_PROP_FPS)
-
         # prepare output video writer if required
         if self.args.save_video:
-            output_file = f"{self.video_file_root}output_video.mp4"
-            output_codec = cv2.VideoWriter_fourcc(*"mp4v")
+            # read input video parameters
+            frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            cap_fps = self.video.get(cv2.CAP_PROP_FPS)
+            output_file = f"{self.video_file_root}_output_video.mp4"
+            output_codec = cv2.VideoWriter_fourcc(*"H264")
             self.out = cv2.VideoWriter(
                 output_file, output_codec, cap_fps, (frame_width, frame_height)
             )
 
-    def prep_csv_writer(self):
+    def prep_csv_writer(self) -> Tuple[Any, TextIO]:
         """
         Prepare csv writer to output tracking results
         """
+
+        crabs_tracks_label_dir = Path("crabs_tracks_label")
+        self.tracking_output_dir = (
+            crabs_tracks_label_dir / self.video_file_root
+        )
+        # Create the subdirectory for the specific video file root
         self.tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
         csv_file = open(
-            str(self.tracking_output_dir / "tracking_output.csv"), "w"
+            f"{str(self.tracking_output_dir / self.video_file_root)}.csv",
+            "w",
         )
         csv_writer = csv.writer(csv_file)
 
@@ -136,50 +153,143 @@ class DetectorInference:
 
         return csv_writer, csv_file
 
-    def write_bbox_to_csv(self, bbox, frame, frame_name, csv_writer):
+    def evaluate_tracking(
+        self,
+        gt_boxes_list: list,
+        tracked_boxes_list: list,
+        iou_threshold: float,
+    ) -> List[float]:
         """
-        Write bounding box annotation to csv
+        Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
+
+        Parameters
+        ----------
+        gt_boxes_list : List[List[float]]
+            List of ground truth bounding boxes for each frame.
+        tracked_boxes_list : List[List[float]]
+            List of tracked bounding boxes for each frame.
+        iou_threshold : float
+            The IoU threshold used to determine matches between ground truth and tracked boxes.
+
+        Returns
+        -------
+        List[float]:
+            The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
         """
-
-        # Bounding box geometry
-        xmin, ymin, xmax, ymax, id = bbox
-        width_box = int(xmax - xmin)
-        height_box = int(ymax - ymin)
-
-        # Add to csv
-        csv_writer.writerow(
-            (
-                frame_name,
-                frame.size,
-                '{{"clip":{}}}'.format("123"),
-                1,
-                0,
-                '{{"name":"rect","x":{},"y":{},"width":{},"height":{}}}'.format(
-                    xmin, ymin, width_box, height_box
-                ),
-                '{{"track":{}}}'.format(id),
+        mota_values = []
+        prev_frame_ids: Optional[List[List[int]]] = None
+        # prev_frame_ids = None
+        for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
+            mota = evaluate_mota(
+                gt_boxes, tracked_boxes, iou_threshold, prev_frame_ids
             )
+            mota_values.append(mota)
+            # Update previous frame IDs for the next iteration
+            prev_frame_ids = [[box[-1] for box in tracked_boxes]]
+
+        return mota_values
+
+    def get_prediction(self, frame: np.ndarray) -> torch.Tensor:
+        """
+        Get prediction from the trained model for a given frame.
+
+        Parameters
+        ----------
+        frame : np.ndarray
+            The input frame for which prediction is to be obtained.
+
+        Returns
+        -------
+        torch.Tensor:
+            The prediction tensor from the trained model.
+        """
+        transform = transforms.Compose(
+            [
+                transforms.ToImage(),
+                transforms.ToDtype(torch.float32, scale=True),
+            ]
         )
+        img = transform(frame).to(self.args.accelerator)
+        img = img.unsqueeze(0)
+        return self.trained_model(img)
+
+    def update_tracking(self, prediction: dict) -> List[List[float]]:
+        """
+        Update the tracking system with the latest prediction.
+
+        Parameters
+        ----------
+        prediction : dict
+            Dictionary containing predicted bounding boxes, scores, and labels.
+
+        Returns
+        -------
+        List[List[float]]:
+            List of tracked bounding boxes after updating the tracking system.
+        """
+        pred_sort = self.prep_sort(prediction)
+        tracked_boxes = self.sort_tracker.update(pred_sort)
+        self.tracked_list.append(tracked_boxes)
+        return tracked_boxes
+
+    def save_required_output(
+        self,
+        tracked_boxes: List[List[float]],
+        frame: np.ndarray,
+        frame_number: int,
+    ) -> None:
+        """
+        Handle the output based argument options.
+
+        Parameters
+        ----------
+        tracked_boxes : List[List[float]]
+            List of tracked bounding boxes.
+        frame : np.ndarray
+            The current frame.
+        frame_number : int
+            The frame number.
+        """
+        if self.args.save_csv_and_frames:
+            save_frame_and_csv(
+                self.video_file_root,
+                self.tracking_output_dir,
+                tracked_boxes,
+                frame,
+                frame_number,
+                self.csv_writer,
+            )
+
+        if self.args.save_video:
+            frame_copy = frame.copy()
+            for bbox in tracked_boxes:
+                xmin, ymin, xmax, ymax, id = bbox
+                draw_bbox(
+                    frame_copy,
+                    (xmin, ymin),
+                    (xmax, ymax),
+                    (0, 0, 255),
+                    f"id : {int(id)}",
+                )
+            self.out.write(frame_copy)
 
     def run_inference(self):
         """
         Run object detection + tracking on the video frames.
         """
-        # Get transform to tensor
-        transform = transforms.Compose([transforms.ToTensor()])
-
-        # initialise frame counter
+        # initialisation
         frame_number = 1
+        self.tracked_list = []
 
         # initialise csv writer if required
         if self.args.save_csv_and_frames:
-            csv_writer, csv_file = self.prep_csv_writer()
+            self.csv_writer, csv_file = self.prep_csv_writer()
 
         # loop thru frames of clip
         while self.video.isOpened():
             # break if beyond end frame (mostly for debugging)
             if self.args.max_frames_to_read:
-                if frame_number > self.arg.max_frames_to_read:
+                if frame_number > self.args.max_frames_to_read:
                     break
 
             # read frame
@@ -188,65 +298,23 @@ class DetectorInference:
                 print("No frame read. Exiting...")
                 break
 
-            # run prediction
-            img = transform(frame).to(self.args.accelerator)
-            img = img.unsqueeze(0)
-            prediction = self.trained_model(img)
+            prediction = self.get_prediction(frame)
 
             # run tracking
-            pred_sort = self.prep_sort(prediction)
-            tracked_boxes = self.sort_tracker.update(pred_sort)
-
-            # save tracking output (for manual labelling) if required
-            if self.args.save_csv_and_frames:
-                # loop thru tracked bounding boxes per frame
-                for bbox in tracked_boxes:
-                    # get frame name
-                    frame_name = (
-                        f"{self.video_file_root}frame_{frame_number:08d}.png"
-                    )
-
-                    # add bbox to csv
-                    self.write_bbox_to_csv(bbox, frame, frame_name, csv_writer)
-
-                    # save frame as png
-                    frame_path = self.tracking_output_dir / frame_name
-                    img_saved = cv2.imwrite(str(frame_path), frame)
-                    if img_saved:
-                        logging.info(
-                            f"frame {frame_number} saved at {frame_path}"
-                        )
-                    else:
-                        logging.info(
-                            f"ERROR saving {frame_name}, frame {frame_number}"
-                            "...skipping",
-                        )
-                        break
-
-                    # add each annotation to output video frame if required
-                    if self.args.save_video:
-                        frame_copy = frame.copy()
-
-                        # parse bbox
-                        xmin, ymin, xmax, ymax, id = bbox
-
-                        # plot
-                        draw_bbox(
-                            frame_copy,
-                            int(xmin),
-                            int(ymin),
-                            int(xmax),
-                            int(ymax),
-                            (0, 0, 255),
-                            f"id : {int(id)}",
-                        )
-
-            # add frame with all annotations to output video if required
-            if self.args.save_video:
-                self.out.write(frame_copy)
+            self.prep_sort(prediction)
+            tracked_boxes = self.update_tracking(prediction)
+            self.save_required_output(tracked_boxes, frame, frame_number)
 
             # update frame
             frame_number += 1
+
+        if self.args.gt_dir:
+            gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
+            mota_values = self.evaluate_tracking(
+                gt_boxes_list, self.tracked_list, self.iou_threshold
+            )
+            overall_mota = np.mean(mota_values)
+            print("Overall MOTA:", overall_mota)
 
         # Close input video
         self.video.release()
@@ -254,6 +322,7 @@ class DetectorInference:
         # Close outputs
         if self.args.save_video:
             self.out.release()
+
         if args.save_csv_and_frames:
             csv_file.close()
 
@@ -317,13 +386,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_age",
         type=int,
-        default=1,
+        default=10,
         help="Maximum number of frames to keep alive a track without associated detections.",
     )
     parser.add_argument(
         "--min_hits",
         type=int,
-        default=3,
+        default=1,
         help="Minimum number of associated detections before track is initialised.",
     )
     parser.add_argument(
@@ -345,6 +414,12 @@ if __name__ == "__main__":
         type=int,
         default=None,
         help="Maximum number of frames to read (mostly for debugging).",
+    )
+    parser.add_argument(
+        "--gt_dir",
+        type=str,
+        default=None,
+        help="Location of json file containing ground truth annotations.",
     )
     args = parser.parse_args()
     main(args)
