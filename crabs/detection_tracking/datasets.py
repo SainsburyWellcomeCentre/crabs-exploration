@@ -38,7 +38,6 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
             list_img_dirs, list_annotation_files
         ):
             # exclude files if required
-            # TODO: exclude files only if they are in this annotation file!
             if list_exclude_files:
                 annotation_file = self.exclude_files(
                     annotation_file, list_exclude_files
@@ -89,25 +88,25 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
             dataset = json.load(f)
 
         # Determine images to exclude
-        slc_images_to_exclude = [
+        select_images_to_exclude = [
             im["file_name"] in list_files_to_exclude
             for im in dataset["images"]
         ]
 
         # If there are no images to exclude: return
         # the original annotation file
-        if not any(slc_images_to_exclude):
+        if not any(select_images_to_exclude):
             return annotation_file
         # else create a new one
         else:
             image_ids_to_exclude = [
                 im["id"]
-                for im, slc in zip(dataset["images"], slc_images_to_exclude)
-                if slc
+                for im, sel in zip(dataset["images"], select_images_to_exclude)
+                if sel
             ]
 
             # Determine annotations to exclude
-            slc_annotations_to_exclude = [
+            select_annotations_to_exclude = [
                 ann["image_id"] in image_ids_to_exclude
                 for ann in dataset["annotations"]
             ]
@@ -115,15 +114,15 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
             # Update dataset dict
             dataset["images"] = [
                 im
-                for im, slc in zip(dataset["images"], slc_images_to_exclude)
-                if not slc
+                for im, sel in zip(dataset["images"], select_images_to_exclude)
+                if not sel
             ]
             dataset["annotations"] = [
                 annot
-                for annot, slc in zip(
-                    dataset["annotations"], slc_annotations_to_exclude
+                for annot, sel in zip(
+                    dataset["annotations"], select_annotations_to_exclude
                 )
-                if not slc
+                if not sel
             ]
 
             # Write to new file under the same location as original annotation file
