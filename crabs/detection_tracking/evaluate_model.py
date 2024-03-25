@@ -190,9 +190,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_frames",
         action="store_true",
-        help=(
-            "Save predicted frames with bbox (useful for manual track labelling)."
-        ),
+        help=("Save predicted frames with bboxes."),
     )
 
     args = parser.parse_args()
