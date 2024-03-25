@@ -84,42 +84,39 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
             dataset = json.load(f)
 
         # Determine images to exclude
-        select_images_to_exclude = [
-            im["file_name"] in list_files_to_exclude
+        image_ids_to_exclude = [
+            im["id"]
             for im in dataset["images"]
+            if im["file_name"] in list_files_to_exclude
         ]
 
         # If there are no images to exclude: return
         # the original annotation file
-        if not any(select_images_to_exclude):
+        if len(image_ids_to_exclude) == 0:
             return annotation_file
+
         # else create a new one
         else:
-            image_ids_to_exclude = [
-                im["id"]
-                for im, sel in zip(dataset["images"], select_images_to_exclude)
-                if sel
-            ]
+            # Remove required images from dataset
+            dataset_imgs = dataset["images"].copy()
+            for im in dataset["images"]:
+                if im["id"] in image_ids_to_exclude:
+                    dataset_imgs.remove(im)
+            dataset["images"] = dataset_imgs
 
             # Determine annotations to exclude
-            select_annotations_to_exclude = [
-                ann["image_id"] in image_ids_to_exclude
+            annotation_ids_to_exclude = [
+                ann["id"]
                 for ann in dataset["annotations"]
+                if ann["image_id"] in image_ids_to_exclude
             ]
 
-            # Update dataset dict
-            dataset["images"] = [
-                im
-                for im, sel in zip(dataset["images"], select_images_to_exclude)
-                if not sel
-            ]
-            dataset["annotations"] = [
-                annot
-                for annot, sel in zip(
-                    dataset["annotations"], select_annotations_to_exclude
-                )
-                if not sel
-            ]
+            # Remove required annotations from dataset
+            dataset_annotations = dataset["annotations"].copy()
+            for annot in dataset["annotations"]:
+                if annot["id"] in annotation_ids_to_exclude:
+                    dataset_annotations.remove(annot)
+            dataset["annotations"] = dataset_annotations
 
             # Write to new file under the same location as original annotation file
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
