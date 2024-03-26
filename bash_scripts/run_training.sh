@@ -12,10 +12,6 @@
 #SBATCH --mail-user=s.minanon@ucl.ac.uk
 
 
-# NOTE on SBATCH command for array jobs
-# with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
-# the number of array jobs should match the number of input files
-
 # ---------------------
 # Source bashrc
 # ----------------------
