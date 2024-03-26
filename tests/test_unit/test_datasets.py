@@ -9,10 +9,16 @@ DATASET_1 = "/home/data/dataset1"
 DATASET_2 = "/home/data/dataset2"
 
 ANNOTATION_FILE_1 = (
-    Path(__file__).parents[1] / "data" / "sample_annotations_1.json"
+    Path(__file__).parents[1]
+    / "data"
+    / "annotations"
+    / "sample_annotations_1.json"
 )
 ANNOTATION_FILE_2 = (
-    Path(__file__).parents[1] / "data" / "sample_annotations_2.json"
+    Path(__file__).parents[1]
+    / "data"
+    / "annotations"
+    / "sample_annotations_2.json"
 )
 
 
@@ -25,13 +31,19 @@ ANNOTATION_FILE_2 = (
 )
 @pytest.mark.parametrize("n_files_to_exclude", [0, 1, 20])
 def test_exclude_files(list_datasets, list_annotations, n_files_to_exclude):
+    """
+    Test if the required files are excluded correctly from the
+    dataset defined by a list of annotation files, and a list of
+    corresponding image directories.
+
+    """
     # Create a dataset with all the input data
-    dataset = CrabsCocoDetection(
+    full_dataset = CrabsCocoDetection(
         list_datasets,
         list_annotations,
     )
     # Check list of excluded files in dataset is None
-    assert dataset.list_exclude_files is None
+    assert full_dataset.list_exclude_files is None
 
     # Select a subset of images in the full dataset as images to exclude.
     # If multiple dataset: sample images from each dataset if possible.
@@ -49,7 +61,7 @@ def test_exclude_files(list_datasets, list_annotations, n_files_to_exclude):
 
     # Determine images to exclude
     list_exclude_files = []
-    for dataset, n_excl in zip(dataset.datasets, n_exclude_per_dataset):
+    for dataset, n_excl in zip(full_dataset.datasets, n_exclude_per_dataset):
         coco_object = dataset.coco
         list_files_in_dataset = [
             im["file_name"] for im in coco_object.dataset["images"]
@@ -65,7 +77,7 @@ def test_exclude_files(list_datasets, list_annotations, n_files_to_exclude):
     )
 
     # Check number of samples in dataset with excluded images
-    assert len(dataset) - n_files_to_exclude == len(dataset_w_exclude)
+    assert len(full_dataset) - n_files_to_exclude == len(dataset_w_exclude)
 
     # Check list of excluded files
     assert dataset_w_exclude.list_exclude_files == list_exclude_files
