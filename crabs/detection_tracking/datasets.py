@@ -20,8 +20,14 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         A class for concatenated CocoDetection datasets wrapped for
         transforms_v2.
 
+        If a list of files to exclude from the dataset is passed,
+        a new annotation file is generated without the data to exclude.
+        This new annotation file is a temporary file that is passed to the
+        CocoDataset object and deleted once the dataset is created.
+
         The resulting dataset is of type ConcatDataset. Each individual
-        dataset in the concatenated set is of type WrappedCocoDetection
+        dataset in the concatenated set is of type WrappedCocoDetection.
+
 
         Example usage:
         > dataset = CrabsCocoDetection([IMAGES_PATH], [ANNOTATIONS_PATH])
