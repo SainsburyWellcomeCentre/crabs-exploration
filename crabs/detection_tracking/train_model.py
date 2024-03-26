@@ -194,8 +194,12 @@ def train_parse_args(args):
     return parser.parse_args(args)
 
 
-if __name__ == "__main__":
+def app_wrapper():
     torch.set_float32_matmul_precision("medium")
 
     train_args = train_parse_args(sys.argv[1:])
     main(train_args)
+
+
+if __name__ == "__main__":
+    app_wrapper()
