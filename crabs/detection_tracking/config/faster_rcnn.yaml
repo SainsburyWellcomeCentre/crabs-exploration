@@ -1,11 +1,12 @@
 num_epochs: 250
 learning_rate: 0.00005
 wdecay: 0.00005
-batch_size: 2
+batch_size_train: 2
 batch_size_test: 1
 num_classes: 2
 save: True
-test_size: 0.2
+train_fraction: 0.8
+val_over_test_fraction: 0
 num_workers: 4
 transform_brightness: 0.5
 transform_hue: 0.3
@@ -17,6 +18,4 @@ gaussian_blur_params:
     - 0.1
     - 5.0
 exclude_video_file_list:
-  - "09.08_09.08.2023-03-Left_frame"
-  - "10.08_10.08.2023-01-Left_frame"
-  - "10.08_10.08.2023-01-Right_frame"
+  - "06.09.2023-03-Right_RE_frame_181451.png"
