@@ -44,20 +44,22 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         for img_dir, annotation_file in zip(
             list_img_dirs, list_annotation_files
         ):
-            if not list_exclude_files:
-                dataset_coco = CocoDetection(
-                    img_dir,
-                    annotation_file,
-                    transforms=transforms,
-                )
+            # create "default" COCO dataset
+            dataset_coco = CocoDetection(
+                img_dir,
+                annotation_file,
+                transforms=transforms,
+            )
 
-            else:
+            # If there are files to exclude in this dataset: overwrite
+            # "default" COCO dataset
+            if list_exclude_files:
                 # Check if this annotation file has images to exclude
                 coco_obj = COCO(annotation_file)
                 n_imgs_to_exclude = sum(
                     [
                         im["file_name"] in list_exclude_files
-                        for _, im in coco_obj.imgs.items()
+                        for im in coco_obj.dataset["images"]
                     ]
                 )
 
@@ -82,13 +84,6 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
                     # See https://security.openstack.org/guidelines/dg_using-temporary-files-securely.html
                     finally:
                         os.remove(tmp_path)
-
-                else:
-                    dataset_coco = CocoDetection(
-                        img_dir,
-                        annotation_file,
-                        transforms=transforms,
-                    )
 
             # apply wrapper to use "transforms v2"
             dataset_transformed = wrap_dataset_for_transforms_v2(dataset_coco)
