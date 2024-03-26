@@ -94,14 +94,6 @@ class DectectorTrain:
         return annotation_files
 
     def train_model(self):
-        # Create data module
-        data_module = CrabsDataModule(
-            self.images_dirs,
-            self.annotation_files,
-            self.config,
-            self.seed_n,
-        )
-
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = f"run_{timestamp}"
 
@@ -112,23 +104,22 @@ class DectectorTrain:
             tracking_uri="file:./ml-runs",
         )
 
+        data_module = CrabsDataModule(
+            self.images_dirs, self.annotation_files, self.config, self.seed_n
+        )
+
         if self.args.optuna:
             # Optimize hyperparameters
             best_hyperparameters = optimize_hyperparameters(
                 self.config,
-                self.images_dirs,
-                self.annotation_files,
+                data_module,
                 self.accelerator,
-                self.seed_n,
                 mlf_logger,
+                self.args.fast_dev_run,
             )
 
             # Update the config with the best hyperparameters
             self.config.update(best_hyperparameters)
-
-        data_module = CrabsDataModule(
-            self.images_dirs, self.annotation_files, self.config, self.seed_n
-        )
 
         mlf_logger.log_hyperparams(self.config)
         mlf_logger.log_hyperparams({"split_seed": self.seed_n})

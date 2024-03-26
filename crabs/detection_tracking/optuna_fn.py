@@ -1,23 +1,15 @@
 import lightning as pl
-import mlflow
 import optuna
 
-from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.models import FasterRCNN
 
 
 def objective(
-    trial,
-    config,
-    main_dirs,
-    annotation_files,
-    accelerator,
-    seed_n,
-    mlf_logger,
+    trial, config, data_module, accelerator, mlf_logger, fast_dev_run
 ):
     # with mlflow.start_run():
     # Sample hyperparameters from the search space
-    learning_rate = trial.suggest_loguniform(
+    learning_rate = trial.suggest_float(
         "learning_rate",
         float(config["optuna_param"]["learning_rate"][0]),
         float(config["optuna_param"]["learning_rate"][1]),
@@ -32,8 +24,7 @@ def objective(
     config["learning_rate"] = learning_rate
     config["num_epochs"] = num_epochs
 
-    # Initialize the data module
-    data_module = CrabsDataModule(main_dirs, annotation_files, config, seed_n)
+    print(config)
 
     # Initialize the model
     lightning_model = FasterRCNN(config)
@@ -51,6 +42,7 @@ def objective(
         max_epochs=config["num_epochs"],
         accelerator=accelerator,
         logger=mlf_logger,
+        fast_dev_run=fast_dev_run,
     )
 
     # Train the model
@@ -59,17 +51,17 @@ def objective(
     # Evaluate the model on the test dataset
     test_result = trainer.test(datamodule=data_module)
 
-    # Log the evaluation metric
-    mlflow.log_metric(
-        f"test_precision_trial_{trial.number}",
-        test_result[0]["test_precision"],
-    )
+    # # Log the evaluation metric
+    # mlflow.log_metric(
+    #     f"test_precision_trial_{trial.number}",
+    #     test_result[0]["test_precision"],
+    # )
     # Return the evaluation metric to optimize
-    return test_result[0]["test_precision"]
+    return test_result[0]["val_precision"]
 
 
 def optimize_hyperparameters(
-    config, main_dirs, annotation_files, accelerator, seed_n, mlf_logger
+    config, data_module, accelerator, mlf_logger, fast_dev_run
 ):
     # Create an Optuna study
     study = optuna.create_study(direction="maximize")
@@ -77,13 +69,7 @@ def optimize_hyperparameters(
     # Define objective function with partial args
     def objective_fn(trial):
         return objective(
-            trial,
-            config,
-            main_dirs,
-            annotation_files,
-            accelerator,
-            seed_n,
-            mlf_logger,
+            trial, config, data_module, accelerator, mlf_logger, fast_dev_run
         )
 
     # Optimize the objective function

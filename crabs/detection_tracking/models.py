@@ -54,21 +54,21 @@ class FasterRCNN(LightningModule):
         self.log("train_loss", total_loss)
         return total_loss
 
-    def test_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx):
         images, targets = batch
         predictions = self.model(images, targets)
         precision, _ = compute_confusion_matrix_elements(
-            targets, predictions, 0.1
+            targets, predictions, self.config["iou_threshold"]
         )
         self.test_step_outputs.append(precision)
         return precision
 
-    def on_test_epoch_end(self):
+    def on_validation_epoch_end(self):
         # Compute the mean precision across all batches in the epoch
         mean_precision = torch.tensor(self.test_step_outputs).mean()
 
         # Log the mean precision for the entire validation set
-        self.log("test_precision", mean_precision, on_epoch=True)
+        self.log("val_precision", mean_precision, on_epoch=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(

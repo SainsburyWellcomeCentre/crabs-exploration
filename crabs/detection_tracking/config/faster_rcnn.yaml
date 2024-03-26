@@ -6,7 +6,8 @@ batch_size_test: 1
 num_classes: 2
 save: True
 train_fraction: 0.8
-val_over_test_fraction: 0
+val_over_test_fraction: 0.1
+iou_threshold: 0.1
 num_workers: 4
 transform_brightness: 0.5
 transform_hue: 0.3
@@ -26,5 +27,3 @@ optuna_param:
   num_epochs:
     - 1
     - 5
-exclude_video_file_list:
-  - "06.09.2023-03-Right_RE_frame_181451.png"
