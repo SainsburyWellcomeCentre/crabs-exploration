@@ -20,7 +20,6 @@
 # Source bashrc
 # ----------------------
 # Otherwise `which python` points to the miniconda module's Python
-
 source ~/.bashrc
 
 
@@ -32,8 +31,6 @@ set -e  # do not continue after errors
 set -u  # throw error if variable is unset
 set -o pipefail  # make the pipe fail if any part of it fails
 
-
-
 # ---------------------
 # Define variables
 # ----------------------
@@ -41,7 +38,7 @@ set -o pipefail  # make the pipe fail if any part of it fails
 # script location
 CRABS_REPO_LOCATION=/ceph/scratch/sminano/crabs-exploration
 DATASET_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
-TRAIN_CONFIG_FILE=/ceph/scratch/sminano/faster_rcnn.yaml
+TRAIN_CONFIG_FILE=$CRABS_REPO_LOCATION/cluster_train_config.yaml
 
 # seed for the dataset split
 SPLIT_SEED=42
@@ -72,7 +69,7 @@ python "$CRABS_REPO_LOCATION"/crabs/detection_tracking/train_model.py  \
  --config_file $TRAIN_CONFIG_FILE \
  --accelerator gpu \
  --experiment_name "Sept2023_base_data_augm" \
- --seed_n $SEED_SPLIT \
+ --seed_n $SPLIT_SEED \
 
 # -----------------------------
 # Delete virtual environment
