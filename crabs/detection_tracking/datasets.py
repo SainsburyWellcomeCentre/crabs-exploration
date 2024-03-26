@@ -83,6 +83,13 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
                     finally:
                         os.remove(tmp_path)
 
+                else:
+                    dataset_coco = CocoDetection(
+                        img_dir,
+                        annotation_file,
+                        transforms=transforms,
+                    )
+
             # apply wrapper to use "transforms v2"
             dataset_transformed = wrap_dataset_for_transforms_v2(dataset_coco)
             list_datasets.append(dataset_transformed)
