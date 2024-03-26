@@ -6,14 +6,11 @@
 #SBATCH --mem 64G # memory pool for all cores
 #SBATCH --gres=gpu:1  # any GPU
 #SBATCH -t 3-00:00 # time (D-HH:MM)
-
 #SBATCH -o slurm_array.%A-%a.%N.out
 #SBATCH -e slurm_array.%A-%a.%N.err
-#SBATCH --array=0-2%3
-
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minanon@ucl.ac.uk
-
+#SBATCH --array=0-2%3
 
 # NOTE on SBATCH command for array jobs
 # with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
