@@ -4,7 +4,12 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
-from crabs.detection_tracking.datamodule import *
+from crabs.detection_tracking.datamodule import (
+    collate_fn,
+    get_eval_transform,
+    get_train_transform,
+    myDataModule,
+)
 
 
 def test_collate_fn():
