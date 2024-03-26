@@ -62,7 +62,7 @@ fi
 module load miniconda
 
 # create a unique environment for this job
-ENV_NAME=crabs-dev-$SPLIT_SEED-$SLURM_JOB_ID
+ENV_NAME=crabs-dev-$SPLIT_SEED-$SLURM_ARRAY_JOB_ID
 conda create -n $ENV_NAME -y python=3.10
 conda activate $ENV_NAME
 
