@@ -1,6 +1,5 @@
 import torch
 import torchvision
-from torch.optim.lr_scheduler import StepLR
 from lightning import LightningModule
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 

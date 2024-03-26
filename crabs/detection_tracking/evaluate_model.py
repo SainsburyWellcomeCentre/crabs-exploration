@@ -166,13 +166,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--score_threshold",
         type=float,
-        default=0.5,
+        default=0.1,
         help="threshold for confidence score",
     )
     parser.add_argument(
         "--ious_threshold",
         type=float,
-        default=0.5,
+        default=0.1,
         help="threshold for IOU",
     )
     parser.add_argument(

@@ -1,9 +1,9 @@
-import datetime
-import optuna
 import lightning as pl
-from crabs.detection_tracking.datamodule import CustomDataModule
-from crabs.detection_tracking.models import FasterRCNN
 import mlflow
+import optuna
+
+from crabs.detection_tracking.datamodules import CrabsDataModule
+from crabs.detection_tracking.models import FasterRCNN
 
 
 def objective(
@@ -15,7 +15,6 @@ def objective(
     seed_n,
     mlf_logger,
 ):
-
     # with mlflow.start_run():
     # Sample hyperparameters from the search space
     learning_rate = trial.suggest_loguniform(
@@ -34,7 +33,7 @@ def objective(
     config["num_epochs"] = num_epochs
 
     # Initialize the data module
-    data_module = CustomDataModule(main_dirs, annotation_files, config, seed_n)
+    data_module = CrabsDataModule(main_dirs, annotation_files, config, seed_n)
 
     # Initialize the model
     lightning_model = FasterRCNN(config)
@@ -76,15 +75,17 @@ def optimize_hyperparameters(
     study = optuna.create_study(direction="maximize")
 
     # Define objective function with partial args
-    objective_fn = lambda trial: objective(
-        trial,
-        config,
-        main_dirs,
-        annotation_files,
-        accelerator,
-        seed_n,
-        mlf_logger,
-    )
+    def objective_fn(trial):
+        return objective(
+            trial,
+            config,
+            main_dirs,
+            annotation_files,
+            accelerator,
+            seed_n,
+            mlf_logger,
+        )
+
     # Optimize the objective function
     study.optimize(
         objective_fn, n_trials=config["optuna_param"]["n_trials"][0]

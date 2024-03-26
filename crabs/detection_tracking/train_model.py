@@ -11,6 +11,7 @@ from lightning.pytorch.loggers import MLFlowLogger
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import save_model
 from crabs.detection_tracking.models import FasterRCNN
+from crabs.detection_tracking.optuna_fn import optimize_hyperparameters
 
 DEFAULT_ANNOTATIONS_FILENAME = "VIA_JSON_combined_coco_gen.json"
 
@@ -36,6 +37,7 @@ class DectectorTrain:
     """
 
     def __init__(self, args):
+        self.args = args
         self.config_file = args.config_file
         self.images_dirs = self.prep_img_directories(
             args.dataset_dirs  # args only?
@@ -110,12 +112,12 @@ class DectectorTrain:
             tracking_uri="file:./ml-runs",
         )
 
-        if args.optuna:
+        if self.args.optuna:
             # Optimize hyperparameters
             best_hyperparameters = optimize_hyperparameters(
                 self.config,
-                self.main_dirs,
-                annotations,
+                self.images_dirs,
+                self.annotation_files,
                 self.accelerator,
                 self.seed_n,
                 mlf_logger,
@@ -124,21 +126,19 @@ class DectectorTrain:
             # Update the config with the best hyperparameters
             self.config.update(best_hyperparameters)
 
-        data_module = CustomDataModule(
-            self.main_dirs, annotations, self.config, self.seed_n
+        data_module = CrabsDataModule(
+            self.images_dirs, self.annotation_files, self.config, self.seed_n
         )
 
         mlf_logger.log_hyperparams(self.config)
         mlf_logger.log_hyperparams({"split_seed": self.seed_n})
 
         lightning_model = FasterRCNN(self.config)
-
         trainer = lightning.Trainer(
             max_epochs=self.config["num_epochs"],
-            # max_steps=2,
             accelerator=self.accelerator,
             logger=mlf_logger,
-            # fast_dev_run=True,
+            fast_dev_run=self.args.fast_dev_run,
         )
 
         # Run training
@@ -211,6 +211,16 @@ def train_parse_args(args):
         type=int,
         default=42,
         help="seed for dataset splits",
+    )
+    parser.add_argument(
+        "--optuna",
+        action="store_true",
+        help="running optuna",
+    )
+    parser.add_argument(
+        "--fast_dev_run",
+        action="store_true",
+        help="option to run only one batch for debugging",
     )
     return parser.parse_args(args)
 
