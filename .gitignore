@@ -93,6 +93,10 @@ venv/
 !/tests/data/**/*.mp4
 !/tests/data/**/*.json
 
+# guides
+!/guides/images/*.png
+
 # python
 model/
-mlruns/
+ml-runs/
+lightning_logs

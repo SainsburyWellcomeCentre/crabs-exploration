@@ -69,7 +69,9 @@ def compute_precision_recall(class_stats):
         )
 
 
-def compute_confusion_metrics(targets, detections, ious_threshold) -> None:
+def compute_confusion_matrix_elements(
+    targets, detections, ious_threshold
+) -> None:
     """
     Compute metrics (true positive, false positive, false negative) for object detection.
 

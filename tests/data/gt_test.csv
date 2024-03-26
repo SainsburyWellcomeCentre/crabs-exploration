@@ -1,0 +1,4 @@
+filename,file_size,file_attributes,region_count,region_id,region_shape_attributes,region_attributes
+frame_00000001.png,26542080,"{""clip"":123}",1,0,"{""name"":""rect"",""x"":2894.860594987354,""y"":975.8516839863181,""width"":51,""height"":41}","{""track"":""2.0""}"
+frame_00000001.png,26542080,"{""clip"":123}",1,0,"{""name"":""rect"",""x"":940.6088870891139,""y"":1192.6369631796642,""width"":49,""height"":38}","{""track"":""1.0""}"
+frame_00000002.png,26542080,"{""clip"":123}",1,0,"{""name"":""rect"",""x"":940.6088870891139,""y"":1192.6369631796642,""width"":49,""height"":38}","{""track"":""2.0""}"

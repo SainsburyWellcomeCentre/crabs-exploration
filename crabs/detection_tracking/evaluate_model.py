@@ -1,27 +1,23 @@
 import argparse
 
 import torch
+import yaml  # type: ignore
 
-from crabs.detection_tracking.datamodule import myDataModule
+from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.evaluate import (
-    compute_confusion_metrics,
+    compute_confusion_matrix_elements,
     save_images_with_boxes,
 )
 
 
-class Detector_Evaluation:
+class DetectorEvaluation:
     """
-    A class for evaluating object detection models using pre-trained classification.
+    A class for evaluating an object detector using trained model.
 
     Parameters
     ----------
     args : argparse
         Command-line arguments containing configuration settings.
-
-    Attributes
-    ----------
-    args : argparse
-        The command-line arguments provided.
     score_threshold : float
         The score threshold for confidence detection.
     ious_threshold : float
@@ -40,41 +36,47 @@ class Detector_Evaluation:
         self.score_threshold = args.score_threshold
         self.evaluate_dataloader = data_loader
 
-    def _load_pretrain_model(self) -> None:
+    def _load_trained_model(self) -> None:
         """
-        Load the pre-trained subject classification model.
+        Load the trained model.
 
         Returns
         -------
         None
         """
         self.trained_model = torch.load(
-            self.args.model_dir, map_location=torch.device("cpu")
+            self.args.model_dir,
+            map_location=torch.device(self.args.accelerator),
         )
 
     def evaluate_model(self) -> None:
         """
-        Evaluate the pre-trained model on the testation dataset.
+        Evaluate the trained model on the test dataset.
 
         Returns
         -------
         None
         """
-        self._load_pretrain_model()
+        self._load_trained_model()
+
+        # set model in eval mode
         self.trained_model.eval()
+
+        # select device
         device = (
             torch.device("cuda")
             if torch.cuda.is_available()
             else torch.device("cpu")
         )
 
+        all_detections = []
+        all_targets = []
+
         with torch.no_grad():
-            all_detections = []
-            all_targets = []
             for imgs, annotations in self.evaluate_dataloader:
                 imgs = list(img.to(device) for img in imgs)
                 targets = [
-                    {k: v.to(device) for k, v in t.items()}
+                    {k: v.to(device) for k, v in t.items() if k != "image_id"}
                     for t in annotations
                 ]
                 detections = self.trained_model(imgs)
@@ -82,12 +84,13 @@ class Detector_Evaluation:
                 all_detections.extend(detections)
                 all_targets.extend(targets)
 
-            compute_confusion_metrics(
-                all_targets,  # one elem per image
-                all_detections,
-                self.ious_threshold,
-            )
+        compute_confusion_matrix_elements(
+            all_targets,  # one elem per image
+            all_detections,
+            self.ious_threshold,
+        )
 
+        if self.args.save_frames:
             save_images_with_boxes(
                 self.evaluate_dataloader,
                 self.trained_model,
@@ -109,21 +112,37 @@ def main(args) -> None:
     -------
         None
     """
+    list_images_dirs = args.images_dirs
 
-    main_dir = args.main_dir
-    annotation_file = args.annotation_file
-    annotation = f"{main_dir}/annotations/{annotation_file}"
+    # get annotations
+    list_annotations_files = args.annotation_files
+    # get config
+    with open(args.config_file, "r") as f:
+        config = yaml.safe_load(f)
 
-    data_module = myDataModule(main_dir, annotation, batch_size=1)
-    data_module.setup()
-    data_loader = data_module.val_dataloader()
+    # get dataloader
+    data_module = CrabsDataModule(
+        list_images_dirs,
+        list_annotations_files,
+        config,
+        args.seed_n,
+    )
+    data_module.setup("test")
+    data_loader = data_module.test_dataloader()
 
-    evaluator = Detector_Evaluation(args, data_loader)
+    # evaluator
+    evaluator = DetectorEvaluation(args, data_loader)
     evaluator.evaluate_model()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--config_file",
+        type=str,
+        default="crabs/detection_tracking/config/faster_rcnn.yaml",
+        help="location of YAML config to control training",
+    )
     parser.add_argument(
         "--model_dir",
         type=str,
@@ -131,16 +150,18 @@ if __name__ == "__main__":
         help="location of trained model",
     )
     parser.add_argument(
-        "--main_dir",
+        "--images_dirs",
         type=str,
+        nargs="+",
         required=True,
-        help="main location of images and coco annotation",
+        help="list of paths to images directories",
     )
     parser.add_argument(
-        "--annotation_file",
+        "--annotation_files",
         type=str,
+        nargs="+",
         required=True,
-        help="filename for coco annotation",
+        help="list of paths to annotation files",
     )
     parser.add_argument(
         "--score_threshold",
@@ -157,8 +178,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--accelerator",
         type=str,
-        default="cpu",
+        default="gpu",
         help="accelerator for pytorch lightning",
+    )
+    parser.add_argument(
+        "--seed_n",
+        type=int,
+        default=42,
+        help="seed for random state",
+    )
+    parser.add_argument(
+        "--save_frames",
+        action="store_true",
+        help=("Save predicted frames with bboxes."),
     )
 
     args = parser.parse_args()
