@@ -264,3 +264,4 @@ class CustomDataModule(pl.LightningDataModule):
             num_workers=self.config["num_workers"],
             collate_fn=collate_fn,
         )
+

@@ -3,7 +3,7 @@ import argparse
 import torch
 import yaml  # type: ignore
 
-from crabs.detection_tracking.datamodule import CustomDataModule
+from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.evaluate import (
     compute_confusion_matrix_elements,
     save_images_with_boxes,
@@ -71,13 +71,12 @@ class DetectorEvaluation:
 
         all_detections = []
         all_targets = []
-        print(len(self.evaluate_dataloader))
 
         with torch.no_grad():
             for imgs, annotations in self.evaluate_dataloader:
                 imgs = list(img.to(device) for img in imgs)
                 targets = [
-                    {k: v.to(device) for k, v in t.items()}
+                    {k: v.to(device) for k, v in t.items() if k != "image_id"}
                     for t in annotations
                 ]
                 detections = self.trained_model(imgs)
@@ -113,20 +112,21 @@ def main(args) -> None:
     -------
         None
     """
-    main_dirs = args.main_dir
+    list_images_dirs = args.images_dirs
 
     # get annotations
-    annotation_files = args.annotation_file
-    annotations = []
-    for main_dir, annotation_file in zip(main_dirs, annotation_files):
-        annotations.append(f"{main_dir}/annotations/{annotation_file}")
-
+    list_annotations_files = args.annotation_files
     # get config
     with open(args.config_file, "r") as f:
         config = yaml.safe_load(f)
 
     # get dataloader
-    data_module = CustomDataModule(main_dirs, annotations, config, args.seed_n)
+    data_module = CrabsDataModule(
+        list_images_dirs,
+        list_annotations_files,
+        config,
+        args.seed_n,
+    )
     data_module.setup("test")
     data_loader = data_module.test_dataloader()
 
@@ -150,18 +150,18 @@ if __name__ == "__main__":
         help="location of trained model",
     )
     parser.add_argument(
-        "--main_dir",
+        "--images_dirs",
         type=str,
         nargs="+",
         required=True,
-        help="main location of images and coco annotation",
+        help="list of paths to images directories",
     )
     parser.add_argument(
-        "--annotation_file",
+        "--annotation_files",
         type=str,
         nargs="+",
         required=True,
-        help="filename for coco annotation",
+        help="list of paths to annotation files",
     )
     parser.add_argument(
         "--score_threshold",
@@ -190,7 +190,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--save_frames",
         action="store_true",
-        help=("Save predicted frames with bbox."),
+        help=("Save predicted frames with bboxes."),
     )
 
     args = parser.parse_args()
