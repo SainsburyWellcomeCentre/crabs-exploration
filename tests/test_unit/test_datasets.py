@@ -15,44 +15,55 @@ ANNOTATION_FILE = (
 
 @pytest.mark.parametrize("n_files_to_exclude", [0, 1, 20])
 def test_exclude_files(n_files_to_exclude):
-    # define list of annotation files
+    # Define list of input data
     list_datasets = [DATASET_1]
     list_annotations = [ANNOTATION_FILE]
 
-    # create a dataset with all the images in the annotation file
+    # Create a dataset with all the images in the annotation file
     dataset = CrabsCocoDetection(
         list_datasets,
         list_annotations,
     )
-    # check list of excluded files in dataset is None
+    # Check list of excluded files in dataset is None
     assert dataset.list_exclude_files is None
 
-    # get all images in the combined dataset
-    list_all_files = []
-    for dataset in dataset.datasets:
+    # Select a subset of images in the dataset as images to exclude.
+    # If multiple dataset: ensure we sample images from each dataset.
+    n_datasets = len(list_datasets)
+    q, r = divmod(n_files_to_exclude, n_datasets)
+    # If n_files_to_exclude > n_datasets: add remained to last dataset
+    if q >= 1:
+        n_exclude_per_dataset = [q] * n_datasets
+        n_exclude_per_dataset[-1] += r
+    # If n_files_to_exclude < n_datasets: sample from n_files_to_exclude datasets
+    else:
+        n_exclude_per_dataset = [1] * r + [0] * (n_datasets - r)
+        random.shuffle(n_exclude_per_dataset)
+
+    # Determine images to exclude
+    list_exclude_files = []
+    for dataset, n_excl in zip(dataset.datasets, n_exclude_per_dataset):
         coco_object = dataset.coco
         list_files_in_dataset = [
             im["file_name"] for im in coco_object.dataset["images"]
         ]
-        list_all_files.extend(list_files_in_dataset)
 
-    # select a random subset of images in the dataset as images to exclude
-    list_exclude_files = random.sample(list_all_files, n_files_to_exclude)
+        list_exclude_files.extend(random.sample(list_files_in_dataset, n_excl))
 
-    # create a dataset from the same input data but without images to exclude
+    # Create a dataset from the same input data but without images to exclude
     dataset_w_exclude = CrabsCocoDetection(
         list_datasets,
         list_annotations,
         list_exclude_files=list_exclude_files,
     )
 
-    # check number of samples in dataset with excluded images
+    # Check number of samples in dataset with excluded images
     assert len(dataset) - n_files_to_exclude == len(dataset_w_exclude)
 
-    # check list of excluded files
+    # Check list of excluded files
     assert dataset_w_exclude.list_exclude_files == list_exclude_files
 
-    # check excluded images are not present in any of the concatenated datasets
+    # Check excluded images are not present in any of the concatenated datasets
     for dataset in dataset_w_exclude.datasets:
         coco_object = dataset.coco
         list_files_in_dataset = [
