@@ -5,7 +5,6 @@ from pathlib import Path
 
 import lightning
 import torch
-import typer
 import yaml  # type: ignore
 from lightning.pytorch.loggers import MLFlowLogger
 
@@ -199,7 +198,7 @@ def app_wrapper():
     torch.set_float32_matmul_precision("medium")
 
     train_args = train_parse_args(sys.argv[1:])
-    typer.run(main(train_args))
+    main(train_args)
 
 
 if __name__ == "__main__":
