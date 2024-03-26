@@ -6,8 +6,8 @@
 #SBATCH --mem 64G # memory pool for all cores
 #SBATCH --gres=gpu:1  # any GPU
 #SBATCH -t 3-00:00 # time (D-HH:MM)
-#SBATCH -o slurm_%A-%N.out
-#SBATCH -e slurm_%A-%N.err
+#SBATCH -o slurm.%A.%N.out
+#SBATCH -e slurm.%A.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minanon@ucl.ac.uk
 
