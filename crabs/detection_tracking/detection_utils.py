@@ -51,6 +51,8 @@ def save_model(model: torch.nn.Module):
     torch.save(model, filename)
     print("Model Saved")
 
+    return filename
+
 
 def draw_bbox(
     frame,

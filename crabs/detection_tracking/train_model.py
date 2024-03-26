@@ -10,8 +10,7 @@ import yaml  # type: ignore
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import save_model
 from crabs.detection_tracking.models import FasterRCNN
-
-DEFAULT_ANNOTATIONS_FILENAME = "VIA_JSON_combined_coco_gen.json"
+from crabs.detection_tracking.optuna_fn import optimize_hyperparameters
 
 
 class DectectorTrain:
@@ -91,15 +90,13 @@ class DectectorTrain:
         return annotation_files
 
     def train_model(self):
-        # Create data module
-        data_module = CrabsDataModule(
-            self.images_dirs,  # list of paths
-            self.annotation_files,  # list of paths
-            self.config,
-            self.seed_n,
-        )
+        annotations = []
+        for main_dir, annotation_file in zip(
+            self.main_dirs, self.annotation_files
+        ):
+            annotations.append(f"{main_dir}/annotations/{annotation_file}")
 
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         run_name = f"run_{timestamp}"
 
         # Initialise MLflow logger
@@ -109,6 +106,24 @@ class DectectorTrain:
             tracking_uri="file:./ml-runs",
         )
 
+        if args.optuna:
+            # Optimize hyperparameters
+            best_hyperparameters = optimize_hyperparameters(
+                self.config,
+                self.main_dirs,
+                annotations,
+                self.accelerator,
+                self.seed_n,
+                mlf_logger,
+            )
+
+            # Update the config with the best hyperparameters
+            self.config.update(best_hyperparameters)
+
+        data_module = CustomDataModule(
+            self.main_dirs, annotations, self.config, self.seed_n
+        )
+
         mlf_logger.log_hyperparams(self.config)
         mlf_logger.log_hyperparams({"split_seed": self.seed_n})
 
@@ -116,16 +131,18 @@ class DectectorTrain:
 
         trainer = pl.Trainer(
             max_epochs=self.config["num_epochs"],
+            # max_steps=2,
             accelerator=self.accelerator,
             logger=mlf_logger,
+            # fast_dev_run=True,
         )
 
-        # Run training
         trainer.fit(lightning_model, data_module)
 
         # Save model if required
         if self.config["save"]:
-            save_model(lightning_model)
+            model_filename = save_model(lightning_model)
+            mlf_logger.log_hyperparams({"model_filename": model_filename})
 
 
 def main(args) -> None:
@@ -183,10 +200,12 @@ def train_parse_args(args):
         default=42,
         help="seed for dataset splits",
     )
-    return parser.parse_args(args)
-
-
-if __name__ == "__main__":
+    parser.add_argument(
+        "--optuna",
+        action="store_true",
+        help=("Option to run optuna to do optimization study"),
+    )
+    args = parser.parse_args()
     torch.set_float32_matmul_precision("medium")
 
     train_args = train_parse_args(sys.argv[1:])

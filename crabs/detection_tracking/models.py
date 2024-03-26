@@ -4,6 +4,8 @@ from torch.optim.lr_scheduler import StepLR
 from lightning import LightningModule
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
+from crabs.detection_tracking.evaluate import compute_confusion_matrix_elements
+
 
 class FasterRCNN(LightningModule):
     """
@@ -41,6 +43,7 @@ class FasterRCNN(LightningModule):
         self.model.roi_heads.box_predictor = FastRCNNPredictor(
             in_features, config["num_classes"]
         )
+        self.test_step_outputs = []
 
     def forward(self, x):
         return self.model(x)
@@ -52,19 +55,28 @@ class FasterRCNN(LightningModule):
         self.log("train_loss", total_loss)
         return total_loss
 
+    def test_step(self, batch, batch_idx):
+        images, targets = batch
+        predictions = self.model(images, targets)
+        precision, _ = compute_confusion_matrix_elements(
+            targets, predictions, 0.1
+        )
+        self.test_step_outputs.append(precision)
+        return precision
+
+    def on_test_epoch_end(self):
+        # Compute the mean precision across all batches in the epoch
+        mean_precision = torch.tensor(self.test_step_outputs).mean()
+
+        # Log the mean precision for the entire validation set
+        self.log("test_precision", mean_precision, on_epoch=True)
+
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
             self.parameters(),
             lr=self.config["learning_rate"],
             weight_decay=self.config["wdecay"],
         )
-        scheduler = StepLR(optimizer, step_size=1, gamma=0.1)
-        # return optimizer
         return {
-            'optimizer': optimizer,
-            'lr_scheduler': {
-                'scheduler': scheduler,
-                'interval': 'epoch',
-                'frequency': 1
-            }
+            "optimizer": optimizer,
         }

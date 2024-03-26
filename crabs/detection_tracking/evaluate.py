@@ -62,11 +62,12 @@ def compute_precision_recall(class_stats):
         precision = stats["tp"] / max(stats["tp"] + stats["fp"], 1)
         recall = stats["tp"] / max(stats["tp"] + stats["fn"], 1)
 
-        logging.info(
-            f"Precision: {precision:.4f}, Recall: {recall:.4f}, "
-            f"False Positive: {class_stats['crab']['fp']}, "
-            f"False Negative: {class_stats['crab']['fn']}"
-        )
+        # logging.info(
+        #     f"Precision: {precision:.4f}, Recall: {recall:.4f}, "
+        #     f"False Positive: {class_stats['crab']['fp']}, "
+        #     f"False Negative: {class_stats['crab']['fn']}"
+        # )
+    return precision, recall
 
 
 def compute_confusion_matrix_elements(
@@ -134,4 +135,5 @@ def compute_confusion_matrix_elements(
                     "fn"
                 ] += 1  # Ground truth box has no corresponding detection
 
-    compute_precision_recall(class_stats)
+    precision, recall = compute_precision_recall(class_stats)
+    return precision, recall
