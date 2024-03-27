@@ -89,8 +89,11 @@ class CrabsDataModule(LightningDataModule):
 
     def _compute_splits(
         self,
+        transforms_all_splits: torchvision.transforms,
     ) -> tuple[CrabsCocoDetection, CrabsCocoDetection, CrabsCocoDetection]:
         """Compute train/test/validation splits.
+
+        NOTE: The same transforms are passed to all splits.
 
         The split is reproducible if the same seed is passed.
 
@@ -117,7 +120,7 @@ class CrabsDataModule(LightningDataModule):
         full_dataset = CrabsCocoDetection(
             self.list_img_dirs,
             self.list_annotation_files,
-            transforms=self.train_transform,
+            transforms=transforms_all_splits,  # self.train_transform,
             list_exclude_files=self.config.get(
                 "exclude_video_file_list"
             ),  # get value only if key exists
@@ -163,18 +166,27 @@ class CrabsDataModule(LightningDataModule):
         """
 
         # Assign transforms
+        # right now assuming validation and test get the same transform
         self.train_transform = self._get_train_transform()
         self.test_transform = self._get_test_val_transform()
         self.val_transform = self._get_test_val_transform()
 
-        # Assign datasets for dataloader depending on stage
+        # Assign datasets for dataloader depending on stage.
         # omitting "predict" stage for now
-        train_dataset, test_dataset, val_dataset = self._compute_splits()
         if stage == "fit":
+            # compute splits passing the relevant transform
+            train_dataset, _, _ = self._compute_splits(self.train_transform)
+            _, _, val_dataset = self._compute_splits(self.val_transform)
+
+            # assign datasets
             self.train_dataset = train_dataset
             self.val_dataset = val_dataset
 
         if stage == "test":
+            # compute splits passing the relevant transform
+            _, test_dataset, _ = self._compute_splits(self.test_transform)
+
+            # assign
             self.test_dataset = test_dataset
 
     def train_dataloader(self) -> DataLoader:
