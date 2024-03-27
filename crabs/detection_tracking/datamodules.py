@@ -55,8 +55,8 @@ class CrabsDataModule(LightningDataModule):
 
             if self.config["gaussian_blur"]:
                 gauss = transforms.GaussianBlur(
-                    kernel_size=self.config["kernel_size"],
-                    sigma=self.config["sigma"],
+                    kernel_size=self.config["gaussian_blur"]["kernel_size"],
+                    sigma=self.config["gaussian_blur"]["sigma"],
                 )
                 train_data_augm.append(gauss)
 
