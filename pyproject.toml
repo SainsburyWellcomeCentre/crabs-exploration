@@ -34,7 +34,8 @@ dependencies = [
     "filterpy",
     "scikit-image",
     "lightning",
-    "mlflow"
+    "mlflow",
+    "optuna"
 ]
 
 [project.optional-dependencies]

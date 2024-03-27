@@ -89,6 +89,7 @@ class CrabsDataModule(LightningDataModule):
 
     def _compute_splits(
         self,
+        transforms_all_splits: torchvision.transforms,
     ) -> tuple[CrabsCocoDetection, CrabsCocoDetection, CrabsCocoDetection]:
         """Compute train/test/validation splits.
 
@@ -117,7 +118,7 @@ class CrabsDataModule(LightningDataModule):
         full_dataset = CrabsCocoDetection(
             self.list_img_dirs,
             self.list_annotation_files,
-            transforms=self.train_transform,
+            transforms=transforms_all_splits,
             list_exclude_files=self.config.get(
                 "exclude_video_file_list"
             ),  # get value only if key exists
@@ -168,11 +169,9 @@ class CrabsDataModule(LightningDataModule):
         self.test_transform = self._get_test_val_transform()
         self.val_transform = self._get_test_val_transform()
 
-        (
-            self.train_dataset,
-            self.test_dataset,
-            self.val_dataset,
-        ) = self._compute_splits()
+        self.train_dataset, _, _ = self._compute_splits(self.train_transform)
+        _, _, self.val_dataset = self._compute_splits(self.val_transform)
+        _, self.test_dataset, _ = self._compute_splits(self.test_transform)
 
     def train_dataloader(self) -> DataLoader:
         """Define dataloader for the training set"""
