@@ -25,17 +25,18 @@ def objective(
     config["num_epochs"] = num_epochs
 
     print(config)
+    print(fast_dev_run)
 
     # Initialize the model
     lightning_model = FasterRCNN(config)
 
     # Use the MLFlow logger instance passed from the main loop
-    mlf_logger.log_hyperparams(
-        {f"learning_rate_trial_{trial.number}": learning_rate}
-    )
-    mlf_logger.log_hyperparams(
-        {f"num_epochs_trial_{trial.number}": num_epochs}
-    )
+    # mlf_logger.log_hyperparams(
+    #     {f"learning_rate_trial_{trial.number}": learning_rate}
+    # )
+    # mlf_logger.log_hyperparams(
+    #     {f"num_epochs_trial_{trial.number}": num_epochs}
+    # )
 
     # Initialize the PyTorch Lightning Trainer
     trainer = pl.Trainer(
@@ -49,7 +50,7 @@ def objective(
     trainer.fit(lightning_model, data_module)
 
     # Evaluate the model on the test dataset
-    test_result = trainer.test(datamodule=data_module)
+    # test_result = trainer.test(ckpt_path=None, datamodule=data_module)
 
     # # Log the evaluation metric
     # mlflow.log_metric(
@@ -57,7 +58,12 @@ def objective(
     #     test_result[0]["test_precision"],
     # )
     # Return the evaluation metric to optimize
-    return test_result[0]["val_precision"]
+    # return test_result[0]["val_precision"]
+    # Log the validation precision from the last epoch
+    val_precision = trainer.callback_metrics["val_precision"]
+
+    # Return the validation precision to optimize
+    return val_precision
 
 
 def optimize_hyperparameters(

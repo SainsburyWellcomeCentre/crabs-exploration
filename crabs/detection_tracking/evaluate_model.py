@@ -1,4 +1,5 @@
 import argparse
+import logging
 
 import torch
 import yaml  # type: ignore
@@ -84,10 +85,16 @@ class DetectorEvaluation:
                 all_detections.extend(detections)
                 all_targets.extend(targets)
 
-        compute_confusion_matrix_elements(
+        precision, recall, class_stats = compute_confusion_matrix_elements(
             all_targets,  # one elem per image
             all_detections,
             self.ious_threshold,
+        )
+
+        logging.info(
+            f"Precision: {precision:.4f}, Recall: {recall:.4f}, "
+            f"False Positive: {class_stats['crab']['fp']}, "
+            f"False Negative: {class_stats['crab']['fn']}"
         )
 
         if self.args.save_frames:

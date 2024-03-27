@@ -130,7 +130,7 @@ class CrabsDataModule(LightningDataModule):
             [self.config["train_fraction"], 1 - self.config["train_fraction"]],
             generator=generator,
         )
-        print(train_dataset)
+        print(len(train_dataset))
 
         # Split test/val sets from the remainder
         test_dataset, val_dataset = random_split(
@@ -168,15 +168,11 @@ class CrabsDataModule(LightningDataModule):
         self.test_transform = self._get_test_val_transform()
         self.val_transform = self._get_test_val_transform()
 
-        # Assign datasets for dataloader depending on stage
-        # omitting "predict" stage for now
-        train_dataset, test_dataset, val_dataset = self._compute_splits()
-        if stage == "fit":
-            self.train_dataset = train_dataset
-            self.val_dataset = val_dataset
-
-        if stage == "test":
-            self.test_dataset = test_dataset
+        (
+            self.train_dataset,
+            self.test_dataset,
+            self.val_dataset,
+        ) = self._compute_splits()
 
     def train_dataloader(self) -> DataLoader:
         """Define dataloader for the training set"""
@@ -189,10 +185,10 @@ class CrabsDataModule(LightningDataModule):
             persistent_workers=True
             if self.config["num_workers"] > 0
             else False,
-            # multiprocessing_context="fork"
-            # if self.config["num_workers"] > 0
-            # and torch.backends.mps.is_available()
-            # else None,  # see https://github.com/pytorch/pytorch/issues/87688
+            multiprocessing_context="fork"
+            if self.config["num_workers"] > 0
+            and torch.backends.mps.is_available()
+            else None,  # see https://github.com/pytorch/pytorch/issues/87688
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -201,7 +197,7 @@ class CrabsDataModule(LightningDataModule):
             self.val_dataset,
             batch_size=self.config["batch_size_val"],
             shuffle=False,
-            num_workers=self.config["num_workers"],
+            num_workers=0,
             collate_fn=self._collate_fn,
         )
 

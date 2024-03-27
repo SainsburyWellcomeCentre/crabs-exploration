@@ -57,7 +57,11 @@ class FasterRCNN(LightningModule):
     def validation_step(self, batch, batch_idx):
         images, targets = batch
         predictions = self.model(images, targets)
-        precision, _ = compute_confusion_matrix_elements(
+        (
+            precision,
+            _,
+            _,
+        ) = compute_confusion_matrix_elements(
             targets, predictions, self.config["iou_threshold"]
         )
         self.test_step_outputs.append(precision)
