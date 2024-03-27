@@ -1,5 +1,6 @@
 import csv
 import io
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -139,7 +140,7 @@ def test_identity_switches(gt_boxes, tracked_boxes, prev_frame_ids):
 
 
 def test_get_ground_truth_data():
-    test_csv_file = "tests/data/gt_test.csv"
+    test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
 
     gt_data = get_ground_truth_data(test_csv_file)
 
