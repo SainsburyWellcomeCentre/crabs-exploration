@@ -38,17 +38,30 @@ class CrabsDataModule(LightningDataModule):
         https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
         https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
 
+        ToDtype is the recommended replacement for ConvertImageDtype(dtype)
+        https://pytorch.org/vision/0.17/generated/torchvision.transforms.v2.ToDtype.html#torchvision.transforms.v2.ToDtype
+
         """
-        jitter = transforms.ColorJitter(
-            brightness=self.config["transform_brightness"],
-            hue=self.config["transform_hue"],
-        )
-        gauss = transforms.GaussianBlur(
-            kernel_size=self.config["gaussian_blur_params"]["kernel_size"],
-            sigma=self.config["gaussian_blur_params"]["sigma"],
-        )
+        # are transforms applied at every sample?
+
+        train_data_augm = []
+        if self.config["apply_data_augm"]:
+            if self.config["color_jitter"]:
+                jitter = transforms.ColorJitter(
+                    brightness=self.config["color_jitter"]["brightness"],
+                    hue=self.config["color_jitter"]["hue"],
+                )
+                train_data_augm.append(jitter)
+
+            if self.config["gaussian_blur"]:
+                gauss = transforms.GaussianBlur(
+                    kernel_size=self.config["kernel_size"],
+                    sigma=self.config["sigma"],
+                )
+                train_data_augm.append(gauss)
+
         todtype = transforms.ToDtype(torch.float32, scale=True)
-        train_transforms = [transforms.ToImage(), jitter, gauss, todtype]
+        train_transforms = [transforms.ToImage(), *train_data_augm, todtype]
         return transforms.Compose(train_transforms)
 
     def _get_test_val_transform(self) -> torchvision.transforms:
