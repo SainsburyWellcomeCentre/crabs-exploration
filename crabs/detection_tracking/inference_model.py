@@ -325,6 +325,7 @@ class DetectorInference:
 
         if args.save_csv_and_frames:
             csv_file.close()
+        # cv2.destroyAllWindows()
 
 
 def main(args) -> None:
