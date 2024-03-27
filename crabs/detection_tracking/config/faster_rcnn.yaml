@@ -10,8 +10,8 @@ val_over_test_fraction: 0
 num_workers: 4
 apply_data_augm: True
 color_jitter:
-  - brightness: 0.5
-  - hue: 0.3
+  brightness: 0.5
+  hue: 0.3
 gaussian_blur:
   kernel_size:
     - 5
