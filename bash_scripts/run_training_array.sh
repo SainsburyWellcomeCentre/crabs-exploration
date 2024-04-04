@@ -73,17 +73,23 @@ ENV_PREFIX=$TMPDIR/$ENV_NAME
 
 # if environment does not exist: create it
 if [ ! -d "$ENV_PREFIX" ]; then
-  conda create \
-    --prefix $ENV_PREFIX \
-    -y \
-    python=3.10
+    # create environment
+    conda create \
+        --prefix $ENV_PREFIX \
+        -y \
+        python=3.10
+
+    # activate
+    conda activate $ENV_PREFIX
 
     # install crabs package in virtual env
     python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
+
+else
+    # activate environment
+    conda activate $ENV_PREFIX
 fi
 
-# activate environment
-conda activate $ENV_PREFIX
 
 # log pip and python locations
 echo $ENV_PREFIX
