@@ -2,15 +2,14 @@
 
 #SBATCH -p gpu # partition
 #SBATCH -N 1   # number of nodes
-#SBATCH --ntasks-per-node 2 # number of tasks per node
+#SBATCH --ntasks-per-node 2 # max number of tasks per node
 #SBATCH --mem 64G # memory pool for all cores
 #SBATCH --gres=gpu:1  # For any GPU: --gres=gpu:1. For a specific one: --gres=gpu:rtx5000
-#SBATCH --exclusive
 #SBATCH -t 3-00:00 # time (D-HH:MM)
 #SBATCH -o slurm_array.%A-%a.%N.out
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=s.minanon@ucl.ac.uk
+#SBATCH --mail-user=s.minano@ucl.ac.uk
 #SBATCH --array=0-2%3
 
 # NOTE on SBATCH command for array jobs
@@ -23,6 +22,10 @@
 # Otherwise `which python` points to the miniconda module's Python
 source ~/.bashrc
 
+
+# memory
+# see https://pytorch.org/docs/stable/notes/cuda.html#environment-variables 
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # -----------------------------
 # Error settings for bash
@@ -82,6 +85,14 @@ which pip
 echo "Git branch: $GIT_BRANCH"
 python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
+
+# # ------------------------------------
+# # GPU specs
+# # ------------------------------------
+# echo "-----"
+# echo "Memory used per GPU before training"
+# echo $(nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used --format=csv) #noheader
+# echo "-----"
 
 # -------------------
 # Run training script
