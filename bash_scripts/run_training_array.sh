@@ -4,13 +4,13 @@
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 2 # number of tasks per node
 #SBATCH --mem 64G # memory pool for all cores
-#SBATCH --gres=gpu:1  # any GPU
+#SBATCH --gres=gpu:rtx5000  # for any GPU: --gres=gpu:1
 #SBATCH -t 3-00:00 # time (D-HH:MM)
 #SBATCH -o slurm_array.%A-%a.%N.out
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minanon@ucl.ac.uk
-#SBATCH --array=0-2%3
+#SBATCH --array=0-0%3
 
 # NOTE on SBATCH command for array jobs
 # with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
@@ -40,7 +40,7 @@ DATASET_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
 TRAIN_CONFIG_FILE=/ceph/scratch/sminano/crabs-exploration/cluster_train_config.yaml
 
 # seeds for each dataset split
-LIST_SEEDS=($(echo {42..44}))
+LIST_SEEDS=($(echo {42..42}))
 SPLIT_SEED=${LIST_SEEDS[${SLURM_ARRAY_TASK_ID}]}
 
 # version of the codebase
@@ -71,7 +71,6 @@ which python
 which pip
 
 # install crabs package in virtual env
-# $HOME/.conda/envs/$ENV_NAME
 python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
 
