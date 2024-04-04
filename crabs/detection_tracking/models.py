@@ -42,7 +42,15 @@ class FasterRCNN(LightningModule):
         self.model.roi_heads.box_predictor = FastRCNNPredictor(
             in_features, config["num_classes"]
         )
-        self.test_step_outputs = []
+        self.training_step_outputs = {
+            "total_training_loss": 0.0,
+            "num_batches": 0,
+        }
+        self.validation_step_outputs = {
+            "total_precision": 0.0,
+            "num_batches": 0,
+        }
+        # self.validation_step_outputs = []
 
     def forward(self, x):
         return self.model(x)
@@ -51,8 +59,32 @@ class FasterRCNN(LightningModule):
         images, targets = batch
         loss_dict = self.model(images, targets)
         total_loss = sum(loss for loss in loss_dict.values())
-        self.log("train_loss", total_loss)
+        # Accumulate the loss over each step during the epoch
+        if "total_training_loss" not in self.training_step_outputs:
+            self.training_step_outputs[
+                "total_training_loss"
+            ] = total_loss.item()
+            self.training_step_outputs["num_batches"] = 1
+        else:
+            self.training_step_outputs[
+                "total_training_loss"
+            ] += total_loss.item()
+            self.training_step_outputs["num_batches"] += 1
+        # self.logger.log_metrics({"training_loss": total_loss}, step=self.current_epoch)
+
         return total_loss
+
+    def on_train_epoch_end(self):
+        avg_loss = (
+            self.training_step_outputs["total_training_loss"]
+            / self.training_step_outputs["num_batches"]
+        )
+        self.logger.log_metrics(
+            {"train_loss": avg_loss}, step=self.current_epoch
+        )
+
+        # Reset the training_step_outputs for the next epoch
+        self.training_step_outputs = {}
 
     def validation_step(self, batch, batch_idx):
         images, targets = batch
@@ -64,15 +96,29 @@ class FasterRCNN(LightningModule):
         ) = compute_confusion_matrix_elements(
             targets, predictions, self.config["iou_threshold"]
         )
-        self.test_step_outputs.append(precision)
+        # self.validation_step_outputs.append(precision)
+        if "total_precision" not in self.training_step_outputs:
+            self.validation_step_outputs["total_precision"] = precision
+            self.validation_step_outputs["num_batches"] = 1
+        else:
+            self.validation_step_outputs["total_precision"] += precision
+            self.validation_step_outputs["num_batches"] += 1
         return precision
 
     def on_validation_epoch_end(self):
         # Compute the mean precision across all batches in the epoch
-        mean_precision = torch.tensor(self.test_step_outputs).mean()
+        # mean_precision = torch.tensor(self.validation_step_outputs).mean()
+        mean_precision = (
+            self.validation_step_outputs["total_precision"]
+            / self.validation_step_outputs["num_batches"]
+        )
 
         # Log the mean precision for the entire validation set
-        self.log("val_precision", mean_precision, on_epoch=True)
+        # self.log("val_precision", mean_precision, on_epoch=True)
+        self.logger.log_metrics(
+            {"val_precision": mean_precision}, step=self.current_epoch
+        )
+        self.validation_step_outputs = {}
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(

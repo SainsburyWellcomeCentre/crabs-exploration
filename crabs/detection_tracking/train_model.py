@@ -120,7 +120,6 @@ class DectectorTrain:
 
             # Update the config with the best hyperparameters
             self.config.update(best_hyperparameters)
-            print(self.config)
 
         mlf_logger.log_hyperparams(self.config)
         mlf_logger.log_hyperparams({"split_seed": self.seed_n})
@@ -131,6 +130,7 @@ class DectectorTrain:
             accelerator=self.accelerator,
             logger=mlf_logger,
             fast_dev_run=self.args.fast_dev_run,
+            limit_train_batches=self.args.limit_train_batches,
         )
 
         # Run training
@@ -212,7 +212,16 @@ def train_parse_args(args):
     parser.add_argument(
         "--fast_dev_run",
         action="store_true",
-        help="option to run only one batch for debugging",
+        help="option to run only one batch and one epoch for debugging",
+    )
+    parser.add_argument(
+        "--limit_train_batches",
+        type=float,
+        default=1.0,
+        help=(
+            "option to run smaller training number per epoch for debugging."
+            "By default 1.0 (all the training set)"
+        ),
     )
     return parser.parse_args(args)
 

@@ -131,7 +131,6 @@ class CrabsDataModule(LightningDataModule):
             [self.config["train_fraction"], 1 - self.config["train_fraction"]],
             generator=generator,
         )
-        print(len(train_dataset))
 
         # Split test/val sets from the remainder
         test_dataset, val_dataset = random_split(
