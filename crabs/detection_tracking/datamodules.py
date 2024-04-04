@@ -152,17 +152,10 @@ class CrabsDataModule(LightningDataModule):
         """
         pass
 
-    def setup(self, stage: str):
-        """Setup the data for training or testing.
+    def setup(self):
+        """Setup the data for training, testing and validation.
 
-        - Define transforms for data augmentation
-        - Define train/test/val datasets as required
-
-        Parameters
-        ----------
-        stage : str
-            Identifies whether to apply the setup for training (stage='fit')
-            or testing (stage='test').
+        Define the transforms for each split of the data and compute them.
         """
 
         # Assign transforms
@@ -171,23 +164,10 @@ class CrabsDataModule(LightningDataModule):
         self.test_transform = self._get_test_val_transform()
         self.val_transform = self._get_test_val_transform()
 
-        # Assign datasets for dataloader depending on stage.
-        # omitting "predict" stage for now
-        if stage == "fit":
-            # compute splits passing the relevant transform
-            train_dataset, _, _ = self._compute_splits(self.train_transform)
-            _, _, val_dataset = self._compute_splits(self.val_transform)
-
-            # assign datasets
-            self.train_dataset = train_dataset
-            self.val_dataset = val_dataset
-
-        if stage == "test":
-            # compute splits passing the relevant transform
-            _, test_dataset, _ = self._compute_splits(self.test_transform)
-
-            # assign
-            self.test_dataset = test_dataset
+        # Assign datasets for dataloader.
+        self.train_dataset, _, _ = self._compute_splits(self.train_transform)
+        _, self.test_dataset, _ = self._compute_splits(self.test_transform)
+        _, _, self.val_dataset = self._compute_splits(self.val_transform)
 
     def train_dataloader(self) -> DataLoader:
         """Define dataloader for the training set"""
