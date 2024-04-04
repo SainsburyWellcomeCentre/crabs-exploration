@@ -61,8 +61,8 @@ fi
 # -----------------------------
 module load miniconda
 
-# create a unique environment for this job in the compute node TMPDIR
-# SLURM_TMPDIR
+# create a unique environment for this job in the
+# temporary directory of the compute node SLURM_TMPDIR
 ENV_NAME=crabs-dev-$SPLIT_SEED-$SLURM_ARRAY_JOB_ID
 conda create \
     --prefix $SLURM_TMPDIR/$ENV_NAME \
@@ -71,6 +71,7 @@ conda create \
 conda activate $ENV_NAME
 
 # check pip and python
+echo $SLURM_TMPDIR/$ENV_NAME
 which python
 which pip
 
@@ -88,8 +89,8 @@ train-detector  \
  --experiment_name "Sept2023_base_data_augm" \
  --seed_n $SPLIT_SEED \
 
-# -----------------------------
-# Delete virtual environment
-# -----------------------------
-conda deactivate
-conda remove -n $ENV_NAME --all
+# # -----------------------------
+# # Delete virtual environment -- automatically if using SLURM_TMPDIR
+# # -----------------------------
+# conda deactivate
+# conda remove -n $ENV_NAME --all
