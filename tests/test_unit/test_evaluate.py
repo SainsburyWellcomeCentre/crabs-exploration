@@ -1,36 +1,53 @@
-import os
-import cv2
-import torch
-import pytest
 from unittest.mock import MagicMock, patch
-from crabs.detection_tracking.evaluate import save_images_with_boxes, compute_precision_recall
+
+import pytest
+import torch
+
+from crabs.detection_tracking.evaluate import (
+    compute_precision_recall,
+    save_images_with_boxes,
+)
 
 
 @pytest.fixture
 def test_dataloader():
     return MagicMock()
 
+
 @pytest.fixture
 def trained_model():
     return MagicMock()
+
 
 @pytest.fixture
 def score_threshold():
     return 0.5
 
+
 @pytest.fixture
 def device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 @patch("cv2.imwrite")
 @patch("os.makedirs")
 @patch("crabs.detection_tracking.detection_utils.draw_detection")
-def test_save_images_with_boxes(mock_draw_detection, mock_makedirs, mock_imwrite, test_dataloader, trained_model, score_threshold, device):
+def test_save_images_with_boxes(
+    mock_draw_detection,
+    mock_makedirs,
+    mock_imwrite,
+    test_dataloader,
+    trained_model,
+    score_threshold,
+    device,
+):
     detections = MagicMock()
     mock_draw_detection.return_value = MagicMock()
     trained_model.return_value = detections
 
-    save_images_with_boxes(test_dataloader, trained_model, score_threshold, device)
+    save_images_with_boxes(
+        test_dataloader, trained_model, score_threshold, device
+    )
 
     assert mock_makedirs.called_once_with("results", exist_ok=True)
     assert mock_draw_detection.call_count == len(test_dataloader)
@@ -42,6 +59,7 @@ def class_stats():
     return {
         "crab": {"tp": 10, "fp": 5, "fn": 3},
     }
+
 
 @patch("logging.info")
 def test_compute_precision_recall(mock_logging_info, class_stats):

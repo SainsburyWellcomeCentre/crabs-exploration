@@ -89,6 +89,7 @@ class CrabsDataModule(LightningDataModule):
 
     def _compute_splits(
         self,
+        transforms_all_splits: torchvision.transforms,
     ) -> tuple[CrabsCocoDetection, CrabsCocoDetection, CrabsCocoDetection]:
         """Compute train/test/validation splits.
 
@@ -117,7 +118,7 @@ class CrabsDataModule(LightningDataModule):
         full_dataset = CrabsCocoDetection(
             self.list_img_dirs,
             self.list_annotation_files,
-            transforms=self.train_transform,
+            transforms=transforms_all_splits,
             list_exclude_files=self.config.get(
                 "exclude_video_file_list"
             ),  # get value only if key exists
@@ -130,6 +131,7 @@ class CrabsDataModule(LightningDataModule):
             [self.config["train_fraction"], 1 - self.config["train_fraction"]],
             generator=generator,
         )
+        print(len(train_dataset))
 
         # Split test/val sets from the remainder
         test_dataset, val_dataset = random_split(
@@ -149,7 +151,7 @@ class CrabsDataModule(LightningDataModule):
         """
         pass
 
-    def setup(self, stage: str):
+    def setup(self, stage=None):
         """Setup the data for training or testing.
 
         - Define transforms for data augmentation
@@ -167,15 +169,9 @@ class CrabsDataModule(LightningDataModule):
         self.test_transform = self._get_test_val_transform()
         self.val_transform = self._get_test_val_transform()
 
-        # Assign datasets for dataloader depending on stage
-        # omitting "predict" stage for now
-        train_dataset, test_dataset, val_dataset = self._compute_splits()
-        if stage == "fit":
-            self.train_dataset = train_dataset
-            self.val_dataset = val_dataset
-
-        if stage == "test":
-            self.test_dataset = test_dataset
+        self.train_dataset, _, _ = self._compute_splits(self.train_transform)
+        _, _, self.val_dataset = self._compute_splits(self.val_transform)
+        _, self.test_dataset, _ = self._compute_splits(self.test_transform)
 
     def train_dataloader(self) -> DataLoader:
         """Define dataloader for the training set"""
@@ -200,7 +196,7 @@ class CrabsDataModule(LightningDataModule):
             self.val_dataset,
             batch_size=self.config["batch_size_val"],
             shuffle=False,
-            num_workers=self.config["num_workers"],
+            num_workers=0,
             collate_fn=self._collate_fn,
         )
 
