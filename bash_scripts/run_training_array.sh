@@ -101,6 +101,9 @@ conda create \
     -y \
     python=3.10
 
+# install crabs package in virtual env
+python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
+
 # activate environment
 conda activate $ENV_PREFIX
 
