@@ -36,6 +36,7 @@ class DectectorTrain:
     """
 
     def __init__(self, args):
+        self.args = args
         self.config_file = args.config_file
         self.images_dirs = self.prep_img_directories(
             args.dataset_dirs  # args only?
@@ -119,6 +120,8 @@ class DectectorTrain:
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
             logger=mlf_logger,
+            fast_dev_run=self.args.fast_dev_run,
+            limit_train_batches=self.args.limit_train_batches,
         )
 
         # Run training
@@ -126,7 +129,8 @@ class DectectorTrain:
 
         # Save model if required
         if self.config["save"]:
-            save_model(lightning_model)
+            model_filename = save_model(lightning_model)
+            mlf_logger.log_hyperparams({"model_filename": model_filename})
 
 
 def main(args) -> None:
@@ -190,6 +194,20 @@ def train_parse_args(args):
         type=int,
         default=42,
         help="seed for dataset splits",
+    )
+    parser.add_argument(
+        "--fast_dev_run",
+        action="store_true",
+        help="option to run only one batch and one epoch for debugging",
+    )
+    parser.add_argument(
+        "--limit_train_batches",
+        type=float,
+        default=1.0,
+        help=(
+            "option to run smaller training number per epoch for debugging."
+            "By default 1.0 (all the training set)"
+        ),
     )
     return parser.parse_args(args)
 
