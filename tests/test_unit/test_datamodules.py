@@ -56,4 +56,3 @@ def test_get_test_transform(crabs_data_module):
         assert isinstance(
             test_transform.transforms[i], type(expected_transform)
         )
-
