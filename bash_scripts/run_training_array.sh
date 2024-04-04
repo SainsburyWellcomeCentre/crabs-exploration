@@ -68,28 +68,41 @@ module load miniconda
 # define a environment for the whole array of jobs in the
 # temporary directory of the compute node
 # (if two jobs share a node, the env is not created again)
-ENV_NAME=crabs-dev-$SLURM_ARRAY_JOB_ID
+ENV_NAME=crabs-dev-$SPLIT_SEED-$SLURM_ARRAY_JOB_ID
 ENV_PREFIX=$TMPDIR/$ENV_NAME
 
-# if environment does not exist: create it
-if [ ! -d "$ENV_PREFIX" ]; then
-    # create environment
-    conda create \
-        --prefix $ENV_PREFIX \
-        -y \
-        python=3.10
+#---------------
+# # if environment does not exist: create it
+# if [ ! -d "$ENV_PREFIX" ]; then
+#     echo "environment does not exist"
 
-    # activate
-    conda activate $ENV_PREFIX
+#     # create environment
+#     conda create \
+#         --prefix $ENV_PREFIX \
+#         -y \
+#         python=3.10
 
-    # install crabs package in virtual env
-    python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
+#     # activate
+#     conda activate $ENV_PREFIX
 
-else
-    # activate environment
-    conda activate $ENV_PREFIX
-fi
+#     # install crabs package in virtual env
+#     python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
+# else
+#     echo "environment exists"
+#     # activate environment
+#     conda activate $ENV_PREFIX
+# fi
+#---------------
 
+
+# create environment
+conda create \
+    --prefix $ENV_PREFIX \
+    -y \
+    python=3.10
+
+# activate environment
+conda activate $ENV_PREFIX
 
 # log pip and python locations
 echo $ENV_PREFIX
