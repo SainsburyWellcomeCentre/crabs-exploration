@@ -24,7 +24,7 @@ source ~/.bashrc
 
 
 # memory
-# see https://pytorch.org/docs/stable/notes/cuda.html#environment-variables 
+# see https://pytorch.org/docs/stable/notes/cuda.html#environment-variables
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # -----------------------------
@@ -48,7 +48,7 @@ LIST_SEEDS=($(echo {42..44}))
 SPLIT_SEED=${LIST_SEEDS[${SLURM_ARRAY_TASK_ID}]}
 
 # version of the codebase
-GIT_BRANCH=smg/fix-stage
+GIT_BRANCH=main
 
 # --------------------
 # Check inputs
