@@ -5,12 +5,13 @@
 #SBATCH --ntasks-per-node 2 # number of tasks per node
 #SBATCH --mem 64G # memory pool for all cores
 #SBATCH --gres=gpu:1  # For any GPU: --gres=gpu:1. For a specific one: --gres=gpu:rtx5000
+#SBATCH --exclusive
 #SBATCH -t 3-00:00 # time (D-HH:MM)
 #SBATCH -o slurm_array.%A-%a.%N.out
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minanon@ucl.ac.uk
-#SBATCH --array=0-0%3
+#SBATCH --array=0-2%3
 
 # NOTE on SBATCH command for array jobs
 # with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
@@ -40,11 +41,11 @@ DATASET_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
 TRAIN_CONFIG_FILE=/ceph/scratch/sminano/crabs-exploration/cluster_train_config.yaml
 
 # seeds for each dataset split
-LIST_SEEDS=($(echo {42..42}))
+LIST_SEEDS=($(echo {42..44}))
 SPLIT_SEED=${LIST_SEEDS[${SLURM_ARRAY_TASK_ID}]}
 
 # version of the codebase
-GIT_BRANCH=main
+GIT_BRANCH=smg/fix-stage
 
 # --------------------
 # Check inputs
