@@ -4,7 +4,7 @@
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 2 # number of tasks per node
 #SBATCH --mem 64G # memory pool for all cores
-#SBATCH --gres=gpu:rtx5000  # for any GPU: --gres=gpu:1
+#SBATCH --gres=gpu:1  # For any GPU: --gres=gpu:1. For a specific one: --gres=gpu:rtx5000
 #SBATCH -t 3-00:00 # time (D-HH:MM)
 #SBATCH -o slurm_array.%A-%a.%N.out
 #SBATCH -e slurm_array.%A-%a.%N.err
@@ -64,18 +64,21 @@ module load miniconda
 # create a unique environment for this job in the
 # temporary directory of the compute node SLURM_TMPDIR
 ENV_NAME=crabs-dev-$SPLIT_SEED-$SLURM_ARRAY_JOB_ID
+ENV_PREFIX=$TMPDIR/$ENV_NAME
+
 conda create \
-    --prefix $SLURM_TMPDIR/$ENV_NAME \
+    --prefix $ENV_PREFIX \
     -y \
     python=3.10
-conda activate $ENV_NAME
+conda activate $ENV_PREFIX
 
 # check pip and python
-echo $SLURM_TMPDIR/$ENV_NAME
+echo $ENV_PREFIX
 which python
 which pip
 
 # install crabs package in virtual env
+echo "Git branch: $GIT_BRANCH"
 python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
 
