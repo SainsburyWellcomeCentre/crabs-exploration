@@ -1,13 +1,45 @@
+from typing import Any, Dict
+
 import lightning as pl
+import mlflow
 import optuna
+from datamodule import DataModule
+from optuna.trial import Trial
 
 from crabs.detection_tracking.models import FasterRCNN
 
 
 def objective(
-    trial, config, data_module, accelerator, mlf_logger, fast_dev_run
-):
-    # with mlflow.start_run():
+    trial: Trial,
+    config: Dict,
+    data_module: DataModule,
+    accelerator: str,
+    mlf_logger: Any,
+    fast_dev_run: bool,
+) -> float:
+    """
+    Objective function for Optuna optimization.
+
+    Parameters
+    ----------
+    trial: Trial
+        Optuna trial object.
+    config: Dict
+        Configuration dictionary containing hyperparameters search space.
+    data_module: DataModule
+        Data module for loading training and validation data.
+    accelerator: str
+        PyTorch Lightning accelerator.
+    mlf_logger : Any
+        MLflow logger object.
+    fast_dev_run: bool
+        Flag to run a fast development version.
+
+    Returns
+    -------
+    float
+        Validation precision achieved by the model.
+    """
     # Sample hyperparameters from the search space
     learning_rate = trial.suggest_float(
         "learning_rate",
@@ -23,20 +55,10 @@ def objective(
     # Update the config with the sampled hyperparameters
     config["learning_rate"] = learning_rate
     config["num_epochs"] = num_epochs
-
     print(config)
-    print(fast_dev_run)
 
     # Initialize the model
     lightning_model = FasterRCNN(config)
-
-    # Use the MLFlow logger instance passed from the main loop
-    # mlf_logger.log_hyperparams(
-    #     {f"learning_rate_trial_{trial.number}": learning_rate}
-    # )
-    # mlf_logger.log_hyperparams(
-    #     {f"num_epochs_trial_{trial.number}": num_epochs}
-    # )
 
     # Initialize the PyTorch Lightning Trainer
     trainer = pl.Trainer(
@@ -49,26 +71,41 @@ def objective(
     # Train the model
     trainer.fit(lightning_model, data_module)
 
-    # Evaluate the model on the test dataset
-    # test_result = trainer.test(ckpt_path=None, datamodule=data_module)
-
-    # # Log the evaluation metric
-    # mlflow.log_metric(
-    #     f"test_precision_trial_{trial.number}",
-    #     test_result[0]["test_precision"],
-    # )
-    # Return the evaluation metric to optimize
-    # return test_result[0]["val_precision"]
-    # Log the validation precision from the last epoch
     val_precision = trainer.callback_metrics["val_precision"]
+    # Log val_precision to MLflow
+    trial.set_user_attr("val_precision", val_precision)
 
-    # Return the validation precision to optimize
     return val_precision
 
 
 def optimize_hyperparameters(
-    config, data_module, accelerator, mlf_logger, fast_dev_run
-):
+    config: Dict,
+    data_module: DataModule,
+    accelerator: str,
+    mlf_logger: Any,
+    fast_dev_run: bool,
+) -> Dict[str, Any]:
+    """
+    Optimize hyperparameters using Optuna.
+
+    Parameters
+    ----------
+    config: Dict
+        Configuration dictionary containing hyperparameters search space.
+    data_module: DataModule
+        Data module for loading training and validation data.
+    accelerator: str
+        PyTorch Lightning accelerator.
+    mlf_logger : Any
+        MLflow logger object.
+    fast_dev_run: bool
+        Flag to run a fast development version.
+
+    Returns
+    -------
+    Dict
+        Best hyperparameters found by the optimization.
+    """
     # Create an Optuna study
     study = optuna.create_study(direction="maximize")
 
@@ -84,7 +121,13 @@ def optimize_hyperparameters(
     )
 
     # Get the best hyperparameters
-    best_params = study.best_params
+    best_trial = study.best_trial
+    best_params = best_trial.params
+    best_val_precision = best_trial.user_attrs["val_precision"]
+
     print("Best hyperparameters:", best_params)
+    print("Best val_precision:", best_val_precision)
+    mlflow.log_hyperparams(best_params)
+    mlflow.log_hyperparams(best_val_precision)
 
     return best_params

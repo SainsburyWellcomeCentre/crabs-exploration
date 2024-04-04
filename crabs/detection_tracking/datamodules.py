@@ -151,7 +151,7 @@ class CrabsDataModule(LightningDataModule):
         """
         pass
 
-    def setup(self, stage: str):
+    def setup(self, stage=None):
         """Setup the data for training or testing.
 
         - Define transforms for data augmentation
