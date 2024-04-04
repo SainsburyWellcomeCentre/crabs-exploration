@@ -44,7 +44,7 @@ LIST_SEEDS=($(echo {42..44}))
 SPLIT_SEED=${LIST_SEEDS[${SLURM_ARRAY_TASK_ID}]}
 
 # version of the codebase
-GIT_BRANCH=smg/main
+GIT_BRANCH=main
 
 # --------------------
 # Check inputs
