@@ -2,7 +2,8 @@
 
 #SBATCH -p gpu # partition
 #SBATCH -N 1   # number of nodes
-#SBATCH --ntasks-per-node 2 # max number of tasks per node
+#SBATCH --ntasks-per-node 5 # max number of tasks per node
+#SBATCH --exclusive
 #SBATCH --mem 64G # memory pool for all cores
 #SBATCH --gres=gpu:1  # For any GPU: --gres=gpu:1. For a specific one: --gres=gpu:rtx5000
 #SBATCH -t 3-00:00 # time (D-HH:MM)
