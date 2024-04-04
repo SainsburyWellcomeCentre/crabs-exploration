@@ -71,6 +71,20 @@ module load miniconda
 ENV_NAME=crabs-dev-$SPLIT_SEED-$SLURM_ARRAY_JOB_ID
 ENV_PREFIX=$TMPDIR/$ENV_NAME
 
+# create environment
+conda create \
+    --prefix $ENV_PREFIX \
+    -y \
+    python=3.10
+
+# activate environment
+conda activate $ENV_PREFIX
+
+# install crabs package in virtual env
+python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
+
+
+
 #---------------
 # # if environment does not exist: create it
 # if [ ! -d "$ENV_PREFIX" ]; then
@@ -93,19 +107,6 @@ ENV_PREFIX=$TMPDIR/$ENV_NAME
 #     conda activate $ENV_PREFIX
 # fi
 #---------------
-
-
-# create environment
-conda create \
-    --prefix $ENV_PREFIX \
-    -y \
-    python=3.10
-
-# install crabs package in virtual env
-python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
-
-# activate environment
-conda activate $ENV_PREFIX
 
 # log pip and python locations
 echo $ENV_PREFIX
