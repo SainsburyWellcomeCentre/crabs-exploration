@@ -152,19 +152,19 @@ class CrabsDataModule(LightningDataModule):
         """
         pass
 
-    def setup(self):
+    def setup(self, stage: str):
         """Setup the data for training, testing and validation.
 
         Define the transforms for each split of the data and compute them.
         """
 
         # Assign transforms
-        # right now assuming validation and test get the same transform
+        # right now assuming validation and test get the same transforms
         self.train_transform = self._get_train_transform()
         self.test_transform = self._get_test_val_transform()
         self.val_transform = self._get_test_val_transform()
 
-        # Assign datasets for dataloader.
+        # Assign datasets
         self.train_dataset, _, _ = self._compute_splits(self.train_transform)
         _, self.test_dataset, _ = self._compute_splits(self.test_transform)
         _, _, self.val_dataset = self._compute_splits(self.val_transform)

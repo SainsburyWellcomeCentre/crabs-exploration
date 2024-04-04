@@ -127,7 +127,7 @@ def main(args) -> None:
         config,
         args.seed_n,
     )
-    data_module.setup()
+    data_module.setup("test")
     data_loader = data_module.test_dataloader()
 
     # evaluator
