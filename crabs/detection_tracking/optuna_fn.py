@@ -1,7 +1,6 @@
 from typing import Any, Dict
 
 import lightning as pl
-import mlflow
 import optuna
 from optuna.trial import Trial
 
@@ -55,7 +54,6 @@ def objective(
     # Update the config with the sampled hyperparameters
     config["learning_rate"] = learning_rate
     config["num_epochs"] = num_epochs
-    print(config)
 
     # Initialize the model
     lightning_model = FasterRCNN(config)
@@ -71,7 +69,7 @@ def objective(
     # Train the model
     trainer.fit(lightning_model, data_module)
 
-    val_precision = trainer.callback_metrics["val_precision"]
+    val_precision = trainer.callback_metrics["val_precision"].item()
     # Log val_precision to MLflow
     trial.set_user_attr("val_precision", val_precision)
 
@@ -127,7 +125,7 @@ def optimize_hyperparameters(
 
     print("Best hyperparameters:", best_params)
     print("Best val_precision:", best_val_precision)
-    mlflow.log_hyperparams(best_params)
-    mlflow.log_hyperparams(best_val_precision)
+    mlf_logger.log_hyperparams(best_params)
+    mlf_logger.log_hyperparams({"best_val_precision": best_val_precision})
 
     return best_params

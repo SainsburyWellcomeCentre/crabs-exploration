@@ -120,6 +120,7 @@ class DectectorTrain:
 
             # Update the config with the best hyperparameters
             self.config.update(best_hyperparameters)
+            print(self.config)
 
         mlf_logger.log_hyperparams(self.config)
         mlf_logger.log_hyperparams({"split_seed": self.seed_n})
