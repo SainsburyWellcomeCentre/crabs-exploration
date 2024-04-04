@@ -86,13 +86,13 @@ echo "Git branch: $GIT_BRANCH"
 python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
 
-# # ------------------------------------
-# # GPU specs
-# # ------------------------------------
-# echo "-----"
-# echo "Memory used per GPU before training"
-# echo $(nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used --format=csv) #noheader
-# echo "-----"
+# ------------------------------------
+# GPU specs
+# ------------------------------------
+echo "-----"
+echo "Memory used per GPU before training"
+echo $(nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used --format=csv) #noheader
+echo "-----"
 
 # -------------------
 # Run training script
