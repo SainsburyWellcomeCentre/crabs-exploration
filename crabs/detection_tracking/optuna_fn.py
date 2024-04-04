@@ -3,16 +3,16 @@ from typing import Any, Dict
 import lightning as pl
 import mlflow
 import optuna
-from datamodule import DataModule
 from optuna.trial import Trial
 
+from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.models import FasterRCNN
 
 
 def objective(
     trial: Trial,
     config: Dict,
-    data_module: DataModule,
+    data_module: CrabsDataModule,
     accelerator: str,
     mlf_logger: Any,
     fast_dev_run: bool,
@@ -80,7 +80,7 @@ def objective(
 
 def optimize_hyperparameters(
     config: Dict,
-    data_module: DataModule,
+    data_module: CrabsDataModule,
     accelerator: str,
     mlf_logger: Any,
     fast_dev_run: bool,
