@@ -115,6 +115,7 @@ class CrabsDataModule(LightningDataModule):
             generator = torch.Generator().manual_seed(self.split_seed)
 
         # Create dataset (combining all datasets passed)
+        print(self.list_img_dirs)
         full_dataset = CrabsCocoDetection(
             self.list_img_dirs,
             self.list_annotation_files,
@@ -123,6 +124,7 @@ class CrabsDataModule(LightningDataModule):
                 "exclude_video_file_list"
             ),  # get value only if key exists
         )
+        print(len(full_dataset))
 
         # Split data into train and test-val sets
         # TODO: split based on video

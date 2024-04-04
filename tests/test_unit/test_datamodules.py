@@ -56,3 +56,44 @@ def test_get_test_transform(crabs_data_module):
         assert isinstance(
             test_transform.transforms[i], type(expected_transform)
         )
+
+
+def create_dummy_dataset(num_samples):
+    """Create dummy images and annotations for testing."""
+    images = [torch.randn(3, 256, 256) for _ in range(num_samples)]
+    annotations = [
+        torch.randint(0, 10, size=(4, 5)) for _ in range(num_samples)
+    ]
+    return (images, annotations)
+
+
+def test_collate_fn(crabs_data_module):
+    num_samples = 5
+    sample_input = create_dummy_dataset(num_samples)
+
+    collated_data = crabs_data_module._collate_fn(sample_input)
+
+    for sample in collated_data:
+        image, annotation = sample
+
+        assert isinstance(
+            image, torch.Tensor
+        ), "Image should be a torch.Tensor"
+        assert isinstance(
+            annotation, torch.Tensor
+        ), "Annotation should be a torch.Tensor"
+
+
+# def test_compute_splits():
+#     crabs_data_module = CrabsDataModule(
+#         list_img_dirs=["tests/data/sample_data"],
+#         list_annotation_files=["tests/data/sample_data/annotations/sample_annotation_coco.json"],
+#         config={"train_fraction": 1.0, "val_over_test_fraction": 0.0},
+#     )
+
+#     train_dataset, test_dataset, val_dataset = crabs_data_module._compute_splits(transforms_all_splits=None)
+
+#     # Assertions
+#     assert len(train_dataset) == 2  # Adjust as needed based on the dummy dataset
+#     assert len(test_dataset) == 1   # Adjust as needed based on the dummy dataset
+#     assert len(val_dataset) == 1    # Adjust as needed based on the dummy dataset
