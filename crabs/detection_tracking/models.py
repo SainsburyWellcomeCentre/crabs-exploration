@@ -48,9 +48,9 @@ class FasterRCNN(LightningModule):
         }
         self.validation_step_outputs = {
             "total_precision": 0.0,
+            "total_recall": 0.0,
             "num_batches": 0,
         }
-
 
     def forward(self, x):
         return self.model(x)
@@ -80,24 +80,19 @@ class FasterRCNN(LightningModule):
             "num_batches": 0,
         }
 
-        
     def validation_step(self, batch, batch_idx):
         images, targets = batch
         predictions = self.model(images, targets)
         (
             precision,
-            _,
+            recall,
             _,
         ) = compute_confusion_matrix_elements(
             targets, predictions, self.config["iou_threshold"]
         )
-        # self.validation_step_outputs.append(precision)
-        if "total_precision" not in self.training_step_outputs:
-            self.validation_step_outputs["total_precision"] = precision
-            self.validation_step_outputs["num_batches"] = 1
-        else:
-            self.validation_step_outputs["total_precision"] += precision
-            self.validation_step_outputs["num_batches"] += 1
+        self.validation_step_outputs["total_precision"] += precision
+        self.validation_step_outputs["total_recall"] += recall
+        self.validation_step_outputs["num_batches"] += 1
         return precision
 
     def on_validation_epoch_end(self):
@@ -106,12 +101,22 @@ class FasterRCNN(LightningModule):
             self.validation_step_outputs["total_precision"]
             / self.validation_step_outputs["num_batches"]
         )
+        mean_recall = (
+            self.validation_step_outputs["total_recall"]
+            / self.validation_step_outputs["num_batches"]
+        )
 
         self.logger.log_metrics(
             {"val_precision": mean_precision}, step=self.current_epoch
         )
-        self.validation_step_outputs = {}
-
+        self.logger.log_metrics(
+            {"val_recall": mean_recall}, step=self.current_epoch
+        )
+        self.validation_step_outputs = {
+            "total_precision": 0.0,
+            "total_recall": 0.0,
+            "num_batches": 0,
+        }
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(

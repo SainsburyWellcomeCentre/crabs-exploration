@@ -213,6 +213,7 @@ def train_parse_args(args):
         action="store_true",
         help="running optuna",
     )
+    parser.add_argument(
         "--fast_dev_run",
         action="store_true",
         help="Debugging option to run training for one batch and one epoch",
