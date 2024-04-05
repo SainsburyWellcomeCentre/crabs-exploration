@@ -198,7 +198,7 @@ def train_parse_args(args):
     parser.add_argument(
         "--fast_dev_run",
         action="store_true",
-        help="option to run only one batch and one epoch for debugging",
+        help="Debugging option to run training for one batch and one epoch",
     )
     parser.add_argument(
         "--limit_train_batches",
