@@ -23,7 +23,7 @@ def coco_category():
     return COCO_INSTANCE_CATEGORY_NAMES
 
 
-def save_model(model: torch.nn.Module):
+def save_model(model: torch.nn.Module) -> str:
     """
     Save the trained model.
 
@@ -34,7 +34,8 @@ def save_model(model: torch.nn.Module):
 
     Returns
     -------
-    None
+    str
+        Name of the saved model.
 
     Notes
     -----
