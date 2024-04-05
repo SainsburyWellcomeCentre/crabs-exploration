@@ -3,6 +3,8 @@ import torchvision
 from lightning import LightningModule
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
 
+from crabs.detection_tracking.evaluate import compute_confusion_matrix_elements
+
 
 class FasterRCNN(LightningModule):
     """
@@ -44,6 +46,10 @@ class FasterRCNN(LightningModule):
             "total_training_loss": 0.0,
             "num_batches": 0,
         }
+        self.validation_step_outputs = {
+            "total_precision": 0.0,
+            "num_batches": 0,
+        }
 
     def forward(self, x):
         return self.model(x)
@@ -67,10 +73,38 @@ class FasterRCNN(LightningModule):
         self.logger.log_metrics(
             {"train_loss": avg_loss}, step=self.current_epoch
         )
-
         # Reset the training_step_outputs for the next epoch
         self.training_step_outputs = {
             "total_training_loss": 0.0,
+            "num_batches": 0,
+        }
+
+    def validation_step(self, batch, batch_idx):
+        images, targets = batch
+        predictions = self.model(images, targets)
+        (
+            precision,
+            _,
+            _,
+        ) = compute_confusion_matrix_elements(
+            targets, predictions, self.config["iou_threshold"]
+        )
+        self.validation_step_outputs["total_precision"] += precision
+        self.validation_step_outputs["num_batches"] += 1
+        return precision
+
+    def on_validation_epoch_end(self):
+        # Compute the mean precision across all batches in the epoch
+        mean_precision = (
+            self.validation_step_outputs["total_precision"]
+            / self.validation_step_outputs["num_batches"]
+        )
+
+        self.logger.log_metrics(
+            {"val_precision": mean_precision}, step=self.current_epoch
+        )
+        self.validation_step_outputs = {
+            "total_precision": 0.0,
             "num_batches": 0,
         }
 
@@ -80,4 +114,6 @@ class FasterRCNN(LightningModule):
             lr=self.config["learning_rate"],
             weight_decay=self.config["wdecay"],
         )
-        return optimizer
+        return {
+            "optimizer": optimizer,
+        }
