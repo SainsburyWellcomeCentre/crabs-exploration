@@ -116,6 +116,7 @@ class DectectorTrain:
                 self.accelerator,
                 mlf_logger,
                 self.args.fast_dev_run,
+                self.args.limit_train_batches,
             )
 
             # Update the config with the best hyperparameters

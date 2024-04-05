@@ -15,6 +15,7 @@ def objective(
     accelerator: str,
     mlf_logger: Any,
     fast_dev_run: bool,
+    limit_train_batches: bool,
 ) -> float:
     """
     Objective function for Optuna optimization.
@@ -64,6 +65,7 @@ def objective(
         accelerator=accelerator,
         logger=mlf_logger,
         fast_dev_run=fast_dev_run,
+        limit_train_batches=limit_train_batches,
     )
 
     # Train the model
@@ -82,6 +84,7 @@ def optimize_hyperparameters(
     accelerator: str,
     mlf_logger: Any,
     fast_dev_run: bool,
+    limit_train_batches: bool,
 ) -> Dict[str, Any]:
     """
     Optimize hyperparameters using Optuna.
@@ -110,7 +113,13 @@ def optimize_hyperparameters(
     # Define objective function with partial args
     def objective_fn(trial):
         return objective(
-            trial, config, data_module, accelerator, mlf_logger, fast_dev_run
+            trial,
+            config,
+            data_module,
+            accelerator,
+            mlf_logger,
+            fast_dev_run,
+            limit_train_batches,
         )
 
     # Optimize the objective function
@@ -121,6 +130,7 @@ def optimize_hyperparameters(
     # Get the best hyperparameters
     best_trial = study.best_trial
     best_params = best_trial.params
+    print(best_trial.user_attrs)
     best_val_precision = best_trial.user_attrs["val_precision"]
 
     print("Best hyperparameters:", best_params)

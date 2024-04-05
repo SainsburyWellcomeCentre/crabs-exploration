@@ -50,7 +50,6 @@ class FasterRCNN(LightningModule):
             "total_precision": 0.0,
             "num_batches": 0,
         }
-        # self.validation_step_outputs = []
 
     def forward(self, x):
         return self.model(x)
@@ -59,6 +58,7 @@ class FasterRCNN(LightningModule):
         images, targets = batch
         loss_dict = self.model(images, targets)
         total_loss = sum(loss for loss in loss_dict.values())
+
         # Accumulate the loss over each step during the epoch
         if "total_training_loss" not in self.training_step_outputs:
             self.training_step_outputs[
@@ -70,7 +70,6 @@ class FasterRCNN(LightningModule):
                 "total_training_loss"
             ] += total_loss.item()
             self.training_step_outputs["num_batches"] += 1
-        # self.logger.log_metrics({"training_loss": total_loss}, step=self.current_epoch)
 
         return total_loss
 
@@ -107,14 +106,11 @@ class FasterRCNN(LightningModule):
 
     def on_validation_epoch_end(self):
         # Compute the mean precision across all batches in the epoch
-        # mean_precision = torch.tensor(self.validation_step_outputs).mean()
         mean_precision = (
             self.validation_step_outputs["total_precision"]
             / self.validation_step_outputs["num_batches"]
         )
 
-        # Log the mean precision for the entire validation set
-        # self.log("val_precision", mean_precision, on_epoch=True)
         self.logger.log_metrics(
             {"val_precision": mean_precision}, step=self.current_epoch
         )

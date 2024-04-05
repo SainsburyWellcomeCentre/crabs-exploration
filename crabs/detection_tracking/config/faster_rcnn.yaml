@@ -1,4 +1,4 @@
-num_epochs: 4
+num_epochs: 250
 learning_rate: 0.00005
 wdecay: 0.00005
 batch_size_train: 4
@@ -10,6 +10,7 @@ train_fraction: 0.8
 val_over_test_fraction: 0.5
 iou_threshold: 0.1
 num_workers: 7
+num_workers_val: 7
 transform_brightness: 0.5
 transform_hue: 0.3
 gaussian_blur_params:
