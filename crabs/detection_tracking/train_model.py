@@ -36,6 +36,7 @@ class DectectorTrain:
     """
 
     def __init__(self, args):
+        self.args = args
         self.config_file = args.config_file
         self.images_dirs = self.prep_img_directories(
             args.dataset_dirs  # args only?
@@ -46,6 +47,8 @@ class DectectorTrain:
         self.accelerator = args.accelerator
         self.seed_n = args.seed_n
         self.experiment_name = args.experiment_name
+        self.fast_dev_run = args.fast_dev_run
+        self.limit_train_batches = args.limit_train_batches
         self.load_config_yaml()
 
     def load_config_yaml(self):
@@ -112,6 +115,7 @@ class DectectorTrain:
 
         mlf_logger.log_hyperparams(self.config)
         mlf_logger.log_hyperparams({"split_seed": self.seed_n})
+        mlf_logger.log_hyperparams({"cli_args": self.args})
 
         lightning_model = FasterRCNN(self.config)
 
@@ -119,6 +123,8 @@ class DectectorTrain:
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
             logger=mlf_logger,
+            fast_dev_run=self.fast_dev_run,
+            limit_train_batches=self.limit_train_batches,
         )
 
         # Run training
@@ -126,7 +132,8 @@ class DectectorTrain:
 
         # Save model if required
         if self.config["save"]:
-            save_model(lightning_model)
+            model_filename = save_model(lightning_model)
+            mlf_logger.log_hyperparams({"model_filename": model_filename})
 
 
 def main(args) -> None:
@@ -190,6 +197,20 @@ def train_parse_args(args):
         type=int,
         default=42,
         help="seed for dataset splits",
+    )
+    parser.add_argument(
+        "--fast_dev_run",
+        action="store_true",
+        help="Debugging option to run training for one batch and one epoch",
+    )
+    parser.add_argument(
+        "--limit_train_batches",
+        type=float,
+        default=1.0,
+        help=(
+            "Debugging option to run training on a fraction of the training set."
+            "By default 1.0 (all the training set)"
+        ),
     )
     return parser.parse_args(args)
 
