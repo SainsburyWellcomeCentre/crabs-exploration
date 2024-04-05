@@ -157,7 +157,6 @@ class CrabsDataModule(LightningDataModule):
 
         Define the transforms for each split of the data and compute them.
         """
-
         # Assign transforms
         # right now assuming validation and test get the same transforms
         self.train_transform = self._get_train_transform()
@@ -194,7 +193,6 @@ class CrabsDataModule(LightningDataModule):
             shuffle=False,
             num_workers=["num_workers"],
             collate_fn=self._collate_fn,
-            persistent_workers=True
         )
 
     def test_dataloader(self) -> DataLoader:

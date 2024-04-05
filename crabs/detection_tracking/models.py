@@ -48,6 +48,7 @@ class FasterRCNN(LightningModule):
         }
         self.validation_step_outputs = {
             "total_precision": 0.0,
+            "total_recall": 0.0,
             "num_batches": 0,
         }
 
@@ -84,12 +85,13 @@ class FasterRCNN(LightningModule):
         predictions = self.model(images, targets)
         (
             precision,
-            _,
+            recall,
             _,
         ) = compute_confusion_matrix_elements(
             targets, predictions, self.config["iou_threshold"]
         )
         self.validation_step_outputs["total_precision"] += precision
+        self.validation_step_outputs["total_recall"] += recall
         self.validation_step_outputs["num_batches"] += 1
         return precision
 
@@ -99,12 +101,20 @@ class FasterRCNN(LightningModule):
             self.validation_step_outputs["total_precision"]
             / self.validation_step_outputs["num_batches"]
         )
+        mean_recall = (
+            self.validation_step_outputs["total_recall"]
+            / self.validation_step_outputs["num_batches"]
+        )
 
         self.logger.log_metrics(
             {"val_precision": mean_precision}, step=self.current_epoch
         )
+        self.logger.log_metrics(
+            {"val_recall": mean_recall}, step=self.current_epoch
+        )
         self.validation_step_outputs = {
             "total_precision": 0.0,
+            "total_recall": 0.0,
             "num_batches": 0,
         }
 
