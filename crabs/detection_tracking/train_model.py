@@ -71,6 +71,9 @@ class DectectorTrain:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = f"run_{timestamp}"
 
+        # Instantiate model
+        lightning_model = FasterRCNN(self.config)
+
         # Initialise MLflow logger
         mlf_logger = MLFlowLogger(
             run_name=run_name,
@@ -82,12 +85,12 @@ class DectectorTrain:
         mlf_logger.log_hyperparams({"split_seed": self.seed_n})
         mlf_logger.log_hyperparams({"cli_args": self.args})
 
-        lightning_model = FasterRCNN(self.config)
-
+        # Instantiate trainer
         trainer = lightning.Trainer(
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
             logger=mlf_logger,
+            enable_checkpointing=True,
             fast_dev_run=self.fast_dev_run,
             limit_train_batches=self.limit_train_batches,
         )
@@ -96,9 +99,9 @@ class DectectorTrain:
         trainer.fit(lightning_model, data_module)
 
         # Save model if required
-        if self.config["save"]:
-            model_filename = save_model(lightning_model)
-            mlf_logger.log_hyperparams({"model_filename": model_filename})
+        # if self.config["save"]:
+        #     model_filename = save_model(lightning_model)
+        #     mlf_logger.log_hyperparams({"model_filename": model_filename})
 
 
 def main(args) -> None:
