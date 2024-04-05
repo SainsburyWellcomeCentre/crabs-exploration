@@ -93,6 +93,8 @@ class DectectorTrain:
 
     def train_model(self):
         # Create data module
+        print(self.images_dirs)
+        print(self.annotation_files)
         data_module = CrabsDataModule(
             self.images_dirs,
             self.annotation_files,

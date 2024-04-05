@@ -83,6 +83,15 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         # Update class for this instance
         self.__class__ = full_dataset.__class__
         self.__dict__ = full_dataset.__dict__
+        # Print length of the full dataset
+        print("Length of full dataset:", len(self))
+
+        # Print sample images and annotations
+        for i in range(len(self)):
+            img, ann = self[i]
+            print(
+                "Sample", i, "- Image Shape:", img.shape, "- Annotations:", ann
+            )
 
     def save_filt_annotations(
         self,

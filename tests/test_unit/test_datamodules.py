@@ -85,15 +85,20 @@ def test_collate_fn(crabs_data_module):
 
 
 # def test_compute_splits():
+#     list_img_dirs = ["/Users/nikkhadijahnikaznan/Git/crabs-exploration/tests/data/sample_data/frames"]
+#     list_annotation_files = ["/Users/nikkhadijahnikaznan/Git/crabs-exploration/tests/data/sample_data/annotations/sample_annotation_coco.json"]
+#     print(list_img_dirs)
+#     print(list_annotation_files)
+#     config = {"train_fraction": 1.0, "val_over_test_fraction": 0.0}
 #     crabs_data_module = CrabsDataModule(
-#         list_img_dirs=["tests/data/sample_data"],
-#         list_annotation_files=["tests/data/sample_data/annotations/sample_annotation_coco.json"],
-#         config={"train_fraction": 1.0, "val_over_test_fraction": 0.0},
+#         list_img_dirs,
+#         list_annotation_files,
+#         config,
+#         22,
 #     )
 
 #     train_dataset, test_dataset, val_dataset = crabs_data_module._compute_splits(transforms_all_splits=None)
 
-#     # Assertions
-#     assert len(train_dataset) == 2  # Adjust as needed based on the dummy dataset
-#     assert len(test_dataset) == 1   # Adjust as needed based on the dummy dataset
-#     assert len(val_dataset) == 1    # Adjust as needed based on the dummy dataset
+#     assert len(train_dataset) == 2
+#     assert len(test_dataset) == 1
+#     assert len(val_dataset) == 1
