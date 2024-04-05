@@ -48,6 +48,8 @@ class DectectorTrain:
         self.accelerator = args.accelerator
         self.seed_n = args.seed_n
         self.experiment_name = args.experiment_name
+        self.fast_dev_run = args.fast_dev_run
+        self.limit_train_batches = args.limit_train_batches
         self.load_config_yaml()
 
     def load_config_yaml(self):
@@ -124,14 +126,15 @@ class DectectorTrain:
 
         mlf_logger.log_hyperparams(self.config)
         mlf_logger.log_hyperparams({"split_seed": self.seed_n})
+        mlf_logger.log_hyperparams({"cli_args": self.args})
 
         lightning_model = FasterRCNN(self.config)
         trainer = lightning.Trainer(
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
             logger=mlf_logger,
-            fast_dev_run=self.args.fast_dev_run,
-            limit_train_batches=self.args.limit_train_batches,
+            fast_dev_run=self.fast_dev_run,
+            limit_train_batches=self.limit_train_batches,
         )
 
         # Run training
@@ -210,17 +213,16 @@ def train_parse_args(args):
         action="store_true",
         help="running optuna",
     )
-    parser.add_argument(
         "--fast_dev_run",
         action="store_true",
-        help="option to run only one batch and one epoch for debugging",
+        help="Debugging option to run training for one batch and one epoch",
     )
     parser.add_argument(
         "--limit_train_batches",
         type=float,
         default=1.0,
         help=(
-            "option to run smaller training number per epoch for debugging."
+            "Debugging option to run training on a fraction of the training set."
             "By default 1.0 (all the training set)"
         ),
     )
