@@ -47,6 +47,8 @@ class DectectorTrain:
         self.accelerator = args.accelerator
         self.seed_n = args.seed_n
         self.experiment_name = args.experiment_name
+        self.fast_dev_run = args.fast_dev_run
+        self.limit_train_batches = args.limit_train_batches
         self.load_config_yaml()
 
     def load_config_yaml(self):
@@ -113,6 +115,7 @@ class DectectorTrain:
 
         mlf_logger.log_hyperparams(self.config)
         mlf_logger.log_hyperparams({"split_seed": self.seed_n})
+        mlf_logger.log_hyperparams({"cli_args": self.args})
 
         lightning_model = FasterRCNN(self.config)
 
@@ -120,8 +123,8 @@ class DectectorTrain:
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
             logger=mlf_logger,
-            fast_dev_run=self.args.fast_dev_run,
-            limit_train_batches=self.args.limit_train_batches,
+            fast_dev_run=self.fast_dev_run,
+            limit_train_batches=self.limit_train_batches,
         )
 
         # Run training
