@@ -120,7 +120,7 @@ class CrabsDataModule(LightningDataModule):
         full_dataset = CrabsCocoDetection(
             self.list_img_dirs,
             self.list_annotation_files,
-            transforms=transforms_all_splits,  # self.train_transform,
+            transforms=transforms_all_splits,
             list_exclude_files=self.config.get(
                 "exclude_video_file_list"
             ),  # get value only if key exists
@@ -160,14 +160,16 @@ class CrabsDataModule(LightningDataModule):
 
         # Assign transforms
         # right now assuming validation and test get the same transforms
+        test_and_val_transform = self._get_test_val_transform()
         self.train_transform = self._get_train_transform()
-        self.test_transform = self._get_test_val_transform()
-        self.val_transform = self._get_test_val_transform()
+        self.test_transform = test_and_val_transform
+        self.val_transform = test_and_val_transform
 
         # Assign datasets
         self.train_dataset, _, _ = self._compute_splits(self.train_transform)
-        _, self.test_dataset, _ = self._compute_splits(self.test_transform)
-        _, _, self.val_dataset = self._compute_splits(self.val_transform)
+        _, self.test_dataset, self.val_dataset = self._compute_splits(
+            test_and_val_transform
+        )
 
     def train_dataloader(self) -> DataLoader:
         """Define dataloader for the training set"""
