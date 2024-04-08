@@ -10,13 +10,13 @@ import torch
 import torchvision.transforms.v2 as transforms
 from sort import Sort
 
-from crabs.detection_tracking.detection_utils import (
-    draw_bbox,
-)
 from crabs.detection_tracking.tracking_utils import (
     evaluate_mota,
     get_ground_truth_data,
     save_frame_and_csv,
+)
+from crabs.detection_tracking.visualization import (
+    draw_bbox,
 )
 
 

@@ -5,7 +5,7 @@ import cv2
 import torch
 import torchvision
 
-from crabs.detection_tracking.detection_utils import draw_detection
+from crabs.detection_tracking.visualization import draw_detection
 
 logging.basicConfig(level=logging.INFO)
 
