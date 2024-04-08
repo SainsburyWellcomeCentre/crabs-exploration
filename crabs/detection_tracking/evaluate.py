@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Tuple
 
 import cv2
 import torch
@@ -67,7 +68,7 @@ def compute_precision_recall(class_stats):
 
 def compute_confusion_matrix_elements(
     targets, detections, ious_threshold
-) -> None:
+) -> Tuple[float, float, dict]:
     """
     Compute metrics (true positive, false positive, false negative) for object detection.
 
@@ -86,9 +87,11 @@ def compute_confusion_matrix_elements(
 
     Returns
     ----------
-    None
+    Tuple[float, float]
+        precision and recall
     """
     class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
+    print(targets)
     for target, detection in zip(targets, detections):
         gt_boxes = target["boxes"]
         pred_boxes = detection["boxes"]
@@ -130,4 +133,6 @@ def compute_confusion_matrix_elements(
                     "fn"
                 ] += 1  # Ground truth box has no corresponding detection
 
-    compute_precision_recall(class_stats)
+    precision, recall, class_stats = compute_precision_recall(class_stats)
+
+    return precision, recall, class_stats

@@ -6,7 +6,8 @@ import torch
 from crabs.detection_tracking.evaluate import (
     compute_precision_recall,
     save_images_with_boxes,
-    compute_precision_recall
+    compute_precision_recall,
+    compute_confusion_matrix_elements
 )
 
 
@@ -55,35 +56,39 @@ def test_save_images_with_boxes(
     assert mock_imwrite.call_count == len(test_dataloader)
 
 
-@pytest.fixture
-def class_stats():
-    return {
-        "crab": {"tp": 10, "fp": 5, "fn": 3},
-    }
-
-
 def test_compute_precision_recall():
     class_stats = {
-        "class1": {"tp": 10, "fp": 2, "fn": 1},
-        "class2": {"tp": 15, "fp": 3, "fn": 2}
+        'crab': {'tp': 10, 'fp': 2, 'fn': 1}
     }
 
     precision, recall = compute_precision_recall(class_stats)
 
-    # Assert expected precision and recall values for each class
-    assert precision["class1"] == 10 / max(10 + 2, 1)
-    assert precision["class2"] == 15 / max(15 + 3, 1)
-    assert recall["class1"] == 10 / max(10 + 1, 1)
-    assert recall["class2"] == 15 / max(15 + 2, 1)
+    assert precision == 10 / max(10 + 2, 1)
+    assert recall == 10 / max(10 + 1, 1)
 
 
 def test_compute_precision_recall_zero_division():
     class_stats = {
-        "class1": {"tp": 0, "fp": 0, "fn": 0}
+        "crab": {"tp": 0, "fp": 0, "fn": 0}
     }
 
     precision, recall = compute_precision_recall(class_stats)
 
     # Assert expected precision and recall values when all counts are zero
-    assert precision["class1"] == 0
-    assert recall["class1"] == 0
+    assert precision == 0
+    assert recall == 0
+
+
+def test_compute_confusion_matrix_elements():
+    # Mock targets and detections
+    targets = [{"boxes": [[0, 0, 10, 10]], "labels": [1]}]
+    detections = [{"boxes": [[1, 1, 9, 9]], "labels": [1]}]
+    ious_threshold = 0.5
+
+    precision, recall, class_stats = compute_confusion_matrix_elements(targets, detections, ious_threshold)
+    print(precision, recall, class_stats)
+
+    # Assert expected precision, recall, and class_stats values
+    assert precision == 0
+    assert recall == 1
+    assert class_stats == 2
