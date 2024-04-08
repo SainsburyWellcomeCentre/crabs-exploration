@@ -9,6 +9,27 @@ from crabs.detection_tracking.evaluate import compute_confusion_matrix_elements
 
 
 class FasterRCNN(LightningModule):
+    """
+    LightningModule implementation of Faster R-CNN for object detection.
+    Parameters:
+    -----------
+    config : dict
+        Configuration settings for the model.
+    Methods:
+    --------
+    forward(x):
+        Forward pass of the model.
+    training_step(batch, batch_idx):
+        Defines the training step for the model.
+    configure_optimizers():
+        Configures the optimizer for training.
+    Attributes:
+    -----------
+    config : dict
+        Configuration settings for the model.
+    model : torch.nn.Module
+        Faster R-CNN model.
+    """
     def __init__(self, config):
         super().__init__()
         self.config = config
