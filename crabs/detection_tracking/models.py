@@ -30,6 +30,7 @@ class FasterRCNN(LightningModule):
     model : torch.nn.Module
         Faster R-CNN model.
     """
+
     def __init__(self, config):
         super().__init__()
         self.config = config
