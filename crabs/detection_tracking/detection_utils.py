@@ -1,10 +1,13 @@
 import datetime
 import os
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import numpy as np
 import torch
+
+DEFAULT_ANNOTATIONS_FILENAME = "VIA_JSON_combined_coco_gen.json"
 
 
 def coco_category():
@@ -21,6 +24,47 @@ def coco_category():
         "crab",
     ]
     return COCO_INSTANCE_CATEGORY_NAMES
+
+
+def prep_img_directories(dataset_dirs: list[str]):
+    images_dirs = []
+    for dataset in dataset_dirs:
+        images_dirs.append(str(Path(dataset) / "frames"))
+    return images_dirs
+
+
+def prep_annotation_files(
+    input_annotation_files: list[str], dataset_dirs: list[str]
+):
+    # prepare list of annotation files
+    annotation_files = []
+
+    # if none are passed: assume default filename for annotations,
+    # and default location under `annotations` directory
+    if not input_annotation_files:
+        for dataset in dataset_dirs:
+            annotation_files.append(
+                str(
+                    Path(dataset)
+                    / "annotations"
+                    / DEFAULT_ANNOTATIONS_FILENAME
+                )
+            )
+
+    # if a list of annotation files/filepaths is passed
+    else:
+        for annot, dataset in zip(input_annotation_files, dataset_dirs):
+            # if the annotation is only filename:
+            # assume file is under 'annotation' directory
+            if Path(annot).name == annot:
+                annotation_files.append(
+                    str(Path(dataset) / "annotations" / annot)
+                )
+            # otherwise assume the full path to the annotations file is passed
+            else:
+                annotation_files.append(annot)
+
+    return annotation_files
 
 
 def save_model(model: torch.nn.Module) -> str:

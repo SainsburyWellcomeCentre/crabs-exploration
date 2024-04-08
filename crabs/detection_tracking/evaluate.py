@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def save_images_with_boxes(
-    test_dataloader, trained_model, score_threshold, device
+    test_dataloader, trained_model, score_threshold
 ) -> None:
     """
     Save images with bounding boxes drawn around detected objects.
@@ -30,6 +30,14 @@ def save_images_with_boxes(
     ----------
         None
     """
+    device = (
+        torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
+    trained_model.eval()
+    directory = "results"
+    os.makedirs(directory, exist_ok=True)
     with torch.no_grad():
         imgs_id = 0
         for imgs, annotations in test_dataloader:
@@ -40,8 +48,6 @@ def save_images_with_boxes(
             image_with_boxes = draw_detection(
                 imgs, annotations, detections, score_threshold
             )
-            directory = "results"
-            os.makedirs(directory, exist_ok=True)
             cv2.imwrite(f"{directory}/imgs{imgs_id}.jpg", image_with_boxes)
 
 
@@ -59,7 +65,6 @@ def compute_precision_recall(class_stats) -> Tuple[float, float, dict]:
     Tuple[float, float]
         precision and recall
     """
-    print(class_stats)
     for _, stats in class_stats.items():
         precision = stats["tp"] / max(stats["tp"] + stats["fp"], 1)
         recall = stats["tp"] / max(stats["tp"] + stats["fn"], 1)
