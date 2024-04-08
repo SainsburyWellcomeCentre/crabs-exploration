@@ -196,6 +196,9 @@ class CrabsDataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.config["num_workers"],
             collate_fn=self._collate_fn,
+            persistent_workers=True
+            if self.config["num_workers"] > 0
+            else False,
         )
 
     def test_dataloader(self) -> DataLoader:
