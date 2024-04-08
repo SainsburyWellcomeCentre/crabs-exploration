@@ -59,7 +59,7 @@ def compute_precision_recall(class_stats) -> Tuple[float, float, dict]:
     Tuple[float, float]
         precision and recall
     """
-
+    print(class_stats)
     for _, stats in class_stats.items():
         precision = stats["tp"] / max(stats["tp"] + stats["fp"], 1)
         recall = stats["tp"] / max(stats["tp"] + stats["fn"], 1)

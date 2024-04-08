@@ -191,7 +191,7 @@ class CrabsDataModule(LightningDataModule):
             self.val_dataset,
             batch_size=self.config["batch_size_val"],
             shuffle=False,
-            num_workers=["num_workers"],
+            num_workers=self.config["num_workers"],
             collate_fn=self._collate_fn,
         )
 
