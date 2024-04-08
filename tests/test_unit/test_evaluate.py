@@ -6,6 +6,7 @@ import torch
 from crabs.detection_tracking.evaluate import (
     compute_precision_recall,
     save_images_with_boxes,
+    compute_precision_recall
 )
 
 
@@ -61,18 +62,28 @@ def class_stats():
     }
 
 
-@patch("logging.info")
-def test_compute_precision_recall(mock_logging_info, class_stats):
+def test_compute_precision_recall():
+    class_stats = {
+        "class1": {"tp": 10, "fp": 2, "fn": 1},
+        "class2": {"tp": 15, "fp": 3, "fn": 2}
+    }
+
     precision, recall = compute_precision_recall(class_stats)
 
-    # Calculate expected precision and recall for "crab" class
-    crab_precision = 10 / max(10 + 5, 1)
-    crab_recall = 10 / max(10 + 3, 1)
+    # Assert expected precision and recall values for each class
+    assert precision["class1"] == 10 / max(10 + 2, 1)
+    assert precision["class2"] == 15 / max(15 + 3, 1)
+    assert recall["class1"] == 10 / max(10 + 1, 1)
+    assert recall["class2"] == 15 / max(15 + 2, 1)
 
-    # # Assertions
-    # mock_logging_info.assert_called_once_with(
-    #     f"Precision: {crab_precision:.4f}, Recall: {crab_recall:.4f}, "
-    #     f"False Positive: 5, False Negative: 3"
-    # )
-    assert precision == pytest.approx(crab_precision, abs=1e-4)
-    assert recall == pytest.approx(crab_recall, abs=1e-4)
+
+def test_compute_precision_recall_zero_division():
+    class_stats = {
+        "class1": {"tp": 0, "fp": 0, "fn": 0}
+    }
+
+    precision, recall = compute_precision_recall(class_stats)
+
+    # Assert expected precision and recall values when all counts are zero
+    assert precision["class1"] == 0
+    assert recall["class1"] == 0
