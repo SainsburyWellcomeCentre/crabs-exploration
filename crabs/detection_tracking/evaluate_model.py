@@ -1,6 +1,7 @@
 import argparse
 import datetime
 import sys
+from pathlib import Path
 
 import lightning
 import torch
@@ -29,7 +30,7 @@ class DetectorEvaluation:
     config_file : str
         Path to the directory containing configuration file.
     images_dirs : List[str]
-        List of paths to the main directories of the datasets.
+        List of paths to the image directories of the datasets.
     annotation_files : List[str]
         List of filenames for the COCO annotations.
     score_threshold : float
@@ -46,76 +47,64 @@ class DetectorEvaluation:
     ) -> None:
         self.args = args
         self.config_file = args.config_file
-        self.images_dirs = prep_img_directories(args.images_dirs)
+        self.images_dirs = prep_img_directories(args.dataset_dirs)
         self.annotation_files = prep_annotation_files(
-            args.annotation_files, args.images_dirs
+            args.annotation_files, args.dataset_dirs
         )
+        self.seed_n = args.seed_n
         self.ious_threshold = args.ious_threshold
         self.score_threshold = args.score_threshold
+        self.load_config_yaml()
 
-    def load_trained_model(self) -> None:
-        """
-        Load the trained model.
-
-        Returns
-        -------
-        None
-        """
-        self.trained_model = torch.load(
-            self.args.model_dir,
-            map_location=torch.device(self.args.accelerator),
-        )
+    def load_config_yaml(self):
+        with open(self.config_file, "r") as f:
+            self.config = yaml.safe_load(f)
 
     def evaluate_model(self) -> None:
         """
         Evaluate the trained model on the test dataset.
-
-        Returns
-        -------
-        None
         """
-        # get config
-        with open(self.config_file, "r") as f:
-            config = yaml.safe_load(f)
-
-        self.load_trained_model()
-
+        # instantiate datamodule for the given seed and manually setup
         data_module = CrabsDataModule(
             self.images_dirs,
             self.annotation_files,
-            config,
-            self.args.seed_n,
+            self.config,
+            self.seed_n,
         )
-        data_module.setup("test")
 
+        # start mlflow logger
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = f"run_{timestamp}"
-
         mlf_logger = MLFlowLogger(
             run_name=run_name,
             experiment_name="evaluation",
             tracking_uri="file:./ml-runs",
         )
-
-        mlf_logger.log_hyperparams(config)
-        mlf_logger.log_hyperparams({"split_seed": self.args.seed_n})
+        mlf_logger.log_hyperparams(self.config)
+        mlf_logger.log_hyperparams({"split_seed": self.seed_n})
         mlf_logger.log_hyperparams({"cli_args": self.args})
 
-        faster_rcnn_model = FasterRCNN(config)
-        faster_rcnn_model.load_state_dict(self.trained_model.state_dict())
-
+        # instantiate trainer
         trainer = lightning.Trainer(
             accelerator=self.args.accelerator,
             logger=mlf_logger,
         )
+
+        # run testing
+        trained_model = FasterRCNN(self.config)
+        trained_model.load_state_dict(
+            torch.load(self.args.model_path).state_dict()
+        )
         trainer.test(
-            faster_rcnn_model, dataloaders=data_module.test_dataloader()
+            trained_model,
+            data_module,
         )
 
+        # save images if required
         if self.args.save_frames:
             save_images_with_boxes(
                 data_module.test_dataloader(),
-                self.trained_model,
+                trained_model,
                 self.score_threshold,
             )
 
@@ -142,28 +131,36 @@ def evaluate_parse_args(args):
     parser.add_argument(
         "--config_file",
         type=str,
-        default="crabs/detection_tracking/config/faster_rcnn.yaml",
+        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
         help="location of YAML config to control training",
     )
     parser.add_argument(
-        "--model_dir",
+        "--dataset_dirs",
+        nargs="+",
+        required=True,
+        help="list of dataset directories",
+    )
+    parser.add_argument(
+        "--annotation_files",
+        nargs="+",
+        default=[],
+        help="list of paths to annotation files. The full path or the filename can be provided. If only filename is provided, it is assumed to be under dataset/annotations.",
+    )
+    parser.add_argument(
+        "--model_path",
         type=str,
         required=True,
         help="location of trained model",
     )
     parser.add_argument(
-        "--images_dirs",
+        "--accelerator",
         type=str,
-        nargs="+",
-        required=True,
-        help="list of paths to images directories",
-    )
-    parser.add_argument(
-        "--annotation_files",
-        type=str,
-        nargs="+",
-        required=True,
-        help="list of paths to annotation files",
+        default="gpu",
+        help=(
+            "accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. "
+            "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "
+            "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"
+        ),
     )
     parser.add_argument(
         "--score_threshold",
@@ -178,16 +175,10 @@ def evaluate_parse_args(args):
         help="threshold for IOU",
     )
     parser.add_argument(
-        "--accelerator",
-        type=str,
-        default="gpu",
-        help="accelerator for pytorch lightning",
-    )
-    parser.add_argument(
         "--seed_n",
         type=int,
         default=42,
-        help="seed for random state",
+        help="seed for dataset splits",
     )
     parser.add_argument(
         "--save_frames",
