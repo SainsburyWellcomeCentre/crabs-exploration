@@ -29,9 +29,9 @@ def draw_bbox(
     ----------
     frame : np.ndarray
         Image with bounding boxes drawn on it.
-    top_left : tuple[int, int]
+    top_left : tuple[float, float]
         Tuple containing (x, y) coordinates of the top-left corner of the bounding box.
-    bottom_right : tuple[int, int]
+    bottom_right : tuple[float, float]
         Tuple containing (x, y) coordinates of the bottom-right corner of the bounding box.
     colour : tuple
         Color of the bounding box in BGR format.
