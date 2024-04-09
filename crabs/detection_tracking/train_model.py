@@ -81,6 +81,8 @@ class DectectorTrain:
 
         # mlf_logger.log_hyperparams(self.config) --- via save_parameters instead?
         # mlf_logger.log_hyperparams({"split_seed": self.seed_n}) ---- can I still filter easily MLflow logs without this?
+
+        # log CLI arguments
         mlf_logger.log_hyperparams({"cli_args": self.args})
 
         # Instantiate model
@@ -96,7 +98,8 @@ class DectectorTrain:
             save_top_k=2,  # save the top k with the largest monitored metric below
             monitor="epoch",  # monitor the metric epoch for saving
             mode="max",  # get the max of the monitored metric
-            save_last=True,
+            save_last=False,
+            save_weights_only=True,  # much more lightweight
         )
 
         # Instantiate trainer
