@@ -1,14 +1,20 @@
 import argparse
-import logging
+import datetime
+import sys
+from pathlib import Path
 
+import lightning
 import torch
 import yaml  # type: ignore
+from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
-from crabs.detection_tracking.evaluate import (
-    compute_confusion_matrix_elements,
-    save_images_with_boxes,
+from crabs.detection_tracking.detection_utils import (
+    prep_annotation_files,
+    prep_img_directories,
 )
+from crabs.detection_tracking.models import FasterRCNN
+from crabs.detection_tracking.visualization import save_images_with_boxes
 
 
 class DetectorEvaluation:
@@ -19,6 +25,12 @@ class DetectorEvaluation:
     ----------
     args : argparse
         Command-line arguments containing configuration settings.
+    config_file : str
+        Path to the directory containing configuration file.
+    images_dirs : list[str]
+        list of paths to the image directories of the datasets.
+    annotation_files : list[str]
+        list of filenames for the COCO annotations.
     score_threshold : float
         The score threshold for confidence detection.
     ious_threshold : float
@@ -30,79 +42,68 @@ class DetectorEvaluation:
     def __init__(
         self,
         args: argparse.Namespace,
-        data_loader: torch.utils.data.DataLoader,
     ) -> None:
         self.args = args
+        self.config_file = args.config_file
+        self.images_dirs = prep_img_directories(args.dataset_dirs)
+        self.annotation_files = prep_annotation_files(
+            args.annotation_files, args.dataset_dirs
+        )
+        self.seed_n = args.seed_n
         self.ious_threshold = args.ious_threshold
         self.score_threshold = args.score_threshold
-        self.evaluate_dataloader = data_loader
+        self.load_config_yaml()
 
-    def _load_trained_model(self) -> None:
-        """
-        Load the trained model.
-
-        Returns
-        -------
-        None
-        """
-        self.trained_model = torch.load(
-            self.args.model_dir,
-            map_location=torch.device(self.args.accelerator),
-        )
+    def load_config_yaml(self):
+        with open(self.config_file, "r") as f:
+            self.config = yaml.safe_load(f)
 
     def evaluate_model(self) -> None:
         """
         Evaluate the trained model on the test dataset.
-
-        Returns
-        -------
-        None
         """
-        self._load_trained_model()
-
-        # set model in eval mode
-        self.trained_model.eval()
-
-        # select device
-        device = (
-            torch.device("cuda")
-            if torch.cuda.is_available()
-            else torch.device("cpu")
+        # instantiate datamodule for the given seed and manually setup
+        data_module = CrabsDataModule(
+            self.images_dirs,
+            self.annotation_files,
+            self.config,
+            self.seed_n,
         )
 
-        all_detections = []
-        all_targets = []
+        # start mlflow logger
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_name = f"run_{timestamp}"
+        mlf_logger = MLFlowLogger(
+            run_name=run_name,
+            experiment_name="evaluation",
+            tracking_uri="file:./ml-runs",
+        )
+        mlf_logger.log_hyperparams(self.config)
+        mlf_logger.log_hyperparams({"split_seed": self.seed_n})
+        mlf_logger.log_hyperparams({"cli_args": self.args})
 
-        with torch.no_grad():
-            for imgs, annotations in self.evaluate_dataloader:
-                imgs = list(img.to(device) for img in imgs)
-                targets = [
-                    {k: v.to(device) for k, v in t.items() if k != "image_id"}
-                    for t in annotations
-                ]
-                detections = self.trained_model(imgs)
-
-                all_detections.extend(detections)
-                all_targets.extend(targets)
-
-        precision, recall, class_stats = compute_confusion_matrix_elements(
-            all_targets,  # one elem per image
-            all_detections,
-            self.ious_threshold,
+        # instantiate trainer
+        trainer = lightning.Trainer(
+            accelerator=self.args.accelerator,
+            logger=mlf_logger,
         )
 
-        logging.info(
-            f"Precision: {precision:.4f}, Recall: {recall:.4f}, "
-            f"False Positive: {class_stats['crab']['fp']}, "
-            f"False Negative: {class_stats['crab']['fn']}"
+        # run test
+        trained_model = FasterRCNN(self.config)
+        trained_model.load_state_dict(
+            torch.load(self.args.model_path).state_dict()
+        )
+        trainer.test(
+            trained_model,
+            data_module,
         )
 
+        # save images if required
         if self.args.save_frames:
             save_images_with_boxes(
-                self.evaluate_dataloader,
-                self.trained_model,
+                data_module.test_dataloader(),
+                trained_model,
                 self.score_threshold,
-                device,
             )
 
 
@@ -119,56 +120,48 @@ def main(args) -> None:
     -------
         None
     """
-    list_images_dirs = args.images_dirs
-
-    # get annotations
-    list_annotations_files = args.annotation_files
-    # get config
-    with open(args.config_file, "r") as f:
-        config = yaml.safe_load(f)
-
-    # get dataloader
-    data_module = CrabsDataModule(
-        list_images_dirs,
-        list_annotations_files,
-        config,
-        args.seed_n,
-    )
-    data_module.setup("test")
-    data_loader = data_module.test_dataloader()
-
-    # evaluator
-    evaluator = DetectorEvaluation(args, data_loader)
+    evaluator = DetectorEvaluation(args)
     evaluator.evaluate_model()
 
 
-if __name__ == "__main__":
+def evaluate_parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config_file",
         type=str,
-        default="crabs/detection_tracking/config/faster_rcnn.yaml",
+        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
         help="location of YAML config to control training",
     )
     parser.add_argument(
-        "--model_dir",
+        "--dataset_dirs",
+        nargs="+",
+        required=True,
+        help="list of dataset directories",
+    )
+    parser.add_argument(
+        "--annotation_files",
+        nargs="+",
+        default=[],
+        help=(
+            "list of paths to annotation files. The full path or the filename can be provided. "
+            "If only filename is provided, it is assumed to be under dataset/annotations.",
+        ),
+    )
+    parser.add_argument(
+        "--model_path",
         type=str,
         required=True,
         help="location of trained model",
     )
     parser.add_argument(
-        "--images_dirs",
+        "--accelerator",
         type=str,
-        nargs="+",
-        required=True,
-        help="list of paths to images directories",
-    )
-    parser.add_argument(
-        "--annotation_files",
-        type=str,
-        nargs="+",
-        required=True,
-        help="list of paths to annotation files",
+        default="gpu",
+        help=(
+            "accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. "
+            "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "
+            "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"
+        ),
     )
     parser.add_argument(
         "--score_threshold",
@@ -183,22 +176,19 @@ if __name__ == "__main__":
         help="threshold for IOU",
     )
     parser.add_argument(
-        "--accelerator",
-        type=str,
-        default="gpu",
-        help="accelerator for pytorch lightning",
-    )
-    parser.add_argument(
         "--seed_n",
         type=int,
         default=42,
-        help="seed for random state",
+        help="seed for dataset splits",
     )
     parser.add_argument(
         "--save_frames",
         action="store_true",
         help=("Save predicted frames with bboxes."),
     )
+    return parser.parse_args(args)
 
-    args = parser.parse_args()
+
+if __name__ == "__main__":
+    args = evaluate_parse_args(sys.argv[1:])
     main(args)

@@ -9,7 +9,11 @@ import yaml  # type: ignore
 from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
-from crabs.detection_tracking.detection_utils import save_model
+from crabs.detection_tracking.detection_utils import (
+    prep_annotation_files,
+    prep_img_directories,
+    save_model,
+)
 from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.optuna_fn import optimize_hyperparameters
 
@@ -39,10 +43,10 @@ class DectectorTrain:
     def __init__(self, args):
         self.args = args
         self.config_file = args.config_file
-        self.images_dirs = self.prep_img_directories(
+        self.images_dirs = prep_img_directories(
             args.dataset_dirs  # args only?
         )  # list of paths
-        self.annotation_files = self.prep_annotation_files(
+        self.annotation_files = prep_annotation_files(
             args.annotation_files, args.dataset_dirs
         )  # list of paths
         self.accelerator = args.accelerator
@@ -55,45 +59,6 @@ class DectectorTrain:
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
-
-    def prep_img_directories(self, dataset_dirs: list[str]):
-        images_dirs = []
-        for dataset in dataset_dirs:
-            images_dirs.append(str(Path(dataset) / "frames"))
-        return images_dirs
-
-    def prep_annotation_files(
-        self, input_annotation_files: list[str], dataset_dirs: list[str]
-    ):
-        # prepare list of annotation files
-        annotation_files = []
-
-        # if none are passed: assume default filename for annotations,
-        # and default location under `annotations` directory
-        if not input_annotation_files:
-            for dataset in dataset_dirs:
-                annotation_files.append(
-                    str(
-                        Path(dataset)
-                        / "annotations"
-                        / DEFAULT_ANNOTATIONS_FILENAME
-                    )
-                )
-
-        # if a list of annotation files/filepaths is passed
-        else:
-            for annot, dataset in zip(input_annotation_files, dataset_dirs):
-                # if the annotation is only filename:
-                # assume file is under 'annotation' directory
-                if Path(annot).name == annot:
-                    annotation_files.append(
-                        str(Path(dataset) / "annotations" / annot)
-                    )
-                # otherwise assume the full path to the annotations file is passed
-                else:
-                    annotation_files.append(annot)
-
-        return annotation_files
 
     def train_model(self):
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -156,7 +121,7 @@ def main(args) -> None:
         An object containing the parsed command-line arguments.
 
     Returns
-    ----------
+    -------
     None
     """
     trainer = DectectorTrain(args)
@@ -181,7 +146,10 @@ def train_parse_args(args):
         "--annotation_files",
         nargs="+",
         default=[],
-        help="list of paths to annotation files. The full path or the filename can be provided. If only filename is provided, it is assumed to be under dataset/annotations.",
+        help=(
+            "list of paths to annotation files. The full path or the filename can be provided. "
+            "If only filename is provided, it is assumed to be under dataset/annotations."
+        ),
     )
     parser.add_argument(
         "--accelerator",
@@ -227,6 +195,7 @@ def train_parse_args(args):
             "By default 1.0 (all the training set)"
         ),
     )
+
     return parser.parse_args(args)
 
 

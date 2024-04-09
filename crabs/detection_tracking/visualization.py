@@ -1,10 +1,194 @@
-from typing import Optional
+import os
+from typing import Any, Optional
 
+import cv2
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from torchvision import tv_tensors
 from torchvision.transforms.v2 import functional as F
 from torchvision.utils import draw_bounding_boxes, draw_segmentation_masks
+
+COCO_INSTANCE_CATEGORY_NAMES = [
+    "__background__",
+    "crab",
+]
+
+
+def draw_bbox(
+    frame: np.ndarray,
+    top_left: tuple[float, float],
+    bottom_right: tuple[float, float],
+    colour: tuple,
+    label_text: Optional[str] = None,
+) -> None:
+    """
+    Draw bounding boxes on the image based on detection results.
+
+    Parameters
+    ----------
+    frame : np.ndarray
+        Image with bounding boxes drawn on it.
+    top_left : tuple[float, float]
+        Tuple containing (x, y) coordinates of the top-left corner of the bounding box.
+    bottom_right : tuple[float, float]
+        Tuple containing (x, y) coordinates of the bottom-right corner of the bounding box.
+    colour : tuple
+        Color of the bounding box in BGR format.
+    label_text : str, optional
+        Text to display alongside the bounding box, indicating class and score.
+
+    Returns
+    -------
+    None
+    """
+    # Draw bounding box
+    cv2.rectangle(
+        frame,
+        (int(top_left[0]), int(top_left[1])),
+        (int(bottom_right[0]), int(bottom_right[1])),
+        colour,
+        thickness=2,
+    )
+
+    # Add label text if provided
+    if label_text:
+        cv2.putText(
+            frame,
+            label_text,
+            (int(top_left[0]), int(top_left[1])),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            colour,
+            2,
+            cv2.LINE_AA,
+        )
+
+
+def draw_detection(
+    imgs: list,
+    annotations: dict,
+    detections: Optional[dict[Any, Any]] = None,
+    score_threshold: Optional[float] = None,
+) -> np.ndarray:
+    """
+    Draw the results based on the detection.
+
+    Parameters
+    ----------
+    imgs : list
+        List of images.
+    annotations : dict
+        Ground truth annotations.
+    detections : dict, optional
+        Detected objects.
+    score_threshold : float, optional
+        The confidence threshold for detection scores.
+
+    Returns
+    -------
+    np.ndarray
+        Image(s) with bounding boxes drawn on them.
+    """
+    coco_list = COCO_INSTANCE_CATEGORY_NAMES
+    image_with_boxes = None
+
+    for image, label, prediction in zip(
+        imgs, annotations, detections or [None] * len(imgs)
+    ):
+        image = image.cpu().numpy().transpose(1, 2, 0)
+        image = (image * 255).astype("uint8")
+        image_with_boxes = image.copy()
+
+        target_boxes = [
+            [(i[0], i[1]), (i[2], i[3])]
+            for i in list(label["boxes"].detach().cpu().numpy())
+        ]
+
+        for i in range(len(target_boxes)):
+            draw_bbox(
+                image_with_boxes,
+                ((target_boxes[i][0])[0], (target_boxes[i][0])[1]),
+                ((target_boxes[i][1])[0], (target_boxes[i][1])[1]),
+                colour=(0, 255, 0),
+            )
+        if prediction:
+            pred_score = list(prediction["scores"].detach().cpu().numpy())
+            pred_t = [pred_score.index(x) for x in pred_score][-1]
+
+            pred_class = [
+                coco_list[i]
+                for i in list(prediction["labels"].detach().cpu().numpy())
+            ]
+
+            pred_boxes = [
+                [(i[0], i[1]), (i[2], i[3])]
+                for i in list(
+                    prediction["boxes"].detach().cpu().detach().numpy()
+                )
+            ]
+
+            pred_boxes = pred_boxes[: pred_t + 1]
+            pred_class = pred_class[: pred_t + 1]
+            for i in range(len(pred_boxes)):
+                if pred_score[i] > (score_threshold or 0):
+                    label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
+                    draw_bbox(
+                        image_with_boxes,
+                        (
+                            (pred_boxes[i][0])[0],
+                            (pred_boxes[i][0])[1],
+                        ),
+                        (
+                            (pred_boxes[i][1])[0],
+                            (pred_boxes[i][1])[1],
+                        ),
+                        (0, 0, 255),
+                        label_text,
+                    )
+    return image_with_boxes
+
+
+def save_images_with_boxes(
+    test_dataloader: torch.utils.data.DataLoader,
+    trained_model: torch.nn.Module,
+    score_threshold: float,
+) -> None:
+    """
+    Save images with bounding boxes drawn around detected objects.
+
+    Parameters
+    ----------
+    test_dataloader : DataLoader
+        DataLoader for the test dataset.
+    trained_model : torch.nn.Module
+        The trained object detection model.
+    score_threshold : float
+        Threshold for object detection.
+
+    Returns
+    ----------
+        None
+    """
+    device = (
+        torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
+    trained_model.eval()
+    directory = "results"
+    os.makedirs(directory, exist_ok=True)
+    with torch.no_grad():
+        imgs_id = 0
+        for imgs, annotations in test_dataloader:
+            imgs_id += 1
+            imgs = list(img.to(device) for img in imgs)
+            detections = trained_model(imgs)
+
+            image_with_boxes = draw_detection(
+                imgs, annotations, detections, score_threshold
+            )
+            cv2.imwrite(f"{directory}/imgs{imgs_id}.jpg", image_with_boxes)
 
 
 def plot_sample(imgs: list, row_title: Optional[str] = None, **imshow_kwargs):

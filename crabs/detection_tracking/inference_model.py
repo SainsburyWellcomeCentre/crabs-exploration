@@ -2,7 +2,7 @@ import argparse
 import csv
 import os
 from pathlib import Path
-from typing import Any, List, Optional, TextIO, Tuple
+from typing import Any, Optional, TextIO, Tuple
 
 import cv2
 import numpy as np
@@ -10,13 +10,13 @@ import torch
 import torchvision.transforms.v2 as transforms
 from sort import Sort
 
-from crabs.detection_tracking.detection_utils import (
-    draw_bbox,
-)
 from crabs.detection_tracking.tracking_utils import (
     evaluate_mota,
     get_ground_truth_data,
     save_frame_and_csv,
+)
+from crabs.detection_tracking.visualization import (
+    draw_bbox,
 )
 
 
@@ -158,26 +158,26 @@ class DetectorInference:
         gt_boxes_list: list,
         tracked_boxes_list: list,
         iou_threshold: float,
-    ) -> List[float]:
+    ) -> list[float]:
         """
         Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
 
         Parameters
         ----------
-        gt_boxes_list : List[List[float]]
+        gt_boxes_list : list[list[float]]
             List of ground truth bounding boxes for each frame.
-        tracked_boxes_list : List[List[float]]
+        tracked_boxes_list : list[list[float]]
             List of tracked bounding boxes for each frame.
         iou_threshold : float
             The IoU threshold used to determine matches between ground truth and tracked boxes.
 
         Returns
         -------
-        List[float]:
+        list[float]:
             The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
         """
         mota_values = []
-        prev_frame_ids: Optional[List[List[int]]] = None
+        prev_frame_ids: Optional[list[list[int]]] = None
         # prev_frame_ids = None
         for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
             mota = evaluate_mota(
@@ -213,7 +213,7 @@ class DetectorInference:
         img = img.unsqueeze(0)
         return self.trained_model(img)
 
-    def update_tracking(self, prediction: dict) -> List[List[float]]:
+    def update_tracking(self, prediction: dict) -> list[list[float]]:
         """
         Update the tracking system with the latest prediction.
 
@@ -224,8 +224,8 @@ class DetectorInference:
 
         Returns
         -------
-        List[List[float]]:
-            List of tracked bounding boxes after updating the tracking system.
+        list[list[float]]:
+            list of tracked bounding boxes after updating the tracking system.
         """
         pred_sort = self.prep_sort(prediction)
         tracked_boxes = self.sort_tracker.update(pred_sort)
@@ -234,7 +234,7 @@ class DetectorInference:
 
     def save_required_output(
         self,
-        tracked_boxes: List[List[float]],
+        tracked_boxes: list[list[float]],
         frame: np.ndarray,
         frame_number: int,
     ) -> None:
@@ -243,8 +243,8 @@ class DetectorInference:
 
         Parameters
         ----------
-        tracked_boxes : List[List[float]]
-            List of tracked bounding boxes.
+        tracked_boxes : list[list[float]]
+            list of tracked bounding boxes.
         frame : np.ndarray
             The current frame.
         frame_number : int
