@@ -1,5 +1,5 @@
 import os
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 import cv2
 import matplotlib.pyplot as plt
@@ -17,8 +17,8 @@ COCO_INSTANCE_CATEGORY_NAMES = [
 
 def draw_bbox(
     frame: np.ndarray,
-    top_left: Tuple[float, float],
-    bottom_right: Tuple[float, float],
+    top_left: tuple[float, float],
+    bottom_right: tuple[float, float],
     colour: tuple,
     label_text: Optional[str] = None,
 ) -> None:
@@ -29,9 +29,9 @@ def draw_bbox(
     ----------
     frame : np.ndarray
         Image with bounding boxes drawn on it.
-    top_left : Tuple[int, int]
+    top_left : tuple[int, int]
         Tuple containing (x, y) coordinates of the top-left corner of the bounding box.
-    bottom_right : Tuple[int, int]
+    bottom_right : tuple[int, int]
         Tuple containing (x, y) coordinates of the bottom-right corner of the bounding box.
     colour : tuple
         Color of the bounding box in BGR format.
@@ -68,7 +68,7 @@ def draw_bbox(
 def draw_detection(
     imgs: list,
     annotations: dict,
-    detections: Optional[Dict[Any, Any]] = None,
+    detections: Optional[dict[Any, Any]] = None,
     score_threshold: Optional[float] = None,
 ) -> np.ndarray:
     """
@@ -150,16 +150,18 @@ def draw_detection(
 
 
 def save_images_with_boxes(
-    test_dataloader, trained_model, score_threshold, device
+    test_dataloader: torch.utils.data.DataLoader,
+    trained_model: torch.nn.Module,
+    score_threshold: float,
 ) -> None:
     """
     Save images with bounding boxes drawn around detected objects.
 
     Parameters
     ----------
-    test_dataloader :
+    test_dataloader : DataLoader
         DataLoader for the test dataset.
-    trained_model :
+    trained_model : torch.nn.Module
         The trained object detection model.
     score_threshold : float
         Threshold for object detection.
@@ -168,6 +170,14 @@ def save_images_with_boxes(
     ----------
         None
     """
+    device = (
+        torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
+    trained_model.eval()
+    directory = "results"
+    os.makedirs(directory, exist_ok=True)
     with torch.no_grad():
         imgs_id = 0
         for imgs, annotations in test_dataloader:
@@ -178,8 +188,6 @@ def save_images_with_boxes(
             image_with_boxes = draw_detection(
                 imgs, annotations, detections, score_threshold
             )
-            directory = "results"
-            os.makedirs(directory, exist_ok=True)
             cv2.imwrite(f"{directory}/imgs{imgs_id}.jpg", image_with_boxes)
 
 
