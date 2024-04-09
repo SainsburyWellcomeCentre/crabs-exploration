@@ -1,13 +1,15 @@
 num_epochs: 250
 learning_rate: 0.00005
 wdecay: 0.00005
-batch_size_train: 2
+batch_size_train: 4
 batch_size_test: 1
+batch_size_val: 1
 num_classes: 2
 save: True
-train_fraction: 0.0
+train_fraction: 0.8
 val_over_test_fraction: 0.5
-num_workers: 4
+iou_threshold: 0.1
+num_workers: 7
 transform_brightness: 0.5
 transform_hue: 0.3
 gaussian_blur_params:

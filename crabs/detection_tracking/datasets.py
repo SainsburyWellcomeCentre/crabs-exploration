@@ -17,15 +17,25 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         list_exclude_files: Optional[list[str]] = None,
     ):
         """
-        CocoDetection dataset wrapped for transforms_v2.
+        A class for concatenated CocoDetection datasets wrapped for
+        transforms_v2.
+
+        If a list of files to exclude from the dataset is passed,
+        a new annotation file is generated without the data to exclude.
+        This new annotation file is a temporary file that is passed to the
+        CocoDataset object and deleted once the dataset is created.
+
+        The resulting dataset is of type ConcatDataset. Each individual
+        dataset in the concatenated set is of type WrappedCocoDetection.
+
 
         Example usage:
         > dataset = CrabsCocoDetection([IMAGES_PATH], [ANNOTATIONS_PATH])
         > sample = dataset[0]
         > img, annotations = sample
-        > print(type(annotations))  # this is a dictionary
 
-        Should produce a dataset equivalent to one obtained with:
+        Each individual dataset in the concatenated set should be equivalent
+        to one obtained with:
         > dataset = wrap_dataset_for_transforms_v2(CocoDetection([IMAGES_PATH], [ANNOTATIONS_PATH]))
         """
 
@@ -34,20 +44,22 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         for img_dir, annotation_file in zip(
             list_img_dirs, list_annotation_files
         ):
-            if not list_exclude_files:
-                dataset_coco = CocoDetection(
-                    img_dir,
-                    annotation_file,
-                    transforms=transforms,
-                )
+            # create "default" COCO dataset
+            dataset_coco = CocoDetection(
+                img_dir,
+                annotation_file,
+                transforms=transforms,
+            )
 
-            else:
+            # If there are files to exclude in this dataset: overwrite
+            # "default" COCO dataset
+            if list_exclude_files:
                 # Check if this annotation file has images to exclude
                 coco_obj = COCO(annotation_file)
                 n_imgs_to_exclude = sum(
                     [
                         im["file_name"] in list_exclude_files
-                        for _, im in coco_obj.imgs.items()
+                        for im in coco_obj.dataset["images"]
                     ]
                 )
                 # If it does: create a tmp annotation file without those images
@@ -85,6 +97,9 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
 
         # Concatenate datasets
         full_dataset = torch.utils.data.ConcatDataset(list_datasets)
+
+        # Add list of excluded files
+        full_dataset.list_exclude_files = list_exclude_files
 
         # Update class for this instance
         self.__class__ = full_dataset.__class__

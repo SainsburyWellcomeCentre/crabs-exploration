@@ -93,6 +93,8 @@ class CrabsDataModule(LightningDataModule):
     ) -> tuple[CrabsCocoDetection, CrabsCocoDetection, CrabsCocoDetection]:
         """Compute train/test/validation splits.
 
+        NOTE: The same transforms are passed to all splits.
+
         The split is reproducible if the same seed is passed.
 
         The fraction of samples to use in the train set is defined by
@@ -150,27 +152,22 @@ class CrabsDataModule(LightningDataModule):
         """
         pass
 
-    def setup(self, stage=None):
-        """Setup the data for training or testing.
-
-        - Define transforms for data augmentation
-        - Define train/test/val datasets as required
-
-        Parameters
-        ----------
-        stage : str
-            Identifies whether to apply the setup for training (stage='fit')
-            or testing (stage='test').
+    def setup(self, stage: str):
+        """Setup the data for training, testing and validation.
+        Define the transforms for each split of the data and compute them.
         """
-
         # Assign transforms
+        # right now assuming validation and test get the same transforms
+        test_and_val_transform = self._get_test_val_transform()
         self.train_transform = self._get_train_transform()
-        self.test_transform = self._get_test_val_transform()
-        self.val_transform = self._get_test_val_transform()
-
+        self.test_transform = test_and_val_transform
+        self.val_transform = test_and_val_transform
+        
+        # Assign datasets
         self.train_dataset, _, _ = self._compute_splits(self.train_transform)
-        _, _, self.val_dataset = self._compute_splits(self.val_transform)
-        _, self.test_dataset, _ = self._compute_splits(self.test_transform)
+        _, self.test_dataset, self.val_dataset = self._compute_splits(
+            test_and_val_transform
+        )
 
     def train_dataloader(self) -> DataLoader:
         """Define dataloader for the training set"""
@@ -197,6 +194,9 @@ class CrabsDataModule(LightningDataModule):
             shuffle=False,
             num_workers=0,
             collate_fn=self._collate_fn,
+            persistent_workers=True
+            if self.config["num_workers"] > 0
+            else False,
         )
 
     def test_dataloader(self) -> DataLoader:
