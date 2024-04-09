@@ -154,6 +154,7 @@ class CrabsDataModule(LightningDataModule):
 
     def setup(self, stage: str):
         """Setup the data for training, testing and validation.
+
         Define the transforms for each split of the data and compute them.
         """
         # Assign transforms
@@ -162,7 +163,7 @@ class CrabsDataModule(LightningDataModule):
         self.train_transform = self._get_train_transform()
         self.test_transform = test_and_val_transform
         self.val_transform = test_and_val_transform
-        
+
         # Assign datasets
         self.train_dataset, _, _ = self._compute_splits(self.train_transform)
         _, self.test_dataset, self.val_dataset = self._compute_splits(
@@ -192,7 +193,7 @@ class CrabsDataModule(LightningDataModule):
             self.val_dataset,
             batch_size=self.config["batch_size_val"],
             shuffle=False,
-            num_workers=0,
+            num_workers=self.config["num_workers"],
             collate_fn=self._collate_fn,
             persistent_workers=True
             if self.config["num_workers"] > 0

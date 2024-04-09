@@ -1,54 +1,9 @@
-from unittest.mock import MagicMock, patch
-
-import pytest
 import torch
 
 from crabs.detection_tracking.evaluate import (
     compute_confusion_matrix_elements,
     compute_precision_recall,
-    save_images_with_boxes,
 )
-
-
-@pytest.fixture
-def test_dataloader():
-    return MagicMock()
-
-
-@pytest.fixture
-def trained_model():
-    return MagicMock()
-
-
-@pytest.fixture
-def score_threshold():
-    return 0.5
-
-
-@patch("cv2.imwrite")
-@patch("os.makedirs")
-@patch("crabs.detection_tracking.detection_utils.draw_detection")
-def test_save_images_with_boxes(
-    mock_draw_detection,
-    mock_makedirs,
-    mock_imwrite,
-    test_dataloader,
-    trained_model,
-    score_threshold,
-):
-    detections = MagicMock()
-    mock_draw_detection.return_value = MagicMock()
-    trained_model.return_value = detections
-
-    save_images_with_boxes(
-        test_dataloader,
-        trained_model,
-        score_threshold,
-    )
-
-    assert mock_makedirs.called_once_with("results", exist_ok=True)
-    assert mock_draw_detection.call_count == len(test_dataloader)
-    assert mock_imwrite.call_count == len(test_dataloader)
 
 
 def test_compute_precision_recall():

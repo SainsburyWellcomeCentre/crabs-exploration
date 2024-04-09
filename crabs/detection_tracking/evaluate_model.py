@@ -87,7 +87,6 @@ class DetectorEvaluation:
             accelerator=self.args.accelerator,
             logger=mlf_logger,
         )
-        data_module.setup("test")
 
         # run test
         trained_model = FasterRCNN(self.config)
@@ -189,7 +188,7 @@ def evaluate_parse_args(args):
     )
     return parser.parse_args(args)
 
-  
+
 if __name__ == "__main__":
     args = evaluate_parse_args(sys.argv[1:])
     main(args)

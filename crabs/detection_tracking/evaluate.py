@@ -1,4 +1,5 @@
 import logging
+
 import torchvision
 
 logging.basicConfig(level=logging.INFO)
@@ -56,7 +57,6 @@ def compute_confusion_matrix_elements(
         pred_labels = detection["labels"]
 
         ious = torchvision.ops.box_iou(pred_boxes, gt_boxes)
-        print(ious)
 
         max_ious, max_indices = ious.max(dim=1)
 
