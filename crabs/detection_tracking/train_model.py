@@ -59,7 +59,10 @@ class DectectorTrain:
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
-    def setup_mlflow_logger(self):
+    def setup_mlflow_logger(self) -> MLFlowLogger:
+        """
+        Setup MLflow logger for training.
+        """
         # Set run_name
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = f"run_{timestamp}"
@@ -81,6 +84,9 @@ class DectectorTrain:
         return mlf_logger
 
     def setup_trainer(self):
+        """
+        Setup trainer with logging and checkpointing.
+        """
         # Get MLflow logger
         mlf_logger = self.setup_mlflow_logger()
 
