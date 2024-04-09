@@ -98,8 +98,6 @@ class FasterRCNN(LightningModule):
 
         getattr(self, f"{dataset_str}_step_outputs")["num_batches"] += 1
 
-        return
-
     def compute_precision_recall_epoch(
         self, step_outputs: dict[str, Union[float, int]], log_str: str
     ) -> dict[str, Union[float, int]]:
