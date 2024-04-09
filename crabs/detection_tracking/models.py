@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 import torch
 from lightning import LightningModule
@@ -80,18 +80,25 @@ class FasterRCNN(LightningModule):
         """
         return self.model(x)
 
-    def accumulate_metrics(
+    def accumulate_epoch_metrics(
         self,
-        outputs: List[Dict[str, Union[float, int]]],
-        step_outputs: Dict[str, Union[float, int]],
+        batch_output: dict,
+        dataset_str: str,
     ) -> None:
         """
-        Accumulates precision and recall metrics from model outputs.
+        Accumulates precision and recall metrics per epoch.
         """
-        for output in outputs:
-            step_outputs["precision_epoch"] += output["precision"]
-            step_outputs["recall_epoch"] += output["recall"]
-            step_outputs["num_batches"] += 1
+        getattr(self, f"{dataset_str}_step_outputs")[
+            "precision_epoch"
+        ] += batch_output["precision"]
+
+        getattr(self, f"{dataset_str}_step_outputs")[
+            "recall_epoch"
+        ] += batch_output["recall"]
+
+        getattr(self, f"{dataset_str}_step_outputs")["num_batches"] += 1
+
+        return
 
     def compute_precision_recall_epoch(
         self, step_outputs: Dict[str, Union[float, int]], log_str: str
@@ -191,7 +198,7 @@ class FasterRCNN(LightningModule):
         Defines the validation step for the model.
         """
         outputs = self.val_test_step(batch)
-        self.accumulate_metrics([outputs], self.validation_step_outputs)
+        self.accumulate_epoch_metrics(outputs, "validation")
         return outputs
 
     def test_step(
@@ -201,7 +208,7 @@ class FasterRCNN(LightningModule):
         Defines the test step for the model.
         """
         outputs = self.val_test_step(batch)
-        self.accumulate_metrics([outputs], self.test_step_outputs)
+        self.accumulate_epoch_metrics(outputs, "test")
         return outputs
 
     def configure_optimizers(self) -> Dict[str, torch.optim.Optimizer]:
