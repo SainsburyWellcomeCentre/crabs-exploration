@@ -98,8 +98,6 @@ def compute_confusion_matrix_elements(
     """
     class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
     for target, detection in zip(targets, detections):
-        print(target)
-        print(detection)
         gt_boxes = target["boxes"]
         pred_boxes = detection["boxes"]
         pred_labels = detection["labels"]

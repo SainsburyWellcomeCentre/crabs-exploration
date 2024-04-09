@@ -123,7 +123,6 @@ class CrabsDataModule(LightningDataModule):
                 "exclude_video_file_list"
             ),  # get value only if key exists
         )
-        print(len(full_dataset))
 
         # Split data into train and test-val sets
         # TODO: split based on video
@@ -132,7 +131,6 @@ class CrabsDataModule(LightningDataModule):
             [self.config["train_fraction"], 1 - self.config["train_fraction"]],
             generator=generator,
         )
-        print(train_dataset)
 
         # Split test/val sets from the remainder
         test_dataset, val_dataset = random_split(

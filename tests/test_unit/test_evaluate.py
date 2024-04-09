@@ -4,10 +4,9 @@ import pytest
 import torch
 
 from crabs.detection_tracking.evaluate import (
+    compute_confusion_matrix_elements,
     compute_precision_recall,
     save_images_with_boxes,
-    compute_precision_recall,
-    compute_confusion_matrix_elements
 )
 
 
@@ -42,7 +41,9 @@ def test_save_images_with_boxes(
     trained_model.return_value = detections
 
     save_images_with_boxes(
-        test_dataloader, trained_model, score_threshold,
+        test_dataloader,
+        trained_model,
+        score_threshold,
     )
 
     assert mock_makedirs.called_once_with("results", exist_ok=True)
@@ -51,9 +52,7 @@ def test_save_images_with_boxes(
 
 
 def test_compute_precision_recall():
-    class_stats = {
-        'crab': {'tp': 10, 'fp': 2, 'fn': 1}
-    }
+    class_stats = {"crab": {"tp": 10, "fp": 2, "fn": 1}}
 
     precision, recall, _ = compute_precision_recall(class_stats)
 
@@ -62,9 +61,7 @@ def test_compute_precision_recall():
 
 
 def test_compute_precision_recall_zero_division():
-    class_stats = {
-        "crab": {"tp": 0, "fp": 0, "fn": 0}
-    }
+    class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
 
     precision, recall, _ = compute_precision_recall(class_stats)
 
@@ -74,12 +71,35 @@ def test_compute_precision_recall_zero_division():
 
 
 def test_compute_confusion_matrix_elements():
-    targets = [{"boxes": torch.tensor([[192,  699,  227,  724], [329, 1, 371, 31], [49, 562, 83, 611]]), "labels": [1, 1, 1]}]
-    detections = [{"boxes": torch.tensor([[192,  699,  227,  724], [329, 1, 371, 31]]), "labels": [1, 1]}]
+    targets = [
+        {
+            "image_id": 1,
+            "boxes": torch.tensor(
+                [[27, 11, 63, 33], [87, 4, 118, 23], [154, 152, 192, 164]]
+            ),
+            "labels": torch.tensor([1, 1, 1]),
+        }
+    ]
+    detections = [
+        {
+            "boxes": torch.tensor([[27, 11, 63, 33], [90, 4, 200, 23]]),
+            "labels": torch.tensor(
+                [
+                    1,
+                    1,
+                ]
+            ),
+            "scores": torch.tensor([0.5083, 0.4805]),
+        }
+    ]
     ious_threshold = 0.5
 
-    precision, recall, class_stats = compute_confusion_matrix_elements(targets, detections, ious_threshold)
+    precision, recall, class_stats = compute_confusion_matrix_elements(
+        targets, detections, ious_threshold
+    )
 
-    assert precision == 0
-    assert recall == 1
-    assert class_stats == 2
+    assert precision == 0.5
+    assert recall == 1 / 3
+    assert class_stats["crab"]["tp"] == 1
+    assert class_stats["crab"]["fp"] == 1
+    assert class_stats["crab"]["fn"] == 2
