@@ -138,7 +138,7 @@ def train_parse_args(args):
         default=[],
         help=(
             "list of paths to annotation files. The full path or the filename can be provided. "
-            "If only filename is provided, it is assumed to be under dataset/annotations.",
+            "If only filename is provided, it is assumed to be under dataset/annotations."
         ),
     )
     parser.add_argument(
@@ -180,6 +180,7 @@ def train_parse_args(args):
             "By default 1.0 (all the training set)"
         ),
     )
+
     return parser.parse_args(args)
 
 
