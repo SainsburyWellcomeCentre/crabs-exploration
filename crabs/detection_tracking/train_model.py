@@ -99,7 +99,7 @@ class DectectorTrain:
                 save_top_k=config["keep_last_n_ckpts"],
                 monitor="epoch",  # monitor the metric "epoch" for selecting which checkpoints to save
                 mode="max",  # get the max of the monitored metric
-                save_last=False,
+                save_last=config["save_last"],
                 save_weights_only=config["save_weights_only"],
             )
             enable_checkpointing = True
