@@ -2,7 +2,7 @@ import argparse
 import csv
 import os
 from pathlib import Path
-from typing import Any, List, Optional, TextIO, Tuple
+from typing import Any, Optional, TextIO, Tuple
 
 import cv2
 import numpy as np
@@ -158,7 +158,7 @@ class DetectorInference:
         gt_boxes_list: list,
         tracked_boxes_list: list,
         iou_threshold: float,
-    ) -> List[float]:
+    ) -> list[float]:
         """
         Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
 
@@ -213,7 +213,7 @@ class DetectorInference:
         img = img.unsqueeze(0)
         return self.trained_model(img)
 
-    def update_tracking(self, prediction: dict) -> List[List[float]]:
+    def update_tracking(self, prediction: dict) -> list[list[float]]:
         """
         Update the tracking system with the latest prediction.
 
@@ -224,8 +224,8 @@ class DetectorInference:
 
         Returns
         -------
-        List[List[float]]:
-            List of tracked bounding boxes after updating the tracking system.
+        list[list[float]]:
+            list of tracked bounding boxes after updating the tracking system.
         """
         pred_sort = self.prep_sort(prediction)
         tracked_boxes = self.sort_tracker.update(pred_sort)
@@ -234,7 +234,7 @@ class DetectorInference:
 
     def save_required_output(
         self,
-        tracked_boxes: List[List[float]],
+        tracked_boxes: list[list[float]],
         frame: np.ndarray,
         frame_number: int,
     ) -> None:
@@ -243,8 +243,8 @@ class DetectorInference:
 
         Parameters
         ----------
-        tracked_boxes : List[List[float]]
-            List of tracked bounding boxes.
+        tracked_boxes : list[list[float]]
+            list of tracked bounding boxes.
         frame : np.ndarray
             The current frame.
         frame_number : int

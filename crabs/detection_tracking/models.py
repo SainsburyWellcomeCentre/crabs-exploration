@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 import torch
 from lightning import LightningModule
@@ -82,7 +82,7 @@ class FasterRCNN(LightningModule):
 
     def accumulate_metrics(
         self,
-        outputs: List[Dict[str, Union[float, int]]],
+        outputs: list[Dict[str, Union[float, int]]],
         step_outputs: Dict[str, Union[float, int]],
     ) -> None:
         """

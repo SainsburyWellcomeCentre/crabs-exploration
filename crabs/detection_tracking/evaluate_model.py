@@ -29,10 +29,10 @@ class DetectorEvaluation:
         Command-line arguments containing configuration settings.
     config_file : str
         Path to the directory containing configuration file.
-    images_dirs : List[str]
-        List of paths to the image directories of the datasets.
-    annotation_files : List[str]
-        List of filenames for the COCO annotations.
+    images_dirs : list[str]
+        list of paths to the image directories of the datasets.
+    annotation_files : list[str]
+        list of filenames for the COCO annotations.
     score_threshold : float
         The score threshold for confidence detection.
     ious_threshold : float
