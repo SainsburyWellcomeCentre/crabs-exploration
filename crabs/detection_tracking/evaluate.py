@@ -1,57 +1,11 @@
 import logging
-import os
-from typing import Tuple
 
-import cv2
-import torch
 import torchvision
-
-from crabs.detection_tracking.detection_utils import draw_detection
 
 logging.basicConfig(level=logging.INFO)
 
 
-def save_images_with_boxes(
-    test_dataloader, trained_model, score_threshold
-) -> None:
-    """
-    Save images with bounding boxes drawn around detected objects.
-
-    Parameters
-    ----------
-    test_dataloader :
-        DataLoader for the test dataset.
-    trained_model :
-        The trained object detection model.
-    score_threshold : float
-        Threshold for object detection.
-
-    Returns
-    ----------
-        None
-    """
-    device = (
-        torch.device("cuda")
-        if torch.cuda.is_available()
-        else torch.device("cpu")
-    )
-    trained_model.eval()
-    directory = "results"
-    os.makedirs(directory, exist_ok=True)
-    with torch.no_grad():
-        imgs_id = 0
-        for imgs, annotations in test_dataloader:
-            imgs_id += 1
-            imgs = list(img.to(device) for img in imgs)
-            detections = trained_model(imgs)
-
-            image_with_boxes = draw_detection(
-                imgs, annotations, detections, score_threshold
-            )
-            cv2.imwrite(f"{directory}/imgs{imgs_id}.jpg", image_with_boxes)
-
-
-def compute_precision_recall(class_stats) -> Tuple[float, float, dict]:
+def compute_precision_recall(class_stats) -> tuple[float, float, dict]:
     """
     Compute precision and recall.
 
@@ -74,7 +28,7 @@ def compute_precision_recall(class_stats) -> Tuple[float, float, dict]:
 
 def compute_confusion_matrix_elements(
     targets, detections, ious_threshold
-) -> Tuple[float, float, dict]:
+) -> tuple[float, float, dict]:
     """
     Compute metrics (true positive, false positive, false negative) for object detection.
 

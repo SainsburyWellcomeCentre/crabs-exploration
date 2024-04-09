@@ -13,10 +13,8 @@ from crabs.detection_tracking.detection_utils import (
     prep_annotation_files,
     prep_img_directories,
 )
-from crabs.detection_tracking.evaluate import (
-    save_images_with_boxes,
-)
 from crabs.detection_tracking.models import FasterRCNN
+from crabs.detection_tracking.visualization import save_images_with_boxes
 
 
 class DetectorEvaluation:
