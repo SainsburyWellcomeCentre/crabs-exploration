@@ -12,7 +12,6 @@ from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
     prep_annotation_files,
     prep_img_directories,
-    save_model,
 )
 from crabs.detection_tracking.models import FasterRCNN
 
