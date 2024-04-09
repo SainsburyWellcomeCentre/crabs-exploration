@@ -164,20 +164,20 @@ class DetectorInference:
 
         Parameters
         ----------
-        gt_boxes_list : List[List[float]]
+        gt_boxes_list : list[list[float]]
             List of ground truth bounding boxes for each frame.
-        tracked_boxes_list : List[List[float]]
+        tracked_boxes_list : list[list[float]]
             List of tracked bounding boxes for each frame.
         iou_threshold : float
             The IoU threshold used to determine matches between ground truth and tracked boxes.
 
         Returns
         -------
-        List[float]:
+        list[float]:
             The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
         """
         mota_values = []
-        prev_frame_ids: Optional[List[List[int]]] = None
+        prev_frame_ids: Optional[list[list[int]]] = None
         # prev_frame_ids = None
         for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
             mota = evaluate_mota(
