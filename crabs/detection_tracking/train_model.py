@@ -111,7 +111,7 @@ def main(args) -> None:
         An object containing the parsed command-line arguments.
 
     Returns
-    ----------
+    -------
     None
     """
     trainer = DectectorTrain(args)
@@ -136,7 +136,10 @@ def train_parse_args(args):
         "--annotation_files",
         nargs="+",
         default=[],
-        help="list of paths to annotation files. The full path or the filename can be provided. If only filename is provided, it is assumed to be under dataset/annotations.",
+        help=(
+            "list of paths to annotation files. The full path or the filename can be provided. "
+            "If only filename is provided, it is assumed to be under dataset/annotations.",
+        ),
     )
     parser.add_argument(
         "--accelerator",

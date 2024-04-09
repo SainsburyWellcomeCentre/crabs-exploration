@@ -1,9 +1,12 @@
 import logging
+from typing import Any, Dict, List, Tuple, Union
 
 import torch
-import torchvision
 from lightning import LightningModule
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
+from torchvision.models.detection import (
+    faster_rcnn,
+    fasterrcnn_resnet50_fpn_v2,
+)
 
 from crabs.detection_tracking.evaluate import compute_confusion_matrix_elements
 
@@ -11,134 +14,169 @@ from crabs.detection_tracking.evaluate import compute_confusion_matrix_elements
 class FasterRCNN(LightningModule):
     """
     LightningModule implementation of Faster R-CNN for object detection.
-    Parameters:
-    -----------
+
+    Parameters
+    ----------
     config : dict
         Configuration settings for the model.
-    Methods:
-    --------
+
+    Methods
+    -------
     forward(x):
         Forward pass of the model.
     training_step(batch, batch_idx):
         Defines the training step for the model.
     configure_optimizers():
         Configures the optimizer for training.
-    Attributes:
-    -----------
+
+    Attributes
+    ----------
     config : dict
         Configuration settings for the model.
     model : torch.nn.Module
         Faster R-CNN model.
+    training_step_outputs : dict
+        Dictionary to store training metrics.
+    validation_step_outputs : dict
+        Dictionary to store validation metrics.
+    test_step_outputs : dict
+        Dictionary to store test metrics.
     """
 
-    def __init__(self, config):
+    def __init__(self, config: Dict[str, Any]):
         super().__init__()
         self.config = config
         self.model = self.configure_model()
         self.training_step_outputs = {
-            "total_training_loss": 0.0,
+            "training_loss_epoch": 0.0,
             "num_batches": 0,
         }
         self.validation_step_outputs = {
-            "total_precision": 0.0,
-            "total_recall": 0.0,
+            "precision_epoch": 0.0,
+            "recall_epoch": 0.0,
             "num_batches": 0,
         }
         self.test_step_outputs = {
-            "total_precision": 0.0,
-            "total_recall": 0.0,
+            "precision_epoch": 0.0,
+            "recall_epoch": 0.0,
             "num_batches": 0,
         }
 
-    def configure_model(self):
-        model = torchvision.models.detection.fasterrcnn_resnet50_fpn_v2(
-            weights=torchvision.models.detection.FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
-        )
+    def configure_model(self) -> torch.nn.Module:
+        """
+        Configures the Faster R-CNN model with default weights, 
+        specified backbone, and box predictor.
+        """
+        model = fasterrcnn_resnet50_fpn_v2(weights="DEFAULT")
         in_features = model.roi_heads.box_predictor.cls_score.in_features
-        model.roi_heads.box_predictor = FastRCNNPredictor(
+        model.roi_heads.box_predictor = faster_rcnn.FastRCNNPredictor(
             in_features, self.config["num_classes"]
         )
         return model
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass of the model.
+        """
         return self.model(x)
 
-    def accumulate_metrics(self, outputs, step_outputs):
+    def accumulate_metrics(
+        self,
+        outputs: List[Dict[str, Union[float, int]]],
+        step_outputs: Dict[str, Union[float, int]],
+    ) -> None:
+        """
+        Accumulates precision and recall metrics from model outputs.
+        """
         for output in outputs:
-            step_outputs["total_precision"] += output["precision"]
-            step_outputs["total_recall"] += output["recall"]
+            step_outputs["precision_epoch"] += output["precision"]
+            step_outputs["recall_epoch"] += output["recall"]
             step_outputs["num_batches"] += 1
 
-    def on_train_epoch_end(self):
+    def compute_precision_recall_epoch(
+        self, step_outputs: Dict[str, Union[float, int]], log_str: str
+    ) -> Dict[str, Union[float, int]]:
+        """
+        Computes and logs mean precision and recall for the current epoch.
+        """
+        mean_precision = (
+            step_outputs["precision_epoch"] / step_outputs["num_batches"]
+        )
+        mean_recall = (
+            step_outputs["recall_epoch"] / step_outputs["num_batches"]
+        )
+
+        self.logger.log_metrics(
+            {f"{log_str}_precision": mean_precision}, step=self.current_epoch
+        )
+        self.logger.log_metrics(
+            {f"{log_str}_recall": mean_recall}, step=self.current_epoch
+        )
+        logging.info(
+            f"Average Precision ({log_str}): {mean_precision:.4f},"
+            f"Average Recall ({log_str}): {mean_recall:.4f}"
+        )
+
+        # Reset metrics for next epoch
+        step_outputs = {
+            "precision_epoch": 0.0,
+            "recall_epoch": 0.0,
+            "num_batches": 0,
+        }
+
+        return step_outputs
+
+    def on_train_epoch_end(self) -> None:
+        """
+        Hook called after each training epoch to perform tasks such as logging and resetting metrics.
+        """
         avg_loss = (
-            self.training_step_outputs["total_training_loss"]
+            self.training_step_outputs["training_loss_epoch"]
             / self.training_step_outputs["num_batches"]
         )
         self.logger.log_metrics(
             {"train_loss": avg_loss}, step=self.current_epoch
         )
         self.training_step_outputs = {
-            "total_training_loss": 0.0,
+            "training_loss_epoch": 0.0,
             "num_batches": 0,
         }
 
-    def on_validation_epoch_end(self):
-        mean_precision = (
-            self.validation_step_outputs["total_precision"]
-            / self.validation_step_outputs["num_batches"]
+    def on_validation_epoch_end(self) -> None:
+        """
+        Hook called after each validation epoch to compute metrics and logging.
+        """
+        self.validation_step_outputs = self.compute_precision_recall_epoch(
+            self.validation_step_outputs, "val"
         )
-        mean_recall = (
-            self.validation_step_outputs["total_recall"]
-            / self.validation_step_outputs["num_batches"]
-        )
-        logging.info(
-            f"Average Precision: {mean_precision:.4f}, Average Recall: {mean_recall:.4f}"
-        )
-        self.logger.log_metrics(
-            {"val_precision": mean_precision}, step=self.current_epoch
-        )
-        self.logger.log_metrics(
-            {"val_recall": mean_recall}, step=self.current_epoch
-        )
-        self.validation_step_outputs = {
-            "total_precision": 0.0,
-            "total_recall": 0.0,
-            "num_batches": 0,
-        }
 
-    def on_test_epoch_end(self):
-        mean_precision = (
-            self.test_step_outputs["total_precision"]
-            / self.test_step_outputs["num_batches"]
+    def on_test_epoch_end(self) -> None:
+        """
+        Hook called after each testing epoch to compute metrics and logging.
+        """
+        self.test_step_outputs = self.compute_precision_recall_epoch(
+            self.test_step_outputs, "test"
         )
-        mean_recall = (
-            self.test_step_outputs["total_recall"]
-            / self.test_step_outputs["num_batches"]
-        )
-        logging.info(
-            f"Average Precision: {mean_precision:.4f}, Average Recall: {mean_recall:.4f}"
-        )
-        self.logger.log_metrics(
-            {"test_avg_precision": mean_precision}, step=self.current_epoch
-        )
-        self.logger.log_metrics(
-            {"test_avg_recall": mean_recall}, step=self.current_epoch
-        )
-        self.test_step_outputs = {
-            "total_precision": 0.0,
-            "total_recall": 0.0,
-            "num_batches": 0,
-        }
 
-    def training_step(self, batch, batch_idx):
+    def training_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
+        """
+        Defines the training step for the model.
+        """
         images, targets = batch
         loss_dict = self.model(images, targets)
         total_loss = sum(loss for loss in loss_dict.values())
-        self.training_step_outputs["total_training_loss"] += total_loss.item()
+        self.training_step_outputs["training_loss_epoch"] += total_loss.item()
         self.training_step_outputs["num_batches"] += 1
         return total_loss
 
-    def shared_step(self, batch):
+    def val_test_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor]
+    ) -> Dict[str, Union[float, int]]:
+        """
+        Performs inference on a validation or test batch and computes precision and recall.
+        """
         images, targets = batch
         predictions = self.model(images)
         precision, recall, _ = compute_confusion_matrix_elements(
@@ -146,17 +184,30 @@ class FasterRCNN(LightningModule):
         )
         return {"precision": precision, "recall": recall}
 
-    def validation_step(self, batch, batch_idx):
-        outputs = self.shared_step(batch)
+    def validation_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> Dict[str, Union[float, int]]:
+        """
+        Defines the validation step for the model.
+        """
+        outputs = self.val_test_step(batch)
         self.accumulate_metrics([outputs], self.validation_step_outputs)
         return outputs
 
-    def test_step(self, batch, batch_idx):
-        outputs = self.shared_step(batch)
+    def test_step(
+        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> Dict[str, Union[float, int]]:
+        """
+        Defines the test step for the model.
+        """
+        outputs = self.val_test_step(batch)
         self.accumulate_metrics([outputs], self.test_step_outputs)
         return outputs
 
-    def configure_optimizers(self):
+    def configure_optimizers(self) -> Dict[str, torch.optim.Optimizer]:
+        """
+        Configures the optimizer for training.
+        """
         optimizer = torch.optim.Adam(
             self.parameters(),
             lr=self.config["learning_rate"],
