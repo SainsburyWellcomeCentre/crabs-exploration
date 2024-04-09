@@ -64,7 +64,7 @@ class FasterRCNN(LightningModule):
 
     def configure_model(self) -> torch.nn.Module:
         """
-        Configures the Faster R-CNN model with default weights, 
+        Configures the Faster R-CNN model with default weights,
         specified backbone, and box predictor.
         """
         model = fasterrcnn_resnet50_fpn_v2(weights="DEFAULT")

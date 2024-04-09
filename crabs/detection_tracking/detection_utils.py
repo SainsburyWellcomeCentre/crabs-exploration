@@ -1,7 +1,7 @@
 import datetime
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -26,7 +26,21 @@ def coco_category():
     return COCO_INSTANCE_CATEGORY_NAMES
 
 
-def prep_img_directories(dataset_dirs: list[str]):
+def prep_img_directories(dataset_dirs: List[str]) -> List[str]:
+    """
+    Derive list of input image directories from a list of dataset directories.
+    We assume a specific structure for the dataset directories.
+
+    Parameters:
+    -----------
+    dataset_dirs : List[str]
+        List of directories containing dataset folders.
+
+    Returns:
+    --------
+    List[str]:
+        List of directories containing image frames.
+    """
     images_dirs = []
     for dataset in dataset_dirs:
         images_dirs.append(str(Path(dataset) / "frames"))
@@ -34,8 +48,23 @@ def prep_img_directories(dataset_dirs: list[str]):
 
 
 def prep_annotation_files(
-    input_annotation_files: list[str], dataset_dirs: list[str]
-):
+    input_annotation_files: List[str], dataset_dirs: List[str]
+) -> List[str]:
+    """
+    Prepares annotation files for processing.
+
+    Parameters:
+    -----------
+    input_annotation_files : List[str]
+        List of annotation files or filenames.
+    dataset_dirs : List[str]
+        List of directories containing dataset folders.
+
+    Returns:
+    --------
+    List[str]:
+        List of annotation file paths.
+    """
     # prepare list of annotation files
     annotation_files = []
 
