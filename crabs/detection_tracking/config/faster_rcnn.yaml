@@ -1,15 +1,19 @@
-num_epochs: 250
+num_epochs: 4
 learning_rate: 0.00005
 wdecay: 0.00005
 batch_size_train: 4
 batch_size_test: 1
 batch_size_val: 1
 num_classes: 2
-save: True
 train_fraction: 0.8
-val_over_test_fraction: 0.5
+val_over_test_fraction: 0
+checkpoint_saving:
+  every_n_epochs: 1
+  keep_last_n_ckpts: 2
+  save_weights_only: True
+  copy_as_mlflow_artifacts: True # if True will copy checkpoints to artifacts directory.
 iou_threshold: 0.1
-num_workers: 7
+num_workers: 0
 transform_brightness: 0.5
 transform_hue: 0.3
 gaussian_blur_params:
@@ -19,5 +23,3 @@ gaussian_blur_params:
   sigma:
     - 0.1
     - 5.0
-exclude_video_file_list:
-  - "06.09.2023-03-Right_RE_frame_181451.png"
