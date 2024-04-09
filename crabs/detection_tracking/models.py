@@ -47,6 +47,10 @@ class FasterRCNN(LightningModule):
         super().__init__()
         self.config = config
         self.model = self.configure_model()
+
+        self.save_hyperparameters()  # saves config to lightning_logs/version_n/hparams.yaml
+
+        # metrics to log
         self.training_step_outputs = {
             "training_loss_epoch": 0.0,
             "num_batches": 0,
@@ -151,6 +155,7 @@ class FasterRCNN(LightningModule):
         """
         Hook called after each validation epoch to compute metrics and logging.
         """
+        # Compute eval metrics for epoch and reset
         self.validation_step_outputs = self.compute_precision_recall_epoch(
             self.validation_step_outputs, "val"
         )
@@ -184,6 +189,8 @@ class FasterRCNN(LightningModule):
         """
         images, targets = batch
         predictions = self.model(images)
+        # loss_dict = self.model(images, targets)
+
         precision, recall, _ = compute_confusion_matrix_elements(
             targets, predictions, self.config["iou_threshold"]
         )

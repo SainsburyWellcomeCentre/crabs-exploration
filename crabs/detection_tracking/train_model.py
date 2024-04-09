@@ -6,6 +6,7 @@ from pathlib import Path
 import lightning
 import torch
 import yaml  # type: ignore
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
@@ -67,38 +68,53 @@ class DectectorTrain:
             self.seed_n,
         )
 
+        # Initialise MLflow logger
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = f"run_{timestamp}"
 
-        # Initialise MLflow logger
         mlf_logger = MLFlowLogger(
-            run_name=run_name,
             experiment_name=self.experiment_name,
+            run_name=run_name,
             tracking_uri="file:./ml-runs",
+            log_model=True,  # Log checkpoints created by ModelCheckpoint as MLFlow artifacts. If True, saved at the end of training ------------
         )
 
-        mlf_logger.log_hyperparams(self.config)
-        mlf_logger.log_hyperparams({"split_seed": self.seed_n})
+        # mlf_logger.log_hyperparams(self.config) --- via save_parameters instead?
+        # mlf_logger.log_hyperparams({"split_seed": self.seed_n}) ---- can I still filter easily MLflow logs without this?
         mlf_logger.log_hyperparams({"cli_args": self.args})
 
+        # Instantiate model
         lightning_model = FasterRCNN(self.config)
 
-        trainer = lightning.Trainer(
+        # Define checkpointing behaviour
+        checkpoint_callback = ModelCheckpoint(
+            # dirpath="./callbacks/models",  #------- can I get this from logger?,
+            # if None uses the trainer default_root_dir ---> will save checkpoints under lighting_logs/version_n/checkpoints
+            # if I pass a logger --> creates a checkpoints folder for that run
+            filename="checkpoint-{epoch}",
+            every_n_epochs=1,  # save ever n epoch, by default keeps only last
+            save_top_k=2,  # save the top k with the largest monitored metric below
+            monitor="epoch",  # monitor the metric epoch for saving
+            mode="max",  # get the max of the monitored metric
+            save_last=True,
+        )
+
+        # Instantiate trainer
+        trainer = lightning.Trainer(  # default path Default: os.getcwd(). ---> will save checkpoints under lighting_logs/version_n/checkpoints
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
             logger=mlf_logger,
             enable_checkpointing=True,
+            callbacks=[
+                checkpoint_callback
+            ],  # --------------------------------
+            default_root_dir="/Users/sofia/arc/project_Zoo_crabs/restructure/crabs-exploration/",
             fast_dev_run=self.fast_dev_run,
             limit_train_batches=self.limit_train_batches,
         )
 
         # Run training
         trainer.fit(lightning_model, data_module)
-
-        # Save model if required
-        # if self.config["save"]:
-        #     model_filename = save_model(lightning_model)
-        #     mlf_logger.log_hyperparams({"model_filename": model_filename})
 
 
 def main(args) -> None:
