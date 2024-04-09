@@ -2,7 +2,7 @@ import csv
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import cv2
 import numpy as np
@@ -50,17 +50,17 @@ def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
 
 
 def count_identity_switches(
-    prev_frame_ids: Optional[List[List[int]]],
-    current_frame_ids: Optional[List[List[int]]],
+    prev_frame_ids: Optional[list[list[int]]],
+    current_frame_ids: Optional[list[list[int]]],
 ) -> int:
     """
     Count the number of identity switches between two sets of object IDs.
 
     Parameters
     ----------
-    prev_frame_ids : Optional[List[List[int]]]
+    prev_frame_ids : Optional[list[list[int]]]
         List of object IDs in the previous frame.
-    current_frame_ids : Optional[List[List[int]]]
+    current_frame_ids : Optional[list[list[int]]]
         List of object IDs in the current frame.
 
     Returns
@@ -88,7 +88,7 @@ def evaluate_mota(
     gt_boxes: np.ndarray,
     tracked_boxes: np.ndarray,
     iou_threshold: float,
-    prev_frame_ids: Optional[List[List[int]]],
+    prev_frame_ids: Optional[list[list[int]]],
 ) -> float:
     """
     Evaluate MOTA (Multiple Object Tracking Accuracy).
@@ -103,7 +103,7 @@ def evaluate_mota(
         Tracked bounding boxes of objects.
     iou_threshold : float
         Intersection over Union (IoU) threshold for considering a match.
-    prev_frame_ids : Optional[List[List[int]]]
+    prev_frame_ids : Optional[list[list[int]]]
         IDs from the previous frame for identity switch detection.
 
     Returns
@@ -158,13 +158,13 @@ def evaluate_mota(
     return mota
 
 
-def extract_bounding_box_info(row: List[str]) -> Dict[str, Any]:
+def extract_bounding_box_info(row: list[str]) -> Dict[str, Any]:
     """
     Extracts bounding box information from a row of data.
 
     Parameters
     ----------
-    row : List[str]
+    row : list[str]
         A list representing a row of data containing information about a bounding box.
 
     Returns
@@ -194,21 +194,21 @@ def extract_bounding_box_info(row: List[str]) -> Dict[str, Any]:
 
 
 def create_gt_list(
-    ground_truth_data: List[Dict[str, Any]], gt_boxes_list: List[np.ndarray]
-) -> List[np.ndarray]:
+    ground_truth_data: list[Dict[str, Any]], gt_boxes_list: list[np.ndarray]
+) -> list[np.ndarray]:
     """
     Creates a list of ground truth bounding boxes organized by frame number.
 
     Parameters
     ----------
-    ground_truth_data : List[Dict[str, Any]]
+    ground_truth_data : list[Dict[str, Any]]
         A list containing ground truth bounding box data organized by frame number.
-    gt_boxes_list : List[np.ndarray]
+    gt_boxes_list : list[np.ndarray]
         A list to store the ground truth bounding boxes for each frame.
 
     Returns
     -------
-    List[np.ndarray]:
+    list[np.ndarray]:
         A list containing ground truth bounding boxes organized by frame number.
     """
     for data in ground_truth_data:
@@ -234,7 +234,7 @@ def create_gt_list(
     return gt_boxes_list
 
 
-def get_ground_truth_data(gt_dir: str) -> List[np.ndarray]:
+def get_ground_truth_data(gt_dir: str) -> list[np.ndarray]:
     """
     Extract ground truth bounding box data from a CSV file.
 
@@ -245,7 +245,7 @@ def get_ground_truth_data(gt_dir: str) -> List[np.ndarray]:
 
     Returns
     -------
-    List[np.ndarray]:
+    list[np.ndarray]:
         A list containing ground truth bounding box data organized by frame number.
         The numpy array represent the coordinates and ID of the bounding box in the order:
         x, y, x + width, y + height, ID
@@ -314,7 +314,7 @@ def write_tracked_bbox_to_csv(
 def save_frame_and_csv(
     video_file_root: str,
     tracking_output_dir: Path,
-    tracked_boxes: List[List[float]],
+    tracked_boxes: list[list[float]],
     frame: np.ndarray,
     frame_number: int,
     csv_writer: Any,
@@ -328,7 +328,7 @@ def save_frame_and_csv(
         The root path of the video file.
     tracking_output_dir : Path
         The directory where tracked frames and CSV file will be saved.
-    tracked_boxes : List[List[float]]
+    tracked_boxes : list[list[float]]
         List of bounding boxes to be saved.
     frame : np.ndarray
         The frame image.

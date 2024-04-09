@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Tuple
 
 import cv2
 import torch
@@ -11,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def save_images_with_boxes(
-    test_dataloader, trained_model, score_threshold, device
+    test_dataloader, trained_model, score_threshold
 ) -> None:
     """
     Save images with bounding boxes drawn around detected objects.
@@ -29,6 +30,14 @@ def save_images_with_boxes(
     ----------
         None
     """
+    device = (
+        torch.device("cuda")
+        if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
+    trained_model.eval()
+    directory = "results"
+    os.makedirs(directory, exist_ok=True)
     with torch.no_grad():
         imgs_id = 0
         for imgs, annotations in test_dataloader:
@@ -39,12 +48,10 @@ def save_images_with_boxes(
             image_with_boxes = draw_detection(
                 imgs, annotations, detections, score_threshold
             )
-            directory = "results"
-            os.makedirs(directory, exist_ok=True)
             cv2.imwrite(f"{directory}/imgs{imgs_id}.jpg", image_with_boxes)
 
 
-def compute_precision_recall(class_stats):
+def compute_precision_recall(class_stats) -> Tuple[float, float, dict]:
     """
     Compute precision and recall.
 
@@ -55,23 +62,19 @@ def compute_precision_recall(class_stats):
 
     Returns
     ----------
-    None
+    Tuple[float, float]
+        precision and recall
     """
-
     for _, stats in class_stats.items():
         precision = stats["tp"] / max(stats["tp"] + stats["fp"], 1)
         recall = stats["tp"] / max(stats["tp"] + stats["fn"], 1)
 
-        logging.info(
-            f"Precision: {precision:.4f}, Recall: {recall:.4f}, "
-            f"False Positive: {class_stats['crab']['fp']}, "
-            f"False Negative: {class_stats['crab']['fn']}"
-        )
+    return precision, recall, class_stats
 
 
 def compute_confusion_matrix_elements(
     targets, detections, ious_threshold
-) -> None:
+) -> Tuple[float, float, dict]:
     """
     Compute metrics (true positive, false positive, false negative) for object detection.
 
@@ -90,7 +93,8 @@ def compute_confusion_matrix_elements(
 
     Returns
     ----------
-    None
+    Tuple[float, float]
+        precision and recall
     """
     class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
     for target, detection in zip(targets, detections):
@@ -134,4 +138,6 @@ def compute_confusion_matrix_elements(
                     "fn"
                 ] += 1  # Ground truth box has no corresponding detection
 
-    compute_precision_recall(class_stats)
+    precision, recall, class_stats = compute_precision_recall(class_stats)
+
+    return precision, recall, class_stats

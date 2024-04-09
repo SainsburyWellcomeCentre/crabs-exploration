@@ -157,7 +157,6 @@ class CrabsDataModule(LightningDataModule):
 
         Define the transforms for each split of the data and compute them.
         """
-
         # Assign transforms
         # right now assuming validation and test get the same transforms
         test_and_val_transform = self._get_test_val_transform()
