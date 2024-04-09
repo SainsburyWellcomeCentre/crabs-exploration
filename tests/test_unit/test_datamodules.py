@@ -82,23 +82,3 @@ def test_collate_fn(crabs_data_module):
         assert isinstance(
             annotation, torch.Tensor
         ), "Annotation should be a torch.Tensor"
-
-
-# def test_compute_splits():
-#     list_img_dirs = ["/Users/nikkhadijahnikaznan/Git/crabs-exploration/tests/data/sample_data/frames"]
-#     list_annotation_files = ["/Users/nikkhadijahnikaznan/Git/crabs-exploration/tests/data/sample_data/annotations/sample_annotation_coco.json"]
-#     print(list_img_dirs)
-#     print(list_annotation_files)
-#     config = {"train_fraction": 1.0, "val_over_test_fraction": 0.0}
-#     crabs_data_module = CrabsDataModule(
-#         list_img_dirs,
-#         list_annotation_files,
-#         config,
-#         22,
-#     )
-
-#     train_dataset, test_dataset, val_dataset = crabs_data_module._compute_splits(transforms_all_splits=None)
-
-#     assert len(train_dataset) == 2
-#     assert len(test_dataset) == 1
-#     assert len(val_dataset) == 1
