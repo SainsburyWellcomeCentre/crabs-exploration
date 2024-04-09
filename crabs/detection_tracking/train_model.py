@@ -71,9 +71,6 @@ class DectectorTrain:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = f"run_{timestamp}"
 
-        # Instantiate model
-        lightning_model = FasterRCNN(self.config)
-
         # Initialise MLflow logger
         mlf_logger = MLFlowLogger(
             run_name=run_name,
@@ -85,7 +82,8 @@ class DectectorTrain:
         mlf_logger.log_hyperparams({"split_seed": self.seed_n})
         mlf_logger.log_hyperparams({"cli_args": self.args})
 
-        # Instantiate trainer
+        lightning_model = FasterRCNN(self.config)
+
         trainer = lightning.Trainer(
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
