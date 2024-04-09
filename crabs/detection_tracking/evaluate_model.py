@@ -4,10 +4,8 @@ import torch
 import yaml  # type: ignore
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
-from crabs.detection_tracking.evaluate import (
-    compute_confusion_matrix_elements,
-    save_images_with_boxes,
-)
+from crabs.detection_tracking.evaluate import compute_confusion_matrix_elements
+from crabs.detection_tracking.visualization import save_images_with_boxes
 
 
 class DetectorEvaluation:

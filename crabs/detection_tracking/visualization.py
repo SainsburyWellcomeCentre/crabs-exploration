@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, Optional, Tuple
 
 import cv2
@@ -146,6 +147,40 @@ def draw_detection(
                         label_text,
                     )
     return image_with_boxes
+
+
+def save_images_with_boxes(
+    test_dataloader, trained_model, score_threshold, device
+) -> None:
+    """
+    Save images with bounding boxes drawn around detected objects.
+
+    Parameters
+    ----------
+    test_dataloader :
+        DataLoader for the test dataset.
+    trained_model :
+        The trained object detection model.
+    score_threshold : float
+        Threshold for object detection.
+
+    Returns
+    ----------
+        None
+    """
+    with torch.no_grad():
+        imgs_id = 0
+        for imgs, annotations in test_dataloader:
+            imgs_id += 1
+            imgs = list(img.to(device) for img in imgs)
+            detections = trained_model(imgs)
+
+            image_with_boxes = draw_detection(
+                imgs, annotations, detections, score_threshold
+            )
+            directory = "results"
+            os.makedirs(directory, exist_ok=True)
+            cv2.imwrite(f"{directory}/imgs{imgs_id}.jpg", image_with_boxes)
 
 
 def plot_sample(imgs: list, row_title: Optional[str] = None, **imshow_kwargs):
