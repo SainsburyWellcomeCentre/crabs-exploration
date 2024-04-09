@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Union
 
 import torch
 from lightning import LightningModule
@@ -43,7 +43,7 @@ class FasterRCNN(LightningModule):
         Dictionary to store test metrics.
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         super().__init__()
         self.config = config
         self.model = self.configure_model()
@@ -101,8 +101,8 @@ class FasterRCNN(LightningModule):
         return
 
     def compute_precision_recall_epoch(
-        self, step_outputs: Dict[str, Union[float, int]], log_str: str
-    ) -> Dict[str, Union[float, int]]:
+        self, step_outputs: dict[str, Union[float, int]], log_str: str
+    ) -> dict[str, Union[float, int]]:
         """
         Computes and logs mean precision and recall for the current epoch.
         """
@@ -166,7 +166,7 @@ class FasterRCNN(LightningModule):
         )
 
     def training_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
+        self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
     ) -> torch.Tensor:
         """
         Defines the training step for the model.
@@ -179,8 +179,8 @@ class FasterRCNN(LightningModule):
         return total_loss
 
     def val_test_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor]
-    ) -> Dict[str, Union[float, int]]:
+        self, batch: tuple[torch.Tensor, torch.Tensor]
+    ) -> dict[str, Union[float, int]]:
         """
         Performs inference on a validation or test batch and computes precision and recall.
         """
@@ -192,8 +192,8 @@ class FasterRCNN(LightningModule):
         return {"precision": precision, "recall": recall}
 
     def validation_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
-    ) -> Dict[str, Union[float, int]]:
+        self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> dict[str, Union[float, int]]:
         """
         Defines the validation step for the model.
         """
@@ -202,8 +202,8 @@ class FasterRCNN(LightningModule):
         return outputs
 
     def test_step(
-        self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
-    ) -> Dict[str, Union[float, int]]:
+        self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
+    ) -> dict[str, Union[float, int]]:
         """
         Defines the test step for the model.
         """
@@ -211,7 +211,7 @@ class FasterRCNN(LightningModule):
         self.accumulate_epoch_metrics(outputs, "test")
         return outputs
 
-    def configure_optimizers(self) -> Dict[str, torch.optim.Optimizer]:
+    def configure_optimizers(self) -> dict[str, torch.optim.Optimizer]:
         """
         Configures the optimizer for training.
         """
