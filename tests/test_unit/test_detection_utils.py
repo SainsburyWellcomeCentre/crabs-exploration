@@ -1,20 +1,11 @@
-import os
 from pathlib import Path
 
 import pytest
-import torch
 
 from crabs.detection_tracking.detection_utils import (
     prep_annotation_files,
     prep_img_directories,
-    save_model,
 )
-
-
-def test_save_model(tmpdir):
-    model = torch.nn.Linear(10, 2)
-    save_model(model)
-    assert os.path.exists(tmpdir)
 
 
 @pytest.fixture
