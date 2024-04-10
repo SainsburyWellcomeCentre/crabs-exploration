@@ -125,23 +125,17 @@ def main(args) -> None:
 def evaluate_parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config_file",
-        type=str,
-        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
-        help="location of YAML config to control training",
-    )
-    parser.add_argument(
         "--dataset_dirs",
         nargs="+",
         required=True,
-        help="list of dataset directories",
+        help="List of dataset directories",
     )
     parser.add_argument(
         "--annotation_files",
         nargs="+",
         default=[],
         help=(
-            "list of paths to annotation files. The full path or the filename can be provided. "
+            "List of paths to annotation files. The full path or the filename can be provided. "
             "If only filename is provided, it is assumed to be under dataset/annotations."
         ),
     )
@@ -149,14 +143,23 @@ def evaluate_parse_args(args):
         "--checkpoint_path",
         type=str,
         required=True,
-        help="location of trained model",
+        help="Location of trained model",
+    )
+    parser.add_argument(
+        "--config_file",
+        type=str,
+        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
+        help=(
+            "Location of YAML config to control training. "
+            "Default: crabs-exploration/crabs/detection_tracking/config/faster_rcnn.yaml"
+        ),
     )
     parser.add_argument(
         "--accelerator",
         type=str,
         default="gpu",
         help=(
-            "accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. "
+            "Accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. Default: gpu."
             "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "
             "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"
         ),
@@ -165,24 +168,24 @@ def evaluate_parse_args(args):
         "--score_threshold",
         type=float,
         default=0.1,
-        help="threshold for confidence score",
+        help="Threshold for confidence score. Default: 0.1",
     )
     parser.add_argument(
         "--ious_threshold",
         type=float,
         default=0.1,
-        help="threshold for IOU",
+        help="Threshold for IOU. Default: 0.1",
     )
     parser.add_argument(
         "--seed_n",
         type=int,
         default=42,
-        help="seed for dataset splits",
+        help="Seed for dataset splits. Default: 42",
     )
     parser.add_argument(
         "--save_frames",
         action="store_true",
-        help=("Save predicted frames with bboxes."),
+        help=("Save predicted frames with bounding boxes."),
     )
     return parser.parse_args(args)
 
