@@ -26,13 +26,10 @@ dependencies = [
     "sleap[pypi]==1.3.3",
     "typer",
     "timecode",
-    "ffmpeg-python",
-    "torch",
     "torch",
     "torchvision",
     "pycocotools",
     "filterpy",
-    "scikit-image",
     "lightning",
     "mlflow"
 ]
