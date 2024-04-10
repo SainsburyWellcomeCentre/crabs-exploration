@@ -47,6 +47,11 @@ class FasterRCNN(LightningModule):
         super().__init__()
         self.config = config
         self.model = self.configure_model()
+
+        # save all arguments passed to __init__
+        self.save_hyperparameters()
+
+        # metrics to log during training/val/test loop
         self.training_step_outputs = {
             "training_loss_epoch": 0.0,
             "num_batches": 0,
@@ -184,6 +189,7 @@ class FasterRCNN(LightningModule):
         """
         images, targets = batch
         predictions = self.model(images)
+
         precision, recall, _ = compute_confusion_matrix_elements(
             targets, predictions, self.config["iou_threshold"]
         )

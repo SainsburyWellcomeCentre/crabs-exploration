@@ -6,13 +6,13 @@ from pathlib import Path
 import lightning
 import torch
 import yaml  # type: ignore
+from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
     prep_annotation_files,
     prep_img_directories,
-    save_model,
 )
 from crabs.detection_tracking.models import FasterRCNN
 
@@ -59,6 +59,65 @@ class DectectorTrain:
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
+    def setup_mlflow_logger(self) -> MLFlowLogger:
+        """
+        Setup MLflow logger for training.
+        """
+        # Set run_name
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_name = f"run_{timestamp}"
+
+        # Get checkpointing behaviour
+        ckpt_config = self.config.get("checkpoint_saving", {})
+
+        # Define logger
+        mlf_logger = MLFlowLogger(
+            experiment_name=self.experiment_name,
+            run_name=run_name,
+            tracking_uri="file:./ml-runs",
+            log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
+        )
+
+        # log CLI arguments
+        mlf_logger.log_hyperparams({"cli_args": self.args})
+
+        return mlf_logger
+
+    def setup_trainer(self):
+        """
+        Setup trainer with logging and checkpointing.
+        """
+        # Get MLflow logger
+        mlf_logger = self.setup_mlflow_logger()
+
+        # Define checkpointing behaviour
+        config = self.config.get("checkpoint_saving")
+        if config:
+            checkpoint_callback = ModelCheckpoint(
+                filename="checkpoint-{epoch}",
+                every_n_epochs=config["every_n_epochs"],
+                save_top_k=config["keep_last_n_ckpts"],
+                monitor="epoch",  # monitor the metric "epoch" for selecting which checkpoints to save
+                mode="max",  # get the max of the monitored metric
+                save_last=config["save_last"],
+                save_weights_only=config["save_weights_only"],
+            )
+            enable_checkpointing = True
+        else:
+            checkpoint_callback = None
+            enable_checkpointing = False
+
+        # return trainer linked to callbacks and logger
+        return lightning.Trainer(
+            max_epochs=self.config["num_epochs"],
+            accelerator=self.accelerator,
+            logger=mlf_logger,
+            enable_checkpointing=enable_checkpointing,
+            callbacks=checkpoint_callback,
+            fast_dev_run=self.fast_dev_run,
+            limit_train_batches=self.limit_train_batches,
+        )
+
     def train_model(self):
         # Create data module
         data_module = CrabsDataModule(
@@ -68,37 +127,12 @@ class DectectorTrain:
             self.seed_n,
         )
 
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_name = f"run_{timestamp}"
-
-        # Initialise MLflow logger
-        mlf_logger = MLFlowLogger(
-            run_name=run_name,
-            experiment_name=self.experiment_name,
-            tracking_uri="file:./ml-runs",
-        )
-
-        mlf_logger.log_hyperparams(self.config)
-        mlf_logger.log_hyperparams({"split_seed": self.seed_n})
-        mlf_logger.log_hyperparams({"cli_args": self.args})
-
+        # Get model
         lightning_model = FasterRCNN(self.config)
 
-        trainer = lightning.Trainer(
-            max_epochs=self.config["num_epochs"],
-            accelerator=self.accelerator,
-            logger=mlf_logger,
-            fast_dev_run=self.fast_dev_run,
-            limit_train_batches=self.limit_train_batches,
-        )
-
         # Run training
+        trainer = self.setup_trainer()
         trainer.fit(lightning_model, data_module)
-
-        # Save model if required
-        if self.config["save"]:
-            model_filename = save_model(lightning_model)
-            mlf_logger.log_hyperparams({"model_filename": model_filename})
 
 
 def main(args) -> None:
