@@ -62,9 +62,17 @@ class DectectorTrain:
         """
         Setup MLflow logger for training.
         """
-        # Set run_name
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_name = f"run_{timestamp}"
+        # Set run name: slurm_job_ID if available, else timestamp
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        slurm_array_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+        if slurm_job_id:
+            if slurm_array_task_id:
+                run_name = f"run_slurm_{slurm_job_id}_{slurm_array_task_id}"
+            else:
+                run_name = f"run_slurm_{slurm_job_id}"
+        else:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            run_name = f"run_{timestamp}"
 
         # Get checkpointing behaviour
         ckpt_config = self.config.get("checkpoint_saving", {})
@@ -79,6 +87,14 @@ class DectectorTrain:
 
         # log CLI arguments
         mlf_logger.log_hyperparams({"cli_args": self.args})
+
+        # log slurm job id data
+        if slurm_job_id:
+            mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
+        if slurm_array_task_id:
+            mlf_logger.log_hyperparams(
+                {"slurm_array_task_id": slurm_array_task_id}
+            )
 
         return mlf_logger
 
