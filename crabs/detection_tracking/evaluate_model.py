@@ -187,6 +187,10 @@ def evaluate_parse_args(args):
     return parser.parse_args(args)
 
 
+def app_wrapper():
+    eval_args = evaluate_parse_args(sys.argv[1:])
+    main(eval_args)
+
+
 if __name__ == "__main__":
-    args = evaluate_parse_args(sys.argv[1:])
-    main(args)
+    app_wrapper()
