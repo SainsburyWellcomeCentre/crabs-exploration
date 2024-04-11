@@ -85,7 +85,6 @@ class CrabsDataModule(LightningDataModule):
             a tuple of length = batch size, made up of (image, annotations)
             tuples.
         """
-        print(batch)
         return tuple(zip(*batch))
 
     def _compute_splits(
