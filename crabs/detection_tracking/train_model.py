@@ -139,7 +139,7 @@ class DectectorTrain:
             checkpoint_callback = None
             enable_checkpointing = False
 
-        # return trainer linked to callbacks and logger
+        # Return trainer linked to callbacks and logger
         return lightning.Trainer(
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
@@ -158,25 +158,6 @@ class DectectorTrain:
             self.config,
             self.seed_n,
         )
-
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_name = f"run_{timestamp}"
-
-        # Get Slurm job ID if available
-        slurm_job_id = os.environ.get("SLURM_JOB_ID")
-
-        # Initialise MLflow logger
-        mlf_logger = MLFlowLogger(
-            run_name=run_name,
-            experiment_name=self.experiment_name,
-            tracking_uri="file:./ml-runs",
-        )
-
-        mlf_logger.log_hyperparams(self.config)
-        mlf_logger.log_hyperparams({"split_seed": self.seed_n})
-        mlf_logger.log_hyperparams({"cli_args": self.args})
-        if slurm_job_id:
-            mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
 
         # Get model
         lightning_model = FasterRCNN(self.config)
