@@ -44,14 +44,6 @@ def transforms_train_set(train_config):
     ]
 
 
-@pytest.fixture
-def transforms_test_set():
-    return [
-        transforms.ToImage(),
-        transforms.ToDtype(torch.float32, scale=True),
-    ]
-
-
 def test_get_train_transform(crabs_data_module, transforms_train_set):
     train_transform = crabs_data_module._get_train_transform()
     assert isinstance(train_transform, transforms.Compose)
@@ -61,6 +53,14 @@ def test_get_train_transform(crabs_data_module, transforms_train_set):
         assert isinstance(
             train_transform.transforms[i], type(expected_transform)
         )
+
+
+@pytest.fixture
+def transforms_test_set():
+    return [
+        transforms.ToImage(),
+        transforms.ToDtype(torch.float32, scale=True),
+    ]
 
 
 def test_get_test_transform(crabs_data_module, transforms_test_set):

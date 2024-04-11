@@ -3,61 +3,68 @@ from pathlib import Path
 import pytest
 
 from crabs.detection_tracking.detection_utils import (
+    DEFAULT_ANNOTATIONS_FILENAME,
     prep_annotation_files,
     prep_img_directories,
 )
 
-
-@pytest.fixture
-def dataset_dirs(tmp_path):
-    dataset1_dir = tmp_path / "dataset1"
-    dataset1_dir.mkdir()
-    (dataset1_dir / "frames").mkdir()
-
-    dataset2_dir = tmp_path / "dataset2"
-    dataset2_dir.mkdir()
-    (dataset2_dir / "frames").mkdir()
-
-    return [str(dataset1_dir), str(dataset2_dir)]
+DATASET_1 = "/home/data/dataset1"
+DATASET_2 = "/home/data/dataset2"
 
 
-def test_prep_img_directories(dataset_dirs):
-    expected_result = [
-        str(Path(dataset_dirs[0]) / "frames"),
-        str(Path(dataset_dirs[1]) / "frames"),
-    ]
-    assert prep_img_directories(dataset_dirs) == expected_result
+@pytest.mark.parametrize(
+    "input_datasets",
+    [
+        [DATASET_1],
+        [DATASET_1, DATASET_2],
+    ],
+)
+def test_prep_img_directories(input_datasets):
+    expected_img_dirs = []
+    for dataset_dir in input_datasets:
+        expected_img_dirs.append(str(Path(dataset_dir) / "frames"))
+
+    assert prep_img_directories(input_datasets) == expected_img_dirs
 
 
-def test_prep_annotation_files_default(dataset_dirs):
-    result = prep_annotation_files([], dataset_dirs)
-    print(result)
-    expected_result = [
-        str(
-            Path(dataset_dirs[0])
-            / "annotations"
-            / "VIA_JSON_combined_coco_gen.json"
-        ),
-        str(
-            Path(dataset_dirs[1])
-            / "annotations"
-            / "VIA_JSON_combined_coco_gen.json"
-        ),
-    ]
-    assert result == expected_result
+@pytest.mark.parametrize(
+    "input_datasets",
+    [
+        [DATASET_1],
+        [DATASET_1, DATASET_2],
+    ],
+)
+def test_prep_annotation_files_default(input_datasets):
+    expected_annot_paths = []
+    for dataset_dir in input_datasets:
+        expected_annot_paths.append(
+            str(
+                Path(dataset_dir)
+                / "annotations"
+                / DEFAULT_ANNOTATIONS_FILENAME
+            )
+        )
+
+    assert prep_annotation_files([], input_datasets) == expected_annot_paths
 
 
-def test_prep_annotation_files_with_filenames(dataset_dirs):
-    input_annotation_files = ["file1.json", "file2.json"]
-    result = prep_annotation_files(input_annotation_files, dataset_dirs)
-    expected_result = [
-        str(Path(dataset_dirs[0]) / "annotations" / "file1.json"),
-        str(Path(dataset_dirs[1]) / "annotations" / "file2.json"),
-    ]
-    assert result == expected_result
+@pytest.mark.parametrize(
+    "input_datasets, input_annotation_files",
+    [
+        ([DATASET_1], ["file1.json"]),
+        ([DATASET_1, DATASET_2], ["file1.json", "file2.json"]),
+    ],
+)
+def test_prep_annotation_files_with_filenames(
+    input_datasets, input_annotation_files
+):
+    expected_annot_paths = []
+    for dataset_dir, annot_file in zip(input_datasets, input_annotation_files):
+        expected_annot_paths.append(
+            str(Path(dataset_dir) / "annotations" / annot_file)
+        )
 
-
-def test_prep_annotation_files_with_full_paths(dataset_dirs):
-    input_annotation_files = ["/path/to/file1.json", "/path/to/file2.json"]
-    result = prep_annotation_files(input_annotation_files, dataset_dirs)
-    assert result == input_annotation_files
+    assert (
+        prep_annotation_files(input_annotation_files, input_datasets)
+        == expected_annot_paths
+    )
