@@ -155,12 +155,6 @@ def main(args) -> None:
 def train_parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config_file",
-        type=str,
-        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
-        help="location of YAML config to control training",
-    )
-    parser.add_argument(
         "--dataset_dirs",
         nargs="+",
         required=True,
@@ -176,11 +170,20 @@ def train_parse_args(args):
         ),
     )
     parser.add_argument(
+        "--config_file",
+        type=str,
+        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
+        help=(
+            "Location of YAML config to control training. "
+            "Default: crabs-exploration/crabs/detection_tracking/config/faster_rcnn.yaml"
+        ),
+    )
+    parser.add_argument(
         "--accelerator",
         type=str,
         default="gpu",
         help=(
-            "accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. "
+            "Accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. Default: gpu"
             "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "
             "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"
         ),
@@ -190,15 +193,16 @@ def train_parse_args(args):
         type=str,
         default="Sept2023",
         help=(
-            "the name for the experiment in MLflow, under which the current run will be logged. "
-            "For example, the name of the dataset could be used, to group runs using the same data."
+            "Name of the experiment in MLflow, under which the current run will be logged. "
+            "For example, the name of the dataset could be used, to group runs using the same data. "
+            "Default: Sep2023"
         ),
     )
     parser.add_argument(
         "--seed_n",
         type=int,
         default=42,
-        help="seed for dataset splits",
+        help="Seed for dataset splits. Default: 42",
     )
     parser.add_argument(
         "--fast_dev_run",
@@ -211,7 +215,7 @@ def train_parse_args(args):
         default=1.0,
         help=(
             "Debugging option to run training on a fraction of the training set."
-            "By default 1.0 (all the training set)"
+            "Default: 1.0 (all the training set)"
         ),
     )
 
