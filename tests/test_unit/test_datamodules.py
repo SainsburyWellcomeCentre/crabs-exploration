@@ -1,4 +1,5 @@
 import random
+
 import pytest
 import torch
 import torchvision.transforms.v2 as transforms
@@ -16,6 +17,7 @@ def train_config():
         "gaussian_blur_params": {"kernel_size": [5, 9], "sigma": [0.1, 5.0]},
     }
 
+
 @pytest.fixture
 def crabs_data_module(train_config):
     return CrabsDataModule(
@@ -24,6 +26,7 @@ def crabs_data_module(train_config):
         config=train_config,
         split_seed=123,
     )
+
 
 @pytest.fixture
 def transforms_train_set(train_config):
@@ -39,6 +42,7 @@ def transforms_train_set(train_config):
         ),
         transforms.ToDtype(torch.float32, scale=True),
     ]
+
 
 @pytest.fixture
 def transforms_test_set():
@@ -69,6 +73,7 @@ def test_get_test_transform(crabs_data_module, transforms_test_set):
             test_transform.transforms[i], type(expected_transform)
         )
 
+
 @pytest.fixture
 def dummy_dataset():
     """Create dummy images and annotations for testing."""
@@ -91,14 +96,12 @@ def dummy_dataset():
 
 
 def test_collate_fn(crabs_data_module, dummy_dataset):
-
     collated_data = crabs_data_module._collate_fn(dummy_dataset)
 
     assert len(collated_data) == len(dummy_dataset[0])  # images
     assert len(collated_data) == len(dummy_dataset[1])  # annotations
 
     for i, sample in enumerate(collated_data):
-
         # check length
         assert len(sample) == 2
 
