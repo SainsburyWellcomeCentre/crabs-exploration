@@ -186,6 +186,7 @@ class DetectorInference:
             mota_values.append(mota)
             # Update previous frame IDs for the next iteration
             prev_frame_ids = [[box[-1] for box in tracked_boxes]]
+            # print(prev_frame_ids)
 
         return mota_values
 
@@ -229,7 +230,6 @@ class DetectorInference:
         """
         pred_sort = self.prep_sort(prediction)
         tracked_boxes = self.sort_tracker.update(pred_sort)
-        self.tracked_list.append(tracked_boxes)
         return tracked_boxes
 
     def save_required_output(
@@ -303,6 +303,7 @@ class DetectorInference:
             # run tracking
             self.prep_sort(prediction)
             tracked_boxes = self.update_tracking(prediction)
+            self.tracked_list.append(tracked_boxes)
             self.save_required_output(tracked_boxes, frame, frame_number)
 
             # update frame

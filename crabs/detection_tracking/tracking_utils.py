@@ -153,6 +153,10 @@ def evaluate_mota(
     tracked_ids = [[box[-1] for box in tracked_boxes]]
 
     num_switches = count_identity_switches(prev_frame_ids, tracked_ids)
+    print(total_gt)
+    print(missed_detections)
+    print(false_positive)
+    print(num_switches)
 
     mota = 1 - (missed_detections + false_positive + num_switches) / total_gt
     return mota
