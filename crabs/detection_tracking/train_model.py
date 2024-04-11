@@ -16,8 +16,6 @@ from crabs.detection_tracking.detection_utils import (
 )
 from crabs.detection_tracking.models import FasterRCNN
 
-DEFAULT_ANNOTATIONS_FILENAME = "VIA_JSON_combined_coco_gen.json"
-
 
 class DectectorTrain:
     """Training class for detector algorithm
