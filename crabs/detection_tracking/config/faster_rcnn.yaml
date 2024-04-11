@@ -1,7 +1,7 @@
 num_epochs: 4
 learning_rate: 0.00005
 wdecay: 0.00005
-batch_size_train: 4
+batch_size_train: 1
 batch_size_test: 1
 batch_size_val: 1
 num_classes: 2

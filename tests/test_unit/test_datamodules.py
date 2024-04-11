@@ -1,3 +1,4 @@
+import random
 import pytest
 import torch
 import torchvision.transforms.v2 as transforms
@@ -6,79 +7,102 @@ from crabs.detection_tracking.datamodules import CrabsDataModule
 
 
 @pytest.fixture
-def crabs_data_module():
-    # Define a test config dictionary
-    test_config = {
+def train_config():
+    return {
         "train_fraction": 0.8,
         "val_over_test_fraction": 0,
         "transform_brightness": 0.5,
         "transform_hue": 0.3,
         "gaussian_blur_params": {"kernel_size": [5, 9], "sigma": [0.1, 5.0]},
     }
+
+@pytest.fixture
+def crabs_data_module(train_config):
     return CrabsDataModule(
         list_img_dirs=["dir1", "dir2"],
         list_annotation_files=["anno1", "anno2"],
-        config=test_config,
+        config=train_config,
         split_seed=123,
     )
 
-
-def test_get_train_transform(crabs_data_module):
-    train_transform = crabs_data_module._get_train_transform()
-    assert isinstance(train_transform, transforms.Compose)
-
-    expected_transforms = [
+@pytest.fixture
+def transforms_train_set(train_config):
+    return [
         transforms.ToImage(),
-        transforms.ColorJitter(brightness=0.5, hue=0.3),
-        transforms.GaussianBlur(kernel_size=[5, 9], sigma=[0.1, 5.0]),
+        transforms.ColorJitter(
+            brightness=train_config["transform_brightness"],
+            hue=train_config["transform_hue"],
+        ),
+        transforms.GaussianBlur(
+            kernel_size=train_config["gaussian_blur_params"]["kernel_size"],
+            sigma=train_config["gaussian_blur_params"]["sigma"],
+        ),
         transforms.ToDtype(torch.float32, scale=True),
     ]
 
-    assert len(train_transform.transforms) == len(expected_transforms)
-    for i, expected_transform in enumerate(expected_transforms):
+@pytest.fixture
+def transforms_test_set():
+    return [
+        transforms.ToImage(),
+        transforms.ToDtype(torch.float32, scale=True),
+    ]
+
+
+def test_get_train_transform(crabs_data_module, transforms_train_set):
+    train_transform = crabs_data_module._get_train_transform()
+    assert isinstance(train_transform, transforms.Compose)
+
+    assert len(train_transform.transforms) == len(transforms_train_set)
+    for i, expected_transform in enumerate(transforms_train_set):
         assert isinstance(
             train_transform.transforms[i], type(expected_transform)
         )
 
 
-def test_get_test_transform(crabs_data_module):
+def test_get_test_transform(crabs_data_module, transforms_test_set):
     test_transform = crabs_data_module._get_test_val_transform()
-
     assert isinstance(test_transform, transforms.Compose)
 
-    expected_transforms = [
-        transforms.ToImage(),
-        transforms.ToDtype(torch.float32, scale=True),
-    ]
-
-    assert len(test_transform.transforms) == len(expected_transforms)
-    for i, expected_transform in enumerate(expected_transforms):
+    assert len(test_transform.transforms) == len(transforms_test_set)
+    for i, expected_transform in enumerate(transforms_test_set):
         assert isinstance(
             test_transform.transforms[i], type(expected_transform)
         )
 
-
-def create_dummy_dataset(num_samples):
+@pytest.fixture
+def dummy_dataset():
     """Create dummy images and annotations for testing."""
-    images = [torch.randn(3, 256, 256) for _ in range(num_samples)]
-    annotations = [
-        torch.randint(0, 10, size=(4, 5)) for _ in range(num_samples)
-    ]
-    return (images, annotations)
-
-
-def test_collate_fn(crabs_data_module):
     num_samples = 5
-    sample_input = create_dummy_dataset(num_samples)
+    images = [torch.randn(3, 256, 256) for _ in range(num_samples)]
+    annotations = []
+    for _ in range(num_samples):
+        # Generate random number of bounding boxes for each image
+        num_boxes = random.randint(1, 5)
+        boxes = []
+        for _ in range(num_boxes):
+            # Generate random bounding box coordinates within image size
+            x_min = random.randint(0, 200)
+            y_min = random.randint(0, 200)
+            x_max = random.randint(x_min + 10, 256)
+            y_max = random.randint(y_min + 10, 256)
+            boxes.append([x_min, y_min, x_max, y_max])
+        annotations.append(torch.tensor(boxes))
+    return images, annotations
 
-    collated_data = crabs_data_module._collate_fn(sample_input)
 
-    for sample in collated_data:
+def test_collate_fn(crabs_data_module, dummy_dataset):
+
+    collated_data = crabs_data_module._collate_fn(dummy_dataset)
+
+    assert len(collated_data) == len(dummy_dataset[0])  # images
+    assert len(collated_data) == len(dummy_dataset[1])  # annotations
+
+    for i, sample in enumerate(collated_data):
+
+        # check length
+        assert len(sample) == 2
+
+        # check same content as in dummy dataset
         image, annotation = sample
-
-        assert isinstance(
-            image, torch.Tensor
-        ), "Image should be a torch.Tensor"
-        assert isinstance(
-            annotation, torch.Tensor
-        ), "Annotation should be a torch.Tensor"
+        assert torch.equal(image, dummy_dataset[0][i])
+        assert torch.equal(annotation, dummy_dataset[1][i])
