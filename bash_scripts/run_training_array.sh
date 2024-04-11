@@ -108,5 +108,5 @@ train-detector  \
  --dataset_dirs $DATASET_DIR \
  --config_file $TRAIN_CONFIG_FILE \
  --accelerator gpu \
- --experiment_name "Sept2023_base_data_augm" \
+ --experiment_name "Sept2023" \
  --seed_n $SPLIT_SEED \
