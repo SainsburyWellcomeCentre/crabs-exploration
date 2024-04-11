@@ -48,8 +48,12 @@ def test_get_train_transform(crabs_data_module, expected_transforms_train_set):
     train_transform = crabs_data_module._get_train_transform()
     assert isinstance(train_transform, transforms.Compose)
 
-    assert len(train_transform.transforms) == len(expected_transforms_train_set)
-    for transform, expected_transform in zip(train_transform.transforms, expected_transforms_train_set):
+    assert len(train_transform.transforms) == len(
+        expected_transforms_train_set
+    )
+    for transform, expected_transform in zip(
+        train_transform.transforms, expected_transforms_train_set
+    ):
         assert isinstance(transform, type(expected_transform))
 
 
@@ -66,7 +70,9 @@ def test_get_test_transform(crabs_data_module, expected_transforms_test_set):
     assert isinstance(test_transform, transforms.Compose)
 
     assert len(test_transform.transforms) == len(expected_transforms_test_set)
-    for transform, expected_transform in zip(test_transform.transforms, transforms_test_set):
+    for transform, expected_transform in zip(
+        test_transform.transforms, expected_transforms_test_set
+    ):
         assert isinstance(transform, type(expected_transform))
 
 
