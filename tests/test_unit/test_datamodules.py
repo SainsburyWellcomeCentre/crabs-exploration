@@ -54,22 +54,20 @@ def test_get_train_transform(crabs_data_module, expected_transforms_train_set):
 
 
 @pytest.fixture
-def transforms_test_set():
+def expected_transforms_test_set():
     return [
         transforms.ToImage(),
         transforms.ToDtype(torch.float32, scale=True),
     ]
 
 
-def test_get_test_transform(crabs_data_module, transforms_test_set):
+def test_get_test_transform(crabs_data_module, expected_transforms_test_set):
     test_transform = crabs_data_module._get_test_val_transform()
     assert isinstance(test_transform, transforms.Compose)
 
-    assert len(test_transform.transforms) == len(transforms_test_set)
-    for i, expected_transform in enumerate(transforms_test_set):
-        assert isinstance(
-            test_transform.transforms[i], type(expected_transform)
-        )
+    assert len(test_transform.transforms) == len(expected_transforms_test_set)
+    for transform, expected_transform in zip(test_transform.transforms, transforms_test_set):
+        assert isinstance(transform, type(expected_transform))
 
 
 @pytest.fixture
