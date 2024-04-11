@@ -58,43 +58,67 @@ class DectectorTrain:
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
-    def setup_mlflow_logger(self) -> MLFlowLogger:
+    def set_mlflow_run_name(self):
         """
-        Setup MLflow logger for training.
+        Set MLflow run name.
+
+        Use the slurm job ID if it is a SLURM job, else use a timestamp.
+        For SLURM jobs:
+        - if it is a single job use <job_ID>, else
+        - if it is an array job use <job_ID_parent>_<task_ID>
         """
-        # Set run name: slurm_job_ID if available, else timestamp
+        # Get slurm environment vars
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        slurm_array_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-        if slurm_job_id:
-            if slurm_array_task_id:
-                run_name = f"run_slurm_{slurm_job_id}_{slurm_array_task_id}"
-            else:
-                run_name = f"run_slurm_{slurm_job_id}"
+        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
+
+        # If slurm array job
+        if slurm_job_id and slurm_array_job_id:
+            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+            run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
+        # If slurm single job
+        elif slurm_job_id:
+            run_name = f"run_slurm_{slurm_job_id}"
+        # If not slurm: use timestamp
         else:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             run_name = f"run_{timestamp}"
 
+        self.run_name = run_name
+
+    def setup_mlflow_logger(self) -> MLFlowLogger:
+        """
+        Setup MLflow logger for training.
+        """
+        # Assign run name
+        self.set_mlflow_run_name()
+
         # Get checkpointing behaviour
         ckpt_config = self.config.get("checkpoint_saving", {})
 
-        # Define logger
+        # Setup logger
         mlf_logger = MLFlowLogger(
             experiment_name=self.experiment_name,
-            run_name=run_name,
+            run_name=self.run_name,
             tracking_uri="file:./ml-runs",
             log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
         )
 
-        # log CLI arguments
+        # Log CLI arguments
         mlf_logger.log_hyperparams({"cli_args": self.args})
 
-        # log slurm job id data
-        if slurm_job_id:
-            mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
-        if slurm_array_task_id:
+        # Log slurm metadata
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
+        # if array job
+        if slurm_job_id and slurm_array_job_id:
+            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
             mlf_logger.log_hyperparams(
-                {"slurm_array_task_id": slurm_array_task_id}
-            )
+                {"slurm_job_id": slurm_array_job_id}
+            )  # ID of parent job
+            mlf_logger.log_hyperparams({"slurm_array_task_id": slurm_task_id})
+        # if single job
+        elif slurm_job_id:
+            mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
 
         return mlf_logger
 
@@ -122,7 +146,7 @@ class DectectorTrain:
             checkpoint_callback = None
             enable_checkpointing = False
 
-        # return trainer linked to callbacks and logger
+        # Return trainer linked to callbacks and logger
         return lightning.Trainer(
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
@@ -141,25 +165,6 @@ class DectectorTrain:
             self.config,
             self.seed_n,
         )
-
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_name = f"run_{timestamp}"
-
-        # Get Slurm job ID if available
-        slurm_job_id = os.environ.get("SLURM_JOB_ID")
-
-        # Initialise MLflow logger
-        mlf_logger = MLFlowLogger(
-            run_name=run_name,
-            experiment_name=self.experiment_name,
-            tracking_uri="file:./ml-runs",
-        )
-
-        mlf_logger.log_hyperparams(self.config)
-        mlf_logger.log_hyperparams({"split_seed": self.seed_n})
-        mlf_logger.log_hyperparams({"cli_args": self.args})
-        if slurm_job_id:
-            mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
 
         # Get model
         lightning_model = FasterRCNN(self.config)
