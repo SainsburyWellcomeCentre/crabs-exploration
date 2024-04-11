@@ -11,8 +11,8 @@ def test_compute_precision_recall():
 
     precision, recall, _ = compute_precision_recall(class_stats)
 
-    assert precision == 10 / max(10 + 2, 1)
-    assert recall == 10 / max(10 + 1, 1)
+    assert precision == 10 / max(class_stats['crab']['tp'] + class_stats['crab']['fp'], class_stats['crab']['fn'])
+    assert recall == 10 / max(class_stats['crab']['tp'] + class_stats['crab']['fn'], class_stats['crab']['fn'])
 
 
 def test_compute_precision_recall_zero_division():
