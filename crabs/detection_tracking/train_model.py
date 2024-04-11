@@ -62,35 +62,34 @@ class DectectorTrain:
         """
         Set MLflow run name.
 
-        Use the slurm job ID if it's a SLURM job, else use a timestamp.
-        For SLURM:
-        - if it's a single job use <job_ID>, else
-        - if it's an array job use <job_ID_parent>_<task_ID>
+        Use the slurm job ID if it is a SLURM job, else use a timestamp.
+        For SLURM jobs:
+        - if it is a single job use <job_ID>, else
+        - if it is an array job use <job_ID_parent>_<task_ID>
         """
-        # Set run name: slurm_job_ID if available, else timestamp
+        # Get slurm environment vars
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
 
-        # If it's a single job use SLURM_JOB_ID, else
-        # If it's an array job use SLURM_ARRAY_JOB_ID (the parent's job_ID) + task_ID
-        if slurm_job_id:
-            slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
-            if slurm_array_job_id:
-                slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-                run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
-            else:
-                run_name = f"run_slurm_{slurm_job_id}"
+        # If slurm array job
+        if slurm_job_id and slurm_array_job_id:
+            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+            run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
+        # If slurm single job
+        elif slurm_job_id:
+            run_name = f"run_slurm_{slurm_job_id}"
+        # If not slurm: use timestamp
         else:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             run_name = f"run_{timestamp}"
 
-        # Assign
         self.run_name = run_name
 
     def setup_mlflow_logger(self) -> MLFlowLogger:
         """
         Setup MLflow logger for training.
         """
-        # Get run name
+        # Assign run name
         self.set_mlflow_run_name()
 
         # Get checkpointing behaviour
@@ -109,11 +108,17 @@ class DectectorTrain:
 
         # Log slurm metadata
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-        if slurm_job_id:
-            mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
-        if slurm_task_id:
+        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
+        # if array job
+        if slurm_job_id and slurm_array_job_id:
+            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+            mlf_logger.log_hyperparams(
+                {"slurm_job_id": slurm_array_job_id}
+            )  # ID of parent job
             mlf_logger.log_hyperparams({"slurm_array_task_id": slurm_task_id})
+        # if single job
+        elif slurm_job_id:
+            mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
 
         return mlf_logger
 
