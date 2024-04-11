@@ -1,7 +1,5 @@
-import os
 from unittest.mock import MagicMock, patch
 
-import cv2
 import numpy as np
 import pytest
 import torch
@@ -13,11 +11,38 @@ from crabs.detection_tracking.visualization import (
 )
 
 
-def test_draw_bbox():
-    image = np.zeros((100, 100, 3), dtype=np.uint8)
-    draw_bbox(image, (10, 10), (20, 20), (0, 255, 0))
-    cv2.imwrite("bbox_test.png", image)
-    assert os.path.exists("bbox_test.png")
+@pytest.fixture
+def sample_image():
+    # Create a sample image for testing
+    return np.zeros((100, 100, 3), dtype=np.uint8)
+
+
+def test_draw_bbox(sample_image):
+    top_left = (10, 10)
+    bottom_right = (50, 50)
+    color = (0, 255, 0)
+
+    draw_bbox(sample_image, top_left, bottom_right, color)
+
+    # Check if bounding box is drawn
+    assert np.any(
+        sample_image[
+            top_left[1] : bottom_right[1], top_left[0] : bottom_right[0]
+        ]
+        == color
+    )
+
+
+def test_draw_bbox_with_label(sample_image):
+    top_left = (10, 10)
+    bottom_right = (50, 50)
+    color = (0, 255, 0)
+    label_text = "Test Label"
+
+    draw_bbox(sample_image, top_left, bottom_right, color, label_text)
+
+    # Check if label text is drawn
+    assert np.any(sample_image[10:20, 10:100] == color)
 
 
 def test_draw_detection():
@@ -66,42 +91,33 @@ def test_draw_detection():
     assert image_with_boxes is not None
 
 
-@pytest.fixture
-def test_dataloader():
-    return MagicMock()
-
-
-@pytest.fixture
-def trained_model():
-    return MagicMock()
-
-
-@pytest.fixture
-def score_threshold():
-    return 0.5
-
-
 @patch("cv2.imwrite")
 @patch("os.makedirs")
-@patch("crabs.detection_tracking.visualization.draw_detection")
 def test_save_images_with_boxes(
-    mock_draw_detection,
     mock_makedirs,
     mock_imwrite,
-    test_dataloader,
-    trained_model,
-    score_threshold,
 ):
-    detections = MagicMock()
-    mock_draw_detection.return_value = MagicMock()
+    detections = [
+        {
+            "scores": torch.tensor([0.9]),
+            "labels": torch.tensor([1]),
+            "boxes": torch.tensor([[30, 30, 40, 40]]),
+        },
+        {
+            "scores": torch.tensor([0.8]),
+            "labels": torch.tensor([2]),
+            "boxes": torch.tensor([[70, 70, 80, 80]]),
+        },
+    ]
+    trained_model = MagicMock()
+    test_dataloader = MagicMock()
     trained_model.return_value = detections
 
     save_images_with_boxes(
         test_dataloader,
         trained_model,
-        score_threshold,
+        score_threshold=0.5,
     )
 
     assert mock_makedirs.called_once_with("results", exist_ok=True)
-    assert mock_draw_detection.call_count == len(test_dataloader)
     assert mock_imwrite.call_count == len(test_dataloader)

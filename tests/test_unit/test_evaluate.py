@@ -11,8 +11,14 @@ def test_compute_precision_recall():
 
     precision, recall, _ = compute_precision_recall(class_stats)
 
-    assert precision == 10 / max(class_stats['crab']['tp'] + class_stats['crab']['fp'], class_stats['crab']['fn'])
-    assert recall == 10 / max(class_stats['crab']['tp'] + class_stats['crab']['fn'], class_stats['crab']['fn'])
+    assert precision == 10 / max(
+        class_stats["crab"]["tp"] + class_stats["crab"]["fp"],
+        class_stats["crab"]["fn"],
+    )
+    assert recall == 10 / max(
+        class_stats["crab"]["tp"] + class_stats["crab"]["fn"],
+        class_stats["crab"]["fn"],
+    )
 
 
 def test_compute_precision_recall_zero_division():
@@ -21,30 +27,38 @@ def test_compute_precision_recall_zero_division():
     precision, recall, _ = compute_precision_recall(class_stats)
 
     # Assert expected precision and recall values when all counts are zero
-    assert precision == 0
-    assert recall == 0
+    assert precision == max(
+        class_stats["crab"]["tp"] + class_stats["crab"]["fp"],
+        class_stats["crab"]["fn"],
+    )
+    assert recall == max(
+        class_stats["crab"]["tp"] + class_stats["crab"]["fp"],
+        class_stats["crab"]["fn"],
+    )
 
 
 def test_compute_confusion_matrix_elements():
+    # ground truth
+    gt_box_1 = torch.tensor([27, 11, 63, 33])
+    gt_box_2 = torch.tensor([87, 4, 118, 23])
+    gt_box_3 = torch.tensor([154, 152, 192, 164])
+    gt_labels = torch.tensor([1, 1, 1])
+    # predictions
+    delta_box_2 = torch.tensor([3, 0, 82, 0])
+    detection_labels = torch.tensor([1, 1])
+    detection_scores = torch.tensor([0.5083, 0.4805])
     targets = [
         {
             "image_id": 1,
-            "boxes": torch.tensor(
-                [[27, 11, 63, 33], [87, 4, 118, 23], [154, 152, 192, 164]]
-            ),
-            "labels": torch.tensor([1, 1, 1]),
+            "boxes": torch.vstack((gt_box_1, gt_box_2, gt_box_3)),
+            "labels": gt_labels,
         }
     ]
     detections = [
         {
-            "boxes": torch.tensor([[27, 11, 63, 33], [90, 4, 200, 23]]),
-            "labels": torch.tensor(
-                [
-                    1,
-                    1,
-                ]
-            ),
-            "scores": torch.tensor([0.5083, 0.4805]),
+            "boxes": torch.vstack((gt_box_1, gt_box_2 + delta_box_2)),
+            "labels": detection_labels,
+            "scores": detection_scores,
         }
     ]
     ious_threshold = 0.5
