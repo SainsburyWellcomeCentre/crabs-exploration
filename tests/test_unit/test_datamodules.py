@@ -44,15 +44,13 @@ def transforms_train_set(train_config):
     ]
 
 
-def test_get_train_transform(crabs_data_module, transforms_train_set):
+def test_get_train_transform(crabs_data_module, expected_transforms_train_set):
     train_transform = crabs_data_module._get_train_transform()
     assert isinstance(train_transform, transforms.Compose)
 
-    assert len(train_transform.transforms) == len(transforms_train_set)
-    for i, expected_transform in enumerate(transforms_train_set):
-        assert isinstance(
-            train_transform.transforms[i], type(expected_transform)
-        )
+    assert len(train_transform.transforms) == len(expected_transforms_train_set)
+    for transform, expected_transform in zip(train_transform.transforms, expected_transforms_train_set):
+        assert isinstance(transform, type(expected_transform))
 
 
 @pytest.fixture
