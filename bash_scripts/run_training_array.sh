@@ -1,16 +1,17 @@
 #!/bin/bash
 
-#SBATCH -p gpu # partition
+#SBATCH -p a100 # gpu # partition
+#SBATCH --gres=gpu:1 # gpu:a100_2g.10gb  # For any GPU: --gres=gpu:1. For a specific one: --gres=gpu:rtx5000
 #SBATCH -N 1   # number of nodes
-#SBATCH --ntasks-per-node 2 # max number of tasks per node
-#SBATCH --mem 64G # memory pool for all cores
-#SBATCH --gres=gpu:a100_2g.10gb  # For any GPU: --gres=gpu:1. For a specific one: --gres=gpu:rtx5000
+#SBATCH --ntasks-per-node 8 # 2 # max number of tasks per node
+#SBATCH --mem 32G # memory pool for all cores
 #SBATCH -t 3-00:00 # time (D-HH:MM)
 #SBATCH -o slurm_array.%A-%a.%N.out
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
 #SBATCH --array=0-2%3
+
 
 # NOTE on SBATCH command for array jobs
 # with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
@@ -65,9 +66,8 @@ fi
 # -----------------------------
 module load miniconda
 
-# define a environment for the whole array of jobs in the
+# Define a environment for each job in the
 # temporary directory of the compute node
-# (if two jobs share a node, the env is not created again)
 ENV_NAME=crabs-dev-$SPLIT_SEED-$SLURM_ARRAY_JOB_ID
 ENV_PREFIX=$TMPDIR/$ENV_NAME
 
@@ -83,30 +83,6 @@ conda activate $ENV_PREFIX
 # install crabs package in virtual env
 python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
-
-
-#---------------
-# # if environment does not exist: create it
-# if [ ! -d "$ENV_PREFIX" ]; then
-#     echo "environment does not exist"
-
-#     # create environment
-#     conda create \
-#         --prefix $ENV_PREFIX \
-#         -y \
-#         python=3.10
-
-#     # activate
-#     conda activate $ENV_PREFIX
-
-#     # install crabs package in virtual env
-#     python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
-# else
-#     echo "environment exists"
-#     # activate environment
-#     conda activate $ENV_PREFIX
-# fi
-#---------------
 
 # log pip and python locations
 echo $ENV_PREFIX
