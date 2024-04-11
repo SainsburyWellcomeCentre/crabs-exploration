@@ -69,11 +69,11 @@ class DectectorTrain:
         """
         # Set run name: slurm_job_ID if available, else timestamp
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
 
         # If it's a single job use job_ID, else
         # if it's an array job use <job_ID_parent>_<task_ID>
         if slurm_job_id:
+            slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
             if slurm_array_job_id:
                 slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
                 run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
