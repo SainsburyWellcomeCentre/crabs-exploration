@@ -29,7 +29,7 @@ def crabs_data_module(train_config):
 
 
 @pytest.fixture
-def transforms_train_set(train_config):
+def expected_transforms_train_set(train_config):
     return [
         transforms.ToImage(),
         transforms.ColorJitter(
