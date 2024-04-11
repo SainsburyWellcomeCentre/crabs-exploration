@@ -82,14 +82,16 @@ class DectectorTrain:
         else:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             run_name = f"run_{timestamp}"
-        return run_name
+
+        # Assign
+        self.run_name = run_name
 
     def setup_mlflow_logger(self) -> MLFlowLogger:
         """
         Setup MLflow logger for training.
         """
         # Get run name
-        run_name = self.set_mlflow_run_name()
+        self.set_mlflow_run_name()
 
         # Get checkpointing behaviour
         ckpt_config = self.config.get("checkpoint_saving", {})
@@ -97,7 +99,7 @@ class DectectorTrain:
         # Setup logger
         mlf_logger = MLFlowLogger(
             experiment_name=self.experiment_name,
-            run_name=run_name,
+            run_name=self.run_name,
             tracking_uri="file:./ml-runs",
             log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
         )
