@@ -43,23 +43,86 @@ class CrabsDataModule(LightningDataModule):
 
         """
         # are transforms applied at every sample?
+        # add prob of applying any transform?
 
         train_data_augm = []
-        if self.config["apply_data_augm"]:
-            if self.config["color_jitter"]:
-                jitter = transforms.ColorJitter(
-                    brightness=self.config["color_jitter"]["brightness"],
-                    hue=self.config["color_jitter"]["hue"],
-                )
-                train_data_augm.append(jitter)
 
-            if self.config["gaussian_blur"]:
-                gauss = transforms.GaussianBlur(
-                    kernel_size=self.config["gaussian_blur"]["kernel_size"],
-                    sigma=self.config["gaussian_blur"]["sigma"],
-                )
-                train_data_augm.append(gauss)
+        # Gaussian blur
+        if self.config["gaussian_blur"]:
+            gauss = transforms.GaussianBlur(
+                kernel_size=self.config["gaussian_blur"]["kernel_size"],
+                sigma=self.config["gaussian_blur"]["sigma"],
+            )
+            train_data_augm.append(gauss)
 
+        # Color jitter
+        if self.config["color_jitter"]:
+            jitter = transforms.ColorJitter(
+                brightness=self.config["color_jitter"]["brightness"],
+                contrast=self.config["color_jitter"]["contrast"],
+                saturation=self.config["color_jitter"]["saturation"],
+                hue=self.config["color_jitter"]["hue"],
+            )
+            train_data_augm.append(jitter)
+
+        # RandomHorizontalFlip
+        if self.config["random_horizontal_flip"]:
+            hflip = transforms.RandomHorizontalFlip(
+                self.config["random_horizontal_flip"]["probability"]
+            )
+            train_data_augm.append(hflip)
+
+        # RandomRotation
+        if self.config["random_rotation"]:
+            random_rot = transforms.RandomRotation(
+                (
+                    self.config["random_rotation"]["min_degrees"],
+                    self.config["random_rotation"]["max_degrees"],
+                )
+            )
+            train_data_augm.append(random_rot)
+
+        # RandomAdjustSharpness
+        if self.config["random_adjust_sharpness"]:
+            random_sharp = transforms.RandomAdjustSharpness(
+                self.config["random_adjust_sharpness"]["sharpness_factor"],
+                p=self.config["random_adjust_sharpness"]["probability"],
+            )
+            train_data_augm.append(random_sharp)
+
+        # RandomAutoContrast
+        if self.config["random_autocontrast"]:
+            random_autocontrast = transforms.RandomAutocontrast(
+                self.config["random_autocontrast"]["probability"]
+            )
+            train_data_augm.append(random_autocontrast)
+
+        # RandomEqualize
+        if self.config["random_equalize"]:
+            random_equalize = transforms.RandomEqualize(
+                self.config["random_equalize"]["probability"]
+            )
+            train_data_augm.append(random_equalize)
+
+        # Sanitize bounding boxes:
+        # removes bboxes that are below a min_size
+        # - removes degenerate boxes that have for example X2 <= X1
+        # - removes bboxes with any coordinate outside image - use ClampBoundingBoxes first
+        #   to avoid undesired removals.
+        # See https://pytorch.org/vision/main/generated/torchvision.transforms.v2.SanitizeBoundingBoxes.html#torchvision.transforms.v2.SanitizeBoundingBoxes
+        # It is critical to call this transform if RandomIoUCrop was called
+        if self.config["clamp_and_sanitize_bboxes"]:
+            # Clamp bounding boxes
+            train_data_augm.append(transforms.ClampBoundingBoxes())
+
+            # Sanitize
+            sanitize = transforms.SanitizeBoundingBoxes(
+                min_size=self.config["clamp_and_sanitize_bboxes"]["min_size"],
+                labels_getter=None,  # only bboxes are sanitized
+            )
+            train_data_augm.append(sanitize)
+
+        # Compose
         todtype = transforms.ToDtype(torch.float32, scale=True)
         train_transforms = [transforms.ToImage(), *train_data_augm, todtype]
         return transforms.Compose(train_transforms)
