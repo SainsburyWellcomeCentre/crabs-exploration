@@ -1,5 +1,6 @@
 import argparse
 import datetime
+import os
 import sys
 from pathlib import Path
 
@@ -16,8 +17,6 @@ from crabs.detection_tracking.detection_utils import (
 )
 from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.optuna_fn import optimize_hyperparameters
-
-DEFAULT_ANNOTATIONS_FILENAME = "VIA_JSON_combined_coco_gen.json"
 
 
 class DectectorTrain:
@@ -60,28 +59,67 @@ class DectectorTrain:
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
+    def set_mlflow_run_name(self):
+        """
+        Set MLflow run name.
+
+        Use the slurm job ID if it is a SLURM job, else use a timestamp.
+        For SLURM jobs:
+        - if it is a single job use <job_ID>, else
+        - if it is an array job use <job_ID_parent>_<task_ID>
+        """
+        # Get slurm environment vars
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
+
+        # If slurm array job
+        if slurm_job_id and slurm_array_job_id:
+            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+            run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
+        # If slurm single job
+        elif slurm_job_id:
+            run_name = f"run_slurm_{slurm_job_id}"
+        # If not slurm: use timestamp
+        else:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            run_name = f"run_{timestamp}"
+
+        self.run_name = run_name
+
     def setup_mlflow_logger(self) -> MLFlowLogger:
         """
         Setup MLflow logger for training.
         """
-        # Set run_name
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_name = f"run_{timestamp}"
+        # Assign run name
+        self.set_mlflow_run_name()
 
         # Get checkpointing behaviour
         ckpt_config = self.config.get("checkpoint_saving", {})
 
-        # Define logger
+        # Setup logger
         mlf_logger = MLFlowLogger(
             experiment_name=self.experiment_name,
-            run_name=run_name,
+            run_name=self.run_name,
             tracking_uri="file:./ml-runs",
             log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
         )
 
-        mlf_logger.log_hyperparams(self.config)
-        mlf_logger.log_hyperparams({"split_seed": self.seed_n})
+        # Log CLI arguments
         mlf_logger.log_hyperparams({"cli_args": self.args})
+
+        # Log slurm metadata
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
+        # if array job
+        if slurm_job_id and slurm_array_job_id:
+            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+            mlf_logger.log_hyperparams(
+                {"slurm_job_id": slurm_array_job_id}
+            )  # ID of parent job
+            mlf_logger.log_hyperparams({"slurm_array_task_id": slurm_task_id})
+        # if single job
+        elif slurm_job_id:
+            mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
 
         return mlf_logger
 
@@ -90,7 +128,7 @@ class DectectorTrain:
         Setup trainer with logging and checkpointing.
         """
         # Get MLflow logger
-        mlf_logger = self.setup_mlflow_logger()
+        self.mlf_logger = self.setup_mlflow_logger()
 
         # Define checkpointing behaviour
         config = self.config.get("checkpoint_saving")
@@ -109,11 +147,11 @@ class DectectorTrain:
             checkpoint_callback = None
             enable_checkpointing = False
 
-        # return trainer linked to callbacks and logger
+        # Return trainer linked to callbacks and logger
         return lightning.Trainer(
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
-            logger=mlf_logger,
+            logger=self.mlf_logger,
             enable_checkpointing=enable_checkpointing,
             callbacks=checkpoint_callback,
             fast_dev_run=self.fast_dev_run,
@@ -128,21 +166,20 @@ class DectectorTrain:
             self.config,
             self.seed_n,
         )
-        
+
         if self.args.optuna:
             # Optimize hyperparameters
             best_hyperparameters = optimize_hyperparameters(
                 self.config,
                 data_module,
                 self.accelerator,
-                mlf_logger,
-                self.args.fast_dev_run,
-                self.args.limit_train_batches,
+                self.mlf_logger,
+                fast_dev_run=self.fast_dev_run,
+                limit_train_batches=self.limit_train_batches,
             )
 
             # Update the config with the best hyperparameters
             self.config.update(best_hyperparameters)
-
 
         # Get model
         lightning_model = FasterRCNN(self.config)
@@ -172,12 +209,6 @@ def main(args) -> None:
 def train_parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config_file",
-        type=str,
-        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
-        help="location of YAML config to control training",
-    )
-    parser.add_argument(
         "--dataset_dirs",
         nargs="+",
         required=True,
@@ -193,11 +224,20 @@ def train_parse_args(args):
         ),
     )
     parser.add_argument(
+        "--config_file",
+        type=str,
+        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
+        help=(
+            "Location of YAML config to control training. "
+            "Default: crabs-exploration/crabs/detection_tracking/config/faster_rcnn.yaml"
+        ),
+    )
+    parser.add_argument(
         "--accelerator",
         type=str,
         default="gpu",
         help=(
-            "accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. "
+            "Accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. Default: gpu"
             "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "
             "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"
         ),
@@ -207,20 +247,16 @@ def train_parse_args(args):
         type=str,
         default="Sept2023",
         help=(
-            "the name for the experiment in MLflow, under which the current run will be logged. "
-            "For example, the name of the dataset could be used, to group runs using the same data."
+            "Name of the experiment in MLflow, under which the current run will be logged. "
+            "For example, the name of the dataset could be used, to group runs using the same data. "
+            "Default: Sep2023"
         ),
     )
     parser.add_argument(
         "--seed_n",
         type=int,
         default=42,
-        help="seed for dataset splits",
-    )
-    parser.add_argument(
-        "--optuna",
-        action="store_true",
-        help="running optuna",
+        help="Seed for dataset splits. Default: 42",
     )
     parser.add_argument(
         "--fast_dev_run",
@@ -233,8 +269,13 @@ def train_parse_args(args):
         default=1.0,
         help=(
             "Debugging option to run training on a fraction of the training set."
-            "By default 1.0 (all the training set)"
+            "Default: 1.0 (all the training set)"
         ),
+    )
+    parser.add_argument(
+        "--optuna",
+        action="store_true",
+        help="running optuna",
     )
 
     return parser.parse_args(args)

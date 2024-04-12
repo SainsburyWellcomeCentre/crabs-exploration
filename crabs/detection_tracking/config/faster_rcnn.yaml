@@ -16,7 +16,6 @@ checkpoint_saving:
 iou_threshold: 0.1
 num_workers: 7
 num_workers_val: 7
-num_workers: 0
 transform_brightness: 0.5
 transform_hue: 0.3
 gaussian_blur_params:
