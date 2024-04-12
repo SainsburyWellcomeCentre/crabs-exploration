@@ -59,7 +59,7 @@ def test_draw_bbox_with_label(
         ((10, 10), (15, 15), (0, 255, 0)),
     ],
 )
-def test_draw_bbox_crop(sample_image, top_left, bottom_right, color):
+def test_draw_bbox_green(sample_image, top_left, bottom_right, color):
     draw_bbox(sample_image, top_left, bottom_right, color)
 
     # crop bbox from image
