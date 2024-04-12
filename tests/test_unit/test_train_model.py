@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from crabs.detection_tracking.train_model import (
+from crabs.detection_tracking.detection_utils import (
     DEFAULT_ANNOTATIONS_FILENAME as DEFAULT_ANNOT_FILENAME,
 )
 from crabs.detection_tracking.train_model import (
