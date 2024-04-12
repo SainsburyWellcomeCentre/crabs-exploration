@@ -43,7 +43,7 @@ def test_draw_bbox(sample_image, top_left, bottom_right, color):
 def test_draw_bbox_with_label(
     sample_image, top_left, bottom_right, color, label_text
 ):
-    draw_bbox(sample_image, top_left, bottom_right, color)
+    draw_bbox(sample_image, top_left, bottom_right, color, label_text)
 
     assert np.any(
         sample_image[
