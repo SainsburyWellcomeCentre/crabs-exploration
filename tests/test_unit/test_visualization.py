@@ -143,7 +143,7 @@ def test_draw_bbox_crop(sample_image, top_left, bottom_right, color):
         ),
     ],
 )
-def test_draw_detection_parametrized(annotations, detections):
+def test_draw_detection(annotations, detections):
     imgs = [torch.rand(3, 100, 100)]
     image_with_boxes = draw_detection(imgs, annotations, detections)
     assert image_with_boxes is not None
