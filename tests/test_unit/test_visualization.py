@@ -18,26 +18,39 @@ def sample_image():
 
 
 @pytest.mark.parametrize(
+    "top_left, bottom_right, color",
+    [
+        ((10, 10), (50, 50), (0, 255, 0)),
+    ],
+)
+def test_draw_bbox(sample_image, top_left, bottom_right, color):
+    draw_bbox(sample_image, top_left, bottom_right, color)
+
+    assert np.any(
+        sample_image[
+            top_left[1] : bottom_right[1], top_left[0] : bottom_right[0]
+        ]
+        == color
+    )  # Check if bounding box is drawn
+
+
+@pytest.mark.parametrize(
     "top_left, bottom_right, color, label_text",
     [
-        ((10, 10), (50, 50), (0, 255, 0), None),
         ((10, 10), (50, 50), (0, 255, 0), "Test Label"),
     ],
 )
-def test_draw_bbox(sample_image, top_left, bottom_right, color, label_text):
+def test_draw_bbox_with_label(
+    sample_image, top_left, bottom_right, color, label_text
+):
     draw_bbox(sample_image, top_left, bottom_right, color)
 
-    if label_text:
-        assert np.any(
-            sample_image[10:20, 10:100] == color
-        )  # Check if label text is drawn
-    else:
-        assert np.any(
-            sample_image[
-                top_left[1] : bottom_right[1], top_left[0] : bottom_right[0]
-            ]
-            == color
-        )  # Check if bounding box is drawn
+    assert np.any(
+        sample_image[
+            top_left[1] : bottom_right[1], top_left[0] : bottom_right[0]
+        ]
+        == color
+    )
 
 
 @pytest.mark.parametrize(

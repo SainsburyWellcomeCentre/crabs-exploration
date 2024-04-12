@@ -68,3 +68,23 @@ def test_prep_annotation_files_with_filenames(
         prep_annotation_files(input_annotation_files, input_datasets)
         == expected_annot_paths
     )
+
+
+@pytest.mark.parametrize(
+    "input_datasets, input_annotation_files",
+    [
+        ([DATASET_1], ["path/to/file1.json"]),
+        ([DATASET_1, DATASET_2], ["path/to/file1.json", "path/to/file2.json"]),
+    ],
+)
+def test_prep_annotation_files_with_fullpaths(
+    input_datasets, input_annotation_files
+):
+    expected_annot_paths = []
+    for annot_file in input_annotation_files:
+        expected_annot_paths.append(annot_file)
+
+    assert (
+        prep_annotation_files(input_annotation_files, input_datasets)
+        == expected_annot_paths
+    )
