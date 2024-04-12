@@ -20,9 +20,6 @@ checkpoint_saving:
 iou_threshold: 0.1
 num_workers: 4
 apply_data_augm: True
-color_jitter:
-  brightness: 0.5
-  hue: 0.3
 gaussian_blur:
   kernel_size:
     - 5
@@ -30,6 +27,25 @@ gaussian_blur:
   sigma:
     - 0.1
     - 5.0
+color_jitter:
+  brightness: 0.5
+  contrast: null # will be read as None
+  saturation: null
+  hue: 0.3
+random_horizontal_flip:
+  probability: null # default is 0.5
+random_rotation:
+  min_degrees: -10.0
+  max_degrees: 10.0
+random_adjust_sharpness:
+  sharpness_factor: 0.5 #  0 gives a blurred image, 1 gives the original image while 2 increases the sharpness by a factor of 2.
+  probability: null # default is 0.5
+random_autocontrast:
+  probability: null # default is 0.5
+random_equalize:
+  probability: null # default is 0.5
+clamp_and_sanitize_bboxes:
+  min_size: 1.0 # (px) min size for width and height of the box. Default 1.0
 # when we run Optuna, the n_trials and n_epochs above will be overwritten by the parameters set by Optuna
 optuna:
   # Parameters for hyperparameter optimisation with Optuna:
