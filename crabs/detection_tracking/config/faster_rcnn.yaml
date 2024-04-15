@@ -6,13 +6,7 @@ batch_size_test: 1
 batch_size_val: 1
 num_classes: 2
 train_fraction: 0.8
-val_over_test_fraction: 0.5
-checkpoint_saving:
-  every_n_epochs: 1
-  keep_last_n_ckpts: 2
-  save_weights_only: True
-  copy_as_mlflow_artifacts: True
-  save_last: True
+val_over_test_fraction: 0.1
 iou_threshold: 0.1
 num_workers: 7
 num_workers_val: 7
@@ -27,12 +21,12 @@ gaussian_blur_params:
     - 5.0
 optuna_param:
   n_trials:
-    - 5
+    - 3
   learning_rate:
     - 1e-6
     - 1e-4
   num_epochs:
-    - 100
-    - 300
+    - 1
+    - 2
 exclude_video_file_list:
   - "06.09.2023-03-Right_RE_frame_181451.png"

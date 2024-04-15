@@ -127,9 +127,7 @@ class DectectorTrain:
         """
         Setup trainer with logging and checkpointing.
         """
-        # Get MLflow logger
-        self.mlf_logger = self.setup_mlflow_logger()
-
+        mlf_logger = self.setup_mlflow_logger()
         # Define checkpointing behaviour
         config = self.config.get("checkpoint_saving")
         if config:
@@ -151,7 +149,7 @@ class DectectorTrain:
         return lightning.Trainer(
             max_epochs=self.config["num_epochs"],
             accelerator=self.accelerator,
-            logger=self.mlf_logger,
+            logger=mlf_logger,
             enable_checkpointing=enable_checkpointing,
             callbacks=checkpoint_callback,
             fast_dev_run=self.fast_dev_run,
@@ -167,19 +165,23 @@ class DectectorTrain:
             self.seed_n,
         )
 
+        # Get MLflow logger
+        # self.mlf_logger = self.setup_mlflow_logger()
+
         if self.args.optuna:
             # Optimize hyperparameters
             best_hyperparameters = optimize_hyperparameters(
                 self.config,
                 data_module,
                 self.accelerator,
-                self.mlf_logger,
                 fast_dev_run=self.fast_dev_run,
                 limit_train_batches=self.limit_train_batches,
             )
 
             # Update the config with the best hyperparameters
             self.config.update(best_hyperparameters)
+
+        print(self.config)
 
         # Get model
         lightning_model = FasterRCNN(self.config)

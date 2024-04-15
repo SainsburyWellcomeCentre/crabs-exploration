@@ -1,7 +1,9 @@
+import datetime
 from typing import Any, Dict
 
 import lightning as pl
 import optuna
+from lightning.pytorch.loggers import MLFlowLogger
 from optuna.trial import Trial
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
@@ -13,7 +15,6 @@ def objective(
     config: Dict,
     data_module: CrabsDataModule,
     accelerator: str,
-    mlf_logger: Any,
     fast_dev_run: bool,
     limit_train_batches: bool,
 ) -> float:
@@ -30,8 +31,6 @@ def objective(
         Data module for loading training and validation data.
     accelerator: str
         PyTorch Lightning accelerator.
-    mlf_logger : Any
-        MLflow logger object.
     fast_dev_run: bool
         Flag to run a fast development version.
 
@@ -40,6 +39,16 @@ def objective(
     float
         Validation precision achieved by the model.
     """
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_name = f"run_{trial.number}_{timestamp}"
+
+    # Initialise MLflow logger
+    mlf_logger = MLFlowLogger(
+        run_name=run_name,
+        experiment_name="optuna",
+        tracking_uri="file:./ml-runs",
+    )
+
     # Sample hyperparameters from the search space
     learning_rate = trial.suggest_float(
         "learning_rate",
@@ -70,19 +79,20 @@ def objective(
 
     # Train the model
     trainer.fit(lightning_model, data_module)
-
     val_precision = trainer.callback_metrics["val_precision"].item()
-    # Log val_precision to MLflow
-    trial.set_user_attr("val_precision", val_precision)
+    val_recall = trainer.callback_metrics["val_recall"].item()
+    avg_val_value = (val_precision + val_recall) / 2
+    mlf_logger.log_hyperparams({"val_precision": val_precision})
+    mlf_logger.log_hyperparams({"val_recall": val_recall})
+    mlf_logger.log_hyperparams({"avg_val_value": avg_val_value})
 
-    return val_precision
+    return avg_val_value
 
 
 def optimize_hyperparameters(
     config: Dict,
     data_module: CrabsDataModule,
     accelerator: str,
-    mlf_logger: Any,
     fast_dev_run: bool,
     limit_train_batches: bool,
 ) -> Dict[str, Any]:
@@ -97,8 +107,6 @@ def optimize_hyperparameters(
         Data module for loading training and validation data.
     accelerator: str
         PyTorch Lightning accelerator.
-    mlf_logger : Any
-        MLflow logger object.
     fast_dev_run: bool
         Flag to run a fast development version.
 
@@ -117,7 +125,6 @@ def optimize_hyperparameters(
             config,
             data_module,
             accelerator,
-            mlf_logger,
             fast_dev_run,
             limit_train_batches,
         )
@@ -130,12 +137,7 @@ def optimize_hyperparameters(
     # Get the best hyperparameters
     best_trial = study.best_trial
     best_params = best_trial.params
-    print(best_trial.user_attrs)
-    best_val_precision = best_trial.user_attrs["val_precision"]
 
     print("Best hyperparameters:", best_params)
-    print("Best val_precision:", best_val_precision)
-    mlf_logger.log_hyperparams(best_params)
-    mlf_logger.log_hyperparams({"best_val_precision": best_val_precision})
 
     return best_params
