@@ -12,6 +12,10 @@ checkpoint_saving:
   keep_last_n_ckpts: 2
   save_weights_only: True
   copy_as_mlflow_artifacts: True
+  # copy_as_mlflow_artifacts:
+  # if True, selected checkpoints are added as artifacts at the end of training,
+  # if all, all checkpoints for every epoch are added as artifacts during training,
+  # if False, no checkpoints are added as artifacts.
   save_last: True
 iou_threshold: 0.1
 num_workers: 0
