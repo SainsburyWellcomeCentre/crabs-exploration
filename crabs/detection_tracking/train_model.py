@@ -263,8 +263,7 @@ def train_parse_args(args):
         type=str,
         default="/ceph/zoo/users/sminano/ml-runs",
         help=(
-            "Debugging option to run training on a fraction of the training set."
-            "Default: 1.0 (all the training set)"
+            "Path to MLflow directory. Default: /ceph/zoo/users/sminano/ml-runs"
         ),
     )
 
