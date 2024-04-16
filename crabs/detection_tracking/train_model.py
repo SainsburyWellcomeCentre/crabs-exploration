@@ -1,6 +1,4 @@
 import argparse
-import datetime
-import os
 import sys
 from pathlib import Path
 
@@ -12,8 +10,11 @@ from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
+    log_metadata_to_logger,
     prep_annotation_files,
     prep_img_directories,
+    set_mlflow_run_name,
+    setup_mlflow_logger_with_checkpointing,
 )
 from crabs.detection_tracking.models import FasterRCNN
 
@@ -59,67 +60,28 @@ class DectectorTrain:
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
-    def set_mlflow_run_name(self):
+    def set_run_name(self):
+        self.run_name = set_mlflow_run_name()
+
+    def setup_logger(self) -> MLFlowLogger:
         """
-        Set MLflow run name.
+        Setup MLflow logger for training, with checkpointing.
 
-        Use the slurm job ID if it is a SLURM job, else use a timestamp.
-        For SLURM jobs:
-        - if it is a single job use <job_ID>, else
-        - if it is an array job use <job_ID_parent>_<task_ID>
-        """
-        # Get slurm environment vars
-        slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
-
-        # If slurm array job
-        if slurm_job_id and slurm_array_job_id:
-            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-            run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
-        # If slurm single job
-        elif slurm_job_id:
-            run_name = f"run_slurm_{slurm_job_id}"
-        # If not slurm: use timestamp
-        else:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            run_name = f"run_{timestamp}"
-
-        self.run_name = run_name
-
-    def setup_mlflow_logger(self) -> MLFlowLogger:
-        """
-        Setup MLflow logger for training.
+        Includes logging metadata about the job (CLI arguments and SLURM job IDs).
         """
         # Assign run name
-        self.set_mlflow_run_name()
+        self.set_run_name()
 
-        # Get checkpointing behaviour
-        ckpt_config = self.config.get("checkpoint_saving", {})
-
-        # Setup logger
-        mlf_logger = MLFlowLogger(
-            experiment_name=self.experiment_name,
-            run_name=self.run_name,
-            tracking_uri=f"file:{Path(self.mlflow_folder)}",
-            log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
+        # Setup logger with checkpointing
+        mlf_logger = setup_mlflow_logger_with_checkpointing(
+            self.experiment_name,
+            self.run_name,
+            self.mlflow_folder,
+            self.config.get("checkpoint_saving", {}),
         )
 
-        # Log CLI arguments
-        mlf_logger.log_hyperparams({"cli_args": self.args})
-
-        # Log slurm metadata
-        slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
-        # if array job
-        if slurm_job_id and slurm_array_job_id:
-            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-            mlf_logger.log_hyperparams(
-                {"slurm_job_id": slurm_array_job_id}
-            )  # ID of parent job
-            mlf_logger.log_hyperparams({"slurm_array_task_id": slurm_task_id})
-        # if single job
-        elif slurm_job_id:
-            mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
+        # Log metadata: CLI arguments and SLURM (if required)
+        mlf_logger = log_metadata_to_logger(mlf_logger, self.args)
 
         return mlf_logger
 
@@ -128,9 +90,9 @@ class DectectorTrain:
         Setup trainer with logging and checkpointing.
         """
         # Get MLflow logger
-        mlf_logger = self.setup_mlflow_logger()
+        mlf_logger = self.setup_logger()
 
-        # Define checkpointing behaviour
+        # Define checkpointing callback for trainer
         config = self.config.get("checkpoint_saving")
         if config:
             checkpoint_callback = ModelCheckpoint(
