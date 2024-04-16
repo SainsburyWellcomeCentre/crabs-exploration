@@ -174,7 +174,7 @@ class DectectorTrain:
             # if array job
             if slurm_array_job_id:
                 slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-                for ext in [".out", ".err"]:
+                for ext in ["out", "err"]:
                     logger.experiment.log_artifact(
                         logger.run_id,
                         f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}.{ext}",
@@ -183,7 +183,7 @@ class DectectorTrain:
 
             # if single job:
             else:
-                for ext in [".out", ".err"]:
+                for ext in ["out", "err"]:
                     logger.experiment.log_artifact(
                         logger.run_id,
                         f"slurm.{slurm_job_id}.{slurm_node}.{ext}",
