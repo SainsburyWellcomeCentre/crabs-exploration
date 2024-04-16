@@ -177,7 +177,7 @@ class DectectorTrain:
                 for ext in ["out", "err"]:
                     logger.experiment.log_artifact(
                         logger.run_id,
-                        f"slurm_logs/slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}.{ext}",
+                        f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}.{ext}",
                     )
                 return
 
@@ -186,7 +186,7 @@ class DectectorTrain:
                 for ext in ["out", "err"]:
                     logger.experiment.log_artifact(
                         logger.run_id,
-                        f"slurm_logs/slurm.{slurm_job_id}.{slurm_node}.{ext}",
+                        f"slurm.{slurm_job_id}.{slurm_node}.{ext}",
                     )
                 return
 
