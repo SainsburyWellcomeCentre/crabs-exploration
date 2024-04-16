@@ -158,37 +158,32 @@ class DectectorTrain:
             limit_train_batches=self.limit_train_batches,
         )
 
-    def slurm_logs_as_artifacts(self, logger):
-        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+    def slurm_logs_as_artifacts(self, logger, slurm_job_id):
+        """
+        Add slurm logs as an MLflow artifacts of the current run.
+
+        The filenaming convention from the training scripts at crabs-exploration/bash_scripts/ is assumed.
+        """
+
+        # Get slurm env variables: slurm and array job ID
+        slurm_node = os.environ.get("SLURMD_NODENAME")
         slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
 
-        # if not a slurm job: return
-        if not slurm_job_id:
-            return
+        # Get root of log filenames
+        # for array job
+        if slurm_array_job_id:
+            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+            log_filename = f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}"
+        # for single job
+        else:
+            log_filename = f"slurm.{slurm_job_id}.{slurm_node}"
 
-        # if slurm job: log out and err files as artifacts
-        # the filenaming convention from the bash script is assumed
-        elif slurm_job_id:
-            slurm_node = os.environ.get("SLURMD_NODENAME")
-
-            # if array job
-            if slurm_array_job_id:
-                slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-                for ext in ["out", "err"]:
-                    logger.experiment.log_artifact(
-                        logger.run_id,
-                        f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}.{ext}",
-                    )
-                return
-
-            # if single job:
-            else:
-                for ext in ["out", "err"]:
-                    logger.experiment.log_artifact(
-                        logger.run_id,
-                        f"slurm.{slurm_job_id}.{slurm_node}.{ext}",
-                    )
-                return
+        # Add log files as artifacts of this run
+        for ext in ["out", "err"]:
+            logger.experiment.log_artifact(
+                logger.run_id,
+                f"{log_filename}.{ext}",
+            )
 
     def train_model(self):
         # Create data module
@@ -207,7 +202,9 @@ class DectectorTrain:
         trainer.fit(lightning_model, data_module)
 
         # if this is a slurm job: add slurm logs as artifacts
-        self.slurm_logs_as_artifacts(trainer.logger)
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        if slurm_job_id:
+            self.slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
 
 
 def main(args) -> None:
