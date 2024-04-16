@@ -166,22 +166,27 @@ class DectectorTrain:
         if not slurm_job_id:
             return
 
-        # if slurm array job: log out and err files as artifacts
-        if slurm_job_id and slurm_array_job_id:
-            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-            for ext in [".out", ".err"]:
-                trainer.logger.log_artifact(
-                    f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.*.{ext}"  # does it work with wildcards?
-                )
-            return
-
-        # if single job: : log out and err files as artifacts
+        # if slurm job: log out and err files as artifacts
+        # the filenaming convention from the bash script is assumed
         elif slurm_job_id:
-            for ext in [".out", ".err"]:
-                trainer.logger.log_artifact(
-                    f"slurm.{slurm_job_id}.*.{ext}"  # does it work with wildcards?
-                )
-            return
+            slurm_node = os.environ.get("SLURMD_NODENAME")
+
+            # if array job
+            if slurm_array_job_id:
+                slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+                for ext in [".out", ".err"]:
+                    trainer.logger.log_artifact(
+                        f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}.{ext}"
+                    )
+                return
+
+            # if single job:
+            else:
+                for ext in [".out", ".err"]:
+                    trainer.logger.log_artifact(
+                        f"slurm.{slurm_job_id}.{slurm_node}.{ext}"
+                    )
+                return
 
     def train_model(self):
         # Create data module
