@@ -127,6 +127,7 @@ def evaluate_mota(
     """
     total_gt = len(gt_boxes)
     false_positive = 0
+    true_positives = 0
 
     for i, tracked_box in enumerate(tracked_boxes):
         best_iou = 0.0
@@ -138,6 +139,7 @@ def evaluate_mota(
                 best_iou = iou
                 best_match = j
         if best_match is not None:
+            true_positives += 1
             # successfully found a matching ground truth box for the tracked box.
             # set the corresponding ground truth box to None.
             gt_boxes[best_match] = None
@@ -155,7 +157,8 @@ def evaluate_mota(
     num_switches = count_identity_switches(prev_frame_ids, tracked_ids)
 
     mota = 1 - (missed_detections + false_positive + num_switches) / total_gt
-    return mota
+
+    return true_positives, missed_detections, false_positive, num_switches, total_gt, mota
 
 
 def extract_bounding_box_info(row: list[str]) -> Dict[str, Any]:

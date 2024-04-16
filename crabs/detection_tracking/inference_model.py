@@ -3,7 +3,7 @@ import csv
 import os
 from pathlib import Path
 from typing import Any, Optional, TextIO, Tuple
-
+import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 import torch
@@ -18,6 +18,7 @@ from crabs.detection_tracking.tracking_utils import (
 from crabs.detection_tracking.visualization import (
     draw_bbox,
 )
+import pandas as pd
 
 
 class DetectorInference:
@@ -178,15 +179,41 @@ class DetectorInference:
         """
         mota_values = []
         prev_frame_ids: Optional[list[list[int]]] = None
-        # prev_frame_ids = None
+        true_positives_list = []
+        missed_detections_list = []
+        false_positives_list = []
+        num_switches_list = []
+        total_gt_list = []
+
         for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
-            mota = evaluate_mota(
+            true_positives, missed_detections, false_positives, num_switches, total_gt, mota = evaluate_mota(
                 gt_boxes, tracked_boxes, iou_threshold, prev_frame_ids
             )
             mota_values.append(mota)
+            total_gt_list.append(total_gt)
+            true_positives_list.append(true_positives)
+            missed_detections_list.append(missed_detections)
+            false_positives_list.append(false_positives)
+            num_switches_list.append(num_switches)
+
             # Update previous frame IDs for the next iteration
             prev_frame_ids = [[box[-1] for box in tracked_boxes]]
-            # print(prev_frame_ids)
+        
+        video_name = Path(self.vid_path)
+        model_name = Path(self.args.model_dir)
+        
+        data = {
+            'Frame Number': range(1, len(true_positives_list) + 1),
+            'Total Ground Truth': total_gt_list,
+            'True Positives': true_positives_list,
+            'Missed Detections': missed_detections_list,
+            'False Positives': false_positives_list,
+            'Number of Switches': num_switches_list,
+            'Mota': mota_values
+        }
+
+        df = pd.DataFrame(data)
+        df.to_csv(f"{video_name.stem}_{model_name.stem}_tracking_output", index=False)
 
         return mota_values
 
@@ -272,6 +299,29 @@ class DetectorInference:
                     f"id : {int(id)}",
                 )
             self.out.write(frame_copy)
+        
+        if self.args.save_video and self.args.gt_dir:
+            frame_copy = frame.copy()
+            for bbox in tracked_boxes:
+                xmin, ymin, xmax, ymax, id = bbox
+                draw_bbox(
+                    frame_copy,
+                    (xmin, ymin),
+                    (xmax, ymax),
+                    (0, 0, 255),
+                    f"id : {int(id)}",
+                )
+            for gt_bbox in self.gt_boxes_list[frame_number-1]:
+                xmin, ymin, xmax, ymax, id = gt_bbox
+                draw_bbox(
+                    frame_copy,
+                    (xmin, ymin),
+                    (xmax, ymax),
+                    (0, 255, 0),
+                    f"id : {int(id)}",
+                )
+            
+            self.out.write(frame_copy)
 
     def run_inference(self):
         """
@@ -284,6 +334,11 @@ class DetectorInference:
         # initialise csv writer if required
         if self.args.save_csv_and_frames:
             self.csv_writer, csv_file = self.prep_csv_writer()
+
+        if self.args.gt_dir:
+            self.gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
+        
+        # print(len(self.gt_boxes_list))
 
         # loop thru frames of clip
         while self.video.isOpened():
@@ -310,9 +365,9 @@ class DetectorInference:
             frame_number += 1
 
         if self.args.gt_dir:
-            gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
+            # gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
             mota_values = self.evaluate_tracking(
-                gt_boxes_list, self.tracked_list, self.iou_threshold
+                self.gt_boxes_list, self.tracked_list, self.iou_threshold
             )
             overall_mota = np.mean(mota_values)
             print("Overall MOTA:", overall_mota)
