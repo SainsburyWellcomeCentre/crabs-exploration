@@ -158,7 +158,7 @@ class DectectorTrain:
             limit_train_batches=self.limit_train_batches,
         )
 
-    def slurm_logs_as_artifacts(self, trainer):
+    def slurm_logs_as_artifacts(self, logger):
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
         slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
 
@@ -175,16 +175,18 @@ class DectectorTrain:
             if slurm_array_job_id:
                 slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
                 for ext in [".out", ".err"]:
-                    trainer.logger.log_artifact(
-                        f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}.{ext}"
+                    logger.experiment.log_artifact(
+                        logger.run_id,
+                        f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}.{ext}",
                     )
                 return
 
             # if single job:
             else:
                 for ext in [".out", ".err"]:
-                    trainer.logger.log_artifact(
-                        f"slurm.{slurm_job_id}.{slurm_node}.{ext}"
+                    logger.experiment.log_artifact(
+                        logger.run_id,
+                        f"slurm.{slurm_job_id}.{slurm_node}.{ext}",
                     )
                 return
 
@@ -205,7 +207,7 @@ class DectectorTrain:
         trainer.fit(lightning_model, data_module)
 
         # if this is a slurm job: add slurm logs as artifacts
-        self.slurm_logs_as_artifacts(trainer)
+        self.slurm_logs_as_artifacts(trainer.logger)
 
 
 def main(args) -> None:
