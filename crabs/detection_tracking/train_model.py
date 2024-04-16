@@ -52,6 +52,7 @@ class DectectorTrain:
         self.experiment_name = args.experiment_name
         self.fast_dev_run = args.fast_dev_run
         self.limit_train_batches = args.limit_train_batches
+        self.mlflow_folder = args.mlflow_folder
         self.load_config_yaml()
 
     def load_config_yaml(self):
@@ -99,7 +100,7 @@ class DectectorTrain:
         mlf_logger = MLFlowLogger(
             experiment_name=self.experiment_name,
             run_name=self.run_name,
-            tracking_uri="file:./ml-runs",
+            tracking_uri=f"file:{self.mlflow_folder}",
             log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
         )
 
@@ -255,6 +256,14 @@ def train_parse_args(args):
         help=(
             "Debugging option to run training on a fraction of the training set."
             "Default: 1.0 (all the training set)"
+        ),
+    )
+    parser.add_argument(
+        "--mlflow_folder",
+        type=str,
+        default="/ceph/zoo/users/sminano/ml-runs",
+        help=(
+            "Path to MLflow directory. Default: /ceph/zoo/users/sminano/ml-runs"
         ),
     )
 
