@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import sys
 from pathlib import Path
 
@@ -9,8 +8,11 @@ from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
+    log_metadata_to_logger,
     prep_annotation_files,
     prep_img_directories,
+    set_mlflow_run_name,
+    setup_mlflow_logger,
 )
 from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.visualization import save_images_with_boxes
@@ -57,11 +59,48 @@ class DetectorEvaluation:
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
+    def set_run_name(self):
+        self.run_name = set_mlflow_run_name()
+
+    def setup_logger(self) -> MLFlowLogger:
+        """
+        Setup MLflow logger for testing.
+
+        Includes logging metadata about the job (CLI arguments and SLURM job IDs).
+        """
+        # Assign run name
+        self.set_run_name()
+
+        # Setup logger (no checkpointing)
+        mlf_logger = setup_mlflow_logger(
+            "evaluation",
+            self.run_name,
+        )
+
+        # Log metadata to logger: CLI arguments and SLURM (if required)
+        mlf_logger = log_metadata_to_logger(mlf_logger, self.args)
+
+        return mlf_logger
+
+    def setup_trainer(self):
+        """
+        Setup trainer object with logging for testing.
+        """
+
+        # Get MLflow logger
+        mlf_logger = self.setup_logger()
+
+        # Return trainer linked to logger
+        return lightning.Trainer(
+            accelerator=self.args.accelerator,
+            logger=mlf_logger,
+        )
+
     def evaluate_model(self) -> None:
         """
         Evaluate the trained model on the test dataset.
         """
-        # instantiate datamodule for the given seed and manually setup
+        # Create datamodule
         data_module = CrabsDataModule(
             self.images_dirs,
             self.annotation_files,
@@ -69,34 +108,19 @@ class DetectorEvaluation:
             self.seed_n,
         )
 
-        # start mlflow logger
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_name = f"run_{timestamp}"
-        mlf_logger = MLFlowLogger(
-            run_name=run_name,
-            experiment_name="evaluation",
-            tracking_uri="file:./ml-runs",
-        )
-        mlf_logger.log_hyperparams(self.config)
-        mlf_logger.log_hyperparams({"split_seed": self.seed_n})
-        mlf_logger.log_hyperparams({"cli_args": self.args})
-
-        # instantiate trainer
-        trainer = lightning.Trainer(
-            accelerator=self.args.accelerator,
-            logger=mlf_logger,
-        )
-
-        # run test
+        # Get trained model
         trained_model = FasterRCNN.load_from_checkpoint(
             self.args.checkpoint_path
         )
+
+        # Run testing
+        trainer = self.setup_trainer()
         trainer.test(
             trained_model,
             data_module,
         )
 
-        # save images if required
+        # Save images if required
         if self.args.save_frames:
             save_images_with_boxes(
                 data_module.test_dataloader(),
