@@ -158,6 +158,31 @@ class DectectorTrain:
             limit_train_batches=self.limit_train_batches,
         )
 
+    def slurm_logs_as_artifacts(self, trainer):
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
+
+        # if not a slurm job: return
+        if not slurm_job_id:
+            return
+
+        # if slurm array job: log out and err files as artifacts
+        if slurm_job_id and slurm_array_job_id:
+            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+            for ext in [".out", ".err"]:
+                trainer.logger.log_artifact(
+                    f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.*.{ext}"  # does it work with wildcards?
+                )
+            return
+
+        # if single job: : log out and err files as artifacts
+        elif slurm_job_id:
+            for ext in [".out", ".err"]:
+                trainer.logger.log_artifact(
+                    f"slurm.{slurm_job_id}.*.{ext}"  # does it work with wildcards?
+                )
+            return
+
     def train_model(self):
         # Create data module
         data_module = CrabsDataModule(
@@ -173,6 +198,9 @@ class DectectorTrain:
         # Run training
         trainer = self.setup_trainer()
         trainer.fit(lightning_model, data_module)
+
+        # if this is a slurm job: add slurm logs as artifacts
+        self.slurm_logs_as_artifacts(trainer)
 
 
 def main(args) -> None:
