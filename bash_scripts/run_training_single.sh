@@ -43,7 +43,7 @@ TRAIN_CONFIG_FILE=/ceph/scratch/sminano/crabs-exploration/cluster_train_config.y
 SPLIT_SEED=42
 
 # version of the codebase
-GIT_BRANCH=smg/fix-slurm-id-array
+GIT_BRANCH=main
 
 
 # -----------------------------
