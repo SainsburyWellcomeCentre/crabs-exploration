@@ -261,7 +261,7 @@ def train_parse_args(args):
     parser.add_argument(
         "--mlflow_folder",
         type=str,
-        default=str(Path("./ml-runs")),
+        default="./ml-runs",
         help=("Path to MLflow directory. Default: ./ml-runs"),
     )
 
