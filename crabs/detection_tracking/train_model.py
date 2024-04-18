@@ -100,7 +100,7 @@ class DectectorTrain:
         mlf_logger = MLFlowLogger(
             experiment_name=self.experiment_name,
             run_name=self.run_name,
-            tracking_uri=f"file:{self.mlflow_folder.encode('unicode_escape')}",
+            tracking_uri=f"file:{str(Path(self.mlflow_folder))}",
             log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
         )
 
@@ -261,7 +261,7 @@ def train_parse_args(args):
     parser.add_argument(
         "--mlflow_folder",
         type=str,
-        default="./ml-runs",
+        default=str(Path("./ml-runs")),
         help=("Path to MLflow directory. Default: ./ml-runs"),
     )
 
