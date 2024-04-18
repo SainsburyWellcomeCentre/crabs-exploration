@@ -53,6 +53,7 @@ class DetectorEvaluation:
         self.seed_n = args.seed_n
         self.ious_threshold = args.ious_threshold
         self.score_threshold = args.score_threshold
+        self.mlflow_folder = args.mlflow_folder
         self.load_config_yaml()
 
     def load_config_yaml(self):
@@ -73,8 +74,9 @@ class DetectorEvaluation:
 
         # Setup logger (no checkpointing)
         mlf_logger = setup_mlflow_logger(
-            "evaluation",
-            self.run_name,
+            experiment_name="Sep2023_evaluation",
+            run_name=self.run_name,
+            mlflow_folder=self.mlflow_folder,
         )
 
         # Log metadata to logger: CLI arguments and SLURM (if required)
@@ -205,6 +207,12 @@ def evaluate_parse_args(args):
         type=int,
         default=42,
         help="Seed for dataset splits. Default: 42",
+    )
+    parser.add_argument(
+        "--mlflow_folder",
+        type=str,
+        default="./ml-runs",
+        help=("Path to MLflow directory. Default: ./ml-runs"),
     )
     parser.add_argument(
         "--save_frames",
