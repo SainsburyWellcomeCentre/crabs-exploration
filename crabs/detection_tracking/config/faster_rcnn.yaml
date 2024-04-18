@@ -3,7 +3,7 @@
 # ---------
 train_fraction: 0.8
 val_over_test_fraction: 0.5
-num_workers: 0  # for all dataloaders
+num_workers: 0 # for all dataloaders
 
 # ---------
 # Network
