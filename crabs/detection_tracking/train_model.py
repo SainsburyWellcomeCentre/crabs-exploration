@@ -80,6 +80,17 @@ class DectectorTrain:
         # Log metadata: CLI arguments and SLURM (if required)
         mlf_logger = log_metadata_to_logger(mlf_logger, self.args)
 
+        # Log (assumed) path to checkpoints directory
+        path_to_checkpoints = (
+            Path(mlf_logger._tracking_uri)
+            / mlf_logger._experiment_id
+            / mlf_logger._run_id
+            / "checkpoints"
+        )
+        mlf_logger.log_hyperparams(
+            {"path_to_checkpoints": str(path_to_checkpoints)}
+        )
+
         return mlf_logger
 
     def setup_trainer(self):
