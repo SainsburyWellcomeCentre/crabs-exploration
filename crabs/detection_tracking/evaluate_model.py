@@ -26,35 +26,35 @@ class DetectorEvaluation:
     ----------
     args : argparse
         Command-line arguments containing configuration settings.
-    config_file : str
-        Path to the directory containing configuration file.
-    images_dirs : list[str]
-        list of paths to the image directories of the datasets.
-    annotation_files : list[str]
-        list of filenames for the COCO annotations.
-    score_threshold : float
-        The score threshold for confidence detection.
-    ious_threshold : float
-        The ious threshold for detection bounding boxes.
-    evaluate_dataloader:
-        The DataLoader for the test dataset.
+
     """
 
     def __init__(
         self,
         args: argparse.Namespace,
     ) -> None:
+        # inputs
         self.args = args
         self.config_file = args.config_file
+        self.load_config_yaml()
+
+        # dataset
         self.images_dirs = prep_img_directories(args.dataset_dirs)
         self.annotation_files = prep_annotation_files(
             args.annotation_files, args.dataset_dirs
         )
         self.seed_n = args.seed_n
-        self.ious_threshold = args.ious_threshold
-        self.score_threshold = args.score_threshold
+
+        # Hardware
+        self.accelerator = args.accelerator  # --------
+
+        # MLflow
+        self.experiment_name = args.experiment_name
         self.mlflow_folder = args.mlflow_folder
-        self.load_config_yaml()
+
+        # Debugging
+        self.fast_dev_run = args.fast_dev_run
+        self.limit_test_batches = args.limit_test_batches
 
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
@@ -74,12 +74,13 @@ class DetectorEvaluation:
 
         # Setup logger (no checkpointing)
         mlf_logger = setup_mlflow_logger(
-            experiment_name="Sep2023_evaluation",
+            experiment_name=self.experiment_name,  # "Sep2023_evaluation",
             run_name=self.run_name,
             mlflow_folder=self.mlflow_folder,
         )
 
         # Log metadata to logger: CLI arguments and SLURM (if required)
+        # log model name?
         mlf_logger = log_metadata_to_logger(mlf_logger, self.args)
 
         return mlf_logger
@@ -94,8 +95,10 @@ class DetectorEvaluation:
 
         # Return trainer linked to logger
         return lightning.Trainer(
-            accelerator=self.args.accelerator,
+            accelerator=self.accelerator,
             logger=mlf_logger,
+            fast_dev_run=self.fast_dev_run,
+            limit_test_batches=self.limit_test_batches,
         )
 
     def evaluate_model(self) -> None:
@@ -127,13 +130,13 @@ class DetectorEvaluation:
             save_images_with_boxes(
                 data_module.test_dataloader(),
                 trained_model,
-                self.score_threshold,
+                self.config["score_threshold"],
             )
 
 
 def main(args) -> None:
     """
-    Main function to orchestrate the testing process using Detector_Test.
+    Main function to orchestrate the testing process.
 
     Parameters
     ----------
@@ -168,7 +171,7 @@ def evaluate_parse_args(args):
     parser.add_argument(
         "--checkpoint_path",
         type=str,
-        required=True, #--------- can we pass experiment and runid?
+        required=True,  # --------- can we pass experiment and run-id?
         help="Location of trained model",
     )
     parser.add_argument(
@@ -191,10 +194,34 @@ def evaluate_parse_args(args):
         ),
     )
     parser.add_argument(
+        "--experiment_name",
+        type=str,
+        default="Sept2023_evaluation",
+        help=(
+            "Name of the experiment in MLflow, under which the current run will be logged. "
+            "For example, the name of the dataset could be used, to group runs using the same data. "
+            "Default: Sept2023_evaluation"
+        ),
+    )
+    parser.add_argument(
         "--seed_n",
         type=int,
         default=42,
         help="Seed for dataset splits. Default: 42",
+    )
+    parser.add_argument(
+        "--fast_dev_run",
+        action="store_true",
+        help="Debugging option to run training for one batch and one epoch",
+    )
+    parser.add_argument(
+        "--limit_test_batches",
+        type=float,
+        default=1.0,
+        help=(
+            "Debugging option to run training on a fraction of the training set."
+            "Default: 1.0 (all the training set)"
+        ),
     )
     parser.add_argument(
         "--mlflow_folder",
