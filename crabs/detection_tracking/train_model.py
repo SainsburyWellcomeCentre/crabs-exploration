@@ -100,7 +100,7 @@ class DectectorTrain:
         mlf_logger = MLFlowLogger(
             experiment_name=self.experiment_name,
             run_name=self.run_name,
-            tracking_uri=f"file:{str(Path(self.mlflow_folder))}",
+            tracking_uri=f"file:{Path(self.mlflow_folder)}",
             log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
         )
 
