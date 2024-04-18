@@ -87,18 +87,18 @@ def set_mlflow_run_name() -> str:
     - if it is a single job use <job_ID>, else
     - if it is an array job use <job_ID_parent>_<task_ID>
     """
-    # Get slurm environment vars
+    # Get slurm environment variables
     slurm_job_id = os.environ.get("SLURM_JOB_ID")
     slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
 
-    # If slurm array job
+    # If job is a slurm array job
     if slurm_job_id and slurm_array_job_id:
         slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
         run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
-    # If slurm single job
+    # If job is a slurm single job
     elif slurm_job_id:
         run_name = f"run_slurm_{slurm_job_id}"
-    # If not slurm: use timestamp
+    # If not a slurm job: use timestamp
     else:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = f"run_{timestamp}"
@@ -112,9 +112,10 @@ def setup_mlflow_logger(
     mlflow_folder: str
 ) -> MLFlowLogger:
     """
-    Setup MLflow logger for a given experiment and run.
+    Setup MLflow logger for a given experiment and run name.
 
-    It also logs CLI arguments and SLURM metadata (if a SLURM job).
+    It also adds metadata to the logger (CLI arguments and if a SLURM job,
+    SLURM metadata).
 
     Parameters
     ----------
@@ -148,9 +149,11 @@ def setup_mlflow_logger_with_checkpointing(
     mlflow_folder: str
 ) -> MLFlowLogger:
     """
-    Setup MLflow logger with checkpointing, for a given experiment and run.
+    Setup MLflow logger with checkpointing, for a given experiment and run
+    name.
 
-    It also logs CLI arguments and SLURM metadata (if a SLURM job).
+    It also adds metadata to the logger (CLI arguments and if a SLURM job,
+    SLURM metadata).
 
     Parameters
     ----------
@@ -184,7 +187,8 @@ def log_metadata_to_logger(
     mlf_logger: MLFlowLogger,
     cli_args: argparse.Namespace,
 ) -> MLFlowLogger:
-    """Log metadata to MLflow logger.
+    """
+    Log metadata to MLflow logger.
 
     Add CLI arguments and, if available, SLURM job information.
 
