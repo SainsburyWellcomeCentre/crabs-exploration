@@ -110,4 +110,4 @@ train-detector  \
  --accelerator gpu \
  --experiment_name "Sept2023" \
  --seed_n $SPLIT_SEED \
- --mlflow_folder /ceph/zoo/users/sminano/ml-runs \
+ --mlflow_folder /ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch \
