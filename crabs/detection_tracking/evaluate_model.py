@@ -1,4 +1,7 @@
 import argparse
+import ast
+
+# import pdb
 import sys
 from pathlib import Path
 
@@ -38,12 +41,16 @@ class DetectorEvaluation:
         self.config_file = args.config_file
         self.load_config_yaml()
 
-        # dataset
-        self.images_dirs = prep_img_directories(args.dataset_dirs)
-        self.annotation_files = prep_annotation_files(
-            args.annotation_files, args.dataset_dirs
-        )
-        self.seed_n = args.seed_n
+        # trained model
+        self.checkpoint_path = args.checkpoint_path
+
+        # dataset: retrieve from ckpt if possible
+        # maybe a different name?
+        self.images_dirs = (
+            self.get_img_directories_from_ckpt()
+        )  # maybe in detection utils? - I think good here cause nothing else uses it for now
+        self.annotation_files = self.get_annotation_files_from_ckpt()
+        self.seed_n = self.get_seed_from_ckpt()
 
         # Hardware
         self.accelerator = args.accelerator  # --------
@@ -59,6 +66,97 @@ class DetectorEvaluation:
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
+
+    def get_mlflow_client_from_ckpt(self):
+        # we assume an mlflow ckpt
+
+        import mlflow
+
+        # roughly assert the format of the path
+        assert Path(self.checkpoint_path).parent.stem == "checkpoints"
+
+        # get mlruns path, experiment and run ID associated to this checkpoint
+        self.ckpt_mlruns_path = str(Path(self.checkpoint_path).parents[3])
+        self.ckpt_experimentID = Path(self.checkpoint_path).parents[2].stem
+        self.ckpt_runID = Path(self.checkpoint_path).parents[1].stem
+
+        # create an Mlflow client to interface with mlflow runs
+        self.mlrun_client = mlflow.tracking.MlflowClient(
+            tracking_uri=self.ckpt_mlruns_path,
+        )
+
+        # get params of the run
+        run = self.mlrun_client.get_run(self.ckpt_runID)
+        params = run.data.params
+
+        # pdb.set_trace()
+        return params
+
+    def get_img_directories_from_ckpt(self) -> list[str]:
+        # if dataset_dirs is empty:
+        # retrieve from ckpt path
+        # We assume we always pass a mlflow chckpoint
+        # would this work with a remote?
+        if not self.args.dataset_dirs:
+            # get mlflow client for the ml-runs folder containing the checkpoint
+            params = self.get_mlflow_client_from_ckpt()
+
+            # get dataset_dirs used in training job
+            train_cli_dataset_dirs = ast.literal_eval(
+                params["cli_args/dataset_dirs"]
+            )
+
+            # pass that to prep image directories
+            # pdb.set_trace()
+            images_dirs = prep_img_directories(train_cli_dataset_dirs)
+            # pdb.set_trace()
+
+        # if not empty, call the regular one
+        else:
+            images_dirs = prep_img_directories(self.args.dataset_dirs)
+
+        return images_dirs
+
+    def get_annotation_files_from_ckpt(self) -> list[str]:
+        # if no annotation files passed:
+        # retrieve from checkpoint
+        # pdb.set_trace()
+        if not self.args.annotation_files:
+            # get mlflow client for the ml-runs folder containing the checkpoint
+            params = self.get_mlflow_client_from_ckpt()
+
+            # pdb.set_trace()
+            train_cli_dataset_dirs = ast.literal_eval(
+                params["cli_args/dataset_dirs"]
+            )
+            train_cli_annotation_files = ast.literal_eval(
+                params["cli_args/annotation_files"]
+            )
+
+            # pdb.set_trace()
+            annotation_files = prep_annotation_files(
+                train_cli_annotation_files, train_cli_dataset_dirs
+            )
+            # pdb.set_trace()
+
+        else:
+            annotation_files = prep_annotation_files(
+                self.args.annotation_files, self.args.dataset_dirs
+            )
+        return annotation_files
+
+    def get_seed_from_ckpt(self) -> int:
+        # pdb.set_trace()
+        if not self.args.seed_n:
+            # get mlflow client for the ml-runs folder containing the checkpoint
+            params = self.get_mlflow_client_from_ckpt()
+
+            # pdb.set_trace()
+            seed_n = ast.literal_eval(params["cli_args/seed_n"])
+            # pdb.set_trace()
+        else:
+            seed_n = self.args.seed_n
+        return seed_n
 
     def set_run_name(self):
         self.run_name = set_mlflow_run_name()
@@ -114,9 +212,7 @@ class DetectorEvaluation:
         )
 
         # Get trained model
-        trained_model = FasterRCNN.load_from_checkpoint(
-            self.args.checkpoint_path
-        )
+        trained_model = FasterRCNN.load_from_checkpoint(self.checkpoint_path)
 
         # Run testing
         trainer = self.setup_trainer()
@@ -154,21 +250,6 @@ def main(args) -> None:
 def evaluate_parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--dataset_dirs",
-        nargs="+",
-        required=True,
-        help="List of dataset directories",
-    )
-    parser.add_argument(
-        "--annotation_files",
-        nargs="+",
-        default=[],
-        help=(
-            "List of paths to annotation files. The full path or the filename can be provided. "
-            "If only filename is provided, it is assumed to be under dataset/annotations."
-        ),
-    )
-    parser.add_argument(
         "--checkpoint_path",
         type=str,
         required=True,  # --------- can we pass experiment and run-id?
@@ -183,6 +264,35 @@ def evaluate_parse_args(args):
             "Default: crabs-exploration/crabs/detection_tracking/config/faster_rcnn.yaml"
         ),
     )
+    parser.add_argument(
+        "--dataset_dirs",
+        nargs="+",
+        default=[],  # required=True,
+        help=(
+            "List of dataset directories. If none provided, the ones used for "
+            "the ckpt training are used."
+        ),
+    )
+    parser.add_argument(
+        "--annotation_files",
+        nargs="+",
+        default=[],
+        help=(
+            "List of paths to annotation files. The full path or the filename can be provided. "
+            "If only filename is provided, it is assumed to be under dataset/annotations."
+            "If none is provided, the annotations from the dataset of the checkpoint are used."
+        ),
+    )
+    parser.add_argument(
+        "--seed_n",
+        type=int,
+        # default=42,
+        help=(
+            "Seed for dataset splits. If none is provided, the seed from the dataset of "
+            "the checkpoint is used",  # No default
+        ),
+    )
+
     parser.add_argument(
         "--accelerator",
         type=str,
@@ -202,12 +312,6 @@ def evaluate_parse_args(args):
             "For example, the name of the dataset could be used, to group runs using the same data. "
             "Default: Sept2023_evaluation"
         ),
-    )
-    parser.add_argument(
-        "--seed_n",
-        type=int,
-        default=42,
-        help="Seed for dataset splits. Default: 42",
     )
     parser.add_argument(
         "--fast_dev_run",
