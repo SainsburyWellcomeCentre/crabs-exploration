@@ -1,12 +1,23 @@
-num_epochs: 4
+# ---------
+# Dataset
+# ---------
+train_fraction: 0.8
+val_over_test_fraction: 0.5
+num_workers: 0  # for all dataloaders
+
+# ---------
+# Network
+# ---------
+num_classes: 2
+
+# -------------------------------
+# Training/validation parameters
+# -------------------------------
+num_epochs: 1
 learning_rate: 0.00005
 wdecay: 0.00005
 batch_size_train: 4
-batch_size_test: 1
 batch_size_val: 1
-num_classes: 2
-train_fraction: 0.8
-val_over_test_fraction: 0.5
 checkpoint_saving:
   every_n_epochs: 1
   keep_last_n_ckpts: 2
@@ -17,8 +28,6 @@ checkpoint_saving:
   # if all, all checkpoints for every epoch are added as artifacts during training,
   # if False, no checkpoints are added as artifacts.
   save_last: True
-iou_threshold: 0.1
-num_workers: 0
 transform_brightness: 0.5
 transform_hue: 0.3
 gaussian_blur_params:
@@ -28,3 +37,10 @@ gaussian_blur_params:
   sigma:
     - 0.1
     - 5.0
+
+# ------------------------------
+# Testing parameters
+# ------------------------------
+batch_size_test: 1
+iou_threshold: 0.1
+score_threshold: 0.1

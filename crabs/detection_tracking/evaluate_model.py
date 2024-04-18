@@ -168,7 +168,7 @@ def evaluate_parse_args(args):
     parser.add_argument(
         "--checkpoint_path",
         type=str,
-        required=True,
+        required=True, #--------- can we pass experiment and runid?
         help="Location of trained model",
     )
     parser.add_argument(
@@ -189,18 +189,6 @@ def evaluate_parse_args(args):
             "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "
             "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"
         ),
-    )
-    parser.add_argument(
-        "--score_threshold",
-        type=float,
-        default=0.1,
-        help="Threshold for confidence score. Default: 0.1",
-    )
-    parser.add_argument(
-        "--ious_threshold",
-        type=float,
-        default=0.1,
-        help="Threshold for IOU. Default: 0.1",
     )
     parser.add_argument(
         "--seed_n",
