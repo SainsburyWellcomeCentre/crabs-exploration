@@ -289,7 +289,7 @@ def evaluate_parse_args(args):
         # default=42,
         help=(
             "Seed for dataset splits. If none is provided, the seed from the dataset of "
-            "the checkpoint is used",  # No default
+            "the checkpoint is used."  # No default
         ),
     )
 
