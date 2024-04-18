@@ -37,7 +37,7 @@ set -o pipefail  # make the pipe fail if any part of it fails
 
 # dataset and train config
 DATASET_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
-TRAIN_CONFIG_FILE=/ceph/scratch/sminano/crabs-exploration/cluster_train_config.yaml
+# TRAIN_CONFIG_FILE=/ceph/scratch/sminano/crabs-exploration/cluster_train_config.yaml -- use default
 
 # seeds for each dataset split
 SPLIT_SEED=42
@@ -91,7 +91,6 @@ echo "-----"
 # -------------------
 train-detector  \
  --dataset_dirs $DATASET_DIR \
- --config_file $TRAIN_CONFIG_FILE \
  --accelerator gpu \
  --experiment_name "Sept2023" \
  --seed_n $SPLIT_SEED \
