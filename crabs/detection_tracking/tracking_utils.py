@@ -158,7 +158,14 @@ def evaluate_mota(
 
     mota = 1 - (missed_detections + false_positive + num_switches) / total_gt
 
-    return true_positives, missed_detections, false_positive, num_switches, total_gt, mota
+    return (
+        true_positives,
+        missed_detections,
+        false_positive,
+        num_switches,
+        total_gt,
+        mota,
+    )
 
 
 def extract_bounding_box_info(row: list[str]) -> Dict[str, Any]:

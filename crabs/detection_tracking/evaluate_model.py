@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 import lightning
-import torch
 import yaml  # type: ignore
 from lightning.pytorch.loggers import MLFlowLogger
 
@@ -89,10 +88,7 @@ class DetectorEvaluation:
         )
 
         # run test
-        trained_model = FasterRCNN(self.config)
-        trained_model.load_state_dict(
-            torch.load(self.args.model_path).state_dict()
-        )
+        trained_model = FasterRCNN.load_from_checkpoint(self.args.model_path)
         trainer.test(
             trained_model,
             data_module,

@@ -1,18 +1,10 @@
-import csv
-import io
-from pathlib import Path
-
 import numpy as np
 import pytest
 
 from crabs.detection_tracking.tracking_utils import (
     calculate_iou,
     count_identity_switches,
-    create_gt_list,
     evaluate_mota,
-    extract_bounding_box_info,
-    get_ground_truth_data,
-    write_tracked_bbox_to_csv,
 )
 
 

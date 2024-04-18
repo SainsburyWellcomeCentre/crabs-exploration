@@ -3,13 +3,15 @@ import csv
 import os
 from pathlib import Path
 from typing import Any, Optional, TextIO, Tuple
-import matplotlib.pyplot as plt
+
 import cv2
 import numpy as np
+import pandas as pd
 import torch
 import torchvision.transforms.v2 as transforms
 from sort import Sort
 
+from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.tracking_utils import (
     evaluate_mota,
     get_ground_truth_data,
@@ -18,7 +20,6 @@ from crabs.detection_tracking.tracking_utils import (
 from crabs.detection_tracking.visualization import (
     draw_bbox,
 )
-import pandas as pd
 
 
 class DetectorInference:
@@ -66,12 +67,14 @@ class DetectorInference:
         -------
         torch.nn.Module
         """
-        model = torch.load(
-            self.args.model_dir,
-            map_location=torch.device(self.args.accelerator),
-        )
-        model.eval()
-        return model
+        # model = torch.load(
+        #     self.args.model_dir,
+        #     map_location=torch.device(self.args.accelerator),
+        # )
+        # model.eval()
+        trained_model = FasterRCNN.load_from_checkpoint(self.args.model_dir)
+        trained_model.eval()
+        return trained_model
 
     def prep_sort(self, prediction: dict) -> np.ndarray:
         """
@@ -186,7 +189,14 @@ class DetectorInference:
         total_gt_list = []
 
         for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
-            true_positives, missed_detections, false_positives, num_switches, total_gt, mota = evaluate_mota(
+            (
+                true_positives,
+                missed_detections,
+                false_positives,
+                num_switches,
+                total_gt,
+                mota,
+            ) = evaluate_mota(
                 gt_boxes, tracked_boxes, iou_threshold, prev_frame_ids
             )
             mota_values.append(mota)
@@ -198,22 +208,24 @@ class DetectorInference:
 
             # Update previous frame IDs for the next iteration
             prev_frame_ids = [[box[-1] for box in tracked_boxes]]
-        
+
         video_name = Path(self.vid_path)
         model_name = Path(self.args.model_dir)
-        
+
         data = {
-            'Frame Number': range(1, len(true_positives_list) + 1),
-            'Total Ground Truth': total_gt_list,
-            'True Positives': true_positives_list,
-            'Missed Detections': missed_detections_list,
-            'False Positives': false_positives_list,
-            'Number of Switches': num_switches_list,
-            'Mota': mota_values
+            "Frame Number": range(1, len(true_positives_list) + 1),
+            "Total Ground Truth": total_gt_list,
+            "True Positives": true_positives_list,
+            "Missed Detections": missed_detections_list,
+            "False Positives": false_positives_list,
+            "Number of Switches": num_switches_list,
+            "Mota": mota_values,
         }
 
         df = pd.DataFrame(data)
-        df.to_csv(f"{video_name.stem}_{model_name.stem}_tracking_output", index=False)
+        df.to_csv(
+            f"{video_name.stem}_{model_name.stem}_tracking_output", index=False
+        )
 
         return mota_values
 
@@ -299,7 +311,7 @@ class DetectorInference:
                     f"id : {int(id)}",
                 )
             self.out.write(frame_copy)
-        
+
         if self.args.save_video and self.args.gt_dir:
             frame_copy = frame.copy()
             for bbox in tracked_boxes:
@@ -311,7 +323,7 @@ class DetectorInference:
                     (0, 0, 255),
                     f"id : {int(id)}",
                 )
-            for gt_bbox in self.gt_boxes_list[frame_number-1]:
+            for gt_bbox in self.gt_boxes_list[frame_number - 1]:
                 xmin, ymin, xmax, ymax, id = gt_bbox
                 draw_bbox(
                     frame_copy,
@@ -320,7 +332,7 @@ class DetectorInference:
                     (0, 255, 0),
                     f"id : {int(id)}",
                 )
-            
+
             self.out.write(frame_copy)
 
     def run_inference(self):
@@ -337,8 +349,6 @@ class DetectorInference:
 
         if self.args.gt_dir:
             self.gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
-        
-        # print(len(self.gt_boxes_list))
 
         # loop thru frames of clip
         while self.video.isOpened():
@@ -365,7 +375,6 @@ class DetectorInference:
             frame_number += 1
 
         if self.args.gt_dir:
-            # gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
             mota_values = self.evaluate_tracking(
                 self.gt_boxes_list, self.tracked_list, self.iou_threshold
             )
