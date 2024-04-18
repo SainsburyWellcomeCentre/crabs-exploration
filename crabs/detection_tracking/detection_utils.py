@@ -106,47 +106,8 @@ def set_mlflow_run_name() -> str:
     return run_name
 
 
-def setup_mlflow_logger(
-    experiment_name: str,
-    run_name: str,
-    mlflow_folder: str
-) -> MLFlowLogger:
-    """
-    Setup MLflow logger for a given experiment and run name.
-
-    It also adds metadata to the logger (CLI arguments and if a SLURM job,
-    SLURM metadata).
-
-    Parameters
-    ----------
-    experiment_name : str
-        Name of the experiment under which this run will be logged.
-    run_name : str
-        Name of the run.
-    mlflow_folder : str
-        Path to folder where to store MLflow outputs for this run.
-
-    Returns
-    -------
-    MLFlowLogger
-        A logger to record data for MLflow
-    """
-
-    # Setup logger
-    mlf_logger = MLFlowLogger(
-        experiment_name=experiment_name,
-        run_name=run_name,
-        tracking_uri=f"file:{Path(mlflow_folder)}"
-    )
-
-    return mlf_logger
-
-
 def setup_mlflow_logger_with_checkpointing(
-    experiment_name: str,
-    run_name: str,
-    ckpt_config: dict,
-    mlflow_folder: str
+    experiment_name: str, run_name: str, ckpt_config: dict, mlflow_folder: str
 ) -> MLFlowLogger:
     """
     Setup MLflow logger with checkpointing, for a given experiment and run
@@ -178,6 +139,42 @@ def setup_mlflow_logger_with_checkpointing(
         run_name=run_name,
         tracking_uri=f"file:{Path(mlflow_folder)}",
         log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
+    )
+
+    return mlf_logger
+
+
+def setup_mlflow_logger_no_checkpointing(
+    experiment_name: str, run_name: str, mlflow_folder: str
+) -> MLFlowLogger:
+    """
+    Setup MLflow logger for a given experiment and run name, without
+    checkpointing.
+
+    It also adds metadata to the logger (CLI arguments and if a SLURM job,
+    SLURM metadata).
+
+    Parameters
+    ----------
+    experiment_name : str
+        Name of the experiment under which this run will be logged.
+    run_name : str
+        Name of the run.
+    mlflow_folder : str
+        Path to folder where to store MLflow outputs for this run.
+
+    Returns
+    -------
+    MLFlowLogger
+        A logger to record data for MLflow
+    """
+
+    # Setup logger with empty dict as ckpt config
+    mlf_logger = setup_mlflow_logger_with_checkpointing(
+        experiment_name=experiment_name,
+        run_name=run_name,
+        mlflow_folder=mlflow_folder,
+        ckpt_config={},
     )
 
     return mlf_logger

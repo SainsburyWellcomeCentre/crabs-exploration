@@ -74,10 +74,10 @@ class DectectorTrain:
 
         # Setup logger with checkpointing
         mlf_logger = setup_mlflow_logger_with_checkpointing(
-            self.experiment_name,
-            self.run_name,
-            self.mlflow_folder,
-            self.config.get("checkpoint_saving", {}),
+            experiment_name=self.experiment_name,
+            run_name=self.run_name,
+            mlflow_folder=self.mlflow_folder,
+            ckpt_config=self.config.get("checkpoint_saving", {}),
         )
 
         # Log metadata: CLI arguments and SLURM (if required)
