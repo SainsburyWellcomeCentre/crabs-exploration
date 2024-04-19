@@ -63,11 +63,11 @@
 
     Ideally, we edit the config file more than the bash scripts. All the info in the config file is anyways recorded for each run in its MLflow logs.
 
-    > [!CAUTION]
-    >
-    > If we launch a job and then modify the config file before the job has been able to read it, we may be using an undesired version of the config in our job. To avoid this, it is best to wait until you can verify in MLflow that the job has the expected config parameters, and then edit the file for a new job if needed.
+> [!CAUTION]
+>
+> If we launch a job and then modify the config file before the job has been able to read it, we may be using an undesired version of the config in our job. To avoid this, it is best to wait until you can verify in MLflow that the job has the expected config parameters, and then edit the file for a new job if needed.
 
-    Some parameters we often modify in the config:
+Some parameters we often modify in the config:
 
     - `num_epochs`
     - `batch_size_train`
@@ -77,7 +77,7 @@
     - `iou_threshold`
     - `num_workers`
 
-1.  **Run the training job using the SLURM scheduler**
+5.  **Run the training job using the SLURM scheduler**
 
     To launch a job, use the `sbatch` command with the training script you fetched (and maybe edited):
 
