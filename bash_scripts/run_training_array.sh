@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -p a100 # gpu # partition
+#SBATCH -p gpu # a100 # partition
 #SBATCH --gres=gpu:1 # gpu:a100_2g.10gb  # For any GPU: --gres=gpu:1. For a specific one: --gres=gpu:rtx5000
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 8 # 2 # max number of tasks per node
