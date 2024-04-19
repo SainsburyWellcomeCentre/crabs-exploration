@@ -40,8 +40,8 @@
 
     When launching a single or an array job, one may want to edit in the bash script:
 
-    - The `--experiment_name` (line 111). This should roughly reflect the reason for running the experiment (for example, include `data_augm` for a data augmentation ablation study). Otherwise we use the name of the dataset (Sep2023).
-    - The `mlflow_folder` (line 113). By default, we point to the "scratch" folder. This holds runs that we don't need to keep. For runs we would like to consider for evaluation, we will instead point to the folder at `/ceph/zoo/users/sminano/ml-runs-all/ml-runs`.
+    - The `EXPERIMENT_NAME`. This should roughly reflect the reason for running the experiment (for example, include `data_augm` for a data augmentation ablation study). Otherwise we use the name of the dataset (Sep2023).
+    - The `MLFLOW_FOLDER`. By default, we point to the "scratch" folder at `/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch` . This folder holds runs that we don't need to keep. For runs we would like to consider for evaluation, we will instead point to the folder at `/ceph/zoo/users/sminano/ml-runs-all/ml-runs`.
 
     Less frequently, one may need to edit:
 
