@@ -42,7 +42,7 @@ set -o pipefail  # make the pipe fail if any part of it fails
 
 # dataset and train config
 DATASET_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
-TRAIN_CONFIG_FILE=/ceph/scratch/sminano/crabs-exploration/cluster_train_config.yaml
+TRAIN_CONFIG_FILE=/ceph/zoo/users/sminano/cluster_train_config.yaml
 
 # seeds for each dataset split
 LIST_SEEDS=($(echo {42..44}))
