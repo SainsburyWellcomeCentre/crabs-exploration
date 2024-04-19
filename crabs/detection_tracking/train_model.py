@@ -27,35 +27,31 @@ class DectectorTrain:
     ----------
     args: argparse.Namespace
         An object containing the parsed command-line arguments.
-
-    Attributes
-    ----------
-    config_file : str
-        Path to the directory containing configuration file.
-    main_dirs : List[str]
-        List of paths to the main directories of the datasets.
-    annotation_files : List[str]
-        List of filenames for the COCO annotations.
-    model_name : str
-        The model use to train the detector.
     """
 
     def __init__(self, args):
+        # inputs
         self.args = args
         self.config_file = args.config_file
-        self.images_dirs = prep_img_directories(
-            args.dataset_dirs  # args only?
-        )  # list of paths
+        self.load_config_yaml()
+
+        # dataset
+        self.images_dirs = prep_img_directories(args.dataset_dirs)
         self.annotation_files = prep_annotation_files(
             args.annotation_files, args.dataset_dirs
-        )  # list of paths
-        self.accelerator = args.accelerator
+        )
         self.seed_n = args.seed_n
+
+        # Hardware
+        self.accelerator = args.accelerator
+
+        # MLflow
         self.experiment_name = args.experiment_name
+        self.mlflow_folder = args.mlflow_folder
+
+        # Debugging
         self.fast_dev_run = args.fast_dev_run
         self.limit_train_batches = args.limit_train_batches
-        self.mlflow_folder = args.mlflow_folder
-        self.load_config_yaml()
 
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
@@ -83,6 +79,17 @@ class DectectorTrain:
 
         # Log metadata: CLI arguments and SLURM (if required)
         mlf_logger = log_metadata_to_logger(mlf_logger, self.args)
+
+        # Log (assumed) path to checkpoints directory
+        path_to_checkpoints = (
+            Path(mlf_logger._tracking_uri)
+            / mlf_logger._experiment_id
+            / mlf_logger._run_id
+            / "checkpoints"
+        )
+        mlf_logger.log_hyperparams(
+            {"path_to_checkpoints": str(path_to_checkpoints)}
+        )
 
         return mlf_logger
 
