@@ -1,89 +1,132 @@
 # Train a detector in the cluster
 
-0. If not in the SWC network: connect to the SWC VPN
+0.  **Prep**
 
-1. Connect to the SWC HPC
+    - If not in the SWC network: connect to the SWC VPN.
 
-   ```
-   ssh hpc-gw1
-   ```
+1.  **Connect to the SWC HPC cluster**
 
-   It may ask for your password twice. To set up SSH keys for the SWC cluster, see [this guide](https://howto.neuroinformatics.dev/programming/SSH-SWC-cluster.html#ssh-keys)
+    ```
+    ssh hpc-gw1
+    ```
 
-2. Fetch the bash script for training from the repository
+    It may ask for your password twice. To set up SSH keys for the SWC cluster, see [this guide](https://howto.neuroinformatics.dev/programming/SSH-SWC-cluster.html#ssh-keys).
 
-   To do so, run any of the following commands. They will place the bash script for training in the current working directory. The files retrieved will be the versions in the `main` branch of the repository.
+1.  **Fetch the training script from the 🦀 repository**
 
-   To train a single job: fetch the `run_training_single.sh` file
+    To do so, run any of the following commands. They will place the bash script for training in the current working directory. The files retrieved will be the versions in the `main` branch of the repository.
 
-   ```
-   curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/run_training_single.sh > run_training_single.sh
-   ```
+    - To train a single job: fetch the `run_training_single.sh` file
 
-   To train an array job: fetch the `run_training_array.sh` file
+      ```
+      curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/run_training_single.sh > run_training_single.sh
+      ```
 
-   ```
-   curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/run_training_array.sh > run_training_array.sh
-   ```
+    - To train an array job: fetch the `run_training_array.sh` file
+      ```
+      curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/run_training_array.sh > run_training_array.sh
+      ```
 
-   To retrieve a different versions of these files, from the ones at the tip of `main`:
+    To retrieve a different version of any of these files, from the one at the tip of `main`:
 
-   - replace `main` in the remote file path with the relevant branch, or
-   - replace `main` with `blob/commit-hash` to retrieve a specific commit.
+    - replace `main` in the remote file path after `curl` with the relevant branch, or
+    - replace `main` with `blob/commit-hash` to retrieve a specific commit.
 
-   These bash scripts fetch the crabs package from git, install it in the compute node, and run a training job.
+    These bash scripts fetch the crabs package from git, install it in the compute node, and run a training job.
 
-3. Edit the bash script if required.
+1.  **Edit the training bash script if required**
 
-   Ideally, we don't edit the bash scripts much for training. If we find we do, then we may want to consider moving the relevant parameters to the config file.
+    Ideally, we won't edit the training scripts much. If we find we do, then we may want to consider moving the relevant parameters to the config file.
 
-   For launching a single or an array job, some things one may want to edit in the bash script are:
+    When launching a single or an array job, one may want to edit in the bash script:
 
-   - The `--experiment_name` (line 111). This may reflect the reason for running an experiment, for example, a data augmentation ablation study. Otherwise we use the name of the dataset (Sep2023).
-   - The `mlflow_folder` (line 113). By default, we point to the "scratch" folder. For runs we would like to consider for evaluation, we may want to point to the selected runs folder at `/ceph/zoo/users/sminano/ml-runs-all/ml-runs`.
+    - The `--experiment_name` (line 111). This should roughly reflect the reason for running the experiment (for example, include `data_augm` for a data augmentation ablation study). Otherwise we use the name of the dataset (Sep2023).
+    - The `mlflow_folder` (line 113). By default, we point to the "scratch" folder. This holds runs that we don't need to keep. For runs we would like to consider for evaluation, we will instead point to the folder at `/ceph/zoo/users/sminano/ml-runs-all/ml-runs`.
 
-   Less frequently, one may need to edit:
+    Less frequently, one may need to edit:
 
-   - the `DATASET_DIR`: usually we train on the "Sep2023_labelled" dataset;
-   - the `TRAIN_CONFIG_FILE`: usually we point to the file at `/ceph/zoo/users/sminano/cluster_train_config.yaml` which we can edit. Note that all config parameters are logged in MLflow;
-   - the `GIT_BRANCH`, if we want to use a specific version of the package. Usually we will run the version in `main`.
+    - the `DATASET_DIR`: usually we train on the "Sep2023_labelled" dataset;
+    - the `TRAIN_CONFIG_FILE`: usually we point to the file at `/ceph/zoo/users/sminano/cluster_train_config.yaml` which we can edit. Note that all config parameters are logged in MLflow;
+    - the `GIT_BRANCH`, if we want to use a specific version of the package. Usually we will run the version in `main`.
 
-   Additionally for an array job, one may want to edit the number of jobs in the array (by default set to 3):
+    Additionally for an array job, one may want to edit the number of jobs in the array (by default set to 3):
 
-   - if the number of jobs in the array is edited, the `LIST_SEEDS` needs to be modified accordingly, otherwise we will get an error when launching the job.
+    - if the number of jobs in the array is edited, the `LIST_SEEDS` needs to be modified accordingly, otherwise we will get an error when launching the job.
 
-4. Edit the config if required
+1.  Edit the config if required
 
-   The config file the bash scripts point to is located at `/ceph/zoo/users/sminano/cluster_train_config.yaml`.
+    The config file the bash scripts point to is located at:
 
-   Ideally we edit the config file more than the bash scripts. All the info in the config file is recorded for each run in MLflow logs.
+    ```
+    /ceph/zoo/users/sminano/cluster_train_config.yaml
+    ```
 
-   ATTENTION! If we launch a job and then modify the config file before the job has been able to read it, we may be using an undesired version of the config in our job. To avoid this, it is best to wait until you can verify in MLflow the launched has the expected config parameters
+    Ideally, we edit the config file more than the bash scripts. All the info in the config file is anyways recorded for each run in its MLflow logs.
 
-   ...
+    > [!CAUTION]
+    >
+    > If we launch a job and then modify the config file before the job has been able to read it, we may be using an undesired version of the config in our job. To avoid this, it is best to wait until you can verify in MLflow that the job has the expected config parameters, and then edit the file for a new job if needed.
 
-   Some parameters one may modify
+    Some parameters we often modify in the config:
 
-   ....
+    - `num_epochs`
+    - `batch_size_train`
+    - `batch_size_test`
+    - `batch_size_val`
+    - `checkpoint_saving` parameters
+    - `iou_threshold`
+    - `num_workers`
 
-5. Run the training job using the SLURM scheduler
+1.  **Run the training job using the SLURM scheduler**
 
-   ```
-   sbatch <path-to-fetched-bash-script>
-   ```
+    To launch a job, use the `sbatch` command with the training script you fetched (and maybe edited):
 
-6. To check the status of a training job you can:
+    ```
+    sbatch <path-to-fetched-training-bash-script>
+    ```
 
-   - Check the SLURM logs.
-     The
-   - Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
-   - Check the MLFlow logs. To do this, run:
+1.  **Check the status of the training job**
 
-     ```
+    To do this, we can:
 
-     ```
+    - Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run.
+    - Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
+    - Check the MLFlow logs. To do this, first create or activate an existing conda environment with `mlflow` installed, and then run the `mlflow` command from the login node.
 
-## Some useful SLURM commands
+      - Activate the conda environment.
+        ```
+        conda activate mlflow-env
+        ```
+      - Run `mlflow` to visualise the results in the ml-runs folder.
+
+        If using the "scratch" folder:
+
+        ```
+        mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
+        ```
+
+        If using the selected runs folder:
+
+        ```
+        mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs
+        ```
+
+       <details>
+          <summary>See how to create the mlflow conda environment</summary>
+
+             - Load miniconda
+                ```
+                module load miniconda
+                ```
+
+             - Create a conda environment and install mlflow
+                ```
+                conda create -n mlflow-env python=3.10 mlflow -y
+                ```
+
+       </details>
+
+### Some useful SLURM commands
 
 To check the status of your jobs in the queue
 
@@ -120,3 +163,7 @@ To cancel a job
 ```
 scancel <jobID>
 ```
+
+### Troubleshooting
+
+...
