@@ -53,7 +53,7 @@
 
     - if the number of jobs in the array is edited, the `LIST_SEEDS` needs to be modified accordingly, otherwise we will get an error when launching the job.
 
-1.  Edit the config if required
+1.  **Edit the config if required**
 
     The config file the bash scripts point to is located at:
 
