@@ -1,15 +1,15 @@
-num_epochs: 4
+num_epochs: 250
 learning_rate: 0.00005
 wdecay: 0.00005
 batch_size_train: 4
-batch_size_test: 1
-batch_size_val: 1
+batch_size_test: 4
+batch_size_val: 4
 num_classes: 2
 train_fraction: 0.8
 val_over_test_fraction: 0.5
 checkpoint_saving:
-  every_n_epochs: 1
-  keep_last_n_ckpts: 2
+  every_n_epochs: 50
+  keep_last_n_ckpts: 5
   save_weights_only: True
   copy_as_mlflow_artifacts: True
   # copy_as_mlflow_artifacts:
@@ -18,7 +18,7 @@ checkpoint_saving:
   # if False, no checkpoints are added as artifacts.
   save_last: True
 iou_threshold: 0.1
-num_workers: 0
+num_workers: 4
 transform_brightness: 0.5
 transform_hue: 0.3
 gaussian_blur_params:

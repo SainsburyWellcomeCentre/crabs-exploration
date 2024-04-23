@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -p a100 # gpu # partition
+#SBATCH -p gpu # a100 # partition
 #SBATCH --gres=gpu:1 # gpu:a100_2g.10gb  # For any GPU: --gres=gpu:1. For a specific one: --gres=gpu:rtx5000
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 8 # 2 # max number of tasks per node
@@ -40,9 +40,13 @@ set -o pipefail  # make the pipe fail if any part of it fails
 # Define variables
 # ----------------------
 
+# mlflow
+EXPERIMENT_NAME="Sept2023"
+MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
+
 # dataset and train config
 DATASET_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
-TRAIN_CONFIG_FILE=/ceph/scratch/sminano/crabs-exploration/cluster_train_config.yaml
+TRAIN_CONFIG_FILE=/ceph/zoo/users/sminano/cluster_train_config.yaml
 
 # seeds for each dataset split
 LIST_SEEDS=($(echo {42..44}))
@@ -108,6 +112,6 @@ train-detector  \
  --dataset_dirs $DATASET_DIR \
  --config_file $TRAIN_CONFIG_FILE \
  --accelerator gpu \
- --experiment_name "Sept2023" \
+ --experiment_name $EXPERIMENT_NAME \
  --seed_n $SPLIT_SEED \
- --mlflow_folder /ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch \
+ --mlflow_folder $MLFLOW_FOLDER \
