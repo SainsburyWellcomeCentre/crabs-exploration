@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import os
 import sys
 from pathlib import Path
@@ -12,8 +11,11 @@ from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
+    log_metadata_to_logger,
     prep_annotation_files,
     prep_img_directories,
+    set_mlflow_run_name,
+    setup_mlflow_logger,
 )
 from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.optuna_fn import optimize_hyperparameters
@@ -26,100 +28,69 @@ class DectectorTrain:
     ----------
     args: argparse.Namespace
         An object containing the parsed command-line arguments.
-
-    Attributes
-    ----------
-    config_file : str
-        Path to the directory containing configuration file.
-    main_dirs : List[str]
-        List of paths to the main directories of the datasets.
-    annotation_files : List[str]
-        List of filenames for the COCO annotations.
-    model_name : str
-        The model use to train the detector.
     """
 
     def __init__(self, args):
+        # inputs
         self.args = args
         self.config_file = args.config_file
-        self.images_dirs = prep_img_directories(
-            args.dataset_dirs  # args only?
-        )  # list of paths
+        self.load_config_yaml()
+
+        # dataset
+        self.images_dirs = prep_img_directories(args.dataset_dirs)
         self.annotation_files = prep_annotation_files(
             args.annotation_files, args.dataset_dirs
-        )  # list of paths
-        self.accelerator = args.accelerator
+        )
         self.seed_n = args.seed_n
+
+        # Hardware
+        self.accelerator = args.accelerator
+
+        # MLflow
         self.experiment_name = args.experiment_name
+        self.mlflow_folder = args.mlflow_folder
+
+        # Debugging
         self.fast_dev_run = args.fast_dev_run
         self.limit_train_batches = args.limit_train_batches
-        self.load_config_yaml()
 
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
-    def set_mlflow_run_name(self):
+    def set_run_name(self):
+        self.run_name = set_mlflow_run_name()
+
+    def setup_logger(self) -> MLFlowLogger:
         """
-        Set MLflow run name.
+        Setup MLflow logger for training, with checkpointing.
 
-        Use the slurm job ID if it is a SLURM job, else use a timestamp.
-        For SLURM jobs:
-        - if it is a single job use <job_ID>, else
-        - if it is an array job use <job_ID_parent>_<task_ID>
-        """
-        # Get slurm environment vars
-        slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
-
-        # If slurm array job
-        if slurm_job_id and slurm_array_job_id:
-            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-            run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
-        # If slurm single job
-        elif slurm_job_id:
-            run_name = f"run_slurm_{slurm_job_id}"
-        # If not slurm: use timestamp
-        else:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            run_name = f"run_{timestamp}"
-
-        self.run_name = run_name
-
-    def setup_mlflow_logger(self) -> MLFlowLogger:
-        """
-        Setup MLflow logger for training.
+        Includes logging metadata about the job (CLI arguments and SLURM job IDs).
         """
         # Assign run name
-        self.set_mlflow_run_name()
+        self.set_run_name()
 
-        # Get checkpointing behaviour
-        ckpt_config = self.config.get("checkpoint_saving", {})
-
-        # Setup logger
-        mlf_logger = MLFlowLogger(
+        # Setup logger with checkpointing
+        mlf_logger = setup_mlflow_logger(
             experiment_name=self.experiment_name,
             run_name=self.run_name,
-            tracking_uri="file:./ml-runs",
-            log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
+            mlflow_folder=self.mlflow_folder,
+            ckpt_config=self.config.get("checkpoint_saving", {}),
         )
 
-        # Log CLI arguments
-        mlf_logger.log_hyperparams({"cli_args": self.args})
+        # Log metadata: CLI arguments and SLURM (if required)
+        mlf_logger = log_metadata_to_logger(mlf_logger, self.args)
 
-        # Log slurm metadata
-        slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
-        # if array job
-        if slurm_job_id and slurm_array_job_id:
-            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-            mlf_logger.log_hyperparams(
-                {"slurm_job_id": slurm_array_job_id}
-            )  # ID of parent job
-            mlf_logger.log_hyperparams({"slurm_array_task_id": slurm_task_id})
-        # if single job
-        elif slurm_job_id:
-            mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
+        # Log (assumed) path to checkpoints directory
+        path_to_checkpoints = (
+            Path(mlf_logger._tracking_uri)
+            / mlf_logger._experiment_id
+            / mlf_logger._run_id
+            / "checkpoints"
+        )
+        mlf_logger.log_hyperparams(
+            {"path_to_checkpoints": str(path_to_checkpoints)}
+        )
 
         return mlf_logger
 
@@ -127,8 +98,10 @@ class DectectorTrain:
         """
         Setup trainer with logging and checkpointing.
         """
-        mlf_logger = self.setup_mlflow_logger()
-        # Define checkpointing behaviour
+        # Get MLflow logger
+        mlf_logger = self.setup_logger()
+
+        # Define checkpointing callback for trainer
         config = self.config.get("checkpoint_saving")
         if config:
             checkpoint_callback = ModelCheckpoint(
@@ -155,6 +128,33 @@ class DectectorTrain:
             fast_dev_run=self.fast_dev_run,
             limit_train_batches=self.limit_train_batches,
         )
+
+    def slurm_logs_as_artifacts(self, logger, slurm_job_id):
+        """
+        Add slurm logs as an MLflow artifacts of the current run.
+
+        The filenaming convention from the training scripts at crabs-exploration/bash_scripts/ is assumed.
+        """
+
+        # Get slurm env variables: slurm and array job ID
+        slurm_node = os.environ.get("SLURMD_NODENAME")
+        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
+
+        # Get root of log filenames
+        # for array job
+        if slurm_array_job_id:
+            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+            log_filename = f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}"
+        # for single job
+        else:
+            log_filename = f"slurm.{slurm_job_id}.{slurm_node}"
+
+        # Add log files as artifacts of this run
+        for ext in ["out", "err"]:
+            logger.experiment.log_artifact(
+                logger.run_id,
+                f"{log_filename}.{ext}",
+            )
 
     def train_model(self):
         # Create data module
@@ -189,6 +189,11 @@ class DectectorTrain:
         # Run training
         trainer = self.setup_trainer()
         trainer.fit(lightning_model, data_module)
+
+        # if this is a slurm job: add slurm logs as artifacts
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        if slurm_job_id:
+            self.slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
 
 
 def main(args) -> None:
@@ -274,6 +279,12 @@ def train_parse_args(args):
             "Default: 1.0 (all the training set)"
         ),
     )
+    parser.add_argument(
+        "--mlflow_folder",
+        type=str,
+        default="./ml-runs",
+        help=("Path to MLflow directory. Default: ./ml-runs"),
+    ) 
     parser.add_argument(
         "--optuna",
         action="store_true",
