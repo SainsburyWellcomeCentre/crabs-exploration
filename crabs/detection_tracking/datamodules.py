@@ -198,6 +198,10 @@ class CrabsDataModule(LightningDataModule):
             persistent_workers=True
             if self.config["num_workers"] > 0
             else False,
+            multiprocessing_context="fork"
+            if self.config["num_workers"] > 0
+            and torch.backends.mps.is_available()
+            else None,  # see https://github.com/pytorch/pytorch/issues/87688
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -208,4 +212,8 @@ class CrabsDataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.config["num_workers"],
             collate_fn=self._collate_fn,
+            multiprocessing_context="fork"
+            if self.config["num_workers"] > 0
+            and torch.backends.mps.is_available()
+            else None,  # see https://github.com/pytorch/pytorch/issues/87688
         )
