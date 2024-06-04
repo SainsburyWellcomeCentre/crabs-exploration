@@ -67,11 +67,6 @@ class DetectorInference:
         -------
         torch.nn.Module
         """
-        # model = torch.load(
-        #     self.args.model_dir,
-        #     map_location=torch.device(self.args.accelerator),
-        # )
-        # model.eval()
         trained_model = FasterRCNN.load_from_checkpoint(self.args.model_dir)
         trained_model.eval()
         return trained_model
