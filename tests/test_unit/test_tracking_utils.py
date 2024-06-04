@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -5,6 +7,7 @@ from crabs.detection_tracking.tracking_utils import (
     calculate_iou,
     count_identity_switches,
     evaluate_mota,
+    get_ground_truth_data,
 )
 
 
@@ -86,72 +89,79 @@ def prev_frame_ids():
 
 
 def test_perfect_tracking(gt_boxes, tracked_boxes, prev_frame_ids):
-    print(gt_boxes)
-    mota = evaluate_mota(
+    true_positives, _, _, _, _, mota = evaluate_mota(
         gt_boxes,
         tracked_boxes,
         iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
     )
-    # assert mota == pytest.approx(1.0)
-    assert mota == 0
+    assert mota == pytest.approx(1.0)
+    assert true_positives == len(gt_boxes)
 
 
-# def test_missed_detections(gt_boxes, tracked_boxes, prev_frame_ids):
-#     # Remove one ground truth box to simulate a missed detection
-#     gt_boxes = np.delete(gt_boxes, 0, axis=0)
-#     mota = evaluate_mota(
-#         gt_boxes,
-#         tracked_boxes,
-#         iou_threshold=0.1,
-#         prev_frame_ids=prev_frame_ids,
-#     )
-#     assert mota < 0
+def test_missed_detections(gt_boxes, tracked_boxes, prev_frame_ids):
+    # Remove one ground truth box to simulate a missed detection
+    # this will make 1 num_switches compared to prev_frame
+    tracked_boxes = np.delete(tracked_boxes, 0, axis=0)
+    _, missed_detections, _, num_switches, _, mota = evaluate_mota(
+        gt_boxes,
+        tracked_boxes,
+        iou_threshold=0.1,
+        prev_frame_ids=prev_frame_ids,
+    )
+    assert missed_detections == 1
+    assert num_switches == 1
+    assert mota < 1.0
 
 
-# def test_false_positives(gt_boxes, tracked_boxes, prev_frame_ids):
-#     # Add one extra tracked box to simulate a false positive
-#     tracked_boxes = np.vstack([tracked_boxes, [70, 70, 80, 80, 4]])
-#     mota = evaluate_mota(
-#         gt_boxes,
-#         tracked_boxes,
-#         iou_threshold=0.1,
-#         prev_frame_ids=prev_frame_ids,
-#     )
-#     assert mota < 1.0
+def test_false_positives(gt_boxes, tracked_boxes, prev_frame_ids):
+    # Add one extra tracked box to simulate a false positive
+    # as this false positive is assigned a new id, num_sitches is 1
+    tracked_boxes = np.vstack([tracked_boxes, [70, 70, 80, 80, 4]])
+    _, _, false_positive, num_switches, _, mota = evaluate_mota(
+        gt_boxes,
+        tracked_boxes,
+        iou_threshold=0.1,
+        prev_frame_ids=prev_frame_ids,
+    )
+    assert false_positive == 1
+    assert num_switches == 1
+    assert mota < 1.0
 
 
-# def test_identity_switches(gt_boxes, tracked_boxes, prev_frame_ids):
-#     # Change ID of one tracked box to simulate an identity switch
-#     tracked_boxes[0][-1] = 5
-#     mota = evaluate_mota(
-#         gt_boxes,
-#         tracked_boxes,
-#         iou_threshold=0.5,
-#         prev_frame_ids=prev_frame_ids,
-#     )
-#     assert mota < 1.0
+def test_identity_switches(gt_boxes, tracked_boxes, prev_frame_ids):
+    # Change ID of one tracked box to simulate an identity switch
+    # as the set of ID chaned from [1, 2, 3] to [5, 2, 3]
+    tracked_boxes[0][-1] = 5
+    _, _, _, num_switches, _, mota = evaluate_mota(
+        gt_boxes,
+        tracked_boxes,
+        iou_threshold=0.5,
+        prev_frame_ids=prev_frame_ids,
+    )
+    assert num_switches == 2
+    assert mota < 1.0
 
 
-# def test_get_ground_truth_data():
-#     test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
+def test_get_ground_truth_data():
+    test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
 
-#     gt_data = get_ground_truth_data(test_csv_file)
+    gt_data = get_ground_truth_data(test_csv_file)
 
-#     assert len(gt_data) == 2
+    assert len(gt_data) == 2
 
-#     for i, frame_data in enumerate(gt_data):
-#         for j, detection_data in enumerate(frame_data):
-#             assert detection_data.shape == (
-#                 5,
-#             ), f"Detection data shape mismatch for frame {i}"
+    for i, frame_data in enumerate(gt_data):
+        for j, detection_data in enumerate(frame_data):
+            assert detection_data.shape == (
+                5,
+            ), f"Detection data shape mismatch for frame {i}"
 
-#     expected_ids = [2.0, 1.0]
-#     for i, frame_data in enumerate(gt_data):
-#         for j, detection_data in enumerate(frame_data):
-#             assert (
-#                 detection_data[4] == expected_ids[j]
-#             ), f"Failed for frame {i}, detection {j}"
+    expected_ids = [2.0, 1.0]
+    for i, frame_data in enumerate(gt_data):
+        for j, detection_data in enumerate(frame_data):
+            assert (
+                detection_data[4] == expected_ids[j]
+            ), f"Failed for frame {i}, detection {j}"
 
 
 # @pytest.fixture
