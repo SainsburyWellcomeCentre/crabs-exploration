@@ -2,7 +2,7 @@ import csv
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -89,7 +89,7 @@ def evaluate_mota(
     tracked_boxes: np.ndarray,
     iou_threshold: float,
     prev_frame_ids: Optional[list[list[int]]],
-) -> float:
+) -> Tuple[int, int, int, int, int, float]:
     """
     Evaluate MOTA (Multiple Object Tracking Accuracy).
 
@@ -108,8 +108,15 @@ def evaluate_mota(
 
     Returns
     -------
-    float
-        The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
+    Tuple[int, int, int, int, int, float]
+        A tuple containing:
+        - Number of true positives
+        - Number of missed detections
+        - Number of false positives
+        - Number of identity switches
+        - Total ground truth objects
+        - The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
+
 
     Notes
     -----

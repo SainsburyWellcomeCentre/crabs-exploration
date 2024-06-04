@@ -165,6 +165,7 @@ class DetectorInference:
     ) -> list[float]:
         """
         Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
+        Save the output of the metric to csv file.
 
         Parameters
         ----------
