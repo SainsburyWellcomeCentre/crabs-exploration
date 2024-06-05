@@ -126,35 +126,36 @@ def evaluate_mota(
     - Identity Switches: Instances where the tracking algorithm assigns a different ID to an object compared to its ID in the previous frame.
     - Total Ground Truth: The total number of ground truth objects in the scene.
 
-    The MOTA score ranges from 0 to 1, with higher values indicating better tracking performance.
+    The MOTA score ranges from -inf to 1, with higher values indicating better tracking performance.
     A MOTA score of 1 indicates perfect tracking, where there are no missed detections, false positives, or identity switches.
     """
     total_gt = len(gt_boxes)
     false_positive = 0
+    matched_gt_boxes = set()
+    matched_tracked_boxes = set()
 
     for i, tracked_box in enumerate(tracked_boxes):
         best_iou = 0.0
         best_match = None
 
         for j, gt_box in enumerate(gt_boxes):
-            iou = calculate_iou(gt_box[:4], tracked_box[:4])
-            if iou > iou_threshold and iou > best_iou:
-                best_iou = iou
-                best_match = j
+            if j not in matched_gt_boxes:
+                iou = calculate_iou(gt_box[:4], tracked_box[:4])
+                if iou > iou_threshold and iou > best_iou:
+                    best_iou = iou
+                    best_match = j
+
         if best_match is not None:
             # successfully found a matching ground truth box for the tracked box.
-            # set the corresponding ground truth box to None.
-            gt_boxes[best_match] = None
+            matched_gt_boxes.add(best_match)
+            matched_tracked_boxes.add(i)
         else:
             false_positive += 1
 
-    missed_detections = 0
-    for box in gt_boxes:
-        if box is not None and not np.all(np.isnan(box)):
-            # if true ground truth box was not matched with any tracked box
-            missed_detections += 1
+    missed_detections = total_gt - len(matched_gt_boxes)
 
-    tracked_ids = [[box[-1] for box in tracked_boxes]]
+    tracked_ids = [[tracked_boxes[i][-1] for i in matched_tracked_boxes]]
+    print(tracked_ids)
 
     num_switches = count_identity_switches(
         prev_frame_ids, tracked_ids, total_gt

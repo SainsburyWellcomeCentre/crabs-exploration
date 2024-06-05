@@ -95,15 +95,17 @@ def test_perfect_tracking(gt_boxes, tracked_boxes, prev_frame_ids):
 
 
 def test_missed_detections(gt_boxes, tracked_boxes, prev_frame_ids):
-    # Remove one ground truth box to simulate a missed detection
-    gt_boxes = np.delete(gt_boxes, 0, axis=0)
+    # Remove one tracked box to simulate a missed detection
+    tracked_boxes = np.delete(tracked_boxes, 0, axis=0)
     mota = evaluate_mota(
         gt_boxes,
         tracked_boxes,
         iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
     )
+    # mota = 1 - (1 + 0 + 0) / 3
     assert mota < 1.0
+    assert mota == pytest.approx(2 / 3)
 
 
 def test_false_positives(gt_boxes, tracked_boxes, prev_frame_ids):
@@ -115,7 +117,9 @@ def test_false_positives(gt_boxes, tracked_boxes, prev_frame_ids):
         iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
     )
+    # mota = 1 - (0 + 1 + 0) / 3
     assert mota < 1.0
+    assert mota == pytest.approx(2 / 3)
 
 
 def test_identity_switches(gt_boxes, tracked_boxes, prev_frame_ids):
@@ -124,10 +128,76 @@ def test_identity_switches(gt_boxes, tracked_boxes, prev_frame_ids):
     mota = evaluate_mota(
         gt_boxes,
         tracked_boxes,
-        iou_threshold=0.5,
+        iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
     )
+    # mota = 1 - (0 + 0 + 1) / 3
     assert mota < 1.0
+    assert mota == pytest.approx(2 / 3)
+
+
+def test_low_iou_false_positive_and_missed_detection(
+    gt_boxes, tracked_boxes, prev_frame_ids
+):
+    # set one of the tracked_box to have low IOU
+    tracked_boxes[1] = [30.0, 30.0, 30.0, 30.0, 2.0]
+    mota = evaluate_mota(
+        gt_boxes,
+        tracked_boxes,
+        iou_threshold=0.1,
+        prev_frame_ids=prev_frame_ids,
+    )
+    # mota = 1 - (1 + 1 + 0) / 3
+    assert mota < 1.0
+    assert mota == pytest.approx(1 / 3)
+
+
+def test_mota_zero(gt_boxes, tracked_boxes, prev_frame_ids):
+    # set one of the tracked_box to have low IOU and one of tracked_box has ID switch
+    tracked_boxes[1] = [30.0, 30.0, 30.0, 30.0, 2.0]
+    tracked_boxes[0][-1] = 4
+    mota = evaluate_mota(
+        gt_boxes,
+        tracked_boxes,
+        iou_threshold=0.1,
+        prev_frame_ids=prev_frame_ids,
+    )
+    # mota = 1 - (1 + 1 + 1) / 3
+    assert mota == 0
+
+
+def test_more_than_one_switches(gt_boxes, tracked_boxes, prev_frame_ids):
+    # set one of the tracked_box to have low IOU and the other two tracked_boxes have ID switch
+    tracked_boxes[1] = [30.0, 30.0, 30.0, 30.0, 2.0]
+    tracked_boxes[0][-1] = 4
+    tracked_boxes[2][-1] = 5
+    mota = evaluate_mota(
+        gt_boxes,
+        tracked_boxes,
+        iou_threshold=0.1,
+        prev_frame_ids=prev_frame_ids,
+    )
+    # mota = 1 - (1 + 1 + 2) / 3
+    assert mota < 0
+    assert mota == pytest.approx(-1 / 3)
+
+
+def test_more_than_one_switches_same_box(
+    gt_boxes, tracked_boxes, prev_frame_ids
+):
+    # set one of the tracked_box to have low IOU and
+    # the two tracked_boxes have ID switch (one is the one with low IOU)
+    tracked_boxes[1] = [30.0, 30.0, 30.0, 30.0, 2.0]
+    tracked_boxes[1][-1] = 4
+    tracked_boxes[2][-1] = 5
+    mota = evaluate_mota(
+        gt_boxes,
+        tracked_boxes,
+        iou_threshold=0.1,
+        prev_frame_ids=prev_frame_ids,
+    )
+    # mota = 1 - (1 + 1 + 1) / 3
+    assert mota == 0
 
 
 def test_get_ground_truth_data():
