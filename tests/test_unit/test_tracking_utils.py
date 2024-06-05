@@ -17,26 +17,23 @@ from crabs.detection_tracking.tracking_utils import (
 
 
 @pytest.mark.parametrize(
-    "prev_frame_id, current_frame_id, expected_output",
+    "prev_frame_id, current_frame_id, n_gt, expected_output",
     [
-        (None, [[6, 5, 4, 3, 2, 1]], 0),
-        (
-            [[6, 5, 4, 3, 2, 1]],
-            [[6, 5, 4, 3, 2, 1]],
-            0,
-        ),  # no identity switches
-        ([[5, 6, 4, 3, 1, 2]], [[6, 5, 4, 3, 2, 1]], 0),
-        ([[6, 5, 4, 3, 2, 1]], [[6, 5, 4, 2, 1]], 1),
-        ([[6, 5, 4, 2, 1]], [[6, 5, 4, 2, 1, 7]], 1),
-        ([[6, 5, 4, 2, 1, 7]], [[6, 5, 4, 2, 7, 8]], 2),
-        ([[6, 5, 4, 2, 7, 8]], [[6, 5, 4, 2, 7, 8, 3]], 1),
+        (None, [[6, 5, 4, 3, 2, 1]], 6, 0),
+        ([[6, 5, 4, 3, 2, 1]], [[6, 5, 4, 3, 2, 1]], 6, 0),
+        ([[5, 6, 4, 3, 1, 2]], [[6, 5, 4, 3, 2, 1]], 6, 0),
+        ([[6, 5, 4, 3, 2, 1]], [[6, 5, 4, 2, 1]], 5, 0),
+        ([[6, 5, 4, 3, 2, 1]], [[6, 5, 4, 2, 1, 7]], 6, 1),
+        ([[6, 5, 4, 2, 1]], [[6, 5, 4, 2, 7]], 5, 1),
+        ([[6, 5, 4, 3, 2]], [[6, 5, 4, 2, 7, 8, 3]], 5, 2),
+        ([[6, 5, 4, 3]], [[6, 5, 4, 3, 7, 8, 9]], 5, 3),
     ],
 )
 def test_count_identity_switches(
-    prev_frame_id, current_frame_id, expected_output
+    prev_frame_id, current_frame_id, n_gt, expected_output
 ):
     assert (
-        count_identity_switches(prev_frame_id, current_frame_id)
+        count_identity_switches(prev_frame_id, current_frame_id, n_gt)
         == expected_output
     )
 

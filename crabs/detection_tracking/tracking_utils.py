@@ -52,6 +52,7 @@ def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
 def count_identity_switches(
     prev_frame_ids: Optional[list[list[int]]],
     current_frame_ids: Optional[list[list[int]]],
+    n_gt: int,
 ) -> int:
     """
     Count the number of identity switches between two sets of object IDs.
@@ -72,16 +73,19 @@ def count_identity_switches(
     if prev_frame_ids is None or current_frame_ids is None:
         return 0
 
-    # Initialize count of identity switches
-    num_switches = 0
-
     prev_ids = set(prev_frame_ids[0])
     current_ids = set(current_frame_ids[0])
 
-    # Calculate the number of switches by finding the difference in IDs
-    num_switches = len(prev_ids.symmetric_difference(current_ids))
+    # number of ID in current frame that is not in previous frame
+    n_difference = len(list(current_ids - prev_ids))
 
-    return num_switches
+    if prev_ids != current_ids:
+        if (len(current_ids) == n_gt) and (n_difference == 0):
+            return 0
+        else:
+            return n_difference
+    else:
+        return 0
 
 
 def evaluate_mota(
@@ -152,7 +156,9 @@ def evaluate_mota(
 
     tracked_ids = [[box[-1] for box in tracked_boxes]]
 
-    num_switches = count_identity_switches(prev_frame_ids, tracked_ids)
+    num_switches = count_identity_switches(
+        prev_frame_ids, tracked_ids, total_gt
+    )
 
     mota = 1 - (missed_detections + false_positive + num_switches) / total_gt
     return mota
