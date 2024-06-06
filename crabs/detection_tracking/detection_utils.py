@@ -2,6 +2,7 @@ import argparse
 import datetime
 import os
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 from lightning.pytorch.loggers import MLFlowLogger
 
@@ -187,3 +188,104 @@ def log_metadata_to_logger(
         mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
 
     return mlf_logger
+
+
+def setup_logger(
+    experiment_name: str,
+    mlflow_folder: str,
+    config_ckpt: Dict[str, Any],
+    args: argparse.Namespace,
+    run_name: Optional[str] = None,
+) -> MLFlowLogger:
+    """
+    Setup MLflow logger for training, with checkpointing.
+
+    Includes logging metadata about the job (CLI arguments and SLURM job IDs).
+
+    Parameters
+    ----------
+    experiment_name : str
+        Name of the experiment under which this run will be logged.
+    mlflow_folder : str
+        Path to the folder where MLflow outputs for this run will be stored.
+    config_ckpt : dict
+        Dictionary containing the checkpointing parameters.
+    args : dict
+        Dictionary of CLI arguments.
+    run_name : str, optional
+        Name of the run. By default, the run name will be generated. This option is for optuna
+
+    Returns
+    -------
+    MLFlowLogger
+        MLFlowLogger instance.
+    """
+    # Assign run name
+    if run_name is None:
+        run_name = set_mlflow_run_name()
+
+    # Setup logger with checkpointing
+    mlf_logger = setup_mlflow_logger(
+        experiment_name=experiment_name,
+        run_name=run_name,
+        mlflow_folder=mlflow_folder,
+        ckpt_config=config_ckpt,
+    )
+
+    # # Log metadata: CLI arguments and SLURM (if required)
+    mlf_logger = log_metadata_to_logger(mlf_logger, args)
+
+    # Log (assumed) path to checkpoints directory
+    path_to_checkpoints = (
+        Path(mlf_logger._tracking_uri)
+        / mlf_logger._experiment_id
+        / mlf_logger._run_id
+        / "checkpoints"
+    )
+    mlf_logger.log_hyperparams(
+        {"path_to_checkpoints": str(path_to_checkpoints)}
+    )
+
+    return mlf_logger
+
+
+def slurm_logs_as_artifacts(logger: MLFlowLogger, slurm_job_id: str) -> None:
+    """
+    Add SLURM logs as MLflow artifacts of the current run.
+
+    This function assumes the filenaming convention from the training scripts
+    located at `crabs-exploration/bash_scripts/`.
+
+    Parameters
+    ----------
+    logger : MLFlowLogger
+        An MLflow logger instance.
+    slurm_job_id : str
+        The SLURM job ID for the current run.
+
+    Returns
+    -------
+    None
+    """
+
+    # Get slurm env variables: slurm and array job ID
+    slurm_node = os.environ.get("SLURMD_NODENAME")
+    slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
+
+    # Get root of log filenames
+    # for array job
+    if slurm_array_job_id:
+        slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+        log_filename = (
+            f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}"
+        )
+    # for single job
+    else:
+        log_filename = f"slurm.{slurm_job_id}.{slurm_node}"
+
+    # Add log files as artifacts of this run
+    for ext in ["out", "err"]:
+        logger.experiment.log_artifact(
+            logger.run_id,
+            f"{log_filename}.{ext}",
+        )

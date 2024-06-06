@@ -1,12 +1,17 @@
+import argparse
 import datetime
+import os
 from typing import Any, Dict
 
-import lightning as pl
+import lightning
 import optuna
-from lightning.pytorch.loggers import MLFlowLogger
 from optuna.trial import Trial
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
+from crabs.detection_tracking.detection_utils import (
+    setup_logger,
+    slurm_logs_as_artifacts,
+)
 from crabs.detection_tracking.models import FasterRCNN
 
 
@@ -17,6 +22,9 @@ def objective(
     accelerator: str,
     fast_dev_run: bool,
     limit_train_batches: bool,
+    experiment_name: str,
+    mlflow_folder: str,
+    args,
 ) -> float:
     """
     Objective function for Optuna optimization.
@@ -42,11 +50,13 @@ def objective(
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"run_{trial.number}_{timestamp}"
 
-    # Initialise MLflow logger
-    mlf_logger = MLFlowLogger(
-        run_name=run_name,
-        experiment_name="optuna",
-        tracking_uri="file:./ml-runs",
+    # Get MLflow logger
+    mlf_logger = setup_logger(
+        experiment_name,
+        mlflow_folder,
+        config.get("checkpoint_saving", {}),
+        args,
+        run_name,
     )
 
     # Sample hyperparameters from the search space
@@ -61,6 +71,15 @@ def objective(
         config["optuna_param"]["num_epochs"][1],
     )
 
+    # Log the sampled hyperparameters
+    mlf_logger.log_hyperparams(
+        {
+            "trial_number": trial.number,
+            "learning_rate": learning_rate,
+            "num_epochs": num_epochs,
+        }
+    )
+
     # Update the config with the sampled hyperparameters
     config["learning_rate"] = learning_rate
     config["num_epochs"] = num_epochs
@@ -69,7 +88,7 @@ def objective(
     lightning_model = FasterRCNN(config)
 
     # Initialize the PyTorch Lightning Trainer
-    trainer = pl.Trainer(
+    trainer = lightning.Trainer(
         max_epochs=config["num_epochs"],
         accelerator=accelerator,
         logger=mlf_logger,
@@ -79,12 +98,24 @@ def objective(
 
     # Train the model
     trainer.fit(lightning_model, data_module)
+
+    # if this is a slurm job: add slurm logs as artifacts
+    slurm_job_id = os.environ.get("SLURM_JOB_ID")
+    if slurm_job_id:
+        slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
+
     val_precision = trainer.callback_metrics["val_precision"].item()
     val_recall = trainer.callback_metrics["val_recall"].item()
     avg_val_value = (val_precision + val_recall) / 2
-    mlf_logger.log_hyperparams({"val_precision": val_precision})
-    mlf_logger.log_hyperparams({"val_recall": val_recall})
-    mlf_logger.log_hyperparams({"avg_val_value": avg_val_value})
+
+    # Log metrics
+    mlf_logger.log_metrics(
+        {
+            "val_precision": val_precision,
+            "val_recall": val_recall,
+            "avg_val_value": avg_val_value,
+        }
+    )
 
     return avg_val_value
 
@@ -93,6 +124,9 @@ def optimize_hyperparameters(
     config: Dict,
     data_module: CrabsDataModule,
     accelerator: str,
+    experiment_name: str,
+    mlflow_folder: str,
+    args: argparse.Namespace,
     fast_dev_run: bool,
     limit_train_batches: bool,
 ) -> Dict[str, Any]:
@@ -127,6 +161,9 @@ def optimize_hyperparameters(
             accelerator,
             fast_dev_run,
             limit_train_batches,
+            experiment_name,
+            mlflow_folder,
+            args,
         )
 
     # Optimize the objective function
