@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from crabs.detection_tracking.detection_utils import (
     prep_img_directories,
     set_mlflow_run_name,
     setup_mlflow_logger,
+    slurm_logs_as_artifacts,
 )
 from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.visualization import save_images_with_boxes
@@ -44,17 +46,28 @@ class DetectorEvaluation:
         self,
         args: argparse.Namespace,
     ) -> None:
+        # inputs
         self.args = args
         self.config_file = args.config_file
+        self.load_config_yaml()
+
+        # dataset
         self.images_dirs = prep_img_directories(args.dataset_dirs)
         self.annotation_files = prep_annotation_files(
             args.annotation_files, args.dataset_dirs
         )
         self.seed_n = args.seed_n
+
+        # Hardware
+        self.accelerator = args.accelerator
+
+        # MLflow
+        self.experiment_name = args.experiment_name
+        self.mlflow_folder = args.mlflow_folder
+
+        # prediction threshold
         self.ious_threshold = args.ious_threshold
         self.score_threshold = args.score_threshold
-        self.mlflow_folder = args.mlflow_folder
-        self.load_config_yaml()
 
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
@@ -74,7 +87,7 @@ class DetectorEvaluation:
 
         # Setup logger (no checkpointing)
         mlf_logger = setup_mlflow_logger(
-            experiment_name="Sep2023_evaluation",
+            experiment_name=self.experiment_name,
             run_name=self.run_name,
             mlflow_folder=self.mlflow_folder,
         )
@@ -121,6 +134,11 @@ class DetectorEvaluation:
             trained_model,
             data_module,
         )
+
+        # if this is a slurm job: add slurm logs as artifacts
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        if slurm_job_id:
+            slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
 
         # Save images if required
         if self.args.save_frames:
@@ -188,6 +206,16 @@ def evaluate_parse_args(args):
             "Accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. Default: gpu."
             "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "
             "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"
+        ),
+    )
+    parser.add_argument(
+        "--experiment_name",
+        type=str,
+        default="Sept2023_evaluation",
+        help=(
+            "Name of the experiment in MLflow, under which the current run will be logged. "
+            "For example, the name of the dataset could be used, to group runs using the same data. "
+            "Default: Sep2023_evaluation"
         ),
     )
     parser.add_argument(
