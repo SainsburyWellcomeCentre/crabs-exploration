@@ -53,6 +53,8 @@ class DectectorTrain:
         self.fast_dev_run = args.fast_dev_run
         self.limit_train_batches = args.limit_train_batches
 
+        self.checkpoint_path = args.checkpoint_path
+
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
@@ -118,14 +120,17 @@ class DectectorTrain:
             enable_checkpointing = False
 
         # Return trainer linked to callbacks and logger
-        return lightning.Trainer(
-            max_epochs=self.config["num_epochs"],
-            accelerator=self.accelerator,
-            logger=mlf_logger,
-            enable_checkpointing=enable_checkpointing,
-            callbacks=checkpoint_callback,
-            fast_dev_run=self.fast_dev_run,
-            limit_train_batches=self.limit_train_batches,
+        return (
+            lightning.Trainer(
+                max_epochs=self.config["num_epochs"],
+                accelerator=self.accelerator,
+                logger=mlf_logger,
+                enable_checkpointing=enable_checkpointing,
+                callbacks=[checkpoint_callback] if checkpoint_callback else [],
+                fast_dev_run=self.fast_dev_run,
+                limit_train_batches=self.limit_train_batches,
+            ),
+            checkpoint_callback,
         )
 
     def slurm_logs_as_artifacts(self, logger, slurm_job_id):
@@ -167,9 +172,20 @@ class DectectorTrain:
         # Get model
         lightning_model = FasterRCNN(self.config)
 
+        if self.checkpoint_path and os.path.exists(self.checkpoint_path):
+            print(f"Resuming training from checkpoint: {self.checkpoint_path}")
+
         # Run training
-        trainer = self.setup_trainer()
-        trainer.fit(lightning_model, data_module)
+        trainer, checkpoint_callback = self.setup_trainer()
+        trainer.fit(
+            lightning_model, data_module, ckpt_path=self.checkpoint_path
+        )
+
+        # Print the last checkpoint path
+        if checkpoint_callback and checkpoint_callback.last_model_path:
+            print(
+                f"Last checkpoint path: {checkpoint_callback.last_model_path}"
+            )
 
         # if this is a slurm job: add slurm logs as artifacts
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
@@ -265,6 +281,12 @@ def train_parse_args(args):
         type=str,
         default="./ml-runs",
         help=("Path to MLflow directory. Default: ./ml-runs"),
+    )
+    parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        default=None,
+        help=("Path to checkpoint for resume training"),
     )
 
     return parser.parse_args(args)

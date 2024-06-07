@@ -1,4 +1,4 @@
-num_epochs: 250
+num_epochs: 2
 learning_rate: 0.00005
 wdecay: 0.00005
 batch_size_train: 4
@@ -10,7 +10,7 @@ val_over_test_fraction: 0.5
 checkpoint_saving:
   every_n_epochs: 50
   keep_last_n_ckpts: 5
-  save_weights_only: True
+  save_weights_only: False
   copy_as_mlflow_artifacts: True
   # copy_as_mlflow_artifacts:
   # if True, selected checkpoints are added as artifacts at the end of training,
