@@ -171,15 +171,33 @@ class DectectorTrain:
 
         # Get model
         lightning_model = FasterRCNN(self.config)
-
-        if self.checkpoint_path and os.path.exists(self.checkpoint_path):
-            print(f"Resuming training from checkpoint: {self.checkpoint_path}")
-
         # Run training
         trainer, checkpoint_callback = self.setup_trainer()
-        trainer.fit(
-            lightning_model, data_module, ckpt_path=self.checkpoint_path
-        )
+
+        if self.checkpoint_path and os.path.exists(self.checkpoint_path):
+            print(f"Checking contents of checkpoint: {self.checkpoint_path}")
+            checkpoint = torch.load(self.checkpoint_path)
+
+            if (
+                "optimizer_states" in checkpoint
+                and "lr_schedulers" in checkpoint
+            ):
+                print(
+                    "Checkpoint contains full training state. Resume training"
+                )
+                # Resume training from the checkpoint
+                trainer.fit(
+                    lightning_model,
+                    data_module,
+                    ckpt_path=self.checkpoint_path,
+                )
+            else:
+                print(
+                    "Checkpoint contains only model weights. Load the weight from a trained model"
+                )
+                # Load model weights and start fine-tuning
+                model = FasterRCNN.load_from_checkpoint(self.checkpoint_path)
+                trainer.fit(model, data_module)
 
         # Print the last checkpoint path
         if checkpoint_callback and checkpoint_callback.last_model_path:
