@@ -48,7 +48,7 @@ CKPT_FILE=/ceph/scratch/nikkna/crabs-exploration/ml_ckpt/595664011639950974/e242
 SPLIT_SEED=42
 
 # version of the codebase
-GIT_BRANCH=nikkna/mlflow_eval
+GIT_BRANCH=main
 
 # -----------------------------
 # Create virtual environment
@@ -100,5 +100,5 @@ evaluate-detector  \
  --accelerator gpu \
  --experiment_name $EXPERIMENT_NAME \
  --seed_n $SPLIT_SEED \
- --mlflow_folder "./ml_ckpt" \
+ --mlflow_folder $MLFLOW_FOLDER \
  --checkpoint_path $CKPT_PATH \

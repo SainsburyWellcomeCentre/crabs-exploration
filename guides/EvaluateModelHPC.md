@@ -50,9 +50,9 @@
 
 4.  **Edit the bash script!**
 
-    Unlike the training, during evaluation, we need to ensure the correct trained model and seed number is used. All the parameters used in any training is logged into `mlflow`. 
-    
-    We can see the perfomance of each training session by inspecting the `metrics` tab in `mlflow UI` where the `training loss`, `validation precision` and `validation recall` are plotted. The `seed number` and the `checkpoint path` are logged in `parameters` section under `overview` tab. 
+    Unlike the training, during evaluation, we need to ensure the correct trained model and seed number is used. All the parameters used in any training is logged into `mlflow`.
+
+    We can see the perfomance of each training session by inspecting the `metrics` tab in `mlflow UI` where the `training loss`, `validation precision` and `validation recall` are plotted. The `seed number` and the `checkpoint path` are logged in `parameters` section under `overview` tab.
 
     When launching a single or an array job, we may want to edit in the bash script:
 
@@ -70,13 +70,11 @@
     - this would mean editing the line that start with `#SBATCH --array=0-n%m` in the `run_evaluation_array.sh` script. That command specifies to run `n` separate jobs, but not more than `m` at a time.
     - if the number of jobs in the array is edited, the variable `LIST_SEEDS` needs to be modified accordingly, otherwise we will get an error when launching the job.
 
-
-5. **Optional CLI arguments**
+5.  **Optional CLI arguments**
 
     One may add additional CLI argument in the bash script.
 
-    - `save_frames` might be useful if we want to save the prediction of every frame  for further analysis.
-
+    - `save_frames` might be useful if we want to save the prediction of every frame for further analysis.
 
 6.  **Run the evaluation job using the SLURM scheduler**
 
@@ -86,7 +84,7 @@
     sbatch <path-to-training-bash-script>
     ```
 
-1.  **Check the status of the training job**
+7.  **Check the status of the training job**
 
     To do this, we can:
 
