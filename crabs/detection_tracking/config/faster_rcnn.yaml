@@ -35,7 +35,7 @@ optuna_param:
     - 1e-6
     - 1e-4
   num_epochs:
-    - 1
-    - 2
+    - 100
+    - 300
 exclude_video_file_list:
   - "06.09.2023-03-Right_RE_frame_181451.png"
