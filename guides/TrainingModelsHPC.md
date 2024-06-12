@@ -92,7 +92,26 @@
 >
 > If we launch a job and then modify the config file _before_ the job has been able to read it, we may be using an undesired version of the config in our job! To avoid this, it is best to wait until you can verify in MLflow that the job has the expected config parameters (and then edit the file to launch a new job if needed).
 
-6.  **Run the training job using the SLURM scheduler**
+6. **Checkpoint**
+
+  The checkpoint parameters in the config file can be useful.  There are two primary options related to checkpoints:
+
+  - Resume training
+    This option is useful for interrupted training sessions or extending training duration.
+    - If training is disrupted and stops mid-way, you can resume it by adding `--checkpoint_path $CKPT_PATH \` to your bash script. 
+    - The training will pick up from the last saved epoch and continue until the specified n_epoch.
+    - Similarly, if training completes but you want to extend it based on metric evaluations, you can increase the n_epoch value (e.g., from `n` to `n + y`). Again, use `--checkpoint_path $CKPT_PATH \` in your bash script, and training will resume from epoch `n` to `n + y`.
+    - Ensure the s`ave_weights_only` parameter under `checkpoint_saving` is set to `False` to resume training, as this option requires loading both weights and the training state.
+  
+  - Fine-tunning
+    This option is useful for fine-tuning a pre-trained model on a different dataset.
+    - It loads the weights from a checkpoint, allowing you to leverage pre-trained weights from another dataset.
+    - Add `--checkpoint_path $CKPT_PATH \` to your bash script to use this option.
+    - Set the `save_weights_only` parameter under `checkpoint_saving` to True, as only the weights are needed for fine-tuning.
+
+
+
+7.  **Run the training job using the SLURM scheduler**
 
     To launch a job, use the `sbatch` command with the relevant training script:
 
