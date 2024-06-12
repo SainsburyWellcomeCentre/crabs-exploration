@@ -92,76 +92,111 @@
 >
 > If we launch a job and then modify the config file _before_ the job has been able to read it, we may be using an undesired version of the config in our job! To avoid this, it is best to wait until you can verify in MLflow that the job has the expected config parameters (and then edit the file to launch a new job if needed).
 
-6.  **Run the training job using the SLURM scheduler**
+6. **Optional argument - Optuna**
 
-    To launch a job, use the `sbatch` command with the relevant training script:
+   We have an option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework. This enables automated hyperparameter optimization based on the selected optimizer.
 
-    ```
-    sbatch <path-to-training-bash-script>
-    ```
+   Currently, Optuna can be used to find the best number of epochs and learning rate within specified ranges. You can determine the number of trials you want Optuna to run. After `n trials`, MLflow will log the best hyperparameters, and the model will be trained using these optimized parameters. The relevant parameters can be found in the config file under `optuna_param`.
+
+   To run Optuna, we can add `--optuna` arguments to the bash script. For example:
+
+   ```
+   train-detector  \
+   --dataset_dirs $DATASET_DIR \
+   --config_file $TRAIN_CONFIG_FILE \
+   --accelerator gpu \
+   --experiment_name $EXPERIMENT_NAME \
+   --seed_n $SPLIT_SEED \
+   --mlflow_folder $MLFLOW_FOLDER \
+   --optuna
+   ```
+
+````
+
+7.  **Run the training job using the SLURM scheduler**
+
+   To launch a job, use the `sbatch` command with the relevant training script:
+
+   ```
+   sbatch <path-to-training-bash-script>
+   ```
 
 1.  **Check the status of the training job**
 
-    To do this, we can:
+   To do this, we can:
 
-    - Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run.
-    - Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
-    - Check the MLFlow logs. To do this, first create or activate an existing conda environment with `mlflow` installed, and then run the `mlflow` command from the login node.
+   - Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run.
+   - Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
+   - Check the MLFlow logs. To do this, first create or activate an existing conda environment with `mlflow` installed, and then run the `mlflow` command from the login node.
 
-      - Create and activate a conda environment.
-        ```
-        module load miniconda
-        conda create -n mlflow-env python=3.10 mlflow -y
-        conda activate mlflow-env
-        ```
-      - Run `mlflow` to visualise the results logged to the `ml-runs` folder.
+     - Create and activate a conda environment.
+       ```
+       module load miniconda
+       conda create -n mlflow-env python=3.10 mlflow -y
+       conda activate mlflow-env
+       ```
+     - Run `mlflow` to visualise the results logged to the `ml-runs` folder.
 
-        - If using the "scratch" folder:
+       - If using the "scratch" folder:
 
-          ```
-          mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
-          ```
+         ```
+         mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
+         ```
 
-        - If using the selected runs folder:
+       - If using the selected runs folder:
 
-          ```
-          mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs
-          ```
+         ```
+         mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs
+         ```
 
 ### Some useful SLURM commands
 
 To check the status of your jobs in the queue
 
-```
+````
+
 squeue -u <username>
+
 ```
 
 To show details of the latest jobs (including completed or cancelled jobs)
 
 ```
+
 sacct -X -u <username>
+
 ```
 
 To specify columns to display use `--format` (e.g., `Elapsed`)
 
 ```
+
 sacct -X --format="JobID, JobName, Partition, Account, State, Elapsed" -u <username>
+
 ```
 
 To check specific jobs by ID
 
 ```
+
 sacct -X -j 3813494,3813184
+
 ```
 
 To check the time limit of the jobs submitted by a user (for example, `sminano`)
 
 ```
+
 squeue -u sminano --format="%i %P %j %u %T %l %C %S"
+
 ```
 
 To cancel a job
 
 ```
+
 scancel <jobID>
+
+```
+
 ```
