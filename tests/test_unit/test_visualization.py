@@ -217,12 +217,10 @@ def sample_csv_data():
     yield temp_file_path
     # Clean up after the test
     import os
-
     os.remove(temp_file_path)
 
 
 def test_read_metrics_from_csv(sample_csv_data):
-    # Test the function with the sample CSV file
     (
         true_positives_list,
         missed_detections_list,
@@ -232,7 +230,6 @@ def test_read_metrics_from_csv(sample_csv_data):
         mota_value_list,
     ) = read_metrics_from_csv(sample_csv_data)
 
-    # Assertions
     assert true_positives_list == [10, 15]
     assert missed_detections_list == [2, 3]
     assert false_positives_list == [3, 2]
