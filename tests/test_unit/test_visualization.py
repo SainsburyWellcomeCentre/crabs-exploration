@@ -1,3 +1,5 @@
+import csv
+import tempfile
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -7,6 +9,7 @@ import torch
 from crabs.detection_tracking.visualization import (
     draw_bbox,
     draw_detection,
+    read_metrics_from_csv,
     save_images_with_boxes,
 )
 
@@ -183,3 +186,56 @@ def test_save_images_with_boxes(mock_makedirs, mock_imwrite, detections):
 
     assert mock_makedirs.called_once_with("results", exist_ok=True)
     assert mock_imwrite.call_count == len(test_dataloader)
+
+
+@pytest.fixture
+def sample_csv_data():
+    # Create a sample CSV file with some data
+    sample_data = [
+        {
+            "True Positives": "10",
+            "Missed Detections": "2",
+            "False Positives": "3",
+            "Number of Switches": "1",
+            "Total Ground Truth": "15",
+            "Mota": "0.8",
+        },
+        {
+            "True Positives": "15",
+            "Missed Detections": "3",
+            "False Positives": "2",
+            "Number of Switches": "2",
+            "Total Ground Truth": "20",
+            "Mota": "0.9",
+        },
+    ]
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as temp_file:
+        writer = csv.DictWriter(temp_file, fieldnames=sample_data[0].keys())
+        writer.writeheader()
+        writer.writerows(sample_data)
+        temp_file_path = temp_file.name
+    yield temp_file_path
+    # Clean up after the test
+    import os
+
+    os.remove(temp_file_path)
+
+
+def test_read_metrics_from_csv(sample_csv_data):
+    # Test the function with the sample CSV file
+    (
+        true_positives_list,
+        missed_detections_list,
+        false_positives_list,
+        num_switches_list,
+        total_ground_truth_list,
+        mota_value_list,
+    ) = read_metrics_from_csv(sample_csv_data)
+
+    # Assertions
+    assert true_positives_list == [10, 15]
+    assert missed_detections_list == [2, 3]
+    assert false_positives_list == [3, 2]
+    assert num_switches_list == [1, 2]
+    assert total_ground_truth_list == [15, 20]
+    assert mota_value_list == [0.8, 0.9]

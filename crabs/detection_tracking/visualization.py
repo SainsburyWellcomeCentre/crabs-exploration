@@ -1,7 +1,7 @@
 import csv
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 import cv2
 import matplotlib.pyplot as plt
@@ -254,7 +254,9 @@ def plot_sample(imgs: list, row_title: Optional[str] = None, **imshow_kwargs):
     plt.tight_layout()
 
 
-def read_metrics_from_csv(filename):
+def read_metrics_from_csv(
+    filename: str,
+) -> Tuple[list[int], list[int], list[int], list[int], list[int], list[float]]:
     """
     Read the tracking output metrics from a CSV file.
     To be called by plot_output_histogram.
@@ -297,7 +299,7 @@ def read_metrics_from_csv(filename):
     )
 
 
-def plot_output_histogram(filename):
+def plot_output_histogram(filename: str) -> None:
     """
     Plot metrics along with the total ground truth for each frame.
 
