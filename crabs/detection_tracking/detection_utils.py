@@ -236,15 +236,10 @@ def setup_logger(
     mlf_logger = log_metadata_to_logger(mlf_logger, args)
 
     # Log (assumed) path to checkpoints directory
-    print(type(Path(mlf_logger._tracking_uri)))
-    print(type(mlf_logger._experiment_id))
-    print(type(mlf_logger._run_id))
-    print(type("checkpoint"))
-
     path_to_checkpoints = (
         Path(mlf_logger._tracking_uri)
-        / str(mlf_logger._experiment_id)
-        / str(mlf_logger._run_id)
+        / mlf_logger._experiment_id
+        / mlf_logger._run_id
         / "checkpoints"
     )
     mlf_logger.log_hyperparams(
