@@ -199,6 +199,12 @@ class DectectorTrain:
                 model = FasterRCNN.load_from_checkpoint(self.checkpoint_path)
                 trainer.fit(model, data_module)
 
+        else:
+            trainer.fit(
+                lightning_model,
+                data_module,
+            )
+
         # Print the last checkpoint path
         if checkpoint_callback and checkpoint_callback.last_model_path:
             print(
