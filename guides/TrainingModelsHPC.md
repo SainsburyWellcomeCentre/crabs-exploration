@@ -111,43 +111,41 @@
    --optuna
    ```
 
-````
-
-7.  **Run the training job using the SLURM scheduler**
+7. **Run the training job using the SLURM scheduler**
 
    To launch a job, use the `sbatch` command with the relevant training script:
 
-   ```
-   sbatch <path-to-training-bash-script>
-   ```
+```
+sbatch <path-to-training-bash-script>
+```
 
-1.  **Check the status of the training job**
+8.  **Check the status of the training job**
 
-   To do this, we can:
+    To do this, we can:
 
-   - Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run.
-   - Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
-   - Check the MLFlow logs. To do this, first create or activate an existing conda environment with `mlflow` installed, and then run the `mlflow` command from the login node.
+- Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run.
+- Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
+- Check the MLFlow logs. To do this, first create or activate an existing conda environment with `mlflow` installed, and then run the `mlflow` command from the login node.
 
-     - Create and activate a conda environment.
-       ```
-       module load miniconda
-       conda create -n mlflow-env python=3.10 mlflow -y
-       conda activate mlflow-env
-       ```
-     - Run `mlflow` to visualise the results logged to the `ml-runs` folder.
+  - Create and activate a conda environment.
+    ```
+    module load miniconda
+    conda create -n mlflow-env python=3.10 mlflow -y
+    conda activate mlflow-env
+    ```
+  - Run `mlflow` to visualise the results logged to the `ml-runs` folder.
 
-       - If using the "scratch" folder:
+    - If using the "scratch" folder:
 
-         ```
-         mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
-         ```
+      ```
+      mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
+      ```
 
-       - If using the selected runs folder:
+    - If using the selected runs folder:
 
-         ```
-         mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs
-         ```
+      ```
+      mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs
+      ```
 
 ### Some useful SLURM commands
 
@@ -200,3 +198,4 @@ scancel <jobID>
 ```
 
 ```
+````
