@@ -1,4 +1,5 @@
 import argparse
+import csv
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
@@ -239,3 +240,27 @@ def test_load_video_failure(mock_tracker, save_video):
     with patch("cv2.VideoCapture", return_value=mock_video_capture):
         with pytest.raises(Exception, match="Error opening video file"):
             mock_tracker.load_video()
+
+
+def test_prep_csv_writer(mock_tracker):
+    mock_path = MagicMock(spec=Path)
+    mock_path.mkdir = MagicMock()
+    mock_tracker.args.save_video = False
+    mock_csv_writer = MagicMock(spec=csv.writer)
+    mock_csv_file_instance = MagicMock()
+
+    mock_csv_writer.writerow = MagicMock()
+
+    with patch(
+        "crabs.detection_tracking.inference_model.Path", return_value=mock_path
+    ):
+        with patch("builtins.open", return_value=mock_csv_file_instance):
+            with patch("csv.writer", return_value=mock_csv_writer):
+                csv_writer, csv_file = mock_tracker.prep_csv_writer()
+
+                assert (
+                    csv_writer == mock_csv_writer
+                ), "Returned csv_writer is not as expected"
+                assert isinstance(
+                    csv_file, MagicMock
+                ), "csv_file should be a MagicMock"
