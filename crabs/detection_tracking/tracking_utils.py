@@ -52,7 +52,7 @@ def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
 def count_identity_switches(
     prev_frame_ids: Optional[list[list[int]]],
     current_frame_ids: Optional[list[list[int]]],
-    n_gt: int,
+    current_gt: int,
 ) -> int:
     """
     Count the number of identity switches between two sets of object IDs.
@@ -63,6 +63,8 @@ def count_identity_switches(
         List of object IDs in the previous frame.
     current_frame_ids : Optional[list[list[int]]]
         List of object IDs in the current frame.
+    current_gt : int
+        Total ground truth number of crabs in current frame.
 
     Returns
     -------
@@ -80,7 +82,7 @@ def count_identity_switches(
     n_difference = len(list(current_ids - prev_ids))
 
     if prev_ids != current_ids:
-        if (len(current_ids) == n_gt) and (n_difference == 0):
+        if (len(current_ids) == current_gt) and (n_difference == 0):
             return 0
         else:
             return n_difference
