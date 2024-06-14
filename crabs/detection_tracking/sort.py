@@ -16,15 +16,26 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from __future__ import print_function
-
-import argparse
+from typing import Optional, Tuple
 
 import numpy as np
 from filterpy.kalman import KalmanFilter
 
 
-def linear_assignment(cost_matrix):
+def linear_assignment(cost_matrix: np.ndarray) -> np.ndarray:
+    """
+    Perform linear assignment using LAPJV algorithm if available, otherwise fallback to scipy's linear_sum_assignment.
+
+    Parameters
+    ----------
+    cost_matrix : np.ndarray
+        The cost matrix representing the assignment costs between tracks and detections.
+
+    Returns
+    -------
+    np.ndarray
+        An array containing the assignment indices. Each row corresponds to a pair (track index, detection index).
+    """
     try:
         import lap
 
@@ -37,9 +48,23 @@ def linear_assignment(cost_matrix):
         return np.array(list(zip(x, y)))
 
 
-def iou_batch(bb_test, bb_gt):
+def iou_batch(bb_test: np.ndarray, bb_gt: np.ndarray) -> np.ndarray:
     """
     From SORT: Computes IOU between two bboxes in the form [x1,y1,x2,y2]
+    Calculate Intersection over Union (IoU) between two batches of bounding boxes.
+
+    Parameters
+    ----------
+    bb_test : np.ndarray
+        Bounding boxes of shape (N, 4) representing N test boxes in format [x1, y1, x2, y2].
+    bb_gt : np.ndarray
+        Bounding boxes of shape (M, 4) representing M ground truth boxes in format [x1, y1, x2, y2].
+
+    Returns
+    -------
+    np.ndarray
+        IoU values between each pair of bounding boxes in bb_test and bb_gt.
+        The shape of the returned array is (N, M).
     """
     bb_gt = np.expand_dims(bb_gt, 0)
     bb_test = np.expand_dims(bb_test, 1)
@@ -60,11 +85,20 @@ def iou_batch(bb_test, bb_gt):
     return o
 
 
-def convert_bbox_to_z(bbox):
+def convert_bbox_to_z(bbox: np.ndarray) -> np.ndarray:
     """
-    Takes a bounding box in the form [x1,y1,x2,y2] and returns z in the form
-      [x,y,s,r] where x,y is the centre of the box and s is the scale/area and r is
-      the aspect ratio
+    Convert a bounding box from [x1, y1, x2, y2] to a representation [x, y, s, r].
+
+    Parameters
+    ----------
+    bbox : np.ndarray
+        Bounding box coordinates in the form [x1, y1, x2, y2].
+
+    Returns
+    -------
+    np.ndarray
+        Converted representation of the bounding box as [x, y, s, r].
+        T
     """
     w = bbox[2] - bbox[0]
     h = bbox[3] - bbox[1]
@@ -75,10 +109,24 @@ def convert_bbox_to_z(bbox):
     return np.array([x, y, s, r]).reshape((4, 1))
 
 
-def convert_x_to_bbox(x, score=None):
+def convert_x_to_bbox(
+    x: np.ndarray, score: Optional[float] = None
+) -> np.ndarray:
     """
-    Takes a bounding box in the centre form [x,y,s,r] and returns it in the form
-      [x1,y1,x2,y2] where x1,y1 is the top left and x2,y2 is the bottom right
+    Convert a bounding box from center form [x, y, s, r] to corner form [x1, y1, x2, y2].
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Bounding box coordinates in the center form [x, y, s, r].
+    score : float, optional
+        Optional score associated with the bounding box.
+
+    Returns
+    -------
+    np.ndarray
+        Converted representation of the bounding box as [x1, y1, x2, y2] (and score, if provided).
+        The shape of the returned array is (1, 4) or (1, 5) if score is provided.
     """
     w = np.sqrt(x[2] * x[3])
     h = x[2] / w
@@ -102,6 +150,12 @@ class KalmanBoxTracker(object):
     """
     This class represents the internal state of individual tracked objects
     observed as bbox.
+
+    Parameters
+    ----------
+    bbox : np.ndarray
+        Initial bounding box coordinates in the format [x1, y1, x2, y2].
+
     """
 
     count = 0
@@ -149,9 +203,14 @@ class KalmanBoxTracker(object):
         self.hit_streak = 0
         self.age = 0
 
-    def update(self, bbox):
+    def update(self, bbox: np.ndarray) -> None:
         """
-        Updates the state vector with observed bbox.
+        Updates the state vector with an observed bounding box.
+
+        Parameters
+        ----------
+        bbox : np.ndarray
+            Observed bounding box coordinates in the format [x1, y1, x2, y2].
         """
         self.time_since_update = 0
         self.history = []
@@ -159,9 +218,14 @@ class KalmanBoxTracker(object):
         self.hit_streak += 1
         self.kf.update(convert_bbox_to_z(bbox))
 
-    def predict(self):
+    def predict(self) -> np.ndarray:
         """
         Advances the state vector and returns the predicted bounding box estimate.
+
+        Returns
+        -------
+        np.ndarray
+            Predicted bounding box coordinates in the format [x1, y1, x2, y2].
         """
         if (self.kf.x[6] + self.kf.x[2]) <= 0:
             self.kf.x[6] *= 0.0
@@ -173,18 +237,40 @@ class KalmanBoxTracker(object):
         self.history.append(convert_x_to_bbox(self.kf.x))
         return self.history[-1]
 
-    def get_state(self):
+    def get_state(self) -> np.ndarray:
         """
         Returns the current bounding box estimate.
+
+        Returns
+        -------
+        np.ndarray
+            Current bounding box coordinates in the format [x1, y1, x2, y2].
         """
         return convert_x_to_bbox(self.kf.x)
 
 
-def associate_detections_to_trackers(detections, trackers, iou_threshold=0.3):
+def associate_detections_to_trackers(
+    detections: np.ndarray, trackers: np.ndarray, iou_threshold: float = 0.3
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Assigns detections to tracked object (both represented as bounding boxes)
+    Assigns detections to tracked objects (both represented as bounding boxes).
 
-    Returns 3 lists of matches, unmatched_detections and unmatched_trackers
+    Parameters
+    ----------
+    detections : np.ndarray
+        Array of shape (N, 4) representing N detection bounding boxes in format [x1, y1, x2, y2].
+    trackers : np.ndarray
+        Array of shape (M, 4) representing M tracker bounding boxes in format [x1, y1, x2, y2].
+    iou_threshold : float, optional
+        IOU threshold for associating detections with trackers. Default is 0.3.
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray, np.ndarray]
+        Three arrays:
+        - matches: Array of shape (K, 2) containing indices of matched detections and trackers.
+        - unmatched_detections: Array of indices of detections that were not matched.
+        - unmatched_trackers: Array of indices of trackers that were not matched.
     """
     if len(trackers) == 0:
         return (
@@ -234,28 +320,44 @@ def associate_detections_to_trackers(detections, trackers, iou_threshold=0.3):
 
 
 class Sort(object):
-    def __init__(self, max_age=1, min_hits=3, iou_threshold=0.3):
+    def __init__(
+        self, max_age: int = 1, min_hits: int = 3, iou_threshold: float = 0.3
+    ):
         """
-        Sets key parameters for SORT
+        Sets key parameters for SORT.
+
+        Parameters
+        ----------
+        max_age : int, optional
+            Maximum number of frames to keep a tracker alive without an update. Default is 1.
+        min_hits : int, optional
+            Minimum number of consecutive hits to consider a tracker valid. Default is 3.
+        iou_threshold : float, optional
+            IOU threshold for associating detections with trackers. Default is 0.3.
         """
         self.max_age = max_age
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
-        self.trackers = []
+        self.trackers: list = []
         self.frame_count = 0
 
-    def update(self, dets=np.empty((0, 5))):
+    def update(self, dets: np.ndarray = np.empty((0, 5))) -> np.ndarray:
         """
-        Params:
-          dets - a numpy array of detections in the format
-          [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
-        Requires: this method must be called once for each frame even with
-        empty detections (use np.empty((0, 5)) for frames without detections).
-        Returns the a similar array, where the last column is the object ID.
+        Updates the SORT tracker with new detections.
 
-        NOTE: The number of objects returned may differ from the number of
-        detections provided.
+        Parameters
+        ----------
+        dets : np.ndarray, optional
+            Array of shape (N, 5) representing N detection bounding boxes in format [x1, y1, x2, y2, score].
+            Use np.empty((0, 5)) for frames without detections.
+
+        Returns
+        -------
+        np.ndarray
+            Array of tracked objects with object IDs added as the last column.
+            The shape of the array is (M, 5), where M is the number of tracked objects.
         """
+
         self.frame_count += 1
         # get predicted locations from existing trackers.
         trks = np.zeros((len(self.trackers), 5))
@@ -300,137 +402,3 @@ class Sort(object):
         if len(ret) > 0:
             return np.concatenate(ret)
         return np.empty((0, 5))
-
-
-def parse_args():
-    """Parse input arguments."""
-    parser = argparse.ArgumentParser(description="SORT demo")
-    parser.add_argument(
-        "--display",
-        dest="display",
-        help="Display online tracker output (slow) [False]",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--seq_path", help="Path to detections.", type=str, default="data"
-    )
-    parser.add_argument(
-        "--phase", help="Subdirectory in seq_path.", type=str, default="train"
-    )
-    parser.add_argument(
-        "--max_age",
-        help="""Maximum number of frames to keep alive a track without
-            associated detections.""",
-        type=int,
-        default=1,
-    )
-    parser.add_argument(
-        "--min_hits",
-        help="Minimum number of associated detections before track is initialised.",
-        type=int,
-        default=3,
-    )
-    parser.add_argument(
-        "--iou_threshold",
-        help="Minimum IOU for match.",
-        type=float,
-        default=0.3,
-    )
-    args = parser.parse_args()
-    return args
-
-
-# if __name__ == "__main__":
-#     # all train
-#     args = parse_args()
-#     display = args.display
-#     phase = args.phase
-#     total_time = 0.0
-#     total_frames = 0
-#     colours = np.random.rand(32, 3)  # used only for display
-#     if display:
-#         if not os.path.exists("mot_benchmark"):
-#             print(
-#                 "\n\tERROR: mot_benchmark link not found!\n\n"
-#                 "    Create a symbolic link to the MOT benchmark\n"
-#                 "    (https://motchallenge.net/data/2D_MOT_2015/#download). E.g.:\n\n"
-#                 "    $ ln -s /path/to/MOT2015_challenge/2DMOT2015 mot_benchmark\n\n"
-#             )
-
-#             exit()
-#         plt.ion()
-#         fig = plt.figure()
-#         ax1 = fig.add_subplot(111, aspect="equal")
-
-#     if not os.path.exists("output"):
-#         os.makedirs("output")
-#     pattern = os.path.join(args.seq_path, phase, "*", "det", "det.txt")
-#     for seq_dets_fn in glob.glob(pattern):
-#         mot_tracker = Sort(
-#             max_age=args.max_age,
-#             min_hits=args.min_hits,
-#             iou_threshold=args.iou_threshold,
-#         )  # create instance of the SORT tracker
-#         seq_dets = np.loadtxt(seq_dets_fn, delimiter=",")
-#         seq = seq_dets_fn[pattern.find("*") :].split(os.path.sep)[0]
-
-#         with open(os.path.join("output", "%s.txt" % (seq)), "w") as out_file:
-#             print("Processing %s." % (seq))
-#             for frame in range(int(seq_dets[:, 0].max())):
-#                 frame += 1  # detection and frame numbers begin at 1
-#                 dets = seq_dets[seq_dets[:, 0] == frame, 2:7]
-#                 dets[:, 2:4] += dets[
-#                     :, 0:2
-#                 ]  # convert to [x1,y1,w,h] to [x1,y1,x2,y2]
-#                 total_frames += 1
-
-#                 if display:
-#                     fn = os.path.join(
-#                         "mot_benchmark",
-#                         phase,
-#                         seq,
-#                         "img1",
-#                         "%06d.jpg" % (frame),
-#                     )
-#                     im = io.imread(fn)
-#                     ax1.imshow(im)
-#                     plt.title(seq + " Tracked Targets")
-
-#                 start_time = time.time()
-#                 trackers = mot_tracker.update(dets)
-#                 cycle_time = time.time() - start_time
-#                 total_time += cycle_time
-
-#                 for d in trackers:
-#                     print(
-#                         "%d,%d,%.2f,%.2f,%.2f,%.2f,1,-1,-1,-1"
-#                         % (frame, d[4], d[0], d[1], d[2] - d[0], d[3] - d[1]),
-#                         file=out_file,
-#                     )
-#                     if display:
-#                         d = d.astype(np.int32)
-#                         ax1.add_patch(
-#                             patches.Rectangle(
-#                                 (d[0], d[1]),
-#                                 d[2] - d[0],
-#                                 d[3] - d[1],
-#                                 fill=False,
-#                                 lw=3,
-#                                 ec=colours[d[4] % 32, :],
-#                             )
-#                         )
-
-#                 if display:
-#                     fig.canvas.flush_events()
-#                     plt.draw()
-#                     ax1.cla()
-
-#     print(
-#         "Total Tracking took: %.3f seconds for %d frames or %.1f FPS"
-#         % (total_time, total_frames, total_frames / total_time)
-#     )
-
-#     if display:
-#         print(
-#             "Note: to get real runtime results run without the option: --display"
-#         )
