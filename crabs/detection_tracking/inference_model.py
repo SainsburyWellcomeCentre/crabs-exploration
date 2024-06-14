@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 import torch
 import torchvision.transforms.v2 as transforms
-from sort import Sort
 
 from crabs.detection_tracking.models import FasterRCNN
+from crabs.detection_tracking.sort import Sort
 from crabs.detection_tracking.tracking_utils import (
     evaluate_mota,
     get_ground_truth_data,
@@ -57,7 +57,7 @@ class DetectorInference:
             iou_threshold=self.iou_threshold,
         )
         self.video_file_root = f"{Path(self.vid_path).stem}"
-        self.trained_model = self.load_trained_model()
+        # self.trained_model = self.load_trained_model()
 
     def load_trained_model(self) -> torch.nn.Module:
         """
@@ -67,9 +67,10 @@ class DetectorInference:
         -------
         torch.nn.Module
         """
-        trained_model = FasterRCNN.load_from_checkpoint(self.args.model_dir)
-        trained_model.eval()
-        return trained_model
+        self.trained_model = FasterRCNN.load_from_checkpoint(
+            self.args.model_dir
+        )
+        self.trained_model.eval()
 
     def prep_sort(self, prediction: dict) -> np.ndarray:
         """
@@ -152,6 +153,13 @@ class DetectorInference:
 
         return csv_writer, csv_file
 
+    def save_tracking_results_to_csv(
+        self, data: dict[str, Any], video_name: str, model_name: str
+    ) -> None:
+        df = pd.DataFrame(data)
+        output_filename = f"{video_name}_{model_name}_tracking_output.csv"
+        df.to_csv(output_filename, index=False)
+
     def evaluate_tracking(
         self,
         gt_boxes_list: list,
@@ -178,13 +186,19 @@ class DetectorInference:
         """
         mota_values = []
         prev_frame_ids: Optional[list[list[int]]] = None
-        true_positives_list = []
-        missed_detections_list = []
-        false_positives_list = []
-        num_switches_list = []
-        total_gt_list = []
+        results: dict[str, Any] = {
+            "Frame Number": [],
+            "Total Ground Truth": [],
+            "True Positives": [],
+            "Missed Detections": [],
+            "False Positives": [],
+            "Number of Switches": [],
+            "Mota": [],
+        }
 
-        for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
+        for frame_idx, (gt_boxes, tracked_boxes) in enumerate(
+            zip(gt_boxes_list, tracked_boxes_list)
+        ):
             (
                 true_positives,
                 missed_detections,
@@ -196,32 +210,19 @@ class DetectorInference:
                 gt_boxes, tracked_boxes, iou_threshold, prev_frame_ids
             )
             mota_values.append(mota)
-            total_gt_list.append(total_gt)
-            true_positives_list.append(true_positives)
-            missed_detections_list.append(missed_detections)
-            false_positives_list.append(false_positives)
-            num_switches_list.append(num_switches)
+            results["Frame Number"].append(frame_idx + 1)
+            results["Total Ground Truth"].append(total_gt)
+            results["True Positives"].append(true_positives)
+            results["Missed Detections"].append(missed_detections)
+            results["False Positives"].append(false_positives)
+            results["Number of Switches"].append(num_switches)
+            results["Mota"].append(mota)
 
-            # Update previous frame IDs for the next iteration
-            prev_frame_ids = [[box[-1] for box in tracked_boxes]]
+            prev_frame_ids = [[int(box[-1]) for box in tracked_boxes]]
 
-        video_name = Path(self.vid_path)
-        model_name = Path(self.args.model_dir)
-
-        data = {
-            "Frame Number": range(1, len(true_positives_list) + 1),
-            "Total Ground Truth": total_gt_list,
-            "True Positives": true_positives_list,
-            "Missed Detections": missed_detections_list,
-            "False Positives": false_positives_list,
-            "Number of Switches": num_switches_list,
-            "Mota": mota_values,
-        }
-
-        df = pd.DataFrame(data)
-        df.to_csv(
-            f"{video_name.stem}_{model_name.stem}_tracking_output", index=False
-        )
+        video_name = Path(self.vid_path).stem
+        model_name = Path(self.args.model_dir).stem
+        self.save_tracking_results_to_csv(results, video_name, model_name)
 
         return mota_values
 
@@ -403,6 +404,7 @@ def main(args) -> None:
     """
 
     inference = DetectorInference(args)
+    inference.load_trained_model()
     inference.load_video()
     inference.run_inference()
 

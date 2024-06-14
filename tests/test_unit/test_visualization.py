@@ -217,6 +217,7 @@ def sample_csv_data():
     yield temp_file_path
     # Clean up after the test
     import os
+
     os.remove(temp_file_path)
 
 
