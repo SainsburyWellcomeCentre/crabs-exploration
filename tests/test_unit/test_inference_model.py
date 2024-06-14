@@ -2,13 +2,10 @@ import argparse
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import matplotlib
 import numpy as np
 import pytest
 
 from crabs.detection_tracking.inference_model import DetectorInference
-
-matplotlib.use("Agg")
 
 
 @pytest.fixture

@@ -30,9 +30,6 @@ import numpy as np
 from filterpy.kalman import KalmanFilter
 from skimage import io
 
-np.random.seed(0)
-matplotlib.use("TkAgg")
-
 
 def linear_assignment(cost_matrix):
     try:
