@@ -154,11 +154,11 @@ class DetectorInference:
         return csv_writer, csv_file
 
     def save_tracking_results_to_csv(
-        self, data: dict[str, Any], video_name: str, model_name: str
+        self, track_results: dict[str, Any], video_name: str, model_name: str
     ) -> None:
-        df = pd.DataFrame(data)
+        track_df = pd.DataFrame(track_results)
         output_filename = f"{video_name}_{model_name}_tracking_output.csv"
-        df.to_csv(output_filename, index=False)
+        track_df.to_csv(output_filename, index=False)
 
     def evaluate_tracking(
         self,

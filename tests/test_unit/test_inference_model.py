@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
 import pytest
+import torch
 
 from crabs.detection_tracking.inference_model import DetectorInference
 from crabs.detection_tracking.models import FasterRCNN
@@ -16,8 +17,8 @@ def mock_tracker():
         model_dir="/dummy/model_checkpoint.ckpt",  # Use a placeholder path
         max_age=1,
         min_hits=3,
-        score_threshold=0.3,
-        iou_threshold=0.5,
+        score_threshold=0.1,
+        iou_threshold=0.1,
     )
     tracker = DetectorInference(args)
     tracker.args = args
@@ -137,3 +138,104 @@ def test_load_trained_model(mock_tracker, mock_trained_model):
         assert (
             not mock_tracker.trained_model.training
         ), "Trained model should be in evaluation mode (not training)"
+
+
+@pytest.mark.parametrize(
+    "prediction, expected_output",
+    [
+        # Test case 1: One box above threshold, one below
+        (
+            [
+                {
+                    "boxes": torch.tensor(
+                        [[10, 20, 30, 40], [50, 60, 70, 80]]
+                    ),
+                    "scores": torch.tensor([0.8, 0.05]),
+                    "labels": torch.tensor([1, 2]),
+                }
+            ],
+            np.array([[10.0, 20.0, 30.0, 40.0, 0.8]]),
+        ),
+        # Test case 2: All boxes above threshold
+        (
+            [
+                {
+                    "boxes": torch.tensor(
+                        [[10, 20, 30, 40], [50, 60, 70, 80]]
+                    ),
+                    "scores": torch.tensor([0.8, 0.4]),
+                    "labels": torch.tensor([1, 2]),
+                }
+            ],
+            np.array(
+                [[10.0, 20.0, 30.0, 40.0, 0.8], [50.0, 60.0, 70.0, 80.0, 0.4]]
+            ),
+        ),
+        # Test case 3: All boxes below threshold
+        (
+            [
+                {
+                    "boxes": torch.tensor(
+                        [[10, 20, 30, 40], [50, 60, 70, 80]]
+                    ),
+                    "scores": torch.tensor([0.05, 0.05]),
+                    "labels": torch.tensor([1, 2]),
+                }
+            ],
+            np.array([]),
+        ),
+    ],
+)
+def test_prep_sort(mock_tracker, prediction, expected_output):
+    output = mock_tracker.prep_sort(prediction)
+
+    assert np.allclose(
+        output, expected_output
+    ), "The output of prep_sort is not as expected."
+
+    assert (
+        output.shape == expected_output.shape
+    ), "The shape of the output is incorrect."
+    assert isinstance(output, np.ndarray), "The output type is incorrect."
+
+
+@pytest.mark.parametrize("save_video", [True, False])
+def test_load_video(mock_tracker, save_video):
+    mock_tracker.args.save_video = save_video
+
+    mock_video_capture = MagicMock()
+    mock_video_capture.isOpened.return_value = True
+    mock_video_capture.get.side_effect = [640, 480, 30]
+
+    mock_video_writer = MagicMock()
+
+    with patch(
+        "cv2.VideoCapture", return_value=mock_video_capture
+    ) as mock_capture:
+        with patch("cv2.VideoWriter", return_value=mock_video_writer):
+            mock_tracker.load_video()
+
+            mock_capture.assert_called_once_with("/dummy/video.mp4")
+
+            mock_video_capture.isOpened.assert_called_once()
+            if save_video:
+                assert (
+                    mock_video_capture.get.call_count == 3
+                ), "get method not called 3 times"
+            else:
+                mock_video_capture.get.assert_not_called()
+                mock_video_writer.assert_not_called()
+
+
+@pytest.mark.parametrize("save_video", [True, False])
+def test_load_video_failure(mock_tracker, save_video):
+    # Set save_video parameter in the tracker instance
+    mock_tracker.args.save_video = save_video
+
+    # Mock for cv2.VideoCapture
+    mock_video_capture = MagicMock()
+    mock_video_capture.isOpened.return_value = False
+
+    with patch("cv2.VideoCapture", return_value=mock_video_capture):
+        with pytest.raises(Exception, match="Error opening video file"):
+            mock_tracker.load_video()
