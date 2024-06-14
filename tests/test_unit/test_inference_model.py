@@ -1,11 +1,12 @@
 import argparse
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import numpy as np
 import pytest
 
 from crabs.detection_tracking.inference_model import DetectorInference
+from crabs.detection_tracking.models import FasterRCNN
 
 
 @pytest.fixture
@@ -117,22 +118,22 @@ def test_save_required_output(
             mock_video_writer.write.assert_not_called()
 
 
-# def test_load_trained_model(mock_tracker):
-#     # Mock torch.nn.Module and torch.load
-#     mock_torch_module = MagicMock(spec=torch.nn.Module)
-#     torch_load_mock = MagicMock(return_value=mock_torch_module)
+@pytest.fixture
+def mock_trained_model():
+    mock_model = MagicMock(spec=FasterRCNN)
+    mock_model.training = False
+    return mock_model
 
-#     # Patch torch.load to return the mocked torch.nn.Module instance
-#     with patch('torch.load', torch_load_mock):
-#         # Mock builtins.open to prevent file access
-#         open_mock = MagicMock()
-#         open_mock.return_value.__enter__.return_value.read.return_value = 'dummy_content'
-#         with patch('builtins.open', open_mock):
-#             # Mock os.path.exists to return True
-#             with patch('os.path.exists', MagicMock(return_value=True)):
-#                 # Call the method to load the trained model
-#                 mock_tracker.load_trained_model()
 
-#                 # Assertions to verify the expected behavior
-#                 assert isinstance(mock_tracker.trained_model, torch.nn.Module), "Trained model should be an instance of torch.nn.Module"
-#                 assert not mock_tracker.trained_model.training, "Trained model should be in evaluation mode (not training)"
+def test_load_trained_model(mock_tracker, mock_trained_model):
+    with patch.object(
+        FasterRCNN, "load_from_checkpoint", return_value=mock_trained_model
+    ):
+        mock_tracker.load_trained_model()
+
+        assert isinstance(
+            mock_tracker.trained_model, FasterRCNN
+        ), "Trained model should be an instance of FasterRCNN"
+        assert (
+            not mock_tracker.trained_model.training
+        ), "Trained model should be in evaluation mode (not training)"
