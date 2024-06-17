@@ -160,7 +160,7 @@ class FasterRCNN(LightningModule):
             self.validation_step_outputs, "val"
         )
 
-        # Log precision for callback_metrics
+        # Log precision and recall on validation set 
         self.log("val_precision", val_precision)
         self.log("val_recall", val_recall)
 
