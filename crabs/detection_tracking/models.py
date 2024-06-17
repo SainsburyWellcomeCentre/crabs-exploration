@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Union
+from typing import Any, Tuple, Union
 
 import torch
 from lightning import LightningModule
@@ -105,7 +105,7 @@ class FasterRCNN(LightningModule):
 
     def compute_precision_recall_epoch(
         self, step_outputs: dict[str, Union[float, int]], log_str: str
-    ) -> dict[str, Union[float, int]]:
+    ) -> Tuple[dict[str, Union[float, int]], float, float]:
         """
         Computes and logs mean precision and recall for the current epoch.
         """
@@ -134,7 +134,7 @@ class FasterRCNN(LightningModule):
             "num_batches": 0,
         }
 
-        return step_outputs
+        return step_outputs, mean_precision, mean_recall
 
     def on_train_epoch_end(self) -> None:
         """
@@ -156,17 +156,26 @@ class FasterRCNN(LightningModule):
         """
         Hook called after each validation epoch to compute metrics and logging.
         """
-        self.validation_step_outputs = self.compute_precision_recall_epoch(
+        (
+            self.validation_step_outputs,
+            val_precision,
+            val_recall,
+        ) = self.compute_precision_recall_epoch(
             self.validation_step_outputs, "val"
         )
+
+        self.log("val_precision", val_precision)
+        self.log("val_recall", val_recall)
 
     def on_test_epoch_end(self) -> None:
         """
         Hook called after each testing epoch to compute metrics and logging.
         """
-        self.test_step_outputs = self.compute_precision_recall_epoch(
-            self.test_step_outputs, "test"
-        )
+        (
+            self.test_step_outputs,
+            test_precision,
+            test_recall,
+        ) = self.compute_precision_recall_epoch(self.test_step_outputs, "test")
 
     def training_step(
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
