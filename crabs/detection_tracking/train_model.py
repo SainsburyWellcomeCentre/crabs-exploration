@@ -11,11 +11,10 @@ from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
-    log_metadata_to_logger,
     prep_annotation_files,
     prep_img_directories,
     set_mlflow_run_name,
-    setup_mlflow_logger,
+    setup_logger_with_checkpointing,
     slurm_logs_as_artifacts,
 )
 from crabs.detection_tracking.models import FasterRCNN
@@ -71,25 +70,12 @@ class DectectorTrain:
         self.set_run_name()
 
         # Setup logger with checkpointing
-        mlf_logger = setup_mlflow_logger(
+        mlf_logger = setup_logger_with_checkpointing(
             experiment_name=self.experiment_name,
             run_name=self.run_name,
             mlflow_folder=self.mlflow_folder,
             ckpt_config=self.config.get("checkpoint_saving", {}),
-        )
-
-        # Log metadata: CLI arguments and SLURM (if required)
-        mlf_logger = log_metadata_to_logger(mlf_logger, self.args)
-
-        # Log (assumed) path to checkpoints directory
-        path_to_checkpoints = (
-            Path(mlf_logger._tracking_uri)
-            / mlf_logger._experiment_id
-            / mlf_logger._run_id
-            / "checkpoints"
-        )
-        mlf_logger.log_hyperparams(
-            {"path_to_checkpoints": str(path_to_checkpoints)}
+            cli_args=self.args,
         )
 
         return mlf_logger

@@ -2,6 +2,7 @@ import argparse
 import datetime
 import os
 from pathlib import Path
+from typing import Any
 
 from lightning.pytorch.loggers import MLFlowLogger
 
@@ -185,6 +186,44 @@ def log_metadata_to_logger(
     # if single job
     elif slurm_job_id:
         mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
+
+    return mlf_logger
+
+
+def setup_logger_with_checkpointing(
+    experiment_name: str,
+    run_name: str,
+    mlflow_folder: str,
+    ckpt_config: dict[str, Any],
+    cli_args: argparse.Namespace,
+):
+    """
+    Setup MLflow logger with checkpointing.
+
+    Includes logging metadata about the job (CLI arguments and SLURM job IDs).
+    """
+
+    # Setup logger with checkpointing
+    mlf_logger = setup_mlflow_logger(
+        experiment_name=experiment_name,
+        run_name=run_name,
+        mlflow_folder=mlflow_folder,
+        ckpt_config=ckpt_config,
+    )
+
+    # Log metadata: CLI arguments and SLURM (if required)
+    mlf_logger = log_metadata_to_logger(mlf_logger, cli_args)
+
+    # Log (assumed) path to checkpoints directory
+    path_to_checkpoints = (
+        Path(mlf_logger._tracking_uri)
+        / mlf_logger._experiment_id
+        / mlf_logger._run_id
+        / "checkpoints"
+    )
+    mlf_logger.log_hyperparams(
+        {"path_to_checkpoints": str(path_to_checkpoints)}
+    )
 
     return mlf_logger
 
