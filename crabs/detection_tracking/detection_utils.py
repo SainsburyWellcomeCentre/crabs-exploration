@@ -228,6 +228,31 @@ def setup_logger_with_checkpointing(
     return mlf_logger
 
 
+def setup_logger_without_checkpointing(
+    experiment_name: str,
+    run_name: str,
+    mlflow_folder: str,
+    cli_args: argparse.Namespace,
+):
+    """
+    Setup MLflow logger without checkpointing.
+
+    Includes logging metadata about the job (CLI arguments and SLURM job IDs).
+    """
+
+    # Setup logger with checkpointing
+    mlf_logger = setup_mlflow_logger(
+        experiment_name=experiment_name,
+        run_name=run_name,
+        mlflow_folder=mlflow_folder,
+    )
+
+    # Log metadata: CLI arguments and SLURM (if required)
+    mlf_logger = log_metadata_to_logger(mlf_logger, cli_args)
+
+    return mlf_logger
+
+
 def slurm_logs_as_artifacts(logger, slurm_job_id):
     """
     Add slurm logs as an MLflow artifacts of the current run.

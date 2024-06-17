@@ -8,11 +8,10 @@ from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
-    log_metadata_to_logger,
     prep_annotation_files,
     prep_img_directories,
     set_mlflow_run_name,
-    setup_mlflow_logger,
+    setup_logger_without_checkpointing,
 )
 from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.visualization import save_images_with_boxes
@@ -73,14 +72,12 @@ class DetectorEvaluation:
         self.set_run_name()
 
         # Setup logger (no checkpointing)
-        mlf_logger = setup_mlflow_logger(
+        mlf_logger = setup_logger_without_checkpointing(
             experiment_name="Sep2023_evaluation",
             run_name=self.run_name,
             mlflow_folder=self.mlflow_folder,
+            cli_args=self.args,
         )
-
-        # Log metadata to logger: CLI arguments and SLURM (if required)
-        mlf_logger = log_metadata_to_logger(mlf_logger, self.args)
 
         return mlf_logger
 
