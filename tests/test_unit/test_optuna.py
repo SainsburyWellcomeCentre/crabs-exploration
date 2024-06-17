@@ -11,8 +11,8 @@ from crabs.detection_tracking.optuna_fn import optimize_hyperparameters
 def config():
     return {
         "num_classes": [2],
-        "optuna_param": {
-            "n_trials": [3],
+        "optuna": {
+            "n_trials": 3,
             "learning_rate": [1e-6, 1e-4],
             "num_epochs": [1, 2],
         },
@@ -44,13 +44,13 @@ def mock_objective(
     # Simulate usage of trial parameters
     learning_rate = trial.suggest_float(
         "learning_rate",
-        config["optuna_param"]["learning_rate"][0],
-        config["optuna_param"]["learning_rate"][1],
+        config["optuna"]["learning_rate"][0],
+        config["optuna"]["learning_rate"][1],
     )
     num_epochs = trial.suggest_int(
         "num_epochs",
-        config["optuna_param"]["num_epochs"][0],
-        config["optuna_param"]["num_epochs"][1],
+        config["optuna"]["num_epochs"][0],
+        config["optuna"]["num_epochs"][1],
     )
     return learning_rate * num_epochs
 
@@ -73,9 +73,7 @@ def test_optimize_hyperparameters(config, data_module, args):
         )
 
         assert isinstance(result, dict), "Result should be a dictionary"
-        assert (
-            "n_trials" in config["optuna_param"]
-        ), "n_trials should be in config"
+        assert "n_trials" in config["optuna"], "n_trials should be in config"
         assert result, "Result dictionary should not be empty"
         assert "learning_rate" in result, "Result should contain learning_rate"
         assert "num_epochs" in result, "Result should contain num_epochs"

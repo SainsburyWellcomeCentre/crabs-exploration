@@ -62,13 +62,13 @@ def objective(
     # Sample hyperparameters from the search space
     learning_rate = trial.suggest_float(
         "learning_rate",
-        float(config["optuna_param"]["learning_rate"][0]),
-        float(config["optuna_param"]["learning_rate"][1]),
+        float(config["optuna"]["learning_rate"][0]),
+        float(config["optuna"]["learning_rate"][1]),
     )
     num_epochs = trial.suggest_int(
         "num_epochs",
-        config["optuna_param"]["num_epochs"][0],
-        config["optuna_param"]["num_epochs"][1],
+        config["optuna"]["num_epochs"][0],
+        config["optuna"]["num_epochs"][1],
     )
 
     # Log the sampled hyperparameters
@@ -167,9 +167,7 @@ def optimize_hyperparameters(
         )
 
     # Optimize the objective function
-    study.optimize(
-        objective_fn, n_trials=config["optuna_param"]["n_trials"][0]
-    )
+    study.optimize(objective_fn, n_trials=config["optuna"]["n_trials"])
 
     # Get the best hyperparameters
     best_trial = study.best_trial
