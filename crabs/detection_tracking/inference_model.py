@@ -8,12 +8,15 @@ import cv2
 import numpy as np
 import torch
 import torchvision.transforms.v2 as transforms
+import yaml  # type: ignore
 from sort import Sort
 
+from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.tracking_utils import (
     evaluate_mota,
     get_ground_truth_data,
     save_frame_and_csv,
+    write_tracked_bbox_to_csv,
 )
 from crabs.detection_tracking.visualization import (
     draw_bbox,
@@ -36,26 +39,27 @@ class DetectorInference:
         The command-line arguments provided.
     vid_path : str
         The path to the input video.
-    iou_threshold : float
-        The iou threshold for tracking.
-    score_threshold : float
-        The score confidence threshold for tracking.
     sort_tracker : Sort
         An instance of the sorting algorithm used for tracking.
     """
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
+        self.config_file = args.config_file
         self.vid_path = args.vid_path
-        self.score_threshold = args.score_threshold
-        self.iou_threshold = args.iou_threshold
-        self.sort_tracker = Sort(
-            max_age=args.max_age,
-            min_hits=args.min_hits,
-            iou_threshold=self.iou_threshold,
-        )
+
         self.video_file_root = f"{Path(self.vid_path).stem}"
         self.trained_model = self.load_trained_model()
+        self.load_config_yaml()
+        self.sort_tracker = Sort(
+            max_age=self.config["max_age"],
+            min_hits=self.config["min_hits"],
+            iou_threshold=self.config["iou_threshold"],
+        )
+
+    def load_config_yaml(self):
+        with open(self.config_file, "r") as f:
+            self.config = yaml.safe_load(f)
 
     def load_trained_model(self) -> torch.nn.Module:
         """
@@ -65,12 +69,11 @@ class DetectorInference:
         -------
         torch.nn.Module
         """
-        model = torch.load(
-            self.args.model_dir,
-            map_location=torch.device(self.args.accelerator),
-        )
-        model.eval()
-        return model
+        # Get trained model
+        trained_model = FasterRCNN.load_from_checkpoint(self.args.model_dir)
+        trained_model.eval()
+        trained_model.to(self.args.accelerator)
+        return trained_model
 
     def prep_sort(self, prediction: dict) -> np.ndarray:
         """
@@ -92,7 +95,7 @@ class DetectorInference:
 
         pred_sort = []
         for box, score, label in zip(pred_boxes, pred_scores, pred_labels):
-            if score > self.score_threshold:
+            if score > self.config["score_threshold"]:
                 bbox = np.concatenate((box, [score]))
                 pred_sort.append(bbox)
 
@@ -108,7 +111,7 @@ class DetectorInference:
             raise Exception("Error opening video file")
 
         # prepare output video writer if required
-        if self.args.save_video:
+        if self.config["save_video"]:
             # read input video parameters
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -157,7 +160,6 @@ class DetectorInference:
         self,
         gt_boxes_list: list,
         tracked_boxes_list: list,
-        iou_threshold: float,
     ) -> list[float]:
         """
         Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
@@ -168,8 +170,6 @@ class DetectorInference:
             List of ground truth bounding boxes for each frame.
         tracked_boxes_list : list[list[float]]
             List of tracked bounding boxes for each frame.
-        iou_threshold : float
-            The IoU threshold used to determine matches between ground truth and tracked boxes.
 
         Returns
         -------
@@ -181,7 +181,10 @@ class DetectorInference:
         # prev_frame_ids = None
         for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
             mota = evaluate_mota(
-                gt_boxes, tracked_boxes, iou_threshold, prev_frame_ids
+                gt_boxes,
+                tracked_boxes,
+                self.config["iou_threshold"],
+                prev_frame_ids,
             )
             mota_values.append(mota)
             # Update previous frame IDs for the next iteration
@@ -211,7 +214,9 @@ class DetectorInference:
         )
         img = transform(frame).to(self.args.accelerator)
         img = img.unsqueeze(0)
-        return self.trained_model(img)
+        with torch.no_grad():
+            prediction = self.trained_model(img)
+        return prediction
 
     def update_tracking(self, prediction: dict) -> list[list[float]]:
         """
@@ -250,17 +255,23 @@ class DetectorInference:
         frame_number : int
             The frame number.
         """
-        if self.args.save_csv_and_frames:
+        frame_name = f"{self.video_file_root}_frame_{frame_number:08d}.png"
+        if self.config["save_csv_and_frames"]:
             save_frame_and_csv(
-                self.video_file_root,
+                frame_name,
                 self.tracking_output_dir,
                 tracked_boxes,
                 frame,
                 frame_number,
                 self.csv_writer,
             )
+        else:
+            for bbox in tracked_boxes:
+                write_tracked_bbox_to_csv(
+                    bbox, frame, frame_name, self.csv_writer
+                )
 
-        if self.args.save_video:
+        if self.config["save_video"]:
             frame_copy = frame.copy()
             for bbox in tracked_boxes:
                 xmin, ymin, xmax, ymax, id = bbox
@@ -281,9 +292,7 @@ class DetectorInference:
         frame_number = 1
         self.tracked_list = []
 
-        # initialise csv writer if required
-        if self.args.save_csv_and_frames:
-            self.csv_writer, csv_file = self.prep_csv_writer()
+        self.csv_writer, csv_file = self.prep_csv_writer()
 
         # loop thru frames of clip
         while self.video.isOpened():
@@ -311,7 +320,7 @@ class DetectorInference:
         if self.args.gt_dir:
             gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
             mota_values = self.evaluate_tracking(
-                gt_boxes_list, self.tracked_list, self.iou_threshold
+                gt_boxes_list, self.tracked_list, self.config["iou_threshold"]
             )
             overall_mota = np.mean(mota_values)
             print("Overall MOTA:", overall_mota)
@@ -320,10 +329,10 @@ class DetectorInference:
         self.video.release()
 
         # Close outputs
-        if self.args.save_video:
+        if self.config["save_video"]:
             self.out.release()
 
-        if args.save_csv_and_frames:
+        if self.config["save_csv_and_frames"]:
             csv_file.close()
 
 
@@ -361,9 +370,15 @@ if __name__ == "__main__":
         help="location of images and coco annotation",
     )
     parser.add_argument(
-        "--save_video",
-        action="store_true",
-        help="save video inference",
+        "--config_file",
+        type=str,
+        default=str(
+            Path(__file__).parent / "config" / "inference_config.yaml"
+        ),
+        help=(
+            "Location of YAML config to control training. "
+            "Default: crabs-exploration/crabs/detection_tracking/config/inference_config.yaml"
+        ),
     )
     parser.add_argument(
         "--output_path",
@@ -372,42 +387,10 @@ if __name__ == "__main__":
         help="location of output video",
     )
     parser.add_argument(
-        "--score_threshold",
-        type=float,
-        default=0.1,
-        help="threshold for prediction score",
-    )
-    parser.add_argument(
-        "--iou_threshold",
-        type=float,
-        default=0.1,
-        help="threshold for prediction score",
-    )
-    parser.add_argument(
-        "--max_age",
-        type=int,
-        default=10,
-        help="Maximum number of frames to keep alive a track without associated detections.",
-    )
-    parser.add_argument(
-        "--min_hits",
-        type=int,
-        default=1,
-        help="Minimum number of associated detections before track is initialised.",
-    )
-    parser.add_argument(
         "--accelerator",
         type=str,
         default="gpu",
         help="accelerator for pytorch lightning",
-    )
-    parser.add_argument(
-        "--save_csv_and_frames",
-        action="store_true",
-        help=(
-            "Save predicted tracks in VIA csv format and export corresponding frames. "
-            "This is useful to prepare for manual labelling of tracks."
-        ),
     )
     parser.add_argument(
         "--max_frames_to_read",

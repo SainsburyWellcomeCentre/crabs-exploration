@@ -312,7 +312,7 @@ def write_tracked_bbox_to_csv(
 
 
 def save_frame_and_csv(
-    video_file_root: str,
+    frame_name: str,
     tracking_output_dir: Path,
     tracked_boxes: list[list[float]],
     frame: np.ndarray,
@@ -341,8 +341,6 @@ def save_frame_and_csv(
     -------
     None
     """
-    frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
-
     for bbox in tracked_boxes:
         # Add bbox to csv
         write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer)
@@ -354,4 +352,3 @@ def save_frame_and_csv(
         logging.error(
             f"Didn't save {frame_name}, frame {frame_number}, Skipping."
         )
-    logging.info(f"Frame {frame_number} saved at {frame_path}")
