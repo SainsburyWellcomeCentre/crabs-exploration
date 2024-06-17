@@ -18,9 +18,7 @@ from crabs.detection_tracking.tracking_utils import (
     save_frame_and_csv,
     write_tracked_bbox_to_csv,
 )
-from crabs.detection_tracking.visualization import (
-    draw_bbox,
-)
+from crabs.detection_tracking.visualization import draw_bbox
 
 
 class DetectorInference:
@@ -358,10 +356,10 @@ def main(args) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--model_dir",
+        "--ckpt_path",
         type=str,
         required=True,
-        help="location of trained model",
+        help="location of checkpoint of the trained model",
     )
     parser.add_argument(
         "--vid_path",
