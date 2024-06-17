@@ -94,9 +94,12 @@
 
 6. **Optional argument - Optuna**
 
-   We have an option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework. This enables automated hyperparameter optimization based on the selected optimizer.
-
-   Currently, Optuna can be used to find the best number of epochs and learning rate within specified ranges. You can determine the number of trials you want Optuna to run. After `n trials`, MLflow will log the best hyperparameters, and the model will be trained using these optimized parameters. The relevant parameters can be found in the config file under `optuna_param`.
+   - We have the option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework. This enables automated hyperparameter optimization by selecting the best parameters based on a chosen optimizer.
+   - Currently, Optuna can be used to find the best number of epochs and learning rate within specified ranges for specific number of trials.
+   - Specify the range of values for each hyperparameter you wish to optimize in the configuration file (for eaxample like in `/crabs/detection_tracking/config/faster_rcnn.yaml`) under `optuna_param`.
+   - Determine how many trials you want Optuna to run. Each trial will test a different combination of hyperparameters within the defined search space.
+   - Optuna will run the specified number of trials, comparing the metrics for each trial to determine the best set of hyperparameters.
+   - After `n trials`, MLflow will log the best hyperparameters identified by Optuna. Subsequently, the model will be trained using these optimized parameters.
 
    To run Optuna, we can add `--optuna` arguments to the bash script. For example:
 
