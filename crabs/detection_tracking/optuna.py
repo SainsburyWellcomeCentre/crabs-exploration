@@ -11,8 +11,8 @@ def compute_optimal_hyperparameters(
 
     # Optimize the objective function
     study.optimize(
-        objective_fn,  # takes trial, returns float
-        n_trials=config_optuna["n_trials"][0],  # why 0?
+        objective_fn,  # a function that takes trial and returns a float
+        n_trials=config_optuna["n_trials"],
     )
 
     # Extract optimal results
