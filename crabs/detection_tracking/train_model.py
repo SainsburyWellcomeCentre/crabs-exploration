@@ -119,6 +119,18 @@ class DectectorTrain:
         )
 
     def optuna_objective_fn(self, trial: optuna.Trial) -> float:
+        """Objective function for Optuna to maximise.
+
+        Parameters
+        ----------
+        trial : optuna.Trial
+            The trial to optimise.
+
+        Returns
+        -------
+        float
+            The value to maximise.
+        """
         # Sample hyperparameters from the search space for this trial
         self.config["learning_rate"] = trial.suggest_float(
             "learning_rate",
@@ -131,6 +143,7 @@ class DectectorTrain:
             self.config["optuna"]["num_epochs"][1],
         )
 
+        # ------------------------------------------------------
         # Create data module
         data_module = CrabsDataModule(
             self.images_dirs,
@@ -145,6 +158,7 @@ class DectectorTrain:
         # Run training
         trainer = self.setup_trainer()
         trainer.fit(lightning_model, data_module)
+        # ------------------------------------------------------
 
         # Return metric to maximise
         val_precision = trainer.callback_metrics["val_precision"].item()
@@ -152,10 +166,10 @@ class DectectorTrain:
         return (val_precision + val_recall) / 2
 
     def train_model(self):
-        # Optuna ------------------------------------------------------
+        # Run hyperparameter sweep if required
         if self.args.optuna:
             # Optimize hyperparameters in config
-            # direction --> maximise
+            # to maximise validation precision and recall
             best_hyperparameters = compute_optimal_hyperparameters(
                 self.optuna_objective_fn,
                 config_optuna=self.config["optuna"],
@@ -163,8 +177,8 @@ class DectectorTrain:
 
             # Update the config with the best hyperparameters
             self.config.update(best_hyperparameters)
-        # ------------------------------------------------------
 
+        # ------------------------------------------------------
         # Create data module
         data_module = CrabsDataModule(
             self.images_dirs,
@@ -179,6 +193,7 @@ class DectectorTrain:
         # Run training
         trainer = self.setup_trainer()
         trainer.fit(lightning_model, data_module)
+        # ------------------------------------------------------
 
         # if this is a slurm job: add slurm logs as artifacts
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
