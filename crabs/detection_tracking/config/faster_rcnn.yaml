@@ -28,7 +28,7 @@ gaussian_blur_params:
   sigma:
     - 0.1
     - 5.0
-optuna_param:
+optuna:
   n_trials:
     - 3
   learning_rate:
