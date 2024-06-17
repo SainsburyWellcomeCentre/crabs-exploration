@@ -19,7 +19,10 @@ from crabs.detection_tracking.detection_utils import (
     slurm_logs_as_artifacts,
 )
 from crabs.detection_tracking.models import FasterRCNN
-from crabs.detection_tracking.optuna import compute_optimal_hyperparameters
+from crabs.detection_tracking.optuna import (
+    compute_optimal_hyperparameters,
+    convert_string_number,
+)
 
 
 class DectectorTrain:
@@ -137,32 +140,33 @@ class DectectorTrain:
             The value to maximise.
         """
         # Sample hyperparameters from the search space for this trial
-        # learning rate (a float)
-        if "learning_rate" in self.config["optuna"]:
-            if len(self.config["optuna"]["learning_rate"]) != 2:
-                raise ValueError(
-                    "bounds for `learning_rate` not defined in optuna config"
+        optuna_config = self.config["optuna"]
+        del optuna_config["n_trials"]
+
+        for key in optuna_config:
+            list_parameter_values = [
+                convert_string_number(x) for x in optuna_config[key]
+            ]
+
+            if all([isinstance(x, int) for x in list_parameter_values]):
+                self.config[key] = trial.suggest_int(
+                    key,
+                    list_parameter_values[0],
+                    list_parameter_values[1],
+                )
+            elif all([isinstance(x, float) for x in list_parameter_values]):
+                self.config[key] = trial.suggest_float(
+                    key,
+                    list_parameter_values[0],
+                    list_parameter_values[1],
                 )
             else:
-                self.config["learning_rate"] = trial.suggest_float(
-                    "learning_rate",
-                    float(self.config["optuna"]["learning_rate"][0]),
-                    float(self.config["optuna"]["learning_rate"][1]),
-                )
-
-        # num_epochs (an integer)
-        if "num_epochs" in self.config["optuna"]:
-            if len(self.config["optuna"]["num_epochs"]) != 2:
                 raise ValueError(
-                    "bounds for `num_epochs` not defined in optuna config"
+                    f"Some values of the hyperparameter {key} could not be "
+                    "cast to integers or floats. Please review that the values "
+                    "can be cast to all integers or all floats: "
+                    f"{list_parameter_values}"
                 )
-            else:
-                self.config["num_epochs"] = trial.suggest_int(
-                    "num_epochs",
-                    self.config["optuna"]["num_epochs"][0],
-                    self.config["optuna"]["num_epochs"][1],
-                )
-
         # Run training
         trainer = self.core_training()
 
