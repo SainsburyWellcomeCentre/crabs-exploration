@@ -1,4 +1,4 @@
-from typing import Callable, Dict
+from typing import Callable, Dict, Union
 
 import optuna
 
@@ -43,7 +43,7 @@ def compute_optimal_hyperparameters(
     return best_hyperparameters
 
 
-def convert_string_number(num_s: str) -> int | float:
+def convert_string_number(num_s: str) -> Union[int, float]:
     """Convert a string to a float or an integer."""
     try:
         num = float(num_s)
