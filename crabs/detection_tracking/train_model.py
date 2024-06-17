@@ -118,8 +118,13 @@ class DectectorTrain:
             limit_train_batches=self.limit_train_batches,
         )
 
-    def optuna_objective_fn(self, trial: optuna.Trial) -> float:
-        """Objective function for Optuna to maximise.
+    def optuna_maximise_val_precision_recall(
+        self, trial: optuna.Trial
+    ) -> float:
+        """Objective function for Optuna.
+
+        When used with Optuna, it wil maximise precision and recall on the
+        validation set.
 
         Parameters
         ----------
@@ -132,53 +137,48 @@ class DectectorTrain:
             The value to maximise.
         """
         # Sample hyperparameters from the search space for this trial
-        self.config["learning_rate"] = trial.suggest_float(
-            "learning_rate",
-            float(self.config["optuna"]["learning_rate"][0]),
-            float(self.config["optuna"]["learning_rate"][1]),
-        )
-        self.config["num_epochs"] = trial.suggest_int(
-            "num_epochs",
-            self.config["optuna"]["num_epochs"][0],
-            self.config["optuna"]["num_epochs"][1],
-        )
+        # learning rate (a float)
+        if "learning_rate" in self.config["optuna"]:
+            if len(self.config["optuna"]["learning_rate"]) != 2:
+                raise ValueError(
+                    "bounds for `learning_rate` not defined in optuna config"
+                )
+            else:
+                self.config["learning_rate"] = trial.suggest_float(
+                    "learning_rate",
+                    float(self.config["optuna"]["learning_rate"][0]),
+                    float(self.config["optuna"]["learning_rate"][1]),
+                )
 
-        # ------------------------------------------------------
-        # Create data module
-        data_module = CrabsDataModule(
-            self.images_dirs,
-            self.annotation_files,
-            self.config,
-            self.seed_n,
-        )
-
-        # Get model
-        lightning_model = FasterRCNN(self.config)
+        # num_epochs (an integer)
+        if "num_epochs" in self.config["optuna"]:
+            if len(self.config["optuna"]["num_epochs"]) != 2:
+                raise ValueError(
+                    "bounds for `num_epochs` not defined in optuna config"
+                )
+            else:
+                self.config["num_epochs"] = trial.suggest_int(
+                    "num_epochs",
+                    self.config["optuna"]["num_epochs"][0],
+                    self.config["optuna"]["num_epochs"][1],
+                )
 
         # Run training
-        trainer = self.setup_trainer()
-        trainer.fit(lightning_model, data_module)
-        # ------------------------------------------------------
+        trainer = self.core_training()
 
         # Return metric to maximise
         val_precision = trainer.callback_metrics["val_precision"].item()
         val_recall = trainer.callback_metrics["val_recall"].item()
         return (val_precision + val_recall) / 2
 
-    def train_model(self):
-        # Run hyperparameter sweep if required
-        if self.args.optuna:
-            # Optimize hyperparameters in config
-            # to maximise validation precision and recall
-            best_hyperparameters = compute_optimal_hyperparameters(
-                self.optuna_objective_fn,
-                config_optuna=self.config["optuna"],
-            )
+    def core_training(self) -> lightning.Trainer:
+        """Create data module and model and run training.
 
-            # Update the config with the best hyperparameters
-            self.config.update(best_hyperparameters)
-
-        # ------------------------------------------------------
+        Returns
+        -------
+        lightning.Trainer
+            The trainer object used for training.
+        """
         # Create data module
         data_module = CrabsDataModule(
             self.images_dirs,
@@ -193,7 +193,24 @@ class DectectorTrain:
         # Run training
         trainer = self.setup_trainer()
         trainer.fit(lightning_model, data_module)
-        # ------------------------------------------------------
+
+        return trainer
+
+    def train_model(self):
+        # Run hyperparameter sweep with Optuna if required
+        if self.args.optuna:
+            # Optimize hyperparameters in config
+            # to maximise validation precision and recall
+            best_hyperparameters = compute_optimal_hyperparameters(
+                self.optuna_maximise_val_precision_recall,
+                config_optuna=self.config["optuna"],
+            )
+
+            # Update the config with the best hyperparameters
+            self.config.update(best_hyperparameters)
+
+        # Run training
+        trainer = self.core_training()
 
         # if this is a slurm job: add slurm logs as artifacts
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
