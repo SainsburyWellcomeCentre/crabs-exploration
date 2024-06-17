@@ -187,3 +187,33 @@ def log_metadata_to_logger(
         mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
 
     return mlf_logger
+
+
+def slurm_logs_as_artifacts(logger, slurm_job_id):
+    """
+    Add slurm logs as an MLflow artifacts of the current run.
+
+    The filenaming convention from the training scripts at crabs-exploration/bash_scripts/ is assumed.
+    """
+
+    # Get slurm env variables: slurm and array job ID
+    slurm_node = os.environ.get("SLURMD_NODENAME")
+    slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
+
+    # Get root of log filenames
+    # for array job
+    if slurm_array_job_id:
+        slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+        log_filename = (
+            f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}"
+        )
+    # for single job
+    else:
+        log_filename = f"slurm.{slurm_job_id}.{slurm_node}"
+
+    # Add log files as artifacts of this run
+    for ext in ["out", "err"]:
+        logger.experiment.log_artifact(
+            logger.run_id,
+            f"{log_filename}.{ext}",
+        )
