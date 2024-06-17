@@ -11,7 +11,7 @@ from crabs.detection_tracking.detection_utils import (
     prep_annotation_files,
     prep_img_directories,
     set_mlflow_run_name,
-    setup_logger_without_checkpointing,
+    setup_mlflow_logger,
 )
 from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.visualization import save_images_with_boxes
@@ -71,8 +71,8 @@ class DetectorEvaluation:
         # Assign run name
         self.set_run_name()
 
-        # Setup logger (no checkpointing)
-        mlf_logger = setup_logger_without_checkpointing(
+        # Setup logger
+        mlf_logger = setup_mlflow_logger(
             experiment_name="Sep2023_evaluation",
             run_name=self.run_name,
             mlflow_folder=self.mlflow_folder,
