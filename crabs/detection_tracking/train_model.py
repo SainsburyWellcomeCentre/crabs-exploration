@@ -1,4 +1,5 @@
 import argparse
+import copy
 import os
 import sys
 from pathlib import Path
@@ -140,7 +141,7 @@ class DectectorTrain:
             The value to maximise.
         """
         # Sample hyperparameters from the search space for this trial
-        optuna_config = self.config["optuna"]
+        optuna_config = copy.deepcopy(self.config["optuna"])
         del optuna_config["n_trials"]
 
         for key in optuna_config:
