@@ -67,8 +67,8 @@ def objective(
     )
     num_epochs = trial.suggest_int(
         "num_epochs",
-        config["optuna"]["num_epochs"][0],
-        config["optuna"]["num_epochs"][1],
+        config["optuna"]["n_epochs"][0],
+        config["optuna"]["n_epochs"][1],
     )
 
     # Log the sampled hyperparameters
@@ -82,7 +82,7 @@ def objective(
 
     # Update the config with the sampled hyperparameters
     config["learning_rate"] = learning_rate
-    config["num_epochs"] = num_epochs
+    config["n_epochs"] = num_epochs
 
     # Initialize the model
     lightning_model = FasterRCNN(config)
