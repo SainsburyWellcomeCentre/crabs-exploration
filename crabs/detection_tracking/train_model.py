@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import lightning
+import optuna
 import torch
 import yaml  # type: ignore
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -18,6 +19,7 @@ from crabs.detection_tracking.detection_utils import (
     slurm_logs_as_artifacts,
 )
 from crabs.detection_tracking.models import FasterRCNN
+from crabs.detection_tracking.optuna import compute_optimal_hyperparameters
 
 
 class DectectorTrain:
@@ -116,7 +118,53 @@ class DectectorTrain:
             limit_train_batches=self.limit_train_batches,
         )
 
+    def optuna_objective_fn(self, trial: optuna.Trial) -> float:
+        # Sample hyperparameters from the search space for this trial
+        self.config["learning_rate"] = trial.suggest_float(
+            "learning_rate",
+            float(self.config["optuna"]["learning_rate"][0]),
+            float(self.config["optuna"]["learning_rate"][1]),
+        )
+        self.config["num_epochs"] = trial.suggest_int(
+            "num_epochs",
+            self.config["optuna"]["num_epochs"][0],
+            self.config["optuna"]["num_epochs"][1],
+        )
+
+        # Create data module
+        data_module = CrabsDataModule(
+            self.images_dirs,
+            self.annotation_files,
+            self.config,
+            self.seed_n,
+        )
+
+        # Get model
+        lightning_model = FasterRCNN(self.config)
+
+        # Run training
+        trainer = self.setup_trainer()
+        trainer.fit(lightning_model, data_module)
+
+        # Return metric to maximise
+        val_precision = trainer.callback_metrics["val_precision"].item()
+        val_recall = trainer.callback_metrics["val_recall"].item()
+        return (val_precision + val_recall) / 2
+
     def train_model(self):
+        # Optuna ------------------------------------------------------
+        if self.args.optuna:
+            # Optimize hyperparameters in config
+            # direction --> maximise
+            best_hyperparameters = compute_optimal_hyperparameters(
+                self.optuna_objective_fn,
+                config_optuna=self.config["optuna"],
+            )
+
+            # Update the config with the best hyperparameters
+            self.config.update(best_hyperparameters)
+        # ------------------------------------------------------
+
         # Create data module
         data_module = CrabsDataModule(
             self.images_dirs,
@@ -227,7 +275,11 @@ def train_parse_args(args):
         default="./ml-runs",
         help=("Path to MLflow directory. Default: ./ml-runs"),
     )
-
+    parser.add_argument(
+        "--optuna",
+        action="store_true",
+        help="Run a hyperparameter sweep using Optuna prior to training the model",
+    )
     return parser.parse_args(args)
 
 

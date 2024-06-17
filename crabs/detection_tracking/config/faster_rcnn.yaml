@@ -28,3 +28,12 @@ gaussian_blur_params:
   sigma:
     - 0.1
     - 5.0
+optuna:
+  n_trials:
+    - 3
+  learning_rate:
+    - 1e-6
+    - 1e-4
+  num_epochs:
+    - 100
+    - 300
