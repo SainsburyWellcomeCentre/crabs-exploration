@@ -73,7 +73,7 @@ class DetectorInference:
             self.args.checkpoint_path
         )
         trained_model.eval()
-        trained_model.to(self.args.accelerator)
+        # trained_model.to(self.args.accelerator)
         return trained_model
 
     def prep_sort(self, prediction: dict) -> np.ndarray:
@@ -213,7 +213,8 @@ class DetectorInference:
                 transforms.ToDtype(torch.float32, scale=True),
             ]
         )
-        img = transform(frame).to(self.args.accelerator)
+        img = transform(frame)
+        # .to(self.args.accelerator)
         img = img.unsqueeze(0)
         with torch.no_grad():
             prediction = self.trained_model(img)
@@ -405,15 +406,14 @@ def inference_parse_args(args):
         default=None,
         help="Location of json file containing ground truth annotations.",
     )
-    args = parser.parse_args()
-    main(args)
+    return parser.parse_args(args)
 
 
 def app_wrapper():
     torch.set_float32_matmul_precision("medium")
 
-    train_args = inference_parse_args(sys.argv[1:])
-    main(train_args)
+    inference_args = inference_parse_args(sys.argv[1:])
+    main(inference_args)
 
 
 if __name__ == "__main__":
