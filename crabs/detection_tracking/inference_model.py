@@ -73,7 +73,6 @@ class DetectorInference:
             self.args.checkpoint_path
         )
         trained_model.eval()
-        # trained_model.to(self.args.accelerator)
         return trained_model
 
     def prep_sort(self, prediction: dict) -> np.ndarray:
@@ -214,7 +213,6 @@ class DetectorInference:
             ]
         )
         img = transform(frame)
-        # .to(self.args.accelerator)
         img = img.unsqueeze(0)
         with torch.no_grad():
             prediction = self.trained_model(img)
@@ -387,12 +385,6 @@ def inference_parse_args(args):
         type=str,
         default=os.getcwd(),
         help="location of output video",
-    )
-    parser.add_argument(
-        "--accelerator",
-        type=str,
-        default="cuda",
-        help="accelerator for pytorch lightning",
     )
     parser.add_argument(
         "--max_frames_to_read",
