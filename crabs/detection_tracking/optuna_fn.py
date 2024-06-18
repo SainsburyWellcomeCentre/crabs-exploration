@@ -9,7 +9,7 @@ from optuna.trial import Trial
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
-    setup_logger,
+    setup_mlflow_logger,
     slurm_logs_as_artifacts,
 )
 from crabs.detection_tracking.models import FasterRCNN
@@ -51,12 +51,12 @@ def objective(
     run_name = f"run_{trial.number}_{timestamp}"
 
     # Get MLflow logger
-    mlf_logger = setup_logger(
+    mlf_logger = setup_mlflow_logger(
         experiment_name,
-        mlflow_folder,
-        config.get("checkpoint_saving", {}),
-        args,
         run_name,
+        mlflow_folder,
+        args,
+        config.get("checkpoint_saving", {}),
     )
 
     # Sample hyperparameters from the search space
@@ -89,7 +89,7 @@ def objective(
 
     # Initialize the PyTorch Lightning Trainer
     trainer = lightning.Trainer(
-        max_epochs=config["num_epochs"],
+        max_epochs=config["n_epochs"],
         accelerator=accelerator,
         logger=mlf_logger,
         fast_dev_run=fast_dev_run,

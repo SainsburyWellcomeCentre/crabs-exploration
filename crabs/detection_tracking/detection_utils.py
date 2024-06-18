@@ -188,6 +188,7 @@ def setup_mlflow_logger(
 
     # Setup MLflow logger for a given experiment and run name
     # (with checkpointing if required)
+    print(mlflow_folder)
     mlf_logger = MLFlowLogger(
         experiment_name=experiment_name,
         run_name=run_name,

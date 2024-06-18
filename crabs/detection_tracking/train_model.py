@@ -57,17 +57,11 @@ class DectectorTrain:
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
-    def set_run_name(self):
+    def setup_trainer(self):
+        """
+        Setup trainer with logging and checkpointing.
+        """
         self.run_name = set_mlflow_run_name()
-
-    def setup_logger(self) -> MLFlowLogger:
-        """
-        Setup MLflow logger for training, with checkpointing.
-
-        Includes logging metadata about the job (CLI arguments and SLURM job IDs).
-        """
-        # Assign run name
-        self.set_run_name()
 
         # Setup logger with checkpointing
         mlf_logger = setup_mlflow_logger(
@@ -77,20 +71,6 @@ class DectectorTrain:
             cli_args=self.args,
             ckpt_config=self.config.get("checkpoint_saving", {}),
             # pass the checkpointing config if defined
-        )
-
-        return mlf_logger
-
-    def setup_trainer(self):
-        """
-        Setup trainer with logging and checkpointing.
-        """
-        # Get MLflow logger
-        mlf_logger = setup_logger(
-            self.experiment_name,
-            self.mlflow_folder,
-            self.config.get("checkpoint_saving", {}),
-            self.args,
         )
 
         # Define checkpointing callback for trainer
@@ -112,7 +92,7 @@ class DectectorTrain:
 
         # Return trainer linked to callbacks and logger
         return lightning.Trainer(
-            max_epochs=self.config["num_epochs"],
+            max_epochs=self.config["n_epochs"],
             accelerator=self.accelerator,
             logger=mlf_logger,
             enable_checkpointing=enable_checkpointing,
