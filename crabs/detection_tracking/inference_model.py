@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import torchvision.transforms.v2 as transforms
 import yaml  # type: ignore
-from sort import Sort
+from crabs.detection_tracking.sort import Sort
 
 from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.tracking_utils import (
