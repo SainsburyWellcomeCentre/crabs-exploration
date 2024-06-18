@@ -10,9 +10,6 @@ import yaml  # type: ignore
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import MLFlowLogger
 
-from crabs.detection_tracking._optuna import (
-    compute_optimal_hyperparameters,
-)
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
     prep_annotation_files,
@@ -22,6 +19,9 @@ from crabs.detection_tracking.detection_utils import (
     slurm_logs_as_artifacts,
 )
 from crabs.detection_tracking.models import FasterRCNN
+from crabs.detection_tracking.optuna_utils import (
+    compute_optimal_hyperparameters,
+)
 
 
 class DectectorTrain:
