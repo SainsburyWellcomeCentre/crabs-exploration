@@ -120,9 +120,7 @@ class DectectorTrain:
             limit_train_batches=self.limit_train_batches,
         )
 
-    def optuna_maximise_val_precision_recall(
-        self, trial: optuna.Trial
-    ) -> float:
+    def optuna_objective_fn(self, trial: optuna.Trial) -> float:
         """Objective function for Optuna.
 
         When used with Optuna, it wil maximise precision and recall on the
@@ -144,15 +142,15 @@ class DectectorTrain:
         if "learning_rate" in optuna_config:
             self.config["learning_rate"] = trial.suggest_float(
                 "learning_rate",
-                optuna_config["learning_rate"][0],
-                optuna_config["learning_rate"][1],
+                float(optuna_config["learning_rate"][0]),
+                float(optuna_config["learning_rate"][1]),
             )
 
         if "num_epochs" in optuna_config:
             self.config["num_epochs"] = trial.suggest_int(
                 "num_epochs",
-                optuna_config["num_epochs"][0],
-                optuna_config["num_epochs"][1],
+                int(optuna_config["num_epochs"][0]),
+                int(optuna_config["num_epochs"][1]),
             )
 
         # Run training
@@ -194,7 +192,7 @@ class DectectorTrain:
             # Optimize hyperparameters in config
             # to maximise validation precision and recall
             best_hyperparameters = compute_optimal_hyperparameters(
-                self.optuna_maximise_val_precision_recall,
+                self.optuna_objective_fn,
                 config_optuna=self.config["optuna"],
             )
 
