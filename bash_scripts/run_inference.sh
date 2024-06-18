@@ -93,6 +93,7 @@
  # -------------------
  inference-detector  \
   --checkpoint_path $CKPT_PATH \
+  --video_path $VIDEO_PATH \
   --config_file $CONFIG_FILE \
   --accelerator gpu \
   

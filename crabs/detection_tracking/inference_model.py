@@ -35,7 +35,7 @@ class DetectorInference:
     ----------
     args : argparse.Namespace
         The command-line arguments provided.
-    vid_path : str
+    video_path : str
         The path to the input video.
     sort_tracker : Sort
         An instance of the sorting algorithm used for tracking.
@@ -44,9 +44,9 @@ class DetectorInference:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.config_file = args.config_file
-        self.vid_path = args.vid_path
+        self.video_path = args.video_path
 
-        self.video_file_root = f"{Path(self.vid_path).stem}"
+        self.video_file_root = f"{Path(self.video_path).stem}"
         self.trained_model = self.load_trained_model()
         self.load_config_yaml()
         self.sort_tracker = Sort(
@@ -104,7 +104,7 @@ class DetectorInference:
         Load the input video, and prepare the output video if required.
         """
         # load input video
-        self.video = cv2.VideoCapture(self.vid_path)
+        self.video = cv2.VideoCapture(self.video_path)
         if not self.video.isOpened():
             raise Exception("Error opening video file")
 
@@ -362,7 +362,7 @@ if __name__ == "__main__":
         help="location of checkpoint of the trained model",
     )
     parser.add_argument(
-        "--vid_path",
+        "--video_path",
         type=str,
         required=True,
         help="location of images and coco annotation",
