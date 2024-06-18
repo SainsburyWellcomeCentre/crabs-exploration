@@ -390,7 +390,7 @@ def inference_parse_args(args):
     parser.add_argument(
         "--accelerator",
         type=str,
-        default="gpu",
+        default="cuda",
         help="accelerator for pytorch lightning",
     )
     parser.add_argument(
