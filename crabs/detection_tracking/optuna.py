@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Union
+from typing import Callable, Dict
 
 import optuna
 
@@ -41,16 +41,3 @@ def compute_optimal_hyperparameters(
     best_hyperparameters = best_trial.params
 
     return best_hyperparameters
-
-
-def convert_string_number(num_s: str) -> Union[int, float]:
-    """Convert a string to a float or an integer."""
-    try:
-        num = float(num_s)
-        if num.is_integer():
-            return int(num)
-        return num
-    except ValueError:
-        raise ValueError(
-            f"The provided string '{num_s}' is not a valid number"
-        )

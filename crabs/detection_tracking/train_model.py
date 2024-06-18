@@ -1,5 +1,4 @@
 import argparse
-import copy
 import os
 import sys
 from pathlib import Path
@@ -22,7 +21,6 @@ from crabs.detection_tracking.detection_utils import (
 from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.optuna import (
     compute_optimal_hyperparameters,
-    convert_string_number,
 )
 
 
@@ -141,33 +139,22 @@ class DectectorTrain:
             The value to maximise.
         """
         # Sample hyperparameters from the search space for this trial
-        optuna_config = copy.deepcopy(self.config["optuna"])
-        del optuna_config["n_trials"]
+        optuna_config = self.config["optuna"]
 
-        for key in optuna_config:
-            list_parameter_values = [
-                convert_string_number(x) for x in optuna_config[key]
-            ]
+        if "learning_rate" in optuna_config:
+            self.config["learning_rate"] = trial.suggest_float(
+                "learning_rate",
+                optuna_config["learning_rate"][0],
+                optuna_config["learning_rate"][1],
+            )
 
-            if all([isinstance(x, int) for x in list_parameter_values]):
-                self.config[key] = trial.suggest_int(
-                    key,
-                    list_parameter_values[0],
-                    list_parameter_values[1],
-                )
-            elif all([isinstance(x, float) for x in list_parameter_values]):
-                self.config[key] = trial.suggest_float(
-                    key,
-                    list_parameter_values[0],
-                    list_parameter_values[1],
-                )
-            else:
-                raise ValueError(
-                    f"Some values of the hyperparameter {key} could not be "
-                    "cast to integers or floats. Please review that the values "
-                    "can be cast to all integers or all floats: "
-                    f"{list_parameter_values}"
-                )
+        if "num_epochs" in optuna_config:
+            self.config["num_epochs"] = trial.suggest_int(
+                "num_epochs",
+                optuna_config["num_epochs"][0],
+                optuna_config["num_epochs"][1],
+            )
+
         # Run training
         trainer = self.core_training()
 
