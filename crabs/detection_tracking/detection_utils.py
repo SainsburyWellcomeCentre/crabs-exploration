@@ -2,7 +2,7 @@ import argparse
 import datetime
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from lightning.pytorch.loggers import MLFlowLogger
 
@@ -107,45 +107,6 @@ def set_mlflow_run_name() -> str:
     return run_name
 
 
-def setup_mlflow_logger(
-    experiment_name: str,
-    run_name: str,
-    mlflow_folder: str,
-    ckpt_config: dict = {},
-) -> MLFlowLogger:
-    """
-    Setup MLflow logger for a given experiment and run name. If a
-    checkpointing config is passed, it will setup the logger with a
-    checkpointing callback.
-
-    Parameters
-    ----------
-    experiment_name : str
-        Name of the experiment under which this run will be logged.
-    run_name : str
-        Name of the run.
-    mlflow_folder : str
-        Path to folder where to store MLflow outputs for this run.
-    ckpt_config : dict
-        A dictionary with the checkpointing parameters. By default, an empty dict.
-
-    Returns
-    -------
-    MLFlowLogger
-        A logger to record data for MLflow
-    """
-
-    # Setup logger with checkpointing
-    mlf_logger = MLFlowLogger(
-        experiment_name=experiment_name,
-        run_name=run_name,
-        tracking_uri=f"file:{Path(mlflow_folder)}",
-        log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
-    )
-
-    return mlf_logger
-
-
 def log_metadata_to_logger(
     mlf_logger: MLFlowLogger,
     cli_args: argparse.Namespace,
@@ -190,82 +151,74 @@ def log_metadata_to_logger(
     return mlf_logger
 
 
-def setup_logger(
+def setup_mlflow_logger(
     experiment_name: str,
+    run_name: str,
     mlflow_folder: str,
-    config_ckpt: Dict[str, Any],
-    args: argparse.Namespace,
-    run_name: Optional[str] = None,
+    cli_args: argparse.Namespace,
+    ckpt_config: dict[str, Any] = {},
 ) -> MLFlowLogger:
     """
-    Setup MLflow logger for training, with checkpointing.
+    Setup MLflow logger and log job metadata, with optional checkpointing.
 
-    Includes logging metadata about the job (CLI arguments and SLURM job IDs).
+    Setup MLflow logger for a given experiment and run name. If a
+    checkpointing config is passed, it will setup the logger with a
+    checkpointing callback. A job metadata is the job's CLI arguments and
+    the SLURM job IDs (if relevant).
 
     Parameters
     ----------
     experiment_name : str
         Name of the experiment under which this run will be logged.
+    run_name : str
+        Name of the run.
     mlflow_folder : str
-        Path to the folder where MLflow outputs for this run will be stored.
-    config_ckpt : dict
-        Dictionary containing the checkpointing parameters.
-    args : dict
-        Dictionary of CLI arguments.
-    run_name : str, optional
-        Name of the run. By default, the run name will be generated. This option is for optuna
+        Path to folder where to store MLflow outputs for this run.
+    cli_args : argparse.Namespace
+        Parsed command-line arguments.
+    ckpt_config : dict
+        A dictionary with the checkpointing parameters.
+        By default, an empty dict.
 
     Returns
     -------
     MLFlowLogger
-        MLFlowLogger instance.
+        A logger to record data for MLflow
     """
-    # Assign run name
-    if run_name is None:
-        run_name = set_mlflow_run_name()
 
-    # Setup logger with checkpointing
-    mlf_logger = setup_mlflow_logger(
+    # Setup MLflow logger for a given experiment and run name
+    # (with checkpointing if required)
+    mlf_logger = MLFlowLogger(
         experiment_name=experiment_name,
         run_name=run_name,
-        mlflow_folder=mlflow_folder,
-        ckpt_config=config_ckpt,
+        tracking_uri=f"file:{Path(mlflow_folder)}",
+        log_model=ckpt_config.get("copy_as_mlflow_artifacts", False),
     )
 
-    # # Log metadata: CLI arguments and SLURM (if required)
-    mlf_logger = log_metadata_to_logger(mlf_logger, args)
+    # Log metadata: CLI arguments and SLURM job ID (if required)
+    mlf_logger = log_metadata_to_logger(mlf_logger, cli_args)
 
-    # Log (assumed) path to checkpoints directory
-    path_to_checkpoints = (
-        Path(mlf_logger._tracking_uri)
-        / mlf_logger._experiment_id
-        / mlf_logger._run_id
-        / "checkpoints"
-    )
-    mlf_logger.log_hyperparams(
-        {"path_to_checkpoints": str(path_to_checkpoints)}
-    )
+    # If checkpointing is not an empty dict,
+    # log the path to the checkpoints directory
+    if ckpt_config:
+        path_to_checkpoints = (
+            Path(mlf_logger._tracking_uri)
+            / mlf_logger._experiment_id
+            / mlf_logger._run_id
+            / "checkpoints"
+        )
+        mlf_logger.log_hyperparams(
+            {"path_to_checkpoints": str(path_to_checkpoints)}
+        )
 
     return mlf_logger
 
 
-def slurm_logs_as_artifacts(logger: MLFlowLogger, slurm_job_id: str) -> None:
+def slurm_logs_as_artifacts(logger, slurm_job_id):
     """
-    Add SLURM logs as MLflow artifacts of the current run.
+    Add slurm logs as an MLflow artifacts of the current run.
 
-    This function assumes the filenaming convention from the training scripts
-    located at `crabs-exploration/bash_scripts/`.
-
-    Parameters
-    ----------
-    logger : MLFlowLogger
-        An MLflow logger instance.
-    slurm_job_id : str
-        The SLURM job ID for the current run.
-
-    Returns
-    -------
-    None
+    The filenaming convention from the training scripts at crabs-exploration/bash_scripts/ is assumed.
     """
 
     # Get slurm env variables: slurm and array job ID
