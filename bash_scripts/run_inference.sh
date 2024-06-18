@@ -39,7 +39,7 @@
 
  # video and inference config
  VIDEO_PATH=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
- CONFIG_FILE=/ceph/scratch/nikkna/crabs-exploration/detection_tracking/config/inference_config.yaml
+ CONFIG_FILE=/ceph/scratch/nikkna/crabs-exploration/crabs/detection_tracking/config/inference_config.yaml
 
  # checkpoint
  CKPT_PATH=/ceph/scratch/nikkna/crabs-exploration/ml_ckpt/595664011639950974/e24234398e4b4d5790a9ea3599570637/checkpoints/last.ckpt
