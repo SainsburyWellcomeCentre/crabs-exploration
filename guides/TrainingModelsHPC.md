@@ -94,12 +94,13 @@
 
 6. **Optional argument - Optuna**
 
-   - We have the option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework that allows us the find the best hyperparameters for our model. This is often called a "hyperparameter sweep". - Currently, we can use Optuna to find the optimal number of epochs and the optimal learning rate, within a specified range of values.
+   - We have the option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework that allows us the find the best hyperparameters for our model.
+   - Currently, we can use Optuna to find the optimal number of epochs and the optimal learning rate, within a specified range of values.
    - These will be optimal by maximizing the validation precision and recall. We can then use these optimal parameters to train the model.
 
-   To run an Optuna hyperparameter sweep, we need to specify the range of values we wish to optimize in the configuration file (`/crabs/detection_tracking/config/faster_rcnn.yaml`). Under `optuna`, specify the following:
+   To run an `Optuna` hyperparameter optimization, we need to specify the range of values we wish to optimize in the configuration file (`/crabs/detection_tracking/config/faster_rcnn.yaml`). Under `Optuna`, specify the following:
 
-   - `n_trials`: The number of trials you want Optuna to run. Each trial will test a different combination of hyperparameters within the defined search space, and their performance metrics will be compared.
+   - `n_trials`: The number of trials you want Optuna to run. Each trial will explore a different combination of hyperparameters within the defined search space., and their performance metrics will be compared.
    - `learning_rate`: The lower bound and the upper bound of the learning rate parameter to consider.
    - `n_epochs`: The lower bound and the upper bound of the number of epochs to consider.
 
