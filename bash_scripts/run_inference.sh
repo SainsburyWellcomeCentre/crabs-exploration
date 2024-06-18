@@ -42,7 +42,7 @@
  CONFIG_FILE=/ceph/scratch/nikkna/crabs-exploration/detection_tracking/config/inference_config.yaml
 
  # checkpoint
- CKPT_FILE=/ceph/scratch/nikkna/crabs-exploration/ml_ckpt/595664011639950974/e24234398e4b4d5790a9ea3599570637/checkpoints/last.ckpt
+ CKPT_Path=/ceph/scratch/nikkna/crabs-exploration/ml_ckpt/595664011639950974/e24234398e4b4d5790a9ea3599570637/checkpoints/last.ckpt
 
  # version of the codebase
  GIT_BRANCH=nikkna/inference_cluster
