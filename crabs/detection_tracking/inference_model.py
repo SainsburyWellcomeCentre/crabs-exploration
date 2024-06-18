@@ -9,9 +9,9 @@ import numpy as np
 import torch
 import torchvision.transforms.v2 as transforms
 import yaml  # type: ignore
-from crabs.detection_tracking.sort import Sort
 
 from crabs.detection_tracking.models import FasterRCNN
+from crabs.detection_tracking.sort import Sort
 from crabs.detection_tracking.tracking_utils import (
     evaluate_mota,
     get_ground_truth_data,
@@ -68,7 +68,9 @@ class DetectorInference:
         torch.nn.Module
         """
         # Get trained model
-        trained_model = FasterRCNN.load_from_checkpoint(self.args.checkpoint_path)
+        trained_model = FasterRCNN.load_from_checkpoint(
+            self.args.checkpoint_path
+        )
         trained_model.eval()
         trained_model.to(self.args.accelerator)
         return trained_model

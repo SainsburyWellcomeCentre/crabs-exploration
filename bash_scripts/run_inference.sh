@@ -96,4 +96,3 @@
   --video_path $VIDEO_PATH \
   --config_file $CONFIG_FILE \
   --accelerator gpu \
-  
