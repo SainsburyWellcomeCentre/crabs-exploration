@@ -164,8 +164,9 @@ class FasterRCNN(LightningModule):
             self.validation_step_outputs, "val"
         )
 
-        # self.log("val_precision", val_precision)
-        # self.log("val_recall", val_recall)
+        # we need these logs for hyperparameter optimisation
+        self.log("val_precision", val_precision)
+        self.log("val_recall", val_recall)
 
     def on_test_epoch_end(self) -> None:
         """
