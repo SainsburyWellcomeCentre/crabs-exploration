@@ -1,6 +1,7 @@
 import argparse
 import csv
 import os
+import sys
 from pathlib import Path
 from typing import Any, Optional, TextIO, Tuple
 
@@ -355,7 +356,7 @@ def main(args) -> None:
     inference.run_inference()
 
 
-if __name__ == "__main__":
+def inference_parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--checkpoint_path",
@@ -406,3 +407,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     main(args)
+
+
+def app_wrapper():
+    torch.set_float32_matmul_precision("medium")
+
+    train_args = inference_parse_args(sys.argv[1:])
+    main(train_args)
+
+
+if __name__ == "__main__":
+    app_wrapper()
