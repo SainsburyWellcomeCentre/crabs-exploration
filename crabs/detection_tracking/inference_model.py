@@ -68,7 +68,7 @@ class DetectorInference:
         torch.nn.Module
         """
         # Get trained model
-        trained_model = FasterRCNN.load_from_checkpoint(self.args.model_dir)
+        trained_model = FasterRCNN.load_from_checkpoint(self.args.checkpoint_path)
         trained_model.eval()
         trained_model.to(self.args.accelerator)
         return trained_model
@@ -356,7 +356,7 @@ def main(args) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--ckpt_path",
+        "--checkpoint_path",
         type=str,
         required=True,
         help="location of checkpoint of the trained model",
