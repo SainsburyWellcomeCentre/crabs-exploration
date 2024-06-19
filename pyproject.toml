@@ -1,15 +1,15 @@
 [project]
 name = "crabs"
 authors = [
-    {email = "n.aznan@ucl.ac.uk", name = "Nik Khadijah Nik Aznan"},
-    {email = "s.minano@ucl.ac.uk", name = "Sofia Minano"},
+    { email = "n.aznan@ucl.ac.uk", name = "Nik Khadijah Nik Aznan" },
+    { email = "s.minano@ucl.ac.uk", name = "Sofia Minano" },
 ]
 description = "A toolkit for detecting and tracking crabs in the field."
 readme = "README.md"
 requires-python = ">=3.9.0"
 dynamic = ["version"]
 
-license = {text = "BSD-3-Clause"}
+license = { text = "BSD-3-Clause" }
 urls.homepage = "https://github.com/SainsburyWellcomeCentre/crabs-exploration"
 
 classifiers = [
@@ -32,20 +32,20 @@ dependencies = [
     "filterpy",
     "lightning",
     "mlflow",
-    "optuna"
+    "optuna",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest",
-  "pytest-cov",
-  "coverage",
-  "tox", # >=4 ?
-  "black",
-  "mypy",
-  "pre-commit",
-  "ruff",
-  "setuptools_scm",
+    "pytest",
+    "pytest-cov",
+    "coverage",
+    "tox",            # >=4 ?
+    "black",
+    "mypy",
+    "pre-commit",
+    "ruff",
+    "setuptools_scm",
 ]
 
 [project.scripts]
@@ -58,11 +58,7 @@ evaluate-detector = "crabs.detection_tracking.evaluate_model:app_wrapper"
 
 
 [build-system]
-requires = [
-    "setuptools>=45",
-    "wheel",
-    "setuptools_scm[toml]>=6.2",
-]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -84,16 +80,16 @@ line-length = 79
 
 [tool.check-manifest]
 ignore = [
-  ".yaml",
-  "tox.ini",
-  "tests/",
-  "tests/test_unit/",
-  "tests/test_integration/",
+    ".yaml",
+    "tox.ini",
+    "tests/",
+    "tests/test_unit/",
+    "tests/test_integration/",
 ]
 
 [tool.ruff]
 line-length = 79
-exclude = ["__init__.py","build",".eggs"]
+exclude = ["__init__.py", "build", ".eggs"]
 select = ["I", "E", "F"]
 fix = true
 ignore = [
@@ -114,7 +110,6 @@ ignore = [
 # trailing_comma_inline_array = true
 # overrides."project.classifiers".inline_arrays = false
 # overrides."tool.coverage.paths.source".inline_arrays = false
-
 
 
 [tool.tox]

@@ -30,7 +30,9 @@ gaussian_blur_params:
     - 5.0
 # when we run Optuna, the n_trials and n_epochs above will be overwrite by the parameters set by Optuna
 optuna:
-  # The number of trials to determines how many different combinations Optuna will try.
+  # Parameters for hyperparameter optimisation with Optuna:
+  # - We can optimize `learning_rate`, `num_epochs` or both
+  # - n_trials defines the total number of trials ran in the optimisation
   n_trials: 3
   # The lower bound and the upper bound of the learning rate parameter
   learning_rate:

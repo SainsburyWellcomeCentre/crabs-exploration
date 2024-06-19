@@ -160,7 +160,7 @@ class FasterRCNN(LightningModule):
             self.validation_step_outputs, "val"
         )
 
-        # Log precision and recall on validation set
+        # we need these logs for hyperparameter optimisation
         self.log("val_precision", val_precision)
         self.log("val_recall", val_recall)
 
@@ -173,6 +173,7 @@ class FasterRCNN(LightningModule):
             test_precision,
             test_recall,
         ) = self.compute_precision_recall_epoch(self.test_step_outputs, "test")
+
         logging.info(
             f"Test Average Precision: {test_precision:.4f},"
             f"Test Average Recall: {test_recall:.4f}"
