@@ -38,7 +38,7 @@
  MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
 
  # video and inference config
- VIDEO_PATH=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
+ VIDEO_PATH=/ceph/zoo/users/sminano/crabs_reencoded_videos/Sep2023_day1_reencoded/04.09.2023-04-Right_RE.mp4
  CONFIG_FILE=/ceph/scratch/nikkna/crabs-exploration/crabs/detection_tracking/config/inference_config.yaml
 
  # checkpoint
@@ -87,7 +87,6 @@
  echo $(nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used --format=csv) #noheader
  echo "-----"
 
-
  # -------------------
  # Run evaluation script
  # -------------------
@@ -95,3 +94,4 @@
   --checkpoint_path $CKPT_PATH \
   --video_path $VIDEO_PATH \
   --config_file $CONFIG_FILE \
+  --max_frames_to_read 10
