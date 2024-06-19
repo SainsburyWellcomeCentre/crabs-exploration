@@ -76,3 +76,6 @@ def test_optimize_hyperparameters(detector_train, config):
         assert (
             "n_trials" in config_optuna
         ), "n_trials should be in config_optuna"
+        assert result, "Result dictionary should not be empty"
+        assert "learning_rate" in result, "Result should contain learning_rate"
+        assert "n_epochs" in result, "Result should contain n_epochs"
