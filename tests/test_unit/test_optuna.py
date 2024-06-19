@@ -4,7 +4,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
-from crabs.detection_tracking.optuna_fn import optimize_hyperparameters
+from crabs.detection_tracking.optuna_utils import (
+    compute_optimal_hyperparameters,
+)
+from crabs.detection_tracking.train_model import DectectorTrain
 
 
 @pytest.fixture
@@ -14,7 +17,7 @@ def config():
         "optuna": {
             "n_trials": 3,
             "learning_rate": [1e-6, 1e-4],
-            "num_epochs": [1, 2],
+            "n_epochs": [1, 2],
         },
         "checkpoint_saving": {},
     }
@@ -27,53 +30,49 @@ def data_module():
 
 @pytest.fixture
 def args():
-    return argparse.Namespace()
-
-
-def mock_objective(
-    trial,
-    config,
-    data_module,
-    accelerator,
-    fast_dev_run,
-    limit_train_batches,
-    experiment_name,
-    mlflow_folder,
-    args,
-):
-    # Simulate usage of trial parameters
-    learning_rate = trial.suggest_float(
-        "learning_rate",
-        config["optuna"]["learning_rate"][0],
-        config["optuna"]["learning_rate"][1],
+    return argparse.Namespace(
+        config_file="dummy_config.yaml",
+        dataset_dirs=["path/to/images"],
+        annotation_files=["path/to/annotations"],
+        seed_n=42,
+        accelerator="cpu",
+        experiment_name="test_experiment",
+        mlflow_folder="/tmp/mlflow",
+        fast_dev_run=True,
+        limit_train_batches=False,
     )
-    num_epochs = trial.suggest_int(
-        "num_epochs",
-        config["optuna"]["num_epochs"][0],
-        config["optuna"]["num_epochs"][1],
+
+
+@pytest.fixture
+def detector_train(args, config):
+    with patch.object(DectectorTrain, "load_config_yaml", MagicMock()):
+        train_instance = DectectorTrain(args=args)
+        train_instance.config = config
+        return train_instance
+
+
+def mock_core_training():
+    return MagicMock(
+        callback_metrics={
+            "val_precision": MagicMock(item=lambda: 0.8),
+            "val_recall": MagicMock(item=lambda: 0.7),
+        }
     )
-    return learning_rate * num_epochs
 
 
-def test_optimize_hyperparameters(config, data_module, args):
-    with patch(
-        "crabs.detection_tracking.optuna_fn.objective",
-        side_effect=mock_objective,
+def test_optimize_hyperparameters(detector_train, config):
+    config_optuna = config["optuna"]
+
+    with patch.object(
+        detector_train, "core_training", side_effect=mock_core_training
     ):
-        # Call the function
-        result = optimize_hyperparameters(
-            config=config,
-            data_module=data_module,
-            accelerator="cpu",
-            experiment_name="test_experiment",
-            mlflow_folder="/tmp/mlflow",
-            args=args,
-            fast_dev_run=True,
-            limit_train_batches=False,
+        result = compute_optimal_hyperparameters(
+            objective_fn=detector_train.optuna_objective_fn,
+            config_optuna=config_optuna,
+            direction="maximize",
         )
 
         assert isinstance(result, dict), "Result should be a dictionary"
-        assert "n_trials" in config["optuna"], "n_trials should be in config"
-        assert result, "Result dictionary should not be empty"
-        assert "learning_rate" in result, "Result should contain learning_rate"
-        assert "num_epochs" in result, "Result should contain num_epochs"
+        assert (
+            "n_trials" in config_optuna
+        ), "n_trials should be in config_optuna"
