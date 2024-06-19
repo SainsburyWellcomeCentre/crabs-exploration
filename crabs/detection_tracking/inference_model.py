@@ -22,6 +22,8 @@ from crabs.detection_tracking.tracking_utils import (
 from crabs.detection_tracking.visualization import draw_bbox
 
 
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class DetectorInference:
     """
     A class for performing object detection or tracking inference on a video
@@ -73,6 +75,7 @@ class DetectorInference:
             self.args.checkpoint_path
         )
         trained_model.eval()
+        trained_model.to(DEVICE)
         return trained_model
 
     def prep_sort(self, prediction: dict) -> np.ndarray:
@@ -214,7 +217,7 @@ class DetectorInference:
                 transforms.ToDtype(torch.float32, scale=True),
             ]
         )
-        img = transform(frame)
+        img = transform(frame).to(DEVICE)
         img = img.unsqueeze(0)
         with torch.no_grad():
             prediction = self.trained_model(img)
