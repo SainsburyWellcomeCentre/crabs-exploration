@@ -4,7 +4,7 @@
  #SBATCH --gres=gpu:1 # gpu:a100_2g.10gb  # For any GPU: --gres=gpu:1. For a specific one: --gres=gpu:rtx5000
  #SBATCH -N 1   # number of nodes
  #SBATCH --ntasks-per-node 8 # 2 # max number of tasks per node
- #SBATCH --mem 32G # memory pool for all cores
+ #SBATCH --mem 64G # memory pool for all cores
  #SBATCH -t 3-00:00 # time (D-HH:MM)
  #SBATCH -o slurm.%A.%N.out
  #SBATCH -e slurm.%A.%N.err
@@ -86,6 +86,12 @@
  echo "Memory used per GPU before training"
  echo $(nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used --format=csv) #noheader
  echo "-----"
+
+ # Monitor memory usage
+ while true; do
+    echo "$(date): $(free -h)" >> memory_usage.log
+    sleep 60
+ done &
 
  # -------------------
  # Run evaluation script

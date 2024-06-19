@@ -294,25 +294,43 @@ class DetectorInference:
 
         self.csv_writer, csv_file = self.prep_csv_writer()
 
-        # loop thru frames of clip
+        # Loop through frames of the video in batches
+        frames = []
         while self.video.isOpened():
-            # break if beyond end frame (mostly for debugging)
-            if self.args.max_frames_to_read:
-                if frame_number > self.args.max_frames_to_read:
-                    break
-
-            # read frame
-            ret, frame = self.video.read()
-            if not ret:
-                print("No frame read. Exiting...")
+            # Break if beyond end frame (mostly for debugging)
+            if (
+                self.args.max_frames_to_read
+                and frame_number > self.args.max_frames_to_read
+            ):
                 break
 
-            prediction = self.get_prediction(frame)
+            # Read frames in batches
+            for _ in range(4):
+                ret, frame = self.video.read()
+                if not ret:
+                    print("No frame read. Exiting...")
+                    break
+                frames.append((frame_number, frame))
+                frame_number += 1
 
-            # run tracking
-            self.prep_sort(prediction)
-            tracked_boxes = self.update_tracking(prediction)
-            self.save_required_output(tracked_boxes, frame, frame_number)
+            if not frames:
+                break
+
+            # Process the batch of frames
+            predictions = [self.get_prediction(frame) for _, frame in frames]
+
+            for (frame_number, frame), prediction in zip(frames, predictions):
+                # Run tracking
+                self.prep_sort(prediction)
+                tracked_boxes = self.update_tracking(prediction)
+                self.save_required_output(tracked_boxes, frame, frame_number)
+
+                # Explicitly delete frame and prediction to free up memory
+                del frame
+                del prediction
+
+            # Clear the frames list for the next batch
+            frames.clear()
 
             # update frame
             frame_number += 1
