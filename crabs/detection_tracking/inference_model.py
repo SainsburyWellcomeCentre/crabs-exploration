@@ -106,6 +106,7 @@ class DetectorInference:
         Load the input video, and prepare the output video if required.
         """
         # load input video
+        print("loading video")
         self.video = cv2.VideoCapture(self.video_path)
         if not self.video.isOpened():
             raise Exception("Error opening video file")
@@ -373,6 +374,7 @@ def main(args) -> None:
     """
 
     inference = DetectorInference(args)
+    print("get args")
     inference.load_video()
     inference.run_inference()
 
