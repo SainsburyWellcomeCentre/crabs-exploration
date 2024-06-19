@@ -109,6 +109,7 @@ class DetectorInference:
         self.video = cv2.VideoCapture(self.video_path)
         if not self.video.isOpened():
             raise Exception("Error opening video file")
+        print("Finished loading the video")
 
         # prepare output video writer if required
         if self.config["save_video"]:
