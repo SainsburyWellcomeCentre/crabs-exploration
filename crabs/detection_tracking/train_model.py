@@ -130,11 +130,11 @@ class DectectorTrain:
                 float(optuna_config["learning_rate"][1]),
             )
 
-        if "num_epochs" in optuna_config:
-            self.config["num_epochs"] = trial.suggest_int(
-                "num_epochs",
-                int(optuna_config["num_epochs"][0]),
-                int(optuna_config["num_epochs"][1]),
+        if "n_epochs" in optuna_config:
+            self.config["n_epochs"] = trial.suggest_int(
+                "n_epochs",
+                int(optuna_config["n_epochs"][0]),
+                int(optuna_config["n_epochs"][1]),
             )
 
         # Run training
@@ -160,22 +160,6 @@ class DectectorTrain:
             self.config,
             self.seed_n,
         )
-
-        if self.args.optuna:
-            # Optimize hyperparameters
-            best_hyperparameters = optimize_hyperparameters(
-                self.config,
-                data_module,
-                self.accelerator,
-                self.experiment_name,
-                self.mlflow_folder,
-                self.args,
-                fast_dev_run=self.fast_dev_run,
-                limit_train_batches=self.limit_train_batches,
-            )
-
-            # Update the config with the best hyperparameters
-            self.config.update(best_hyperparameters)
 
         # Get model
         lightning_model = FasterRCNN(self.config)

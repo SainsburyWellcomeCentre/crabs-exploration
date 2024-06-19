@@ -40,5 +40,5 @@ optuna:
     - 1e-4
   # The lower bound and the upper bound of the number of epochs
   n_epochs:
-    - 100
-    - 300
+    - 1
+    - 3
