@@ -297,6 +297,7 @@ class DetectorInference:
         # Loop through frames of the video in batches
         frames = []
         while self.video.isOpened():
+            print("frame number:", frame_number)
             # Break if beyond end frame (mostly for debugging)
             if (
                 self.args.max_frames_to_read
@@ -305,7 +306,7 @@ class DetectorInference:
                 break
 
             # Read frames in batches
-            for _ in range(4):
+            for _ in range(1):
                 ret, frame = self.video.read()
                 if not ret:
                     print("No frame read. Exiting...")
@@ -317,10 +318,12 @@ class DetectorInference:
                 break
 
             # Process the batch of frames
+            print("predict")
             predictions = [self.get_prediction(frame) for _, frame in frames]
 
             for (frame_number, frame), prediction in zip(frames, predictions):
                 # Run tracking
+                print("tracking")
                 self.prep_sort(prediction)
                 tracked_boxes = self.update_tracking(prediction)
                 self.save_required_output(tracked_boxes, frame, frame_number)
@@ -332,8 +335,8 @@ class DetectorInference:
             # Clear the frames list for the next batch
             frames.clear()
 
-            # update frame
-            frame_number += 1
+            # # update frame
+            # frame_number += 1
 
         if self.args.gt_dir:
             gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
