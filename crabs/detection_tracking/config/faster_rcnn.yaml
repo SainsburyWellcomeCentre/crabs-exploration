@@ -1,4 +1,4 @@
-num_epochs: 10
+num_epochs: 1
 learning_rate: 0.00005
 wdecay: 0.00005
 batch_size_train: 4

@@ -102,7 +102,7 @@ The checkpoint parameters in the config file can be useful. There are two primar
   - If training is disrupted and stops mid-way, you can resume it by adding `--checkpoint_path $CKPT_PATH \` to your bash script.
   - The training will pick up from the last saved epoch and continue until the specified n_epoch.
   - Similarly, if training completes but you want to extend it based on metric evaluations, you can increase the n_epoch value (e.g., from `n` to `n + y`). Again, use `--checkpoint_path $CKPT_PATH \` in your bash script, and training will resume from epoch `n` to `n + y`.
-  - Ensure the s`ave_weights_only` parameter under `checkpoint_saving` is set to `False` to resume training, as this option requires loading both weights and the training state.
+  - Ensure the `save_weights_only` parameter under `checkpoint_saving` is set to `False` to resume training, as this option requires loading both weights and the training state.
 
 - Fine-tunning
   This option is useful for fine-tuning a pre-trained model on a different dataset.
