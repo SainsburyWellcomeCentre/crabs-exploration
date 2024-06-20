@@ -28,3 +28,11 @@ gaussian_blur_params:
   sigma:
     - 0.1
     - 5.0
+optuna:
+  # Parameters for hyperparameter optimisation with Optuna:
+  # - We can optimize `learning_rate`, `num_epochs` or both
+  # - n_trials defines the total number of trials ran in the optimisation
+  n_trials: 2
+  learning_rate:
+    - 1e-6
+    - 1e-4
