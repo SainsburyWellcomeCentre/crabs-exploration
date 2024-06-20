@@ -1,7 +1,7 @@
 #!/bin/bash
 
  #SBATCH -p gpu # a100 # partition
- #SBATCH --gres=gpu:1 # gpu:a100_2g.10gb  # For any GPU: --gres=gpu:1. For a specific one: --gres=gpu:rtx5000
+ #SBATCH --gres=gpu:1
  #SBATCH -N 1   # number of nodes
  #SBATCH --ntasks-per-node 8 # 2 # max number of tasks per node
  #SBATCH --mem 64G # memory pool for all cores
@@ -48,50 +48,44 @@
  GIT_BRANCH=nikkna/inference_cluster
 
  # -----------------------------
- # Create virtual environment
- # -----------------------------
- module load miniconda
+# Create virtual environment
+# -----------------------------
+module load miniconda
 
- # Define a environment for each job in the
- # temporary directory of the compute node
- ENV_NAME=crabs-dev-$SLURM_JOB_ID
- ENV_PREFIX=$TMPDIR/$ENV_NAME
+# Define a environment for each job in the
+# temporary directory of the compute node
+ENV_NAME=crabs-dev-$SLURM_JOB_ID
+ENV_PREFIX=$TMPDIR/$ENV_NAME
 
- # create environment
- conda create \
-     --prefix $ENV_PREFIX \
-     -y \
-     python=3.10
+# create environment
+conda create \
+    --prefix $ENV_PREFIX \
+    -y \
+    python=3.10
 
- # activate environment
- conda activate $ENV_PREFIX
+# activate environment
+conda activate $ENV_PREFIX
 
- # install crabs package in virtual env
- python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
+# install crabs package in virtual env
+python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
 
- # log pip and python locations
- echo $ENV_PREFIX
- which python
- which pip
+# log pip and python locations
+echo $ENV_PREFIX
+which python
+which pip
 
- # print the version of crabs package (last number is the commit hash)
- echo "Git branch: $GIT_BRANCH"
- conda list crabs
- echo "-----"
+# print the version of crabs package (last number is the commit hash)
+echo "Git branch: $GIT_BRANCH"
+conda list crabs
+echo "-----"
 
- # ------------------------------------
- # GPU specs
- # ------------------------------------
- echo "Memory used per GPU before training"
- echo $(nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used --format=csv) #noheader
- echo "-----"
-
- # Monitor memory usage
- while true; do
-    echo "$(date): $(free -h)" >> memory_usage.log
-    sleep 60
- done &
+# ------------------------------------
+# GPU specs
+# ------------------------------------
+echo "Memory used per GPU before training"
+echo $(nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used --format=csv) #noheader
+echo "-----"
 
  # -------------------
  # Run evaluation script
