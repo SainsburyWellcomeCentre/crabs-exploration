@@ -21,8 +21,8 @@ from crabs.detection_tracking.tracking_utils import (
 )
 from crabs.detection_tracking.visualization import draw_bbox
 
-
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class DetectorInference:
     """
@@ -136,6 +136,7 @@ class DetectorInference:
         self.tracking_output_dir = (
             crabs_tracks_label_dir / self.video_file_root
         )
+        print(self.tracking_output_dir, flush=True)
         # Create the subdirectory for the specific video file root
         self.tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -300,9 +301,8 @@ class DetectorInference:
         self.csv_writer, csv_file = self.prep_csv_writer()
 
         # Loop through frames of the video in batches
-        frames = []
         while self.video.isOpened():
-            print("frame number:", frame_number)
+            print("frame number:", frame_number, flush=True)
             # Break if beyond end frame (mostly for debugging)
             if (
                 self.args.max_frames_to_read
@@ -310,38 +310,21 @@ class DetectorInference:
             ):
                 break
 
-            # Read frames in batches
-            for _ in range(1):
-                ret, frame = self.video.read()
-                if not ret:
-                    print("No frame read. Exiting...")
-                    break
-                frames.append((frame_number, frame))
-                frame_number += 1
-
-            if not frames:
+            # read frame
+            ret, frame = self.video.read()
+            if not ret:
+                print("No frame read. Exiting...")
                 break
 
-            # Process the batch of frames
-            print("predict")
-            predictions = [self.get_prediction(frame) for _, frame in frames]
+            prediction = self.get_prediction(frame)
 
-            for (frame_number, frame), prediction in zip(frames, predictions):
-                # Run tracking
-                print("tracking")
-                self.prep_sort(prediction)
-                tracked_boxes = self.update_tracking(prediction)
-                self.save_required_output(tracked_boxes, frame, frame_number)
+            # run tracking
+            self.prep_sort(prediction)
+            tracked_boxes = self.update_tracking(prediction)
+            self.save_required_output(tracked_boxes, frame, frame_number)
 
-                # Explicitly delete frame and prediction to free up memory
-                del frame
-                del prediction
-
-            # Clear the frames list for the next batch
-            frames.clear()
-
-            # # update frame
-            # frame_number += 1
+            # update frame
+            frame_number += 1
 
         if self.args.gt_dir:
             gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
