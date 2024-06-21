@@ -94,9 +94,9 @@
 
 6. **Optional argument - Optuna**
 
-We have the option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework that allows us the find the best hyperparameters for our model. 
+   We have the option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework that allows us the find the best hyperparameters for our model.
 
-Currently, we can use Optuna to find the optimal number of epochs and the optimal learning rate, within a specified range of values. These will be optimal by maximizing the validation precision and recall. We then use these optimal parameters to train the model.
+   Currently, we can use Optuna to find the optimal number of epochs and the optimal learning rate, within a specified range of values. These will be optimal by maximizing the validation precision and recall. We then use these optimal parameters to train the model.
 
    To run an `Optuna` hyperparameter optimization, we need to specify the range of values we wish to optimize in the configuration file (`/crabs/detection_tracking/config/faster_rcnn.yaml`). Under `optuna`, specify the following:
 
@@ -121,43 +121,43 @@ Currently, we can use Optuna to find the optimal number of epochs and the optima
 
    To launch a job, use the `sbatch` command with the relevant training script:
 
-```
-sbatch <path-to-training-bash-script>
-```
+   ```
+   sbatch <path-to-training-bash-script>
+   ```
 
-8.  **Check the status of the training job**
+8. **Check the status of the training job**
 
-    To do this, we can:
+   To do this, we can:
 
-- Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run.
-- Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
-- Check the MLFlow logs. To do this, first create or activate an existing conda environment with `mlflow` installed, and then run the `mlflow` command from the login node.
+   - Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run.
+   - Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
+   - Check the MLFlow logs. To do this, first create or activate an existing conda environment with `mlflow` installed, and then run the `mlflow` command from the login node.
 
-  - Create and activate a conda environment.
-    ```
-    module load miniconda
-    conda create -n mlflow-env python=3.10 mlflow -y
-    conda activate mlflow-env
-    ```
-  - Run `mlflow` to visualise the results logged to the `ml-runs` folder.
+     - Create and activate a conda environment.
+       ```
+       module load miniconda
+       conda create -n mlflow-env python=3.10 mlflow -y
+       conda activate mlflow-env
+       ```
+     - Run `mlflow` to visualise the results logged to the `ml-runs` folder.
 
-    - If using the "scratch" folder:
+       - If using the "scratch" folder:
 
-      ```
-      mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
-      ```
+         ```
+         mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
+         ```
 
-    - If using the selected runs folder:
+       - If using the selected runs folder:
 
-      ```
-      mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs
-      ```
+         ```
+         mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs
+         ```
 
 ### Some useful SLURM commands
 
 To check the status of your jobs in the queue
 
-````
+```
 
 squeue -u <username>
 
@@ -200,6 +200,8 @@ To cancel a job
 ```
 
 scancel <jobID>
+
+```
 
 ```
 

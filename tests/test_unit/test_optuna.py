@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.optuna_utils import (
     compute_optimal_hyperparameters,
 )
@@ -21,11 +20,6 @@ def config():
         },
         "checkpoint_saving": {},
     }
-
-
-@pytest.fixture
-def data_module():
-    return MagicMock(spec=CrabsDataModule)
 
 
 @pytest.fixture
