@@ -1,5 +1,6 @@
 import argparse
 import csv
+import logging
 import os
 import sys
 from pathlib import Path
@@ -329,12 +330,13 @@ class DetectorInference:
             frame_number += 1
 
         if self.args.gt_dir:
+            logging.info("evaluate the tracking")
             gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
             mota_values = self.evaluate_tracking(
                 gt_boxes_list, self.tracked_list, self.config["iou_threshold"]
             )
             overall_mota = np.mean(mota_values)
-            print("Overall MOTA:", overall_mota)
+            logging.info("Overall MOTA:", overall_mota)
 
         # Close input video
         self.video.release()
