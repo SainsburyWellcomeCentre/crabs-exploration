@@ -10,7 +10,7 @@ val_over_test_fraction: 0.5
 checkpoint_saving:
   every_n_epochs: 50
   keep_last_n_ckpts: 5
-  save_weights_only: False
+  save_weights_only: True
   copy_as_mlflow_artifacts: True
   # copy_as_mlflow_artifacts:
   # if True, selected checkpoints are added as artifacts at the end of training,
