@@ -104,7 +104,7 @@ Currently, we can use Optuna to find the optimal number of epochs and the optima
    - `learning_rate`: The lower bound and the upper bound of the learning rate parameter to consider.
    - `n_epochs`: The lower bound and the upper bound of the number of epochs to consider.
 
-   To run Optuna, we can add `--optuna` arguments to the bash script. For example:
+   To run Optuna, we can add the `--optuna` argument to the bash script. For example:
 
    ```
    train-detector  \
