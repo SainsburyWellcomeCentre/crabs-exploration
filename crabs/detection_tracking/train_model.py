@@ -284,7 +284,7 @@ def train_parse_args(args):
     parser.add_argument(
         "--optuna",
         action="store_true",
-        help="Run a hyperparameter optimizer using Optuna prior to training the model",
+        help="Run a hyperparameter optimisation using Optuna prior to training the model",
     )
     return parser.parse_args(args)
 
