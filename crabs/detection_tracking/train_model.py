@@ -24,6 +24,42 @@ from crabs.detection_tracking.optuna_utils import (
 )
 
 
+class CustomModelCheckpoint(ModelCheckpoint):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        print("*** CustomModelCheckpoint Initialized ***")
+
+    def _save_checkpoint(self, trainer, pl_module, ckpt_path):
+        print("*** _save_checkpoint called ***")
+        
+        # Create the checkpoint dictionary that will be saved
+        checkpoint = self._create_model_checkpoint(trainer, pl_module)
+        
+        # Modify the checkpoint before saving it
+        checkpoint_type = 'weights_only' if self.save_weights_only else 'full_state'
+        checkpoint['checkpoint_type'] = checkpoint_type
+        print(f"Checkpoint type: {checkpoint_type}")
+        
+        # Save the checkpoint using the parent class method
+        super()._save_checkpoint(trainer, pl_module, ckpt_path)
+        
+        # Rename the last checkpoint if save_last is True
+        if self.save_last:
+            last_filename = f"last_{checkpoint_type}.ckpt"
+            last_filepath = os.path.join(self.dirpath, last_filename)
+            default_last_ckpt = os.path.join(self.dirpath, 'last.ckpt')
+
+            if os.path.exists(default_last_ckpt):
+                os.rename(default_last_ckpt, last_filepath)
+
+            self.last_model_path = last_filepath
+            print(f"Renamed last checkpoint to: {last_filepath}")
+
+    def _create_model_checkpoint(self, trainer, pl_module):
+        # Create the checkpoint dictionary that will be saved
+        checkpoint = super()._create_model_checkpoint(trainer, pl_module)
+        return checkpoint
+
 class DectectorTrain:
     """Training class for detector algorithm
 
@@ -97,7 +133,7 @@ class DectectorTrain:
         # Define checkpointing callback for trainer
         config = self.config.get("checkpoint_saving")
         if config:
-            checkpoint_callback = ModelCheckpoint(
+            checkpoint_callback = CustomModelCheckpoint(
                 filename="checkpoint-{epoch}",
                 every_n_epochs=config["every_n_epochs"],
                 save_top_k=config["keep_last_n_ckpts"],
