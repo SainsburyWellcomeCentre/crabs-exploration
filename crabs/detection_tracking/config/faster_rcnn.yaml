@@ -1,4 +1,4 @@
-num_epochs: 1
+n_epochs: 250
 learning_rate: 0.00005
 wdecay: 0.00005
 batch_size_train: 4
@@ -28,11 +28,17 @@ gaussian_blur_params:
   sigma:
     - 0.1
     - 5.0
+# when we run Optuna, the n_trials and n_epochs above will be overwritten by the parameters set by Optuna
 optuna:
   # Parameters for hyperparameter optimisation with Optuna:
   # - We can optimize `learning_rate`, `num_epochs` or both
   # - n_trials defines the total number of trials ran in the optimisation
-  n_trials: 2
+  n_trials: 3
+  # The lower bound and the upper bound of the learning rate parameter
   learning_rate:
     - 1e-6
     - 1e-4
+  # The lower bound and the upper bound of the number of epochs
+  n_epochs:
+    - 1
+    - 3
