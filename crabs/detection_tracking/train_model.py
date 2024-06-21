@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import lightning
+import optuna
 import torch
 import yaml  # type: ignore
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -11,13 +12,16 @@ from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
-    log_metadata_to_logger,
     prep_annotation_files,
     prep_img_directories,
     set_mlflow_run_name,
     setup_mlflow_logger,
+    slurm_logs_as_artifacts,
 )
 from crabs.detection_tracking.models import FasterRCNN
+from crabs.detection_tracking.optuna_utils import (
+    compute_optimal_hyperparameters,
+)
 
 
 class DectectorTrain:
@@ -74,21 +78,9 @@ class DectectorTrain:
             experiment_name=self.experiment_name,
             run_name=self.run_name,
             mlflow_folder=self.mlflow_folder,
+            cli_args=self.args,
             ckpt_config=self.config.get("checkpoint_saving", {}),
-        )
-
-        # Log metadata: CLI arguments and SLURM (if required)
-        mlf_logger = log_metadata_to_logger(mlf_logger, self.args)
-
-        # Log (assumed) path to checkpoints directory
-        path_to_checkpoints = (
-            Path(mlf_logger._tracking_uri)
-            / mlf_logger._experiment_id
-            / mlf_logger._run_id
-            / "checkpoints"
-        )
-        mlf_logger.log_hyperparams(
-            {"path_to_checkpoints": str(path_to_checkpoints)}
+            # pass the checkpointing config if defined
         )
 
         return mlf_logger
@@ -128,34 +120,55 @@ class DectectorTrain:
             limit_train_batches=self.limit_train_batches,
         )
 
-    def slurm_logs_as_artifacts(self, logger, slurm_job_id):
+    def optuna_objective_fn(self, trial: optuna.Trial) -> float:
+        """Objective function for Optuna.
+
+        When used with Optuna, it wil maximise precision and recall on the
+        validation set.
+
+        Parameters
+        ----------
+        trial : optuna.Trial
+            The trial to optimise.
+
+        Returns
+        -------
+        float
+            The value to maximise.
         """
-        Add slurm logs as an MLflow artifacts of the current run.
+        # Sample hyperparameters from the search space for this trial
+        optuna_config = self.config["optuna"]
 
-        The filenaming convention from the training scripts at crabs-exploration/bash_scripts/ is assumed.
-        """
-
-        # Get slurm env variables: slurm and array job ID
-        slurm_node = os.environ.get("SLURMD_NODENAME")
-        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
-
-        # Get root of log filenames
-        # for array job
-        if slurm_array_job_id:
-            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-            log_filename = f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}"
-        # for single job
-        else:
-            log_filename = f"slurm.{slurm_job_id}.{slurm_node}"
-
-        # Add log files as artifacts of this run
-        for ext in ["out", "err"]:
-            logger.experiment.log_artifact(
-                logger.run_id,
-                f"{log_filename}.{ext}",
+        if "learning_rate" in optuna_config:
+            self.config["learning_rate"] = trial.suggest_float(
+                "learning_rate",
+                float(optuna_config["learning_rate"][0]),
+                float(optuna_config["learning_rate"][1]),
             )
 
-    def train_model(self):
+        if "num_epochs" in optuna_config:
+            self.config["num_epochs"] = trial.suggest_int(
+                "num_epochs",
+                int(optuna_config["num_epochs"][0]),
+                int(optuna_config["num_epochs"][1]),
+            )
+
+        # Run training
+        trainer = self.core_training()
+
+        # Return metric to maximise
+        val_precision = trainer.callback_metrics["val_precision"].item()
+        val_recall = trainer.callback_metrics["val_recall"].item()
+        return (val_precision + val_recall) / 2
+
+    def core_training(self) -> lightning.Trainer:
+        """Create data module and model and run training.
+
+        Returns
+        -------
+        lightning.Trainer
+            The trainer object used for training.
+        """
         # Create data module
         data_module = CrabsDataModule(
             self.images_dirs,
@@ -171,10 +184,28 @@ class DectectorTrain:
         trainer = self.setup_trainer()
         trainer.fit(lightning_model, data_module)
 
+        return trainer
+
+    def train_model(self):
+        # Run hyperparameter sweep with Optuna if required
+        if self.args.optuna:
+            # Optimize hyperparameters in config
+            # to maximise validation precision and recall
+            best_hyperparameters = compute_optimal_hyperparameters(
+                self.optuna_objective_fn,
+                config_optuna=self.config["optuna"],
+            )
+
+            # Update the config with the best hyperparameters
+            self.config.update(best_hyperparameters)
+
+        # Run training
+        trainer = self.core_training()
+
         # if this is a slurm job: add slurm logs as artifacts
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
         if slurm_job_id:
-            self.slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
+            slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
 
 
 def main(args) -> None:
@@ -266,7 +297,11 @@ def train_parse_args(args):
         default="./ml-runs",
         help=("Path to MLflow directory. Default: ./ml-runs"),
     )
-
+    parser.add_argument(
+        "--optuna",
+        action="store_true",
+        help="Run a hyperparameter sweep using Optuna prior to training the model",
+    )
     return parser.parse_args(args)
 
 
