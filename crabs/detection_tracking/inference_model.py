@@ -124,7 +124,7 @@ class DetectorInference:
                 self.args.output_dir,
                 f"{os.path.basename(self.video_file_root)}_output_video.mp4",
             )
-            output_codec = cv2.VideoWriter_fourcc(*"avc1")
+            output_codec = cv2.VideoWriter_fourcc("m", "p", "4", "v")
             self.video_output = cv2.VideoWriter(
                 output_file, output_codec, cap_fps, (frame_width, frame_height)
             )
