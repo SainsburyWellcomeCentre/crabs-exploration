@@ -108,22 +108,25 @@ class DetectorInference:
         """
         Load the input video, and prepare the output video if required.
         """
-        # load input video
-        print("loading video")
         self.video = cv2.VideoCapture(self.video_path)
         if not self.video.isOpened():
             raise Exception("Error opening video file")
-        print("Finished loading the video")
 
-        # prepare output video writer if required
+        # create directory to save output
+        os.makedirs(self.args.output_dir, exist_ok=True)
+
         if self.config["save_video"]:
-            # read input video parameters
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap_fps = self.video.get(cv2.CAP_PROP_FPS)
-            output_file = f"{self.video_file_root}_output_video.mp4"
+
+            output_file = os.path.join(
+                self.args.output_dir,
+                f"{os.path.basename(self.video_file_root)}_output_video.mp4",
+            )
+
             output_codec = cv2.VideoWriter_fourcc(*"H264")
-            self.out = cv2.VideoWriter(
+            self.video_output = cv2.VideoWriter(
                 output_file, output_codec, cap_fps, (frame_width, frame_height)
             )
 
@@ -132,7 +135,9 @@ class DetectorInference:
         Prepare csv writer to output tracking results
         """
 
-        crabs_tracks_label_dir = Path("crabs_tracks_label")
+        crabs_tracks_label_dir = (
+            Path(self.args.output_dir) / "crabs_tracks_label"
+        )
         self.tracking_output_dir = (
             crabs_tracks_label_dir / self.video_file_root
         )
@@ -288,7 +293,7 @@ class DetectorInference:
                     (0, 0, 255),
                     f"id : {int(id)}",
                 )
-            self.out.write(frame_copy)
+            self.video_output.write(frame_copy)
 
     def run_inference(self):
         """
@@ -339,7 +344,7 @@ class DetectorInference:
 
         # Close outputs
         if self.config["save_video"]:
-            self.out.release()
+            self.video_output.release()
 
         if self.config["save_csv_and_frames"]:
             csv_file.close()
@@ -360,7 +365,6 @@ def main(args) -> None:
     """
 
     inference = DetectorInference(args)
-    print("get args")
     inference.load_video()
     inference.run_inference()
 
@@ -391,10 +395,10 @@ def inference_parse_args(args):
         ),
     )
     parser.add_argument(
-        "--output_path",
+        "--output_dir",
         type=str,
-        default=os.getcwd(),
-        help="location of output video",
+        default="crabs_track_output",
+        help="Directory to save the track output",
     )
     parser.add_argument(
         "--max_frames_to_read",

@@ -44,6 +44,8 @@
  # checkpoint
  CKPT_PATH=/ceph/scratch/nikkna/crabs-exploration/ml_ckpt/595664011639950974/e24234398e4b4d5790a9ea3599570637/checkpoints/last.ckpt
 
+ #output directory
+ OUTPUT_DIR=/ceph/scratch/nikkna/crabs-exploration/crabs_track_output
  # version of the codebase
  GIT_BRANCH=nikkna/inference_cluster
 
@@ -94,4 +96,5 @@ echo "-----"
   --checkpoint_path $CKPT_PATH \
   --video_path $VIDEO_PATH \
   --config_file $CONFIG_FILE \
+  --output_dir $OUTPUT_DIR \
   --max_frames_to_read 10
