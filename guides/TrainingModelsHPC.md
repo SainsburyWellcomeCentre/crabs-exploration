@@ -94,9 +94,9 @@
 
 6. **Optional argument - Optuna**
 
-   - We have the option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework that allows us the find the best hyperparameters for our model.
-   - Currently, we can use Optuna to find the optimal number of epochs and the optimal learning rate, within a specified range of values.
-   - These will be optimal by maximizing the validation precision and recall. We can then use these optimal parameters to train the model.
+We have the option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework that allows us the find the best hyperparameters for our model. 
+
+Currently, we can use Optuna to find the optimal number of epochs and the optimal learning rate, within a specified range of values. These will be optimal by maximizing the validation precision and recall. We then use these optimal parameters to train the model.
 
    To run an `Optuna` hyperparameter optimization, we need to specify the range of values we wish to optimize in the configuration file (`/crabs/detection_tracking/config/faster_rcnn.yaml`). Under `Optuna`, specify the following:
 
