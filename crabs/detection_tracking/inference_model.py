@@ -114,6 +114,8 @@ class DetectorInference:
 
         # create directory to save output
         os.makedirs(self.args.output_dir, exist_ok=True)
+        print("output_dir:", self.args.output_dir)
+        print("save_video:", self.config["save_video"])
 
         if self.config["save_video"]:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -124,7 +126,7 @@ class DetectorInference:
                 self.args.output_dir,
                 f"{os.path.basename(self.video_file_root)}_output_video.mp4",
             )
-
+            print(output_file)
             output_codec = cv2.VideoWriter_fourcc(*"H264")
             self.video_output = cv2.VideoWriter(
                 output_file, output_codec, cap_fps, (frame_width, frame_height)
