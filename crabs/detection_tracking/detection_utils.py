@@ -113,7 +113,6 @@ def log_metadata_to_logger(
 ) -> MLFlowLogger:
     """
     Log metadata to MLflow logger.
-
     Add CLI arguments and, if available, SLURM job information.
 
     Parameters
@@ -166,7 +165,6 @@ def setup_mlflow_logger(
     checkpointing callback. A job metadata is the job's CLI arguments and
     the SLURM job IDs (if relevant).
 
-
     Parameters
     ----------
     experiment_name : str
@@ -218,7 +216,6 @@ def setup_mlflow_logger(
 def slurm_logs_as_artifacts(logger, slurm_job_id):
     """
     Add slurm logs as an MLflow artifacts of the current run.
-
     The filenaming convention from the training scripts at crabs-exploration/bash_scripts/ is assumed.
     """
 
