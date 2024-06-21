@@ -127,10 +127,11 @@ class DetectorInference:
                 f"{os.path.basename(self.video_file_root)}_output_video.mp4",
             )
             print(output_file)
-            output_codec = cv2.VideoWriter_fourcc(*"H264")
+            output_codec = cv2.VideoWriter_fourcc('m','p','4','v')
             self.video_output = cv2.VideoWriter(
                 output_file, output_codec, cap_fps, (frame_width, frame_height)
             )
+            print(self.video_output)
 
     def prep_csv_writer(self) -> Tuple[Any, TextIO]:
         """
