@@ -114,8 +114,6 @@ class DetectorInference:
 
         # create directory to save output
         os.makedirs(self.args.output_dir, exist_ok=True)
-        print("output_dir:", self.args.output_dir)
-        print("save_video:", self.config["save_video"])
 
         if self.config["save_video"]:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -126,12 +124,10 @@ class DetectorInference:
                 self.args.output_dir,
                 f"{os.path.basename(self.video_file_root)}_output_video.mp4",
             )
-            print(output_file)
-            output_codec = cv2.VideoWriter_fourcc('m','p','4','v')
+            output_codec = cv2.VideoWriter_fourcc(*"avc1")
             self.video_output = cv2.VideoWriter(
                 output_file, output_codec, cap_fps, (frame_width, frame_height)
             )
-            print(self.video_output)
 
     def prep_csv_writer(self) -> Tuple[Any, TextIO]:
         """
@@ -144,7 +140,6 @@ class DetectorInference:
         self.tracking_output_dir = (
             crabs_tracks_label_dir / self.video_file_root
         )
-        print(self.tracking_output_dir, flush=True)
         # Create the subdirectory for the specific video file root
         self.tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -310,7 +305,6 @@ class DetectorInference:
 
         # Loop through frames of the video in batches
         while self.video.isOpened():
-            print("frame number:", frame_number, flush=True)
             # Break if beyond end frame (mostly for debugging)
             if (
                 self.args.max_frames_to_read
