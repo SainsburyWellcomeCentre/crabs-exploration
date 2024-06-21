@@ -38,14 +38,18 @@
  MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
 
  # video and inference config
- VIDEO_PATH=/ceph/zoo/users/sminano/crabs_reencoded_videos/Sep2023_day1_reencoded/04.09.2023-04-Right_RE.mp4
+ VIDEO_PATH=/ceph/zoo/users/sminano/crabs_tracks_label/04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test_output_video.mp4
  CONFIG_FILE=/ceph/scratch/nikkna/crabs-exploration/crabs/detection_tracking/config/inference_config.yaml
 
  # checkpoint
  CKPT_PATH=/ceph/scratch/nikkna/crabs-exploration/ml_ckpt/595664011639950974/e24234398e4b4d5790a9ea3599570637/checkpoints/last.ckpt
 
- #output directory
+ # output directory
  OUTPUT_DIR=/ceph/scratch/nikkna/crabs-exploration/crabs_track_output
+
+ # ground truth is available
+ GT_DIR=/ceph/zoo/users/sminano/crabs_tracks_label/04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test_corrected_ST_csv.csv
+
  # version of the codebase
  GIT_BRANCH=nikkna/inference_cluster
 
@@ -97,4 +101,4 @@ echo "-----"
   --video_path $VIDEO_PATH \
   --config_file $CONFIG_FILE \
   --output_dir $OUTPUT_DIR \
-  --max_frames_to_read 10
+  --gt_dir $GT_DIR

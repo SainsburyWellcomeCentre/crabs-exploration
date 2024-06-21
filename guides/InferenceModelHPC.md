@@ -76,7 +76,7 @@
     --checkpoint_path $CKPT_PATH \
     --video_path $VIDEO_PATH \
     --config_file $CONFIG_FILE \
-    --max_frames_to_read $GT_DIR
+    --gt_dir $GT_DIR
 
     ```
 
