@@ -1,8 +1,9 @@
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
-import logging
+
 import lightning
 import optuna
 import torch
@@ -172,7 +173,9 @@ class DectectorTrain:
         trainer, checkpoint_callback = self.setup_trainer()
 
         if self.checkpoint_path and os.path.exists(self.checkpoint_path):
-            logging.info(f"Checking contents of checkpoint: {self.checkpoint_path}")
+            logging.info(
+                f"Checking contents of checkpoint: {self.checkpoint_path}"
+            )
             checkpoint = torch.load(self.checkpoint_path)
 
             if (
