@@ -28,7 +28,7 @@ gaussian_blur_params:
   sigma:
     - 0.1
     - 5.0
-# when we run Optuna, the n_trials and n_epochs above will be overwrite by the parameters set by Optuna
+# when we run Optuna, the n_trials and n_epochs above will be overwritten by the parameters set by Optuna
 optuna:
   # Parameters for hyperparameter optimisation with Optuna:
   # - We can optimize `learning_rate`, `num_epochs` or both
