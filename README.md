@@ -32,6 +32,10 @@ cd crabs-exploration
 pip install .
 ```
 
+### CrabsField datasets
+
+[TODO: add instructions for downloading the datasets from GIN: https://gin.g-node.org/SainsburyWellcomeCentre/CrabsField]
+
 ## Basic commands
 
 ### Train a detector
