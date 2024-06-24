@@ -2,7 +2,7 @@ import numpy as np
 import csv
 from typing import Any, Optional, Dict
 
-from crabs.tracking._utils import evaluate_mota
+from crabs.tracking._utils import evaluate_mota, extract_bounding_box_info
 
 
 class Evaluation:
@@ -51,7 +51,7 @@ class Evaluation:
                 )
         return gt_boxes_list
 
-    def get_ground_truth_data(self, gt_dir: str) -> list[np.ndarray]:
+    def get_ground_truth_data(self) -> list[np.ndarray]:
         """
         Extract ground truth bounding box data from a CSV file.
 
@@ -71,11 +71,11 @@ class Evaluation:
         max_frame_number = 0
 
         # Open the CSV file and read its contents line by line
-        with open(gt_dir, "r") as csvfile:
+        with open(self.gt_dir, "r") as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)  # Skip the header row
             for row in csvreader:
-                data = self.extract_bounding_box_info(row)
+                data = extract_bounding_box_info(row)
                 ground_truth_data.append(data)
                 max_frame_number = max(max_frame_number, data["frame_number"])
 
@@ -88,9 +88,7 @@ class Evaluation:
 
     def evaluate_tracking(
         self,
-        gt_boxes_list: list,
-        tracked_boxes_list: list,
-        iou_threshold: float
+        gt_boxes_list: list
     ) -> list[float]:
         """
         Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
@@ -114,7 +112,7 @@ class Evaluation:
             mota = evaluate_mota(
                 gt_boxes,
                 tracked_boxes,
-                iou_threshold,
+                self.iou_threshold,
                 prev_frame_ids,
             )
             mota_values.append(mota)
