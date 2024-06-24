@@ -12,11 +12,24 @@ A toolkit for detecting and tracking crabs in the field.
 
 <!-- Any tools or versions of languages needed to run code. For example specific Python or Node versions. Minimum hardware requirements also go here. -->
 
-requires Python 3.9 or 3.10 or 3.11.
+We support Python 3.9 or 3.10.
 
 ### Installation
 
-<!-- How to build or install the application. -->
+To install the `crabs` package, first create a Python virtual environment. You can use `conda` for this:
+
+```
+conda create -n crabs-env python=3.10
+conda activate crabs-env
+```
+
+Then, install the `crabs` package in the environment. Clone the `crabs-exploration` repository to get the source code locally, and use `pip` to install the package:
+
+```
+git clone https://github.com/SainsburyWellcomeCentre/crabs-exploration.git
+cd crabs-exploration
+pip install .
+```
 
 ### Data Structure
 
