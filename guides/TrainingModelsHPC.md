@@ -92,41 +92,66 @@
 >
 > If we launch a job and then modify the config file _before_ the job has been able to read it, we may be using an undesired version of the config in our job! To avoid this, it is best to wait until you can verify in MLflow that the job has the expected config parameters (and then edit the file to launch a new job if needed).
 
-6.  **Run the training job using the SLURM scheduler**
+6. **Optional argument - Optuna**
 
-    To launch a job, use the `sbatch` command with the relevant training script:
+   We have the option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework that allows us the find the best hyperparameters for our model.
 
-    ```
-    sbatch <path-to-training-bash-script>
-    ```
+   Currently, we can use Optuna to find the optimal number of epochs and the optimal learning rate, within a specified range of values. These will be optimal by maximizing the validation precision and recall. We then use these optimal parameters to train the model.
 
-1.  **Check the status of the training job**
+   To run an `Optuna` hyperparameter optimization, we need to specify the range of values we wish to optimize in the configuration file (`/crabs/detection_tracking/config/faster_rcnn.yaml`). Under `optuna`, specify the following:
 
-    To do this, we can:
+   - `n_trials`: The number of trials you want Optuna to run. Each trial will explore a different combination of hyperparameters within the defined search space., and their performance metrics will be compared.
+   - `learning_rate`: The lower bound and the upper bound of the learning rate parameter to consider.
+   - `n_epochs`: The lower bound and the upper bound of the number of epochs to consider.
 
-    - Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run.
-    - Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
-    - Check the MLFlow logs. To do this, first create or activate an existing conda environment with `mlflow` installed, and then run the `mlflow` command from the login node.
+   To run Optuna, we can add the `--optuna` argument to the bash script. For example:
 
-      - Create and activate a conda environment.
-        ```
-        module load miniconda
-        conda create -n mlflow-env python=3.10 mlflow -y
-        conda activate mlflow-env
-        ```
-      - Run `mlflow` to visualise the results logged to the `ml-runs` folder.
+   ```
+   train-detector  \
+   --dataset_dirs $DATASET_DIR \
+   --config_file $TRAIN_CONFIG_FILE \
+   --accelerator gpu \
+   --experiment_name $EXPERIMENT_NAME \
+   --seed_n $SPLIT_SEED \
+   --mlflow_folder $MLFLOW_FOLDER \
+   --optuna
+   ```
 
-        - If using the "scratch" folder:
+7. **Run the training job using the SLURM scheduler**
 
-          ```
-          mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
-          ```
+   To launch a job, use the `sbatch` command with the relevant training script:
 
-        - If using the selected runs folder:
+   ```
+   sbatch <path-to-training-bash-script>
+   ```
 
-          ```
-          mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs
-          ```
+8. **Check the status of the training job**
+
+   To do this, we can:
+
+   - Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run.
+   - Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
+   - Check the MLFlow logs. To do this, first create or activate an existing conda environment with `mlflow` installed, and then run the `mlflow` command from the login node.
+
+     - Create and activate a conda environment.
+       ```
+       module load miniconda
+       conda create -n mlflow-env python=3.10 mlflow -y
+       conda activate mlflow-env
+       ```
+     - Run `mlflow` to visualise the results logged to the `ml-runs` folder.
+
+       - If using the "scratch" folder:
+
+         ```
+         mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
+         ```
+
+       - If using the selected runs folder:
+
+         ```
+         mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs
+         ```
 
 ### Some useful SLURM commands
 
