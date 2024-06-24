@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Union
+from typing import Any, Tuple, Union
 
 import torch
 from lightning import LightningModule
@@ -105,7 +105,7 @@ class FasterRCNN(LightningModule):
 
     def compute_precision_recall_epoch(
         self, step_outputs: dict[str, Union[float, int]], log_str: str
-    ) -> dict[str, Union[float, int]]:
+    ) -> Tuple[dict[str, Union[float, int]], float, float]:
         """
         Computes and logs mean precision and recall for the current epoch.
         """
@@ -122,10 +122,6 @@ class FasterRCNN(LightningModule):
         self.logger.log_metrics(
             {f"{log_str}_recall": mean_recall}, step=self.current_epoch
         )
-        logging.info(
-            f"Average Precision ({log_str}): {mean_precision:.4f},"
-            f"Average Recall ({log_str}): {mean_recall:.4f}"
-        )
 
         # Reset metrics for next epoch
         step_outputs = {
@@ -134,7 +130,7 @@ class FasterRCNN(LightningModule):
             "num_batches": 0,
         }
 
-        return step_outputs
+        return step_outputs, mean_precision, mean_recall
 
     def on_train_epoch_end(self) -> None:
         """
@@ -156,16 +152,31 @@ class FasterRCNN(LightningModule):
         """
         Hook called after each validation epoch to compute metrics and logging.
         """
-        self.validation_step_outputs = self.compute_precision_recall_epoch(
+        (
+            self.validation_step_outputs,
+            val_precision,
+            val_recall,
+        ) = self.compute_precision_recall_epoch(
             self.validation_step_outputs, "val"
         )
+
+        # we need these logs for hyperparameter optimisation
+        self.log("val_precision", val_precision)
+        self.log("val_recall", val_recall)
 
     def on_test_epoch_end(self) -> None:
         """
         Hook called after each testing epoch to compute metrics and logging.
         """
-        self.test_step_outputs = self.compute_precision_recall_epoch(
-            self.test_step_outputs, "test"
+        (
+            self.test_step_outputs,
+            test_precision,
+            test_recall,
+        ) = self.compute_precision_recall_epoch(self.test_step_outputs, "test")
+
+        logging.info(
+            f"Test Average Precision: {test_precision:.4f},"
+            f"Test Average Recall: {test_recall:.4f}"
         )
 
     def training_step(
