@@ -1,4 +1,5 @@
 import csv
+import logging
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -123,4 +124,4 @@ class Evaluation:
         gt_boxes_list = self.get_ground_truth_data()
         mota_values = self.evaluate_tracking(gt_boxes_list)
         overall_mota = np.mean(mota_values)
-        print("Overall MOTA:", overall_mota)
+        logging.info("Overall MOTA:", overall_mota)

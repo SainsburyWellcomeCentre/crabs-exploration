@@ -51,9 +51,9 @@ dev = [
 [project.scripts]
 extract-frames = "crabs.bboxes_labelling.extract_frames_to_label_w_sleap:app_wrapper"
 combine-annotations = "crabs.bboxes_labelling.combine_and_format_annotations:app_wrapper"
-train-detector = "crabs.detection_tracking.train_model:app_wrapper"
-evaluate-detector = "crabs.detection_tracking.evaluate_model:app_wrapper"
-inference-detector = "crabs.detection_tracking.inference_model:app_wrapper"
+train-detector = "crabs.detection.train_model:app_wrapper"
+evaluate-detector = "crabs.detection.evaluate_model:app_wrapper"
+tracking = "crabs.tracking.tracking:app_wrapper"
 # verify-videos-and-extract-samples
 # extract-additional-channels
 

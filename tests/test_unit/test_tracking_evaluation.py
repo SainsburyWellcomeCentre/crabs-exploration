@@ -1,5 +1,3 @@
-import csv
-import io
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +10,7 @@ from crabs.tracking.evaluation import Evaluation
 def evaluation():
     test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
     return Evaluation(test_csv_file, tracked_list=[], iou_threshold=0.1)
+
 
 def test_get_ground_truth_data(evaluation):
     gt_data = evaluation.get_ground_truth_data()
@@ -30,7 +29,6 @@ def test_get_ground_truth_data(evaluation):
             assert (
                 detection_data[4] == expected_ids[j]
             ), f"Failed for frame {i}, detection {j}"
-
 
 
 @pytest.fixture
@@ -101,11 +99,13 @@ def test_create_gt_list_invalid_data(ground_truth_data, evaluation):
 
     del invalid_data[0]["x"]
     with pytest.raises(KeyError):
-        evaluation.create_gt_list(invalid_data, [np.array([]) for _ in range(2)])
+        evaluation.create_gt_list(
+            invalid_data, [np.array([]) for _ in range(2)]
+        )
 
 
-def test_create_gt_list_insufficient_gt_boxes_list(ground_truth_data, evaluation):
+def test_create_gt_list_insufficient_gt_boxes_list(
+    ground_truth_data, evaluation
+):
     with pytest.raises(IndexError):
         evaluation.create_gt_list(ground_truth_data, [np.array([])])
-
-
