@@ -6,15 +6,15 @@ import lightning
 import yaml  # type: ignore
 from lightning.pytorch.loggers import MLFlowLogger
 
-from crabs.detection_tracking.datamodules import CrabsDataModule
-from crabs.detection_tracking.detection_utils import (
+from crabs.detection.datamodules import CrabsDataModule
+from crabs.detection.detection_utils import (
     prep_annotation_files,
     prep_img_directories,
     set_mlflow_run_name,
     setup_mlflow_logger,
 )
-from crabs.detection_tracking.models import FasterRCNN
-from crabs.detection_tracking.visualization import save_images_with_boxes
+from crabs.detection.models import FasterRCNN
+from crabs.detection.visualization import save_images_with_boxes
 
 
 class DetectorEvaluation:

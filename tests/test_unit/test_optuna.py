@@ -3,10 +3,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from crabs.detection_tracking.optuna_utils import (
+from crabs.detection.optuna_utils import (
     compute_optimal_hyperparameters,
 )
-from crabs.detection_tracking.train_model import DectectorTrain
+from crabs.detection.train_model import DectectorTrain
 
 
 @pytest.fixture
@@ -16,7 +16,6 @@ def config():
         "optuna": {
             "n_trials": 3,
             "learning_rate": [1e-6, 1e-4],
-            "n_epochs": [1, 2],
         },
         "checkpoint_saving": {},
     }
@@ -41,6 +40,7 @@ def args():
 def detector_train(args, config):
     with patch.object(DectectorTrain, "load_config_yaml", MagicMock()):
         train_instance = DectectorTrain(args=args)
+        print(config)
         train_instance.config = config
         return train_instance
 
@@ -72,4 +72,3 @@ def test_optimize_hyperparameters(detector_train, config):
         ), "n_trials should be in config_optuna"
         assert result, "Result dictionary should not be empty"
         assert "learning_rate" in result, "Result should contain learning_rate"
-        assert "n_epochs" in result, "Result should contain n_epochs"

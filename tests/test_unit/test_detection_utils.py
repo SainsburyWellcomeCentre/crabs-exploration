@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from crabs.detection_tracking.detection_utils import (
+from crabs.detection.detection_utils import (
     DEFAULT_ANNOTATIONS_FILENAME,
     prep_annotation_files,
     prep_img_directories,

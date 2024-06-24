@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from crabs.detection_tracking.visualization import (
+from crabs.detection.visualization import (
     draw_bbox,
     draw_detection,
     save_images_with_boxes,

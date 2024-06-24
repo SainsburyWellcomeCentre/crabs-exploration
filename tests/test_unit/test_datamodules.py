@@ -4,7 +4,7 @@ import pytest
 import torch
 import torchvision.transforms.v2 as transforms
 
-from crabs.detection_tracking.datamodules import CrabsDataModule
+from crabs.detection.datamodules import CrabsDataModule
 
 
 @pytest.fixture

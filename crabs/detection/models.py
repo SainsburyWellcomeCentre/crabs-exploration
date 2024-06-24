@@ -8,7 +8,7 @@ from torchvision.models.detection import (
     fasterrcnn_resnet50_fpn_v2,
 )
 
-from crabs.detection_tracking.evaluate import compute_confusion_matrix_elements
+from crabs.detection.evaluate import compute_confusion_matrix_elements
 
 
 class FasterRCNN(LightningModule):
@@ -122,6 +122,10 @@ class FasterRCNN(LightningModule):
         self.logger.log_metrics(
             {f"{log_str}_recall": mean_recall}, step=self.current_epoch
         )
+        logging.info(
+            f"Average Precision ({log_str}): {mean_precision:.4f},"
+            f"Average Recall ({log_str}): {mean_recall:.4f}"
+        )
 
         # Reset metrics for next epoch
         step_outputs = {
@@ -173,11 +177,6 @@ class FasterRCNN(LightningModule):
             test_precision,
             test_recall,
         ) = self.compute_precision_recall_epoch(self.test_step_outputs, "test")
-
-        logging.info(
-            f"Test Average Precision: {test_precision:.4f},"
-            f"Test Average Recall: {test_recall:.4f}"
-        )
 
     def training_step(
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int

@@ -5,7 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from crabs.detection_tracking.visualization import draw_bbox
+from crabs.detection.visualization import draw_bbox
 from crabs.tracking._utils import (
     save_frame_and_csv,
     write_tracked_bbox_to_csv,

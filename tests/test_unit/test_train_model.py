@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from crabs.detection_tracking.detection_utils import (
+from crabs.detection.detection_utils import (
     DEFAULT_ANNOTATIONS_FILENAME as DEFAULT_ANNOT_FILENAME,
 )
-from crabs.detection_tracking.train_model import (
+from crabs.detection.train_model import (
     train_parse_args,
 )
 
@@ -23,7 +23,7 @@ def test_prep_img_directories(dataset_dirs: list):
     """
     Test parsing of image directories when training a model.
     """
-    from crabs.detection_tracking.train_model import DectectorTrain
+    from crabs.detection.train_model import DectectorTrain
 
     # prepare parser
     train_args = train_parse_args(["--dataset_dirs"] + dataset_dirs)
@@ -52,7 +52,7 @@ def test_prep_annotation_files_single_dataset(annotation_files, expected):
     Test parsing of annotation files when training a model on a single dataset.
     """
 
-    from crabs.detection_tracking.train_model import DectectorTrain
+    from crabs.detection.train_model import DectectorTrain
 
     # prepare CLI arguments
     cli_inputs = ["--dataset_dirs", DATASET_1]
@@ -95,7 +95,7 @@ def test_prep_annotation_files_multiple_datasets(annotation_files, expected):
     Test parsing of annotation files when training a model on two datasets.
     """
 
-    from crabs.detection_tracking.train_model import DectectorTrain
+    from crabs.detection.train_model import DectectorTrain
 
     # prepare CLI arguments considering multiple dataset
     cli_inputs = ["--dataset_dirs", DATASET_1, DATASET_2]
