@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from crabs.detection_tracking.tracking_utils import (
+from crabs.tracking._utils import (
     calculate_iou,
     count_identity_switches,
     create_gt_list,

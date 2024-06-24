@@ -275,3 +275,30 @@ def save_frame_and_csv(
         logging.error(
             f"Didn't save {frame_name}, frame {frame_number}, Skipping."
         )
+
+
+def prep_sort(prediction: dict, score_threshold: float) -> np.ndarray:
+    """
+    Put predictions in format expected by SORT
+
+    Parameters
+    ----------
+    prediction : dict
+        The dictionary containing predicted bounding boxes, scores, and labels.
+
+    Returns
+    -------
+    np.ndarray:
+        An array containing sorted bounding boxes of detected objects.
+    """
+    pred_boxes = prediction[0]["boxes"].detach().cpu().numpy()
+    pred_scores = prediction[0]["scores"].detach().cpu().numpy()
+    pred_labels = prediction[0]["labels"].detach().cpu().numpy()
+
+    pred_sort = []
+    for box, score, label in zip(pred_boxes, pred_scores, pred_labels):
+        if score > score_threshold:
+            bbox = np.concatenate((box, [score]))
+            pred_sort.append(bbox)
+
+    return np.asarray(pred_sort)

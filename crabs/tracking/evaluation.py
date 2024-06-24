@@ -1,6 +1,7 @@
-import numpy as np
 import csv
-from typing import Any, Optional, Dict
+from typing import Any, Dict, Optional
+
+import numpy as np
 
 from crabs.tracking._utils import evaluate_mota, extract_bounding_box_info
 
@@ -11,8 +12,10 @@ class Evaluation:
         self.tracked_list = tracked_list
         self.iou_threshold = iou_threshold
 
-    def create_gt_list(self,
-        ground_truth_data: list[Dict[str, Any]], gt_boxes_list: list[np.ndarray]
+    def create_gt_list(
+        self,
+        ground_truth_data: list[Dict[str, Any]],
+        gt_boxes_list: list[np.ndarray],
     ) -> list[np.ndarray]:
         """
         Creates a list of ground truth bounding boxes organized by frame number.
@@ -85,11 +88,7 @@ class Evaluation:
         gt_boxes_list = self.create_gt_list(ground_truth_data, gt_boxes_list)
         return gt_boxes_list
 
-
-    def evaluate_tracking(
-        self,
-        gt_boxes_list: list
-    ) -> list[float]:
+    def evaluate_tracking(self, gt_boxes_list: list) -> list[float]:
         """
         Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
 
@@ -107,8 +106,7 @@ class Evaluation:
         """
         mota_values = []
         prev_frame_ids: Optional[list[list[int]]] = None
-        # prev_frame_ids = None
-        for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
+        for gt_boxes, tracked_boxes in zip(gt_boxes_list, self.tracked_list):
             mota = evaluate_mota(
                 gt_boxes,
                 tracked_boxes,
@@ -123,6 +121,6 @@ class Evaluation:
 
     def run_evaluation(self):
         gt_boxes_list = self.get_ground_truth_data()
-        mota_values = self.evaluate_tracking(gt_boxes_list, self.tracked_list, self.iou_threshold)
+        mota_values = self.evaluate_tracking(gt_boxes_list)
         overall_mota = np.mean(mota_values)
         print("Overall MOTA:", overall_mota)
