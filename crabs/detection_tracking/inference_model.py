@@ -10,6 +10,7 @@ import torch
 import torchvision.transforms.v2 as transforms
 from sort import Sort
 
+from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.tracking_utils import (
     evaluate_mota,
     get_ground_truth_data,
@@ -18,6 +19,8 @@ from crabs.detection_tracking.tracking_utils import (
 from crabs.detection_tracking.visualization import (
     draw_bbox,
 )
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class DetectorInference:
@@ -65,12 +68,11 @@ class DetectorInference:
         -------
         torch.nn.Module
         """
-        model = torch.load(
-            self.args.model_dir,
-            map_location=torch.device(self.args.accelerator),
-        )
-        model.eval()
-        return model
+        # Get trained model
+        trained_model = FasterRCNN.load_from_checkpoint(self.args.model_dir)
+        trained_model.eval()
+        trained_model.to(DEVICE)
+        return trained_model
 
     def prep_sort(self, prediction: dict) -> np.ndarray:
         """
@@ -304,6 +306,7 @@ class DetectorInference:
             self.prep_sort(prediction)
             tracked_boxes = self.update_tracking(prediction)
             self.save_required_output(tracked_boxes, frame, frame_number)
+            self.tracked_list.append(tracked_boxes)
 
             # update frame
             frame_number += 1
