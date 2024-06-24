@@ -1,7 +1,6 @@
 import csv
 import os
 from pathlib import Path
-from typing import Any, TextIO, Tuple
 
 import cv2
 import numpy as np
@@ -23,7 +22,7 @@ class Inference:
         self.save_video = save_video
         self.prep_csv_writer()
 
-    def prep_csv_writer(self) -> Tuple[Any, TextIO]:
+    def prep_csv_writer(self) -> None:
         """
         Prepare csv writer to output tracking results
         """
