@@ -10,8 +10,8 @@ class Evaluation:
         self.gt_dir = gt_dir
         self.tracked_list = tracked_list
         self.iou_threshold = iou_threshold
-    
-    def create_gt_list(self, 
+
+    def create_gt_list(self,
         ground_truth_data: list[Dict[str, Any]], gt_boxes_list: list[np.ndarray]
     ) -> list[np.ndarray]:
         """
@@ -84,7 +84,7 @@ class Evaluation:
 
         gt_boxes_list = self.create_gt_list(ground_truth_data, gt_boxes_list)
         return gt_boxes_list
-    
+
 
     def evaluate_tracking(
         self,
@@ -122,3 +122,9 @@ class Evaluation:
             prev_frame_ids = [[box[-1] for box in tracked_boxes]]
 
         return mota_values
+
+    def run_evaluation(self):
+        gt_boxes_list = self.get_ground_truth_data()
+        mota_values = self.evaluate_tracking(gt_boxes_list, self.tracked_list, self.iou_threshold)
+        overall_mota = np.mean(mota_values)
+        print("Overall MOTA:", overall_mota)

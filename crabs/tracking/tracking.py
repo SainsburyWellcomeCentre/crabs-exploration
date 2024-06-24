@@ -3,7 +3,7 @@ import csv
 import os
 import sys
 from pathlib import Path
-from typing import Any, Optional, TextIO, Tuple
+from typing import Any, TextIO, Tuple
 
 import cv2
 import numpy as np
@@ -12,13 +12,13 @@ import torchvision.transforms.v2 as transforms
 import yaml  # type: ignore
 
 from crabs.detection_tracking.models import FasterRCNN
-from crabs.tracking.sort import Sort
+from crabs.detection_tracking.visualization import draw_bbox
 from crabs.tracking._utils import (
     save_frame_and_csv,
     write_tracked_bbox_to_csv,
 )
 from crabs.tracking.evaluation import Evaluation
-from crabs.detection_tracking.visualization import draw_bbox
+from crabs.tracking.sort import Sort
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -164,7 +164,6 @@ class Tracking:
 
         return csv_writer, csv_file
 
-
     def get_prediction(self, frame: np.ndarray) -> torch.Tensor:
         """
         Get prediction from the trained model for a given frame.
@@ -293,7 +292,11 @@ class Tracking:
             frame_number += 1
 
         if self.args.gt_dir:
-            evaluation = Evaluation(self.args.gt_dir, self.tracked_list, self.config["iou_threshold"])
+            evaluation = Evaluation(
+                self.args.gt_dir,
+                self.tracked_list,
+                self.config["iou_threshold"],
+            )
             evaluation.run_evaluation()
 
         # Close input video
