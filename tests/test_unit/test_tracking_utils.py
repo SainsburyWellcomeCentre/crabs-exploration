@@ -17,22 +17,22 @@ from crabs.detection_tracking.tracking_utils import (
 
 
 @pytest.mark.parametrize(
-    "prev_frame_id, current_frame_id, n_gt, expected_output",
+    "prev_frame_id, current_frame_id, expected_output",
     [
-        (None, [1, 2, 3, 4], 4, 0),
-        ([1, 2, 3, 4], [1, 2, 3, 4], 4, 0),
-        ([2, 1, 3, 4], [1, 2, 3, 4], 4, 0),
-        ([1, 2, 3, 4], [1, 2, 3], 3, 0),
-        ([1, 2, 3], [1, 2, 3, 4], 4, 0),
-        ([1, 2, 3, 4], [1, 2, 3, 5], 4, 1),
-        ([1, 2, 3, 4], [1, 2, 3, 4, 5, 6], 4, 2),
+        (None, {1: 1, 2: 2, 3: 3, 4: 4}, 0),
+        ({1: 1, 2: 2, 3: 3, 4: 4}, {1: 1, 2: 2, 3: 3, 4: 4}, 0),
+        ({1: 1, 2: 2, 3: 3, 4: 4}, {1: 2, 2: 1, 3: 3, 4: 4}, 2),
+        ({1: 1, 2: 2, 3: 3, 4: 4}, {1: 1, 2: 2, 3: 3}, 0),
+        ({1: 1, 2: 2, 3: 3}, {1: 1, 2: 2, 3: 3, 4: 4}, 0),
+        ({1: 1, 2: 2, 3: 3, 4: 4}, {1: 1, 2: 2, 3: 3, 4: 5}, 1),
+        ({1: 1, 2: 2, 3: 3, 4: 4}, {1: 1, 2: 2, 3: 3, 4: 5, 5: 6}, 2),
     ],
 )
 def test_count_identity_switches(
-    prev_frame_id, current_frame_id, n_gt, expected_output
+    prev_frame_id, current_frame_id, expected_output
 ):
     assert (
-        count_identity_switches(prev_frame_id, current_frame_id, n_gt)
+        count_identity_switches(prev_frame_id, current_frame_id)
         == expected_output
     )
 
@@ -69,7 +69,7 @@ def gt_boxes():
 
 @pytest.fixture
 def gt_ids():
-    return [1, 2, 3]
+    return [1, 2, 4]
 
 
 @pytest.fixture
@@ -84,19 +84,20 @@ def tracked_boxes():
 
 
 @pytest.fixture
-def prev_frame_ids():
-    return [1, 2, 3]
+def prev_frame_id_map():
+    return {1: 1, 2: 2, 3: 3}
 
 
-def test_perfect_tracking(gt_boxes, gt_ids, tracked_boxes, prev_frame_ids):
-    mota = evaluate_mota(
+def test_perfect_tracking(gt_boxes, gt_ids, tracked_boxes, prev_frame_id_map):
+    mota, _ = evaluate_mota(
         gt_boxes,
         gt_ids,
         tracked_boxes,
         iou_threshold=0.1,
-        prev_frame_ids=prev_frame_ids,
+        prev_frame_id_map=prev_frame_id_map,
     )
     assert mota == pytest.approx(1.0)
+    # assert mota == 0
 
 
 def test_missed_detections(gt_boxes, gt_ids, tracked_boxes, prev_frame_ids):

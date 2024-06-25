@@ -50,9 +50,8 @@ def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
 
 
 def count_identity_switches(
-    prev_frame_ids: Optional[list[int]],
-    current_frame_ids: Optional[list[int]],
-    current_gt: int,
+    prev_frame_id_map: Optional[list[int]],
+    gt_to_tracked_map: Optional[list[int]],
 ) -> int:
     """
     Count the number of identity switches between two sets of object IDs.
@@ -63,8 +62,6 @@ def count_identity_switches(
         List of object IDs in the previous frame.
     current_frame_ids : Optional[list[int]]
         List of object IDs in the current frame.
-    current_gt : int
-        Total ground truth number of crabs in current frame.
 
     Returns
     -------
@@ -72,26 +69,24 @@ def count_identity_switches(
         The number of identity switches between the two sets of object IDs.
     """
 
-    if prev_frame_ids is None or current_frame_ids is None:
+    if prev_frame_id_map is None:
         return 0
 
-    prev_ids = set(prev_frame_ids)
-    current_ids = set(current_frame_ids)
+    switch_count = 0
+    set(prev_frame_id_map.values())
 
-    # number of IDs in current frame that are not in the previous frame
-    n_difference = len(current_ids - prev_ids)
-
-    if prev_ids != current_ids:
-        if len(current_ids) == current_gt:
-            # Check the symmetric difference to ensure only actual switches are counted
-            if len(prev_ids.symmetric_difference(current_ids)) == n_difference:
-                return 0
-            else:
-                return n_difference
+    for gt_id, current_tracked_id in gt_to_tracked_map.items():
+        print(gt_id, current_tracked_id)
+        prev_tracked_id = prev_frame_id_map.get(gt_id)
+        print(prev_tracked_id)
+        if prev_tracked_id is not None:
+            if prev_tracked_id != current_tracked_id:
+                switch_count += 1
         else:
-            return n_difference
-    else:
-        return 0
+            if current_tracked_id != gt_id:
+                switch_count += 1
+
+    return switch_count
 
 
 def evaluate_mota(
@@ -99,7 +94,7 @@ def evaluate_mota(
     gt_ids: np.ndarray,
     tracked_boxes: np.ndarray,
     iou_threshold: float,
-    prev_frame_ids: Optional[list[int]],
+    prev_frame_id_map: Optional[dict],
 ) -> float:
     """
     Evaluate MOTA (Multiple Object Tracking Accuracy).
@@ -139,7 +134,8 @@ def evaluate_mota(
     total_gt = len(gt_boxes)
     false_positive = 0
     matched_gt_boxes = set()
-    matched_tracked_boxes = set()
+    # matched_tracked_boxes = set()
+    gt_to_tracked_map = {}
 
     for i, tracked_box in enumerate(tracked_boxes):
         best_iou = 0.0
@@ -147,7 +143,6 @@ def evaluate_mota(
 
         for j, gt_box in enumerate(gt_boxes):
             if j not in matched_gt_boxes:
-                print(gt_box[-1])
                 iou = calculate_iou(gt_box[:4], tracked_box[:4])
                 if iou > iou_threshold and iou > best_iou:
                     best_iou = iou
@@ -156,20 +151,29 @@ def evaluate_mota(
         if best_match is not None:
             # successfully found a matching ground truth box for the tracked box.
             matched_gt_boxes.add(best_match)
-            matched_tracked_boxes.add(i)
+            # matched_tracked_boxes.add(i)
+            gt_to_tracked_map[gt_ids[best_match]] = tracked_box[
+                -1
+            ]  # Map ground truth ID to tracked ID
         else:
             false_positive += 1
 
     missed_detections = total_gt - len(matched_gt_boxes)
 
-    tracked_ids = [tracked_boxes[i][-1] for i in matched_tracked_boxes]
+    # tracked_ids = [tracked_boxes[i][-1] for i in matched_tracked_boxes]
+    # print(tracked_ids)
+
+    # gt_to_tracked_map = {}
+    # for gt_id, tracked_id in zip(gt_ids, tracked_ids):
+    #     gt_to_tracked_map[gt_id] = tracked_id
+    # print(gt_to_tracked_map)
 
     num_switches = count_identity_switches(
-        prev_frame_ids, tracked_ids, total_gt
+        prev_frame_id_map, gt_to_tracked_map
     )
 
     mota = 1 - (missed_detections + false_positive + num_switches) / total_gt
-    return mota
+    return mota, gt_to_tracked_map
 
 
 def extract_bounding_box_info(row: list[str]) -> Dict[str, Any]:
@@ -298,7 +302,6 @@ def get_ground_truth_data(
     gt_boxes_list, gt_ids_list = create_gt_list(
         ground_truth_data, gt_boxes_list, gt_ids_list
     )
-    # print(gt_boxes_list[0].shape)
 
     return gt_boxes_list, gt_ids_list
 

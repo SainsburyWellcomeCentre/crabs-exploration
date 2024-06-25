@@ -182,18 +182,21 @@ class DetectorInference:
             The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
         """
         mota_values = []
-        # prev_frame_ids: Optional[list[list[int]]] = None
-        prev_frame_ids: Optional[list[int]] = None
-        # prev_frame_ids = None
+        # prev_frame_ids: Optional[list[int]] = None
+        prev_frame_id_map: Optional[dict] = None
         for gt_boxes, gt_ids, tracked_boxes in zip(
             gt_boxes_list, gt_ids_list, tracked_boxes_list
         ):
-            mota = evaluate_mota(
-                gt_boxes, gt_ids, tracked_boxes, iou_threshold, prev_frame_ids
+            mota, prev_frame_id_map = evaluate_mota(
+                gt_boxes,
+                gt_ids,
+                tracked_boxes,
+                iou_threshold,
+                prev_frame_id_map,
             )
             mota_values.append(mota)
-            # Update previous frame IDs for the next iteration
-            prev_frame_ids = [box[-1] for box in tracked_boxes]
+            # # Update previous frame IDs for the next iteration
+            # prev_frame_ids = [box[-1] for box in tracked_boxes]
 
         return mota_values
 
