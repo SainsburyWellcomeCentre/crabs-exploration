@@ -44,12 +44,14 @@ class FasterRCNN(LightningModule):
     """
 
     def __init__(self, config: dict[str, Any]):
+        print(f"Init ModelBase, hparams:\n{self.hparams}\n")
         super().__init__()
         self.config = config
         self.model = self.configure_model()
 
         # save all arguments passed to __init__
         self.save_hyperparameters()
+        print(f"Init ModelBase after, hparams:\n{self.hparams}\n")
 
         # metrics to log during training/val/test loop
         self.training_step_outputs = {

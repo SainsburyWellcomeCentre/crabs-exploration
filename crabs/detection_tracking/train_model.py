@@ -70,7 +70,7 @@ class DectectorTrain:
         self.run_name = set_mlflow_run_name()
 
         # Setup logger with checkpointing
-        mlf_logger = setup_mlflow_logger(
+        self.mlf_logger = setup_mlflow_logger(
             experiment_name=self.experiment_name,
             run_name=self.run_name,
             mlflow_folder=self.mlflow_folder,
@@ -80,16 +80,16 @@ class DectectorTrain:
         )
 
         # Define checkpointing callback for trainer
-        config = self.config.get("checkpoint_saving")
-        if config:
+        config_ckpt = self.config.get("checkpoint_saving")
+        if config_ckpt:
             checkpoint_callback = ModelCheckpoint(
                 filename="checkpoint-{epoch}",
-                every_n_epochs=config["every_n_epochs"],
-                save_top_k=config["keep_last_n_ckpts"],
+                every_n_epochs=config_ckpt["every_n_epochs"],
+                save_top_k=config_ckpt["keep_last_n_ckpts"],
                 monitor="epoch",  # monitor the metric "epoch" for selecting which checkpoints to save
                 mode="max",  # get the max of the monitored metric
-                save_last=config["save_last"],
-                save_weights_only=config["save_weights_only"],
+                save_last=config_ckpt["save_last"],
+                save_weights_only=config_ckpt["save_weights_only"],
             )
             enable_checkpointing = True
         else:
@@ -101,7 +101,7 @@ class DectectorTrain:
             lightning.Trainer(
                 max_epochs=self.config["n_epochs"],
                 accelerator=self.accelerator,
-                logger=mlf_logger,
+                logger=self.mlf_logger,
                 enable_checkpointing=enable_checkpointing,
                 callbacks=[checkpoint_callback] if checkpoint_callback else [],
                 fast_dev_run=self.fast_dev_run,
@@ -169,6 +169,7 @@ class DectectorTrain:
 
         # Get model
         lightning_model = FasterRCNN(self.config)
+
         # Run training
         trainer, checkpoint_callback = self.setup_trainer()
 
@@ -177,7 +178,6 @@ class DectectorTrain:
                 f"Checking contents of checkpoint: {self.checkpoint_path}"
             )
             checkpoint = torch.load(self.checkpoint_path)
-
             if (
                 "optimizer_states" in checkpoint
                 and "lr_schedulers" in checkpoint
@@ -196,7 +196,9 @@ class DectectorTrain:
                     "Checkpoint contains only model weights. Load the weight from a trained model"
                 )
                 # Load model weights and start fine-tuning
-                model = FasterRCNN.load_from_checkpoint(self.checkpoint_path)
+                model = FasterRCNN.load_from_checkpoint(
+                    self.checkpoint_path, config=self.config
+                )
                 trainer.fit(model, data_module)
 
         else:
