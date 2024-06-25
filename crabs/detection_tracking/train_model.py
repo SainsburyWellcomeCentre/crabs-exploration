@@ -144,8 +144,8 @@ class DectectorTrain:
         trainer = self.core_training()
 
         # Return metric to maximise
-        val_precision = trainer.callback_metrics["val_precision"].item()
-        val_recall = trainer.callback_metrics["val_recall"].item()
+        val_precision = trainer.callback_metrics["val_precision_optuna"].item()
+        val_recall = trainer.callback_metrics["val_recall_optuna"].item()
         return (val_precision + val_recall) / 2
 
     def core_training(self) -> lightning.Trainer:
