@@ -1,13 +1,11 @@
 import argparse
 import ast
-
-# import pdb
+import os
 import sys
 from pathlib import Path
 
 import lightning
 import yaml  # type: ignore
-from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
@@ -15,6 +13,7 @@ from crabs.detection_tracking.detection_utils import (
     prep_img_directories,
     set_mlflow_run_name,
     setup_mlflow_logger,
+    slurm_logs_as_artifacts,
 )
 from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.visualization import save_images_with_boxes
@@ -31,10 +30,7 @@ class DetectorEvaluation:
 
     """
 
-    def __init__(
-        self,
-        args: argparse.Namespace,
-    ) -> None:
+    def __init__(self, args: argparse.Namespace) -> None:
         # inputs
         self.args = args
         self.config_file = args.config_file
@@ -45,10 +41,11 @@ class DetectorEvaluation:
 
         # dataset: retrieve from ckpt if possible
         # maybe a different name?
-        self.images_dirs = (
-            self.get_img_directories_from_ckpt()
-        )  # maybe in detection utils? - I think good here cause nothing else uses it for now
-        self.annotation_files = self.get_annotation_files_from_ckpt()
+        self.images_dirs = self.get_img_directories_from_ckpt()  # if defined
+        # maybe in detection utils? - I think good here cause nothing else uses it for now
+        self.annotation_files = (
+            self.get_annotation_files_from_ckpt()
+        )  # if defined
         self.seed_n = self.get_seed_from_ckpt()
 
         # Hardware
@@ -88,12 +85,10 @@ class DetectorEvaluation:
         run = self.mlrun_client.get_run(self.ckpt_runID)
         params = run.data.params
 
-        # pdb.set_trace()
         return params
 
     def get_img_directories_from_ckpt(self) -> list[str]:
-        # if dataset_dirs is empty:
-        # retrieve from ckpt path
+        # if dataset_dirs is empty: retrieve from ckpt path
         # We assume we always pass a mlflow chckpoint
         # would this work with a remote?
         if not self.args.dataset_dirs:
@@ -106,9 +101,7 @@ class DetectorEvaluation:
             )
 
             # pass that to prep image directories
-            # pdb.set_trace()
             images_dirs = prep_img_directories(train_cli_dataset_dirs)
-            # pdb.set_trace()
 
         # if not empty, call the regular one
         else:
@@ -124,7 +117,6 @@ class DetectorEvaluation:
             # get mlflow client for the ml-runs folder containing the checkpoint
             params = self.get_mlflow_client_from_ckpt()
 
-            # pdb.set_trace()
             train_cli_dataset_dirs = ast.literal_eval(
                 params["cli_args/dataset_dirs"]
             )
@@ -132,11 +124,9 @@ class DetectorEvaluation:
                 params["cli_args/annotation_files"]
             )
 
-            # pdb.set_trace()
             annotation_files = prep_annotation_files(
                 train_cli_annotation_files, train_cli_dataset_dirs
             )
-            # pdb.set_trace()
 
         else:
             annotation_files = prep_annotation_files(
@@ -145,29 +135,22 @@ class DetectorEvaluation:
         return annotation_files
 
     def get_seed_from_ckpt(self) -> int:
-        # pdb.set_trace()
         if not self.args.seed_n:
             # get mlflow client for the ml-runs folder containing the checkpoint
             params = self.get_mlflow_client_from_ckpt()
 
-            # pdb.set_trace()
             seed_n = ast.literal_eval(params["cli_args/seed_n"])
-            # pdb.set_trace()
         else:
             seed_n = self.args.seed_n
         return seed_n
 
-    def set_run_name(self):
-        self.run_name = set_mlflow_run_name()
-
-    def setup_logger(self) -> MLFlowLogger:
+    def setup_trainer(self):
         """
-        Setup MLflow logger for testing.
-
-        Includes logging metadata about the job (CLI arguments and SLURM job IDs).
+        Setup trainer object with logging for testing.
         """
+
         # Assign run name
-        self.set_run_name()
+        self.run_name = set_mlflow_run_name()
 
         # Setup logger
         mlf_logger = setup_mlflow_logger(
@@ -176,16 +159,6 @@ class DetectorEvaluation:
             mlflow_folder=self.mlflow_folder,
             cli_args=self.args,
         )
-
-        return mlf_logger
-
-    def setup_trainer(self):
-        """
-        Setup trainer object with logging for testing.
-        """
-
-        # Get MLflow logger
-        mlf_logger = self.setup_logger()
 
         # Return trainer linked to logger
         return lightning.Trainer(
@@ -225,6 +198,11 @@ class DetectorEvaluation:
                 self.config["score_threshold"],
             )
 
+        # if this is a slurm job: add slurm logs as artifacts
+        slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        if slurm_job_id:
+            slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
+
 
 def main(args) -> None:
     """
@@ -256,7 +234,7 @@ def evaluate_parse_args(args):
         type=str,
         default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
         help=(
-            "Location of YAML config to control training. "
+            "Location of YAML config to control evaluation. "
             "Default: crabs-exploration/crabs/detection_tracking/config/faster_rcnn.yaml"
         ),
     )
