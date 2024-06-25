@@ -189,21 +189,17 @@ class DectectorTrain:
             checkpoint_type = None
 
         # Get model
-        if checkpoint_type == "weights":  # contains hyperparameters https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
+        if checkpoint_type == "weights": 
+            # Note: weights-only checkpoint contains hyperparameters 
+            # see https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
             lightning_model = FasterRCNN.load_from_checkpoint(
                 self.checkpoint_path,
-                config=self.config, # overwrite checkpoint hyperparameters with config ones
+                config=self.config, 
+                # overwrite checkpoint hyperparameters with config ones
                 # otherwise ckpt hyperparameters are logged to MLflow, but yaml hyperparameters are used
             ) 
         else:
-            lightning_model = FasterRCNN(self.config)  #----> move to else?
-        # ----> if I skip load_from_checkpoint:
-        #  config is as in yaml, and 
-        # reality matches yaml (trains for as many epochs)
-        # -----> if I dont
-        # parameters logged to mlflow are those from checkpoint
-        # but in reality it is using those in yaml!
-        # Q: does this happen in Nik's branch too?
+            lightning_model = FasterRCNN(self.config)  
 
         # Get trainer
         trainer = self.setup_trainer()  # this gets yaml!
