@@ -1,26 +1,15 @@
-# ---------
-# Dataset
-# ---------
-train_fraction: 0.8
-val_over_test_fraction: 0.5
-num_workers: 0 # for all dataloaders
-
-# ---------
-# Network
-# ---------
-num_classes: 2
-
-# -------------------------------
-# Training/validation parameters
-# -------------------------------
-num_epochs: 1
+n_epochs: 250
 learning_rate: 0.00005
 wdecay: 0.00005
 batch_size_train: 4
-batch_size_val: 1
+batch_size_test: 4
+batch_size_val: 4
+num_classes: 2
+train_fraction: 0.8
+val_over_test_fraction: 0.5
 checkpoint_saving:
-  every_n_epochs: 1
-  keep_last_n_ckpts: 2
+  every_n_epochs: 50
+  keep_last_n_ckpts: 5
   save_weights_only: True
   copy_as_mlflow_artifacts: True
   # copy_as_mlflow_artifacts:
@@ -28,6 +17,8 @@ checkpoint_saving:
   # if all, all checkpoints for every epoch are added as artifacts during training,
   # if False, no checkpoints are added as artifacts.
   save_last: True
+iou_threshold: 0.1
+num_workers: 4
 transform_brightness: 0.5
 transform_hue: 0.3
 gaussian_blur_params:
@@ -37,10 +28,17 @@ gaussian_blur_params:
   sigma:
     - 0.1
     - 5.0
-
-# ------------------------------
-# Testing parameters
-# ------------------------------
-batch_size_test: 1
-iou_threshold: 0.1
-score_threshold: 0.1
+# when we run Optuna, the n_trials and n_epochs above will be overwritten by the parameters set by Optuna
+optuna:
+  # Parameters for hyperparameter optimisation with Optuna:
+  # - We can optimize `learning_rate`, `num_epochs` or both
+  # - n_trials defines the total number of trials ran in the optimisation
+  n_trials: 3
+  # The lower bound and the upper bound of the learning rate parameter
+  learning_rate:
+    - 1e-6
+    - 1e-4
+  # The lower bound and the upper bound of the number of epochs
+  n_epochs:
+    - 1
+    - 3
