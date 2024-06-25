@@ -59,9 +59,9 @@ def count_identity_switches(
 
     Parameters
     ----------
-    prev_frame_ids : Optional[list[list[int]]]
+    prev_frame_ids : Optional[list[int]]
         List of object IDs in the previous frame.
-    current_frame_ids : Optional[list[list[int]]]
+    current_frame_ids : Optional[list[int]]
         List of object IDs in the current frame.
     current_gt : int
         Total ground truth number of crabs in current frame.
@@ -78,12 +78,16 @@ def count_identity_switches(
     prev_ids = set(prev_frame_ids)
     current_ids = set(current_frame_ids)
 
-    # number of ID in current frame that is not in previous frame
-    n_difference = len(list(current_ids - prev_ids))
+    # number of IDs in current frame that are not in the previous frame
+    n_difference = len(current_ids - prev_ids)
 
     if prev_ids != current_ids:
-        if (len(current_ids) == current_gt) and (n_difference == 0):
-            return 0
+        if len(current_ids) == current_gt:
+            # Check the symmetric difference to ensure only actual switches are counted
+            if len(prev_ids.symmetric_difference(current_ids)) == n_difference:
+                return 0
+            else:
+                return n_difference
         else:
             return n_difference
     else:
@@ -143,6 +147,7 @@ def evaluate_mota(
 
         for j, gt_box in enumerate(gt_boxes):
             if j not in matched_gt_boxes:
+                print(gt_box[-1])
                 iou = calculate_iou(gt_box[:4], tracked_box[:4])
                 if iou > iou_threshold and iou > best_iou:
                     best_iou = iou
@@ -293,6 +298,7 @@ def get_ground_truth_data(
     gt_boxes_list, gt_ids_list = create_gt_list(
         ground_truth_data, gt_boxes_list, gt_ids_list
     )
+    # print(gt_boxes_list[0].shape)
 
     return gt_boxes_list, gt_ids_list
 

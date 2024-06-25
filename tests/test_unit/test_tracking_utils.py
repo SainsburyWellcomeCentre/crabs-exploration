@@ -19,14 +19,13 @@ from crabs.detection_tracking.tracking_utils import (
 @pytest.mark.parametrize(
     "prev_frame_id, current_frame_id, n_gt, expected_output",
     [
-        (None, [[6, 5, 4, 3, 2, 1]], 6, 0),
-        ([[6, 5, 4, 3, 2, 1]], [[6, 5, 4, 3, 2, 1]], 6, 0),
-        ([[5, 6, 4, 3, 1, 2]], [[6, 5, 4, 3, 2, 1]], 6, 0),
-        ([[6, 5, 4, 3, 2, 1]], [[6, 5, 4, 2, 1]], 5, 0),
-        ([[6, 5, 4, 3, 2, 1]], [[6, 5, 4, 2, 1, 7]], 6, 1),
-        ([[6, 5, 4, 2, 1]], [[6, 5, 4, 2, 7]], 5, 1),
-        ([[6, 5, 4, 3, 2]], [[6, 5, 4, 2, 7, 8, 3]], 5, 2),
-        ([[6, 5, 4, 3]], [[6, 5, 4, 3, 7, 8, 9]], 5, 3),
+        (None, [1, 2, 3, 4], 4, 0),
+        ([1, 2, 3, 4], [1, 2, 3, 4], 4, 0),
+        ([2, 1, 3, 4], [1, 2, 3, 4], 4, 0),
+        ([1, 2, 3, 4], [1, 2, 3], 3, 0),
+        ([1, 2, 3], [1, 2, 3, 4], 4, 0),
+        ([1, 2, 3, 4], [1, 2, 3, 5], 4, 1),
+        ([1, 2, 3, 4], [1, 2, 3, 4, 5, 6], 4, 2),
     ],
 )
 def test_count_identity_switches(
@@ -69,6 +68,11 @@ def gt_boxes():
 
 
 @pytest.fixture
+def gt_ids():
+    return [1, 2, 3]
+
+
+@pytest.fixture
 def tracked_boxes():
     return np.array(
         [
@@ -81,12 +85,13 @@ def tracked_boxes():
 
 @pytest.fixture
 def prev_frame_ids():
-    return [[1.0, 2.0, 3.0]]
+    return [1, 2, 3]
 
 
-def test_perfect_tracking(gt_boxes, tracked_boxes, prev_frame_ids):
+def test_perfect_tracking(gt_boxes, gt_ids, tracked_boxes, prev_frame_ids):
     mota = evaluate_mota(
         gt_boxes,
+        gt_ids,
         tracked_boxes,
         iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
@@ -94,11 +99,12 @@ def test_perfect_tracking(gt_boxes, tracked_boxes, prev_frame_ids):
     assert mota == pytest.approx(1.0)
 
 
-def test_missed_detections(gt_boxes, tracked_boxes, prev_frame_ids):
+def test_missed_detections(gt_boxes, gt_ids, tracked_boxes, prev_frame_ids):
     # Remove one tracked box to simulate a missed detection
     tracked_boxes = np.delete(tracked_boxes, 0, axis=0)
     mota = evaluate_mota(
         gt_boxes,
+        gt_ids,
         tracked_boxes,
         iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
@@ -108,11 +114,12 @@ def test_missed_detections(gt_boxes, tracked_boxes, prev_frame_ids):
     assert mota == pytest.approx(2 / 3)
 
 
-def test_false_positives(gt_boxes, tracked_boxes, prev_frame_ids):
+def test_false_positives(gt_boxes, gt_ids, tracked_boxes, prev_frame_ids):
     # Add one extra tracked box to simulate a false positive
     tracked_boxes = np.vstack([tracked_boxes, [70, 70, 80, 80, 4]])
     mota = evaluate_mota(
         gt_boxes,
+        gt_ids,
         tracked_boxes,
         iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
@@ -122,11 +129,12 @@ def test_false_positives(gt_boxes, tracked_boxes, prev_frame_ids):
     assert mota == pytest.approx(2 / 3)
 
 
-def test_identity_switches(gt_boxes, tracked_boxes, prev_frame_ids):
+def test_identity_switches(gt_boxes, gt_ids, tracked_boxes, prev_frame_ids):
     # Change ID of one tracked box to simulate an identity switch
     tracked_boxes[0][-1] = 5
     mota = evaluate_mota(
         gt_boxes,
+        gt_ids,
         tracked_boxes,
         iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
@@ -137,12 +145,13 @@ def test_identity_switches(gt_boxes, tracked_boxes, prev_frame_ids):
 
 
 def test_low_iou_false_positive_and_missed_detection(
-    gt_boxes, tracked_boxes, prev_frame_ids
+    gt_boxes, gt_ids, tracked_boxes, prev_frame_ids
 ):
     # set one of the tracked_box to have low IOU
     tracked_boxes[1] = [30.0, 30.0, 30.0, 30.0, 2.0]
     mota = evaluate_mota(
         gt_boxes,
+        gt_ids,
         tracked_boxes,
         iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
@@ -158,6 +167,7 @@ def test_mota_zero(gt_boxes, tracked_boxes, prev_frame_ids):
     tracked_boxes[0][-1] = 4
     mota = evaluate_mota(
         gt_boxes,
+        gt_ids,
         tracked_boxes,
         iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
@@ -166,13 +176,16 @@ def test_mota_zero(gt_boxes, tracked_boxes, prev_frame_ids):
     assert mota == 0
 
 
-def test_more_than_one_switches(gt_boxes, tracked_boxes, prev_frame_ids):
+def test_more_than_one_switches(
+    gt_boxes, gt_ids, tracked_boxes, prev_frame_ids
+):
     # set one of the tracked_box to have low IOU and the other two tracked_boxes have ID switch
     tracked_boxes[1] = [30.0, 30.0, 30.0, 30.0, 2.0]
     tracked_boxes[0][-1] = 4
     tracked_boxes[2][-1] = 5
     mota = evaluate_mota(
         gt_boxes,
+        gt_ids,
         tracked_boxes,
         iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
@@ -183,7 +196,7 @@ def test_more_than_one_switches(gt_boxes, tracked_boxes, prev_frame_ids):
 
 
 def test_more_than_one_switches_same_box(
-    gt_boxes, tracked_boxes, prev_frame_ids
+    gt_boxes, gt_ids, tracked_boxes, prev_frame_ids
 ):
     # set one of the tracked_box to have low IOU and
     # the two tracked_boxes have ID switch (one is the one with low IOU)
@@ -192,6 +205,7 @@ def test_more_than_one_switches_same_box(
     tracked_boxes[2][-1] = 5
     mota = evaluate_mota(
         gt_boxes,
+        gt_ids,
         tracked_boxes,
         iou_threshold=0.1,
         prev_frame_ids=prev_frame_ids,
@@ -203,22 +217,16 @@ def test_more_than_one_switches_same_box(
 def test_get_ground_truth_data():
     test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
 
-    gt_data = get_ground_truth_data(test_csv_file)
+    gt_boxes_list, gt_ids_list = get_ground_truth_data(test_csv_file)
 
-    assert len(gt_data) == 2
+    assert isinstance(gt_boxes_list, list)
+    assert isinstance(gt_ids_list, list)
+    assert all(isinstance(arr, np.ndarray) for arr in gt_boxes_list)
+    assert all(isinstance(arr, np.ndarray) for arr in gt_ids_list)
 
-    for i, frame_data in enumerate(gt_data):
-        for j, detection_data in enumerate(frame_data):
-            assert detection_data.shape == (
-                5,
-            ), f"Detection data shape mismatch for frame {i}"
-
-    expected_ids = [2.0, 1.0]
-    for i, frame_data in enumerate(gt_data):
-        for j, detection_data in enumerate(frame_data):
-            assert (
-                detection_data[4] == expected_ids[j]
-            ), f"Failed for frame {i}, detection {j}"
+    for frame_data in gt_boxes_list:
+        if frame_data.size > 0:
+            assert frame_data.shape[1] == 4, "Bounding box shape mismatch"
 
 
 @pytest.fixture
@@ -256,45 +264,58 @@ def gt_boxes_list():
     return [np.array([]) for _ in range(2)]  # Two frames
 
 
-def test_create_gt_list(ground_truth_data, gt_boxes_list):
-    created_gt = create_gt_list(ground_truth_data, gt_boxes_list)
+@pytest.fixture
+def gt_ids_list():
+    return [np.array([]) for _ in range(2)]  # Two frames
 
-    assert isinstance(created_gt, list)
 
-    for item in created_gt:
+def test_create_gt_list(ground_truth_data, gt_boxes_list, gt_ids_list):
+    created_gt_boxes, created_gt_ids = create_gt_list(
+        ground_truth_data, gt_boxes_list, gt_ids_list
+    )
+
+    assert isinstance(created_gt_boxes, list)
+    assert isinstance(created_gt_ids, list)
+
+    for item in created_gt_boxes:
         assert isinstance(item, np.ndarray)
 
-    assert len(created_gt) == len(gt_boxes_list)
+    for item in created_gt_ids:
+        assert isinstance(item, np.ndarray)
 
-    for i, array in enumerate(created_gt):
-        for box in array:
-            assert box.shape == (5,)
+    assert len(created_gt_boxes) == len(gt_boxes_list)
+    assert len(created_gt_ids) == len(gt_ids_list)
 
-    i = 0
-    for gt_created in created_gt:
-        for frame_number in range(len(gt_created)):
-            gt_data = ground_truth_data[i]
-            gt_boxes = gt_created[frame_number]
+    # Check the bounding box and ID data
+    expected_boxes = [
+        np.array([[10, 20, 40, 60], [50, 60, 120, 140]]),
+        np.array([[100, 200, 400, 600]]),
+    ]
+    expected_ids = [
+        np.array([1, 2]),
+        np.array([1]),
+    ]
 
-            assert gt_boxes[0] == gt_data["x"]
-            assert gt_boxes[1] == gt_data["y"]
-            assert gt_boxes[2] == gt_data["x"] + gt_data["width"]
-            assert gt_boxes[3] == gt_data["y"] + gt_data["height"]
-            assert gt_boxes[4] == gt_data["id"]
-            i += 1
+    for i, (boxes, ids) in enumerate(zip(created_gt_boxes, created_gt_ids)):
+        if boxes.size > 0:
+            assert np.array_equal(boxes, expected_boxes[i])
+        if ids.size > 0:
+            assert np.array_equal(ids, expected_ids[i])
 
 
-def test_create_gt_list_invalid_data(ground_truth_data):
+def test_create_gt_list_invalid_data(
+    ground_truth_data, gt_boxes_list, gt_ids_list
+):
     invalid_data = ground_truth_data[:]
 
     del invalid_data[0]["x"]
     with pytest.raises(KeyError):
-        create_gt_list(invalid_data, [np.array([]) for _ in range(2)])
+        create_gt_list(invalid_data, gt_boxes_list, gt_ids_list)
 
 
 def test_create_gt_list_insufficient_gt_boxes_list(ground_truth_data):
     with pytest.raises(IndexError):
-        create_gt_list(ground_truth_data, [np.array([])])
+        create_gt_list(ground_truth_data, [np.array([])], [np.array([])])
 
 
 def test_extract_bounding_box_info():
