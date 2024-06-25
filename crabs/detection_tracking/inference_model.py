@@ -158,6 +158,7 @@ class DetectorInference:
     def evaluate_tracking(
         self,
         gt_boxes_list: list,
+        gt_ids_list: list,
         tracked_boxes_list: list,
         iou_threshold: float,
     ) -> list[float]:
@@ -166,9 +167,11 @@ class DetectorInference:
 
         Parameters
         ----------
-        gt_boxes_list : list[list[float]]
+        gt_boxes_list : list[float]
             List of ground truth bounding boxes for each frame.
-        tracked_boxes_list : list[list[float]]
+        gt_id_list : list[float]
+            List of ground truth ID for each frame.
+        tracked_boxes_list : list[float]
             List of tracked bounding boxes for each frame.
         iou_threshold : float
             The IoU threshold used to determine matches between ground truth and tracked boxes.
@@ -179,15 +182,18 @@ class DetectorInference:
             The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
         """
         mota_values = []
-        prev_frame_ids: Optional[list[list[int]]] = None
+        # prev_frame_ids: Optional[list[list[int]]] = None
+        prev_frame_ids: Optional[list[int]] = None
         # prev_frame_ids = None
-        for gt_boxes, tracked_boxes in zip(gt_boxes_list, tracked_boxes_list):
+        for gt_boxes, gt_ids, tracked_boxes in zip(
+            gt_boxes_list, gt_ids_list, tracked_boxes_list
+        ):
             mota = evaluate_mota(
-                gt_boxes, tracked_boxes, iou_threshold, prev_frame_ids
+                gt_boxes, gt_ids, tracked_boxes, iou_threshold, prev_frame_ids
             )
             mota_values.append(mota)
             # Update previous frame IDs for the next iteration
-            prev_frame_ids = [[box[-1] for box in tracked_boxes]]
+            prev_frame_ids = [box[-1] for box in tracked_boxes]
 
         return mota_values
 
@@ -312,9 +318,14 @@ class DetectorInference:
             frame_number += 1
 
         if self.args.gt_dir:
-            gt_boxes_list = get_ground_truth_data(self.args.gt_dir)
+            gt_boxes_list, gt_ids_list = get_ground_truth_data(
+                self.args.gt_dir
+            )
             mota_values = self.evaluate_tracking(
-                gt_boxes_list, self.tracked_list, self.iou_threshold
+                gt_boxes_list,
+                gt_ids_list,
+                self.tracked_list,
+                self.iou_threshold,
             )
             overall_mota = np.mean(mota_values)
             print("Overall MOTA:", overall_mota)

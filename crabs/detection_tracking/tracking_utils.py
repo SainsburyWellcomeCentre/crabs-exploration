@@ -2,7 +2,7 @@ import csv
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -50,8 +50,8 @@ def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
 
 
 def count_identity_switches(
-    prev_frame_ids: Optional[list[list[int]]],
-    current_frame_ids: Optional[list[list[int]]],
+    prev_frame_ids: Optional[list[int]],
+    current_frame_ids: Optional[list[int]],
     current_gt: int,
 ) -> int:
     """
@@ -75,8 +75,8 @@ def count_identity_switches(
     if prev_frame_ids is None or current_frame_ids is None:
         return 0
 
-    prev_ids = set(prev_frame_ids[0])
-    current_ids = set(current_frame_ids[0])
+    prev_ids = set(prev_frame_ids)
+    current_ids = set(current_frame_ids)
 
     # number of ID in current frame that is not in previous frame
     n_difference = len(list(current_ids - prev_ids))
@@ -92,9 +92,10 @@ def count_identity_switches(
 
 def evaluate_mota(
     gt_boxes: np.ndarray,
+    gt_ids: np.ndarray,
     tracked_boxes: np.ndarray,
     iou_threshold: float,
-    prev_frame_ids: Optional[list[list[int]]],
+    prev_frame_ids: Optional[list[int]],
 ) -> float:
     """
     Evaluate MOTA (Multiple Object Tracking Accuracy).
@@ -156,8 +157,7 @@ def evaluate_mota(
 
     missed_detections = total_gt - len(matched_gt_boxes)
 
-    tracked_ids = [[tracked_boxes[i][-1] for i in matched_tracked_boxes]]
-    print(tracked_ids)
+    tracked_ids = [tracked_boxes[i][-1] for i in matched_tracked_boxes]
 
     num_switches = count_identity_switches(
         prev_frame_ids, tracked_ids, total_gt
@@ -203,8 +203,10 @@ def extract_bounding_box_info(row: list[str]) -> Dict[str, Any]:
 
 
 def create_gt_list(
-    ground_truth_data: list[Dict[str, Any]], gt_boxes_list: list[np.ndarray]
-) -> list[np.ndarray]:
+    ground_truth_data: list[Dict[str, Any]],
+    gt_boxes_list: list[np.ndarray],
+    gt_ids_list: list[np.ndarray],
+) -> Tuple[list[np.ndarray], list[np.ndarray]]:
     """
     Creates a list of ground truth bounding boxes organized by frame number.
 
@@ -217,8 +219,10 @@ def create_gt_list(
 
     Returns
     -------
-    list[np.ndarray]:
-        A list containing ground truth bounding boxes organized by frame number.
+    Tuple[List[np.ndarray], List[np.ndarray]]:
+        A tuple containing two lists:
+        - A list of numpy arrays with ground truth bounding box data organized by frame number.
+        - A list of numpy arrays with ground truth IDs organized by frame number.
     """
     for data in ground_truth_data:
         frame_number = data["frame_number"]
@@ -228,22 +232,30 @@ def create_gt_list(
                 data["y"],
                 data["x"] + data["width"],
                 data["y"] + data["height"],
-                data["id"],
             ],
             dtype=np.float32,
         )
+        track_id = np.array([data["id"]], dtype=np.float32)
+
         if gt_boxes_list[frame_number].size == 0:
             gt_boxes_list[frame_number] = bbox.reshape(
                 1, -1
             )  # Initialize as a 2D array
+            gt_ids_list[frame_number] = track_id
         else:
             gt_boxes_list[frame_number] = np.vstack(
                 [gt_boxes_list[frame_number], bbox]
             )
-    return gt_boxes_list
+            gt_ids_list[frame_number] = np.hstack(
+                [gt_ids_list[frame_number], track_id]
+            )
+
+    return gt_boxes_list, gt_ids_list
 
 
-def get_ground_truth_data(gt_dir: str) -> list[np.ndarray]:
+def get_ground_truth_data(
+    gt_dir: str,
+) -> Tuple[list[np.ndarray], list[np.ndarray]]:
     """
     Extract ground truth bounding box data from a CSV file.
 
@@ -254,10 +266,12 @@ def get_ground_truth_data(gt_dir: str) -> list[np.ndarray]:
 
     Returns
     -------
-    list[np.ndarray]:
-        A list containing ground truth bounding box data organized by frame number.
-        The numpy array represent the coordinates and ID of the bounding box in the order:
-        x, y, x + width, y + height, ID
+    Tuple[List[np.ndarray], List[np.ndarray]]:
+        A tuple containing two lists:
+        - A list of numpy arrays with ground truth bounding box data organized by frame number.
+          Each numpy array represents the coordinates of the bounding boxes in the order:
+          x, y, x + width, y + height
+        - A list of numpy arrays with ground truth IDs organized by frame number.
     """
     ground_truth_data = []
     max_frame_number = 0
@@ -271,11 +285,16 @@ def get_ground_truth_data(gt_dir: str) -> list[np.ndarray]:
             ground_truth_data.append(data)
             max_frame_number = max(max_frame_number, data["frame_number"])
 
-    # Initialize a list to store the ground truth bounding boxes for each frame
+    # Initialize lists to store the ground truth bounding boxes and IDs for each frame
     gt_boxes_list = [np.array([]) for _ in range(max_frame_number + 1)]
+    gt_ids_list = [np.array([]) for _ in range(max_frame_number + 1)]
 
-    gt_boxes_list = create_gt_list(ground_truth_data, gt_boxes_list)
-    return gt_boxes_list
+    # Populate the gt_boxes_list and gt_id_list
+    gt_boxes_list, gt_ids_list = create_gt_list(
+        ground_truth_data, gt_boxes_list, gt_ids_list
+    )
+
+    return gt_boxes_list, gt_ids_list
 
 
 def write_tracked_bbox_to_csv(
