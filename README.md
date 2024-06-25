@@ -36,6 +36,8 @@ pip install .
 
 [TODO: add instructions for downloading the datasets from GIN: https://gin.g-node.org/SainsburyWellcomeCentre/CrabsField]
 
+- Highlight that they need to get the content to git-annex
+
 ## Basic commands
 
 ### Train a detector
