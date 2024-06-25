@@ -49,7 +49,7 @@ class FasterRCNN(LightningModule):
         self.model = self.configure_model()
 
         # save all arguments passed to __init__
-        self.save_hyperparameters()
+        self.save_hyperparameters()  #----- do we need to remove this?
 
         # metrics to log during training/val/test loop
         self.training_step_outputs = {
