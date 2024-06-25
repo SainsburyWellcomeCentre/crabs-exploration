@@ -10,78 +10,104 @@ A toolkit for detecting and tracking crabs in the field.
 
 ### Prerequisites
 
-<!-- Any tools or versions of languages needed to run code. For example specific Python or Node versions. Minimum hardware requirements also go here. -->
+We support Python 3.9 or 3.10. The package is tested on Linux and MacOS.
 
-requires Python 3.9 or 3.10 or 3.11.
+Recommended hardware requirements:
+[TODO: minimum GPU specs?]
 
 ### Installation
 
-<!-- How to build or install the application. -->
-
-### Data Structure
-
-We assume the following structure for the dataset directory:
+To install the `crabs` package, first create a Python virtual environment. You can use `conda` for this:
 
 ```
-|_ Dataset
-    |_ frames
-    |_ annotations
-        |_ VIA_JSON_combined_coco_gen.json
+conda create -n crabs-env python=3.10
+conda activate crabs-env
 ```
 
-The default name assumed for the annotations file is `VIA_JSON_combined_coco_gen.json`. This is used if no input files are passed. Other filenames (or fullpaths) can be passed with the `--annotation_files` command-line argument.
+Next, install the `crabs` package in the environment. Clone the `crabs-exploration` repository to get the source code locally, and use `pip` to install the package:
 
-### Running Locally
-
-For training
-
-```bash
-python train-detector --dataset_dirs {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_files {path_to_annotation_file.json} {path_to_optional_second_annotation_file.json}
+```
+git clone https://github.com/SainsburyWellcomeCentre/crabs-exploration.git
+cd crabs-exploration
+pip install .
 ```
 
-Example (using default annotation file and one dataset):
+### CrabsField datasets
 
-```bash
-python train-detector --dataset_dirs /home/data/dataset1
+[TODO: add instructions for downloading the datasets from GIN: https://gin.g-node.org/SainsburyWellcomeCentre/CrabsField]
+
+- Highlight that they need to get the content to git-annex
+
+## Basic commands
+
+### Train a detector
+
+To train a detector on an existing dataset, run the following command:
+
+```
+train-detector --dataset_dirs {parent_directory_of_frames_and_annotation}
 ```
 
-Example (passing the full path of the annotation file):
+This command assumes the following structure for the dataset directory:
 
-```bash
-python train-detector --dataset_dirs /home/data/dataset1 --annotation_files /home/user/annotations/annotations42.json
+```
+dataset
+|_ frames
+|_ annotations
+    |_ VIA_JSON_combined_coco_gen.json
 ```
 
-Example (passing several datasets with annotation filenames different from the default):
+The default name assumed for the annotations file is `VIA_JSON_combined_coco_gen.json`. Other filenames (or full paths to files) can be passed with the `--annotation_files` command-line argument. See the [Training Models Locally](crabs/guides/TrainingModelsLocally.md) for more details.
 
-```bash
-python train-detector --dataset_dirs /home/data/dataset1 /home/data/dataset2 --annotation_files annotation_dataset1.json annotation_dataset2.json
-```
+### Monitor a training job
 
-For evaluation
+We use MLflow [MLflow](https://mlflow.org) to monitor the training of the detector and log the hyperparameters used.
 
-```bash
-python evaluate-detector --model_dir {directory_to_saved_model} --images_dirs {parent_directory_of_frames_and_annotation} {optional_second_parent_directory_of_frames_and_annotation} --annotation_files {annotation_file.json} {optional_second_annotation_file.json}
-```
-
-Example:
-
-```bash
-python evaluate-detector --model_dir model/model_00.pt --main_dir /home/data/dataset1/frames /home/data/dataset2/frames --annotation_files /home/data/dataset1/annotations/annotation_dataset1.json /home/data/dataset2/annotations/annotation_dataset2.json
-```
-
-For running inference
-
-```bash
-python crabs/detection_tracking/inference_model.py --model_dir {oath_to_trained_model} --vid_path {path_to_input_video}
-```
-
-### MLFLow
-
-We are using [MLflow](https://mlflow.org) to log our training loss and the hyperparameters used.
-To run MLflow, execute the following command in your terminal:
+To run MLflow, execute the following command from your `crabs` environment:
 
 ```
 mlflow ui --backend-store-uri file:///<path-to-ml-runs>
 ```
 
-Replace `<path-to-ml-runs>` with the path to the directory where you want to store the MLflow output. By default, it's an `ml-runs` directory under the current working directory.
+Replace `<path-to-ml-runs>` with the path to the directory where the MLflow output is. By default, the output is in an `ml-runs` directory under the current working directory. [TODO: check this]
+
+### Evaluate a detector
+
+To evaluate a trained detector on the test fraction of the dataset, run the following command:
+
+```
+evaluate-detector --model_dir {directory_to_trained_model} --dataset_dirs {parent_directory_of_frames_and_annotation}
+```
+
+This command assumes the dataset structure described on the previous section. It will produce evaluation metrics for the detector. [TODO: which metrics? how are they exported?]
+
+### Run detector+tracking on a video
+
+To track crabs in a new video, using a trained detector + tracker, run the following command:
+
+```
+track-video --model_dir {path_to_trained_model} --vid_path {path_to_input_video}
+```
+
+This will produce a .csv file with the tracking results, that can be imported in [movement](https://github.com/neuroinformatics-unit/movement) for further analysis.
+
+### Evaluate the tracking performance
+
+To evaluate the tracking performance of a trained detector + tracker, run the following command:
+
+```
+evaluate-tracking ...
+```
+
+We currently only support the SORT tracker, and the evaluation is based on the MOTA metric.
+
+# Other common workflows
+
+[TODO: add separate guides for this? eventually make into sphinx docs?]
+
+- Prepare data for training a detector
+  - Extract frames from videos
+  - Annotate the frames with bounding boxes
+  - Combine the annotations into a single file
+- Retrain a detector on an extended dataset
+- Prepare data for labelling tracking ground truth
