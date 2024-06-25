@@ -176,51 +176,35 @@
 To check the status of your jobs in the queue
 
 ```
-
 squeue -u <username>
-
 ```
 
 To show details of the latest jobs (including completed or cancelled jobs)
 
 ```
-
 sacct -X -u <username>
-
 ```
 
 To specify columns to display use `--format` (e.g., `Elapsed`)
 
 ```
-
 sacct -X --format="JobID, JobName, Partition, Account, State, Elapsed" -u <username>
-
 ```
 
 To check specific jobs by ID
 
 ```
-
 sacct -X -j 3813494,3813184
-
 ```
 
 To check the time limit of the jobs submitted by a user (for example, `sminano`)
 
 ```
-
 squeue -u sminano --format="%i %P %j %u %T %l %C %S"
-
 ```
 
 To cancel a job
 
 ```
-
 scancel <jobID>
-
-```
-
-```
-
 ```
