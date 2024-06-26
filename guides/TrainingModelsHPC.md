@@ -101,7 +101,8 @@
      - This option is useful for interrupted training sessions or extending training duration.
      - If training is disrupted and stops mid-way, you can resume it by adding `--checkpoint_path $CKPT_PATH \` to your bash script.
      - The training will pick up from the last saved epoch and continue until the specified n_epoch.
-     - Similarly, if training completes but you want to extend it based on metric evaluations, you can increase the n_epoch value (e.g., from `n` to `n + y`). Again, use `--checkpoint_path $CKPT_PATH \` in your bash script, and training will resume from epoch `n` to `n + y`.
+     - Similarly, if training completes but you want to extend it based on metric evaluations, you can increase the n_epoch value (e.g., from `n` to `n + y`). If n_epoch is the same, no new training will be continued as the max_epoch has been reached.
+       Again, use `--checkpoint_path $CKPT_PATH \` in your bash script, and training will resume from epoch `n` to `n + y`.
      - Ensure the `save_weights_only` parameter under `checkpoint_saving` in the config file is set to `False` to resume training, as this option requires loading both weights and the training state.
 
    - Fine-tunning
