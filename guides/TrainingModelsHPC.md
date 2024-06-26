@@ -92,7 +92,26 @@
 >
 > If we launch a job and then modify the config file _before_ the job has been able to read it, we may be using an undesired version of the config in our job! To avoid this, it is best to wait until you can verify in MLflow that the job has the expected config parameters (and then edit the file to launch a new job if needed).
 
-6. **Optional argument - Optuna**
+6. **Restarting training from a checkpoint**
+
+   The `checkpoint_path` argument can be useful. There are two primary options related to checkpoints:
+
+   - Resume training
+
+     - This option is useful for interrupted training sessions or extending training duration.
+     - If training is disrupted and stops mid-way, you can resume it by adding `--checkpoint_path $CKPT_PATH \` to your bash script.
+     - The training will pick up from the last saved epoch and continue until the specified n_epoch.
+     - Similarly, if training completes but you want to extend it based on metric evaluations, you can increase the n_epoch value (e.g., from `n` to `n + y`). If n_epoch is the same, no new training will be continued as the max_epoch has been reached.
+       Again, use `--checkpoint_path $CKPT_PATH \` in your bash script, and training will resume from epoch `n` to `n + y`.
+     - Ensure the `save_weights_only` parameter under `checkpoint_saving` in the config file is set to `False` to resume training, as this option requires loading both weights and the training state.
+
+   - Fine-tunning
+     - This option is useful for fine-tuning a pre-trained model on a different dataset.
+     - It loads the weights from a checkpoint, allowing you to leverage pre-trained weights from another dataset.
+     - Add `--checkpoint_path $CKPT_PATH \` to your bash script to use this option.
+     - Set the `save_weights_only` parameter under `checkpoint_saving` in the config file to `True`, as only the weights are needed for fine-tuning.
+
+7. **Optional argument - Optuna**
 
    We have the option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework that allows us the find the best hyperparameters for our model.
 
@@ -117,7 +136,7 @@
    --optuna
    ```
 
-7. **Run the training job using the SLURM scheduler**
+8. **Run the training job using the SLURM scheduler**
 
    To launch a job, use the `sbatch` command with the relevant training script:
 
@@ -125,7 +144,7 @@
    sbatch <path-to-training-bash-script>
    ```
 
-8. **Check the status of the training job**
+9. **Check the status of the training job**
 
    To do this, we can:
 
