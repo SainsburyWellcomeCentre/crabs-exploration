@@ -43,10 +43,11 @@ class FasterRCNN(LightningModule):
         Dictionary to store test metrics.
     """
 
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict[str, Any], optuna_log=False):
         super().__init__()
         self.config = config
         self.model = self.configure_model()
+        self.optuna_log = optuna_log
 
         # save all arguments passed to __init__
         self.save_hyperparameters()
@@ -164,8 +165,9 @@ class FasterRCNN(LightningModule):
         )
 
         # we need these logs for hyperparameter optimisation
-        self.log("val_precision_optuna", val_precision)
-        self.log("val_recall_optuna", val_recall)
+        if self.optuna_log:
+            self.log("val_precision_optuna", val_precision)
+            self.log("val_recall_optuna", val_recall)
 
         # Reset metrics for next epoch
         self.validation_step_outputs = {
