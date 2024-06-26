@@ -92,7 +92,7 @@
 >
 > If we launch a job and then modify the config file _before_ the job has been able to read it, we may be using an undesired version of the config in our job! To avoid this, it is best to wait until you can verify in MLflow that the job has the expected config parameters (and then edit the file to launch a new job if needed).
 
-6. **Checkpoint**
+6. **Restarting training from a checkpoint**
 
    The `checkpoint_path` argument can be useful. There are two primary options related to checkpoints:
 
