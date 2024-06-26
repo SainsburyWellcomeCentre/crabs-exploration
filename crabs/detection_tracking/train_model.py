@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -56,6 +57,8 @@ class DectectorTrain:
         self.fast_dev_run = args.fast_dev_run
         self.limit_train_batches = args.limit_train_batches
 
+        self.checkpoint_path = args.checkpoint_path
+
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
@@ -77,16 +80,16 @@ class DectectorTrain:
         )
 
         # Define checkpointing callback for trainer
-        config = self.config.get("checkpoint_saving")
-        if config:
+        config_ckpt = self.config.get("checkpoint_saving")
+        if config_ckpt:
             checkpoint_callback = ModelCheckpoint(
                 filename="checkpoint-{epoch}",
-                every_n_epochs=config["every_n_epochs"],
-                save_top_k=config["keep_last_n_ckpts"],
+                every_n_epochs=config_ckpt["every_n_epochs"],
+                save_top_k=config_ckpt["keep_last_n_ckpts"],
                 monitor="epoch",  # monitor the metric "epoch" for selecting which checkpoints to save
                 mode="max",  # get the max of the monitored metric
-                save_last=config["save_last"],
-                save_weights_only=config["save_weights_only"],
+                save_last=config_ckpt["save_last"],
+                save_weights_only=config_ckpt["save_weights_only"],
             )
             enable_checkpointing = True
         else:
@@ -161,12 +164,58 @@ class DectectorTrain:
             self.seed_n,
         )
 
+        # Get checkpoint type
+        if self.checkpoint_path and os.path.exists(self.checkpoint_path):
+            checkpoint = torch.load(self.checkpoint_path)
+            if all(
+                [
+                    param in checkpoint
+                    for param in ["optimizer_states", "lr_schedulers"]
+                ]
+            ):
+                checkpoint_type = "full"  # for resuming training
+                logging.info(
+                    f"Resuming training from checkpoint at: {self.checkpoint_path}"
+                )
+            else:
+                checkpoint_type = "weights"  # for fine tuning
+                logging.info(
+                    f"Fine-tuning training from checkpoint at: {self.checkpoint_path}"
+                )
+        else:
+            checkpoint_type = None
+
         # Get model
-        lightning_model = FasterRCNN(self.config)
+        if checkpoint_type == "weights":
+            # Note: weights-only checkpoint contains hyperparameters
+            # see https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
+            lightning_model = FasterRCNN.load_from_checkpoint(
+                self.checkpoint_path,
+                config=self.config,
+                # overwrite checkpoint hyperparameters with config ones
+                # otherwise ckpt hyperparameters are logged to MLflow, but yaml hyperparameters are used
+            )
+        else:
+            lightning_model = FasterRCNN(self.config)
+
+        # Get trainer
+        trainer = self.setup_trainer()
 
         # Run training
-        trainer = self.setup_trainer()
-        trainer.fit(lightning_model, data_module)
+        # Resume from full checkpoint if available
+        # (automatically restores model, epoch, step, LR schedulers, etc...)
+        # https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
+        if checkpoint_type == "full":
+            trainer.fit(
+                lightning_model,
+                data_module,
+                ckpt_path=self.checkpoint_path,  # needs to having been saved with `save_weights_only=False`
+            )
+        else:  # for "weights" or no checkpoint
+            trainer.fit(
+                lightning_model,
+                data_module,
+            )
 
         return trainer
 
@@ -280,6 +329,12 @@ def train_parse_args(args):
         type=str,
         default="./ml-runs",
         help=("Path to MLflow directory. Default: ./ml-runs"),
+    )
+    parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        default=None,
+        help=("Path to checkpoint for resume training"),
     )
     parser.add_argument(
         "--optuna",

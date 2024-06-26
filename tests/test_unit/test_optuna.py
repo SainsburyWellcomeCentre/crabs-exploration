@@ -34,6 +34,7 @@ def args():
         mlflow_folder="/tmp/mlflow",
         fast_dev_run=True,
         limit_train_batches=False,
+        checkpoint_path=None,
     )
 
 
