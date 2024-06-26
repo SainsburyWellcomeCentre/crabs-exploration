@@ -102,7 +102,7 @@ class DectectorTrain:
             accelerator=self.accelerator,
             logger=mlf_logger,
             enable_checkpointing=enable_checkpointing,
-            callbacks=[checkpoint_callback] if checkpoint_callback else [],
+            callbacks= checkpoint_callback,
             fast_dev_run=self.fast_dev_run,
             limit_train_batches=self.limit_train_batches,
         )
