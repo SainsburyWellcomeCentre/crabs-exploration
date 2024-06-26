@@ -249,7 +249,7 @@ def evaluate_parse_args(args):
         "--trained_model_path",
         type=str,
         required=True,  # --------- can we pass experiment and run-id?
-        help="Location of trained model",
+        help="Location of trained model (a .ckpt file)",
     )
     parser.add_argument(
         "--config_file",
@@ -257,16 +257,17 @@ def evaluate_parse_args(args):
         default="",
         help=(
             "Location of YAML config to control evaluation. "
-            "Default: '' (the config used to train the model is used)"
+            " If None is povided, the config used to train the model is used (recommended)."
         ),
     )
     parser.add_argument(
         "--dataset_dirs",
         nargs="+",
-        default=[],  # required=True,
+        default=[],
         help=(
-            "List of dataset directories. If none provided, the same datasets used for "
-            "the provided model are used."
+            "List of dataset directories. "
+            "If none is provided (recommended), the datasets used for "
+            "the trained model are used."
         ),
     )
     parser.add_argument(
@@ -274,18 +275,19 @@ def evaluate_parse_args(args):
         nargs="+",
         default=[],
         help=(
-            "List of paths to annotation files. The full path or the filename can be provided. "
+            "List of paths to annotation files. "
+            "If none are provided (recommended), the annotations from the dataset of the trained model are used."
+            "The full path or the filename can be provided. "
             "If only filename is provided, it is assumed to be under dataset/annotations."
-            "If none is provided, the annotations from the dataset of the checkpoint are used."
         ),
     )
     parser.add_argument(
         "--seed_n",
         type=int,
-        # default=42,
         help=(
-            "Seed for dataset splits. If none is provided, the seed from the dataset of "
-            "the checkpoint is used."  # No default
+            "Seed for dataset splits. "
+            "If none is provided (recommended), the seed from the dataset of "
+            "the trained model is used."
         ),
     )
 
