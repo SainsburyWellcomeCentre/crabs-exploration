@@ -217,7 +217,7 @@ class DetectorEvaluation:
             save_images_with_boxes(
                 data_module.test_dataloader(),
                 trained_model,
-                self.config["score_threshold"],
+                self.args.viz_score_threshold,
             )
 
         # if this is a slurm job: add slurm logs as artifacts
@@ -335,6 +335,12 @@ def evaluate_parse_args(args):
         "--save_frames",
         action="store_true",
         help=("Save predicted frames with bounding boxes."),
+    )
+    parser.add_argument(
+        "--viz_score_threshold",
+        type=float,
+        default=0.5,
+        help=("Score threshold for visualisation. Default: 0.5"),
     )
     return parser.parse_args(args)
 
