@@ -1,5 +1,3 @@
----
-#----------
 # Dataset
 #-------------
 train_fraction: 0.8
@@ -12,7 +10,7 @@ num_workers: 4
 num_classes: 2
 
 # -------------------------------
-# Training/validation parameters
+# Training & validation parameters
 # -------------------------------
 n_epochs: 250
 learning_rate: 0.00005
@@ -30,6 +28,12 @@ checkpoint_saving:
   # if False, no checkpoints are added as artifacts.
   save_last: True
 
+# -----------------------
+# Evaluation parameters
+# -----------------------
+iou_threshold: 0.1
+batch_size_test: 4
+
 # -------------------
 # Data augmentation
 # -------------------
@@ -42,12 +46,6 @@ gaussian_blur_params:
   sigma:
     - 0.1
     - 5.0
-
-# -----------------------
-# Evaluation parameters
-# -----------------------
-iou_threshold: 0.1
-batch_size_test: 4
 
 # ----------------------------
 # Hyperparameter optimisation
