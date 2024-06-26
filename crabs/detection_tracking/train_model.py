@@ -199,7 +199,7 @@ class DectectorTrain:
             lightning_model = FasterRCNN(self.config)
 
         # Get trainer
-        trainer = self.setup_trainer()  # this gets yaml!
+        trainer = self.setup_trainer()  
 
         # Run training
         # Resume from full checkpoint if available
