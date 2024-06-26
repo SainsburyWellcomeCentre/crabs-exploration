@@ -102,7 +102,7 @@ class DectectorTrain:
             accelerator=self.accelerator,
             logger=mlf_logger,
             enable_checkpointing=enable_checkpointing,
-            callbacks= checkpoint_callback,
+            callbacks=checkpoint_callback,
             fast_dev_run=self.fast_dev_run,
             limit_train_batches=self.limit_train_batches,
         )
@@ -199,7 +199,7 @@ class DectectorTrain:
             lightning_model = FasterRCNN(self.config)
 
         # Get trainer
-        trainer = self.setup_trainer()  
+        trainer = self.setup_trainer()
 
         # Run training
         # Resume from full checkpoint if available
