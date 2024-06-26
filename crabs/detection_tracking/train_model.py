@@ -70,7 +70,7 @@ class DectectorTrain:
         self.run_name = set_mlflow_run_name()
 
         # Setup logger with checkpointing
-        self.mlf_logger = setup_mlflow_logger(
+        mlf_logger = setup_mlflow_logger(
             experiment_name=self.experiment_name,
             run_name=self.run_name,
             mlflow_folder=self.mlflow_folder,
@@ -100,7 +100,7 @@ class DectectorTrain:
         return lightning.Trainer(
             max_epochs=self.config["n_epochs"],
             accelerator=self.accelerator,
-            logger=self.mlf_logger,
+            logger=mlf_logger,
             enable_checkpointing=enable_checkpointing,
             callbacks=[checkpoint_callback] if checkpoint_callback else [],
             fast_dev_run=self.fast_dev_run,
