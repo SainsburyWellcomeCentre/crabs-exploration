@@ -212,9 +212,10 @@ class DetectorEvaluation:
         # Save images if required
         if self.args.save_frames:
             save_images_with_boxes(
-                data_module.test_dataloader(),
-                trained_model,
-                self.args.viz_score_threshold,
+                test_dataloader=data_module.test_dataloader(),
+                trained_model=trained_model,
+                output_dir=self.args.frames_output_dir,
+                score_threshold=self.args.frames_score_threshold,
             )
 
         # if this is a slurm job: add slurm logs as artifacts
@@ -334,10 +335,22 @@ def evaluate_parse_args(args):
         help=("Save predicted frames with bounding boxes."),
     )
     parser.add_argument(
-        "--viz_score_threshold",
+        "--frames_score_threshold",
         type=float,
         default=0.5,
-        help=("Score threshold for visualisation. Default: 0.5"),
+        help=(
+            "Score threshold for visualising detections on output frames. Default: 0.5"
+        ),
+    )
+    parser.add_argument(
+        "--frames_output_dir",
+        type=str,
+        default="",
+        help=(
+            "Output directory for the exported frames. "
+            "By default, the frames are saved in a `results_<timestamp> folder "
+            "under the current working directory."
+        ),
     )
     return parser.parse_args(args)
 
