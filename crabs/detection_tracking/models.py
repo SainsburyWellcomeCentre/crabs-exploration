@@ -8,7 +8,9 @@ from torchvision.models.detection import (
     fasterrcnn_resnet50_fpn_v2,
 )
 
-from crabs.detection_tracking.evaluate import compute_confusion_matrix_elements
+from crabs.detection_tracking.evaluate_utils import (
+    compute_confusion_matrix_elements,
+)
 
 
 class FasterRCNN(LightningModule):
