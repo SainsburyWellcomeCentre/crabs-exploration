@@ -209,7 +209,7 @@ class DectectorTrain:
             trainer.fit(
                 lightning_model,
                 data_module,
-                ckpt_path=self.checkpoint_path,  # needs to be "full" checkpoint right?
+                ckpt_path=self.checkpoint_path,  # needs to having been saved with `save_weights_only=False`
             )
         else:  # for "weights" or no checkpoint
             trainer.fit(
