@@ -49,8 +49,8 @@ def detector_train(args, config):
 def mock_core_training():
     return MagicMock(
         callback_metrics={
-            "val_precision": MagicMock(item=lambda: 0.8),
-            "val_recall": MagicMock(item=lambda: 0.7),
+            "val_precision_optuna": MagicMock(item=lambda: 0.8),
+            "val_recall_optuna": MagicMock(item=lambda: 0.7),
         }
     )
 
