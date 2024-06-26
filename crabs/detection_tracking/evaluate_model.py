@@ -246,7 +246,7 @@ def evaluate_parse_args(args):
     parser.add_argument(
         "--trained_model_path",
         type=str,
-        required=True,  # --------- can we pass experiment and run-id?
+        required=True,
         help="Location of trained model (a .ckpt file)",
     )
     parser.add_argument(
