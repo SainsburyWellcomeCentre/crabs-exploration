@@ -1,6 +1,15 @@
+import argparse
+import ast
 import logging
+from pathlib import Path
 
 import torchvision
+import yaml  # type: ignore
+
+from crabs.detection_tracking.detection_utils import (
+    prep_annotation_files,
+    prep_img_directories,
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -95,3 +104,127 @@ def compute_confusion_matrix_elements(
     precision, recall, class_stats = compute_precision_recall(class_stats)
 
     return precision, recall, class_stats
+
+
+def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
+    """Get MLflow client from ckpt path and associated params."""
+    import mlflow
+
+    # roughly assert the format of the path
+    assert Path(trained_model_path).parent.stem == "checkpoints"
+
+    # get mlruns path, experiment and run ID associated to this checkpoint
+    ckpt_mlruns_path = str(Path(trained_model_path).parents[3])
+    # ckpt_experimentID = Path(trained_model_path).parents[2].stem
+    ckpt_runID = Path(trained_model_path).parents[1].stem
+
+    # create an Mlflow client to interface with mlflow runs
+    mlrun_client = mlflow.tracking.MlflowClient(
+        tracking_uri=ckpt_mlruns_path,
+    )
+
+    # get parameters of the run
+    run = mlrun_client.get_run(ckpt_runID)
+    params = run.data.params
+
+    return params
+
+
+def get_config_from_ckpt(config_file: str, trained_model_path: str) -> dict:
+    """Get config from checkpoint if config is not passed as a CLI argument."""
+
+    # If config in CLI arguments: used passed config
+    if config_file:
+        with open(config_file, "r") as f:
+            config_dict = yaml.safe_load(f)
+
+    # If not: used config from ckpt
+    else:
+        params = get_mlflow_parameters_from_ckpt(
+            trained_model_path
+        )  # string-dict
+
+        # create a 1-level dict
+        config_dict = {}
+        for p in params:
+            if p.startswith("config"):
+                config_dict[p.replace("config/", "")] = ast.literal_eval(
+                    params[p]
+                )
+
+        # format as a 2-levels nested dict
+        # forward slashes in a key indicate a nested dict
+        for key in list(config_dict):  # list makes a copy of original keys
+            if "/" in key:
+                key_parts = key.split("/")
+                assert len(key_parts) == 2
+                if key_parts[0] not in config_dict:
+                    config_dict[key_parts[0]] = {
+                        key_parts[1]: config_dict.pop(key)
+                    }
+                else:
+                    config_dict[key_parts[0]].update(
+                        {key_parts[1]: config_dict.pop(key)}
+                    )
+
+        # check there are no more levels
+        assert all(["/" not in key for key in config_dict])
+
+    return config_dict
+
+
+def get_cli_arg_from_ckpt(
+    args: argparse.Namespace, cli_arg_str: str, trained_model_path: str
+):
+    """Get CLI argument from checkpoint if not in args."""
+    if getattr(args, cli_arg_str):
+        cli_arg = getattr(args, cli_arg_str)
+    else:
+        params = get_mlflow_parameters_from_ckpt(trained_model_path)
+        cli_arg = ast.literal_eval(params[f"cli_args/{cli_arg_str}"])
+
+    return cli_arg
+
+
+def get_img_directories_from_ckpt(
+    args: argparse.Namespace, trained_model_path: str
+) -> list[str]:
+    """Get image directories from checkpoint if not passed as CLI argument."""
+
+    # Get dataset directories from ckpt if not defined
+    dataset_dirs = get_cli_arg_from_ckpt(
+        args=args,
+        cli_arg_str="dataset_dirs",
+        trained_model_path=trained_model_path,
+    )
+
+    # Extract image directories
+    images_dirs = prep_img_directories(dataset_dirs)
+
+    return images_dirs
+
+
+def get_annotation_files_from_ckpt(
+    args: argparse.Namespace, trained_model_path: str
+) -> list[str]:
+    """Get annotation files from checkpoint if not passed as CLI argument."""
+
+    # Get path to input annotation files from ckpt if not defined
+    input_annotation_files = get_cli_arg_from_ckpt(
+        args=args,
+        cli_arg_str="annotation_files",
+        trained_model_path=trained_model_path,
+    )
+
+    # Get dataset dirs from ckpt if not defined
+    dataset_dirs = get_cli_arg_from_ckpt(
+        args=args,
+        cli_arg_str="dataset_dirs",
+        trained_model_path=trained_model_path,
+    )
+
+    # Extract annotation files
+    annotation_files = prep_annotation_files(
+        input_annotation_files, dataset_dirs
+    )
+    return annotation_files

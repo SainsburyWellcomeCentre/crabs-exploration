@@ -1,21 +1,22 @@
 import argparse
-import ast
 import logging
 import os
 import sys
-from pathlib import Path
 
 import lightning
 import torch
-import yaml  # type: ignore
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
-    prep_annotation_files,
-    prep_img_directories,
     set_mlflow_run_name,
     setup_mlflow_logger,
     slurm_logs_as_artifacts,
+)
+from crabs.detection_tracking.evaluate_utils import (
+    get_annotation_files_from_ckpt,
+    get_cli_arg_from_ckpt,
+    get_config_from_ckpt,
+    get_img_directories_from_ckpt,
 )
 from crabs.detection_tracking.models import FasterRCNN
 from crabs.detection_tracking.visualization import save_images_with_boxes
@@ -38,13 +39,26 @@ class DetectorEvaluation:
 
         # trained model
         self.trained_model_path = args.trained_model_path
+
+        # config: retreieve from ckpt if not passed as CLI argument
         self.config_file = args.config_file
-        self.get_config_from_ckpt()
+        self.config = get_config_from_ckpt(
+            config_file=self.config_file,
+            trained_model_path=self.trained_model_path,
+        )
 
         # dataset: retrieve from ckpt if no CLI arguments are passed
-        self.images_dirs = self.get_img_directories_from_ckpt()
-        self.annotation_files = self.get_annotation_files_from_ckpt()
-        self.seed_n = self.get_cli_arg_from_ckpt("seed_n")
+        self.images_dirs = get_img_directories_from_ckpt(
+            args=self.args, trained_model_path=self.trained_model_path
+        )
+        self.annotation_files = get_annotation_files_from_ckpt(
+            args=self.args, trained_model_path=self.trained_model_path
+        )
+        self.seed_n = get_cli_arg_from_ckpt(
+            args=self.args,
+            cli_arg_str="seed_n",
+            trained_model_path=self.trained_model_path,
+        )
 
         # Hardware
         self.accelerator = args.accelerator
@@ -61,105 +75,6 @@ class DetectorEvaluation:
         logging.info(f"Images directories: {self.images_dirs}")
         logging.info(f"Annotation files: {self.annotation_files}")
         logging.info(f"Seed: {self.seed_n}")
-
-    def get_mlflow_parameters_from_ckpt(self):
-        """Get MLflow client from ckpt path and associated params."""
-        import mlflow
-
-        # roughly assert the format of the path
-        assert Path(self.trained_model_path).parent.stem == "checkpoints"
-
-        # get mlruns path, experiment and run ID associated to this checkpoint
-        self.ckpt_mlruns_path = str(Path(self.trained_model_path).parents[3])
-        self.ckpt_experimentID = Path(self.trained_model_path).parents[2].stem
-        self.ckpt_runID = Path(self.trained_model_path).parents[1].stem
-
-        # create an Mlflow client to interface with mlflow runs
-        self.mlrun_client = mlflow.tracking.MlflowClient(
-            tracking_uri=self.ckpt_mlruns_path,
-        )
-
-        # get parameters of the run
-        run = self.mlrun_client.get_run(self.ckpt_runID)
-        params = run.data.params
-
-        return params
-
-    def get_config_from_ckpt(self):
-        """Get config from checkpoint if config is not passed as a CLI argument."""
-
-        # If config in CLI arguments: used passed config
-        if self.config_file:
-            with open(self.config_file, "r") as f:
-                config_dict = yaml.safe_load(f)
-
-        # If not: used config from ckpt
-        else:
-            params = self.get_mlflow_parameters_from_ckpt()  # string-dict
-
-            # create a 1-level dict
-            config_dict = {}
-            for p in params:
-                if p.startswith("config"):
-                    config_dict[p.replace("config/", "")] = ast.literal_eval(
-                        params[p]
-                    )
-
-            # format as a 2-levels nested dict
-            # forward slashes in a key indicate a nested dict
-            for key in list(config_dict):  # list makes a copy of original keys
-                if "/" in key:
-                    key_parts = key.split("/")
-                    assert len(key_parts) == 2
-                    if key_parts[0] not in config_dict:
-                        config_dict[key_parts[0]] = {
-                            key_parts[1]: config_dict.pop(key)
-                        }
-                    else:
-                        config_dict[key_parts[0]].update(
-                            {key_parts[1]: config_dict.pop(key)}
-                        )
-
-            # check there are no more levels
-            assert all(["/" not in key for key in config_dict])
-
-        self.config = config_dict
-
-    def get_cli_arg_from_ckpt(self, cli_arg_str):
-        """Get CLI argument from checkpoint if not in self.args."""
-        if getattr(self.args, cli_arg_str):
-            cli_arg = getattr(self.args, cli_arg_str)
-        else:
-            params = self.get_mlflow_parameters_from_ckpt()
-            cli_arg = ast.literal_eval(params[f"cli_args/{cli_arg_str}"])
-
-        return cli_arg
-
-    def get_img_directories_from_ckpt(self) -> list[str]:
-        """Get image directories from checkpoint if not passed as CLI argument."""
-
-        # Get dataset directories from ckpt if not defined
-        dataset_dirs = self.get_cli_arg_from_ckpt("dataset_dirs")
-
-        # Extract image directories
-        images_dirs = prep_img_directories(dataset_dirs)
-
-        return images_dirs
-
-    def get_annotation_files_from_ckpt(self) -> list[str]:
-        """Get annotation files from checkpoint if not passed as CLI argument."""
-
-        # Get path to input annotation files from ckpt if not defined
-        input_annotation_files = self.get_cli_arg_from_ckpt("annotation_files")
-
-        # Get dataset dirs from ckpt if not defined
-        dataset_dirs = self.get_cli_arg_from_ckpt("dataset_dirs")
-
-        # Extract annotation files
-        annotation_files = prep_annotation_files(
-            input_annotation_files, dataset_dirs
-        )
-        return annotation_files
 
     def setup_trainer(self):
         """
