@@ -196,7 +196,9 @@ class DectectorTrain:
                 # otherwise ckpt hyperparameters are logged to MLflow, but yaml hyperparameters are used
             )
         else:
-            lightning_model = FasterRCNN(self.config)
+            lightning_model = FasterRCNN(
+                self.config, optuna_log=self.args.optuna
+            )
 
         # Get trainer
         trainer = self.setup_trainer()
