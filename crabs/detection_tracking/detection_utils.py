@@ -1,9 +1,11 @@
 import argparse
 import datetime
+import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
+import torch
 from lightning.pytorch.loggers import MLFlowLogger
 
 DEFAULT_ANNOTATIONS_FILENAME = "VIA_JSON_combined_coco_gen.json"
@@ -240,3 +242,32 @@ def slurm_logs_as_artifacts(logger, slurm_job_id):
             logger.run_id,
             f"{log_filename}.{ext}",
         )
+
+
+def get_checkpoint_type(checkpoint_path: Optional[str]) -> Optional[str]:
+    """Get checkpoint type (full or weights) from the checkpoint path.
+
+    If checkpoint_path is None, the checkpoint type is None.
+    """
+    # Get checkpoint type
+    if checkpoint_path:
+        checkpoint = torch.load(checkpoint_path)  # fails if path doesn't exist
+        if all(
+            [
+                param in checkpoint
+                for param in ["optimizer_states", "lr_schedulers"]
+            ]
+        ):
+            checkpoint_type = "full"  # for resuming training
+            logging.info(
+                f"Resuming training from checkpoint at: {checkpoint_path}"
+            )
+        else:
+            checkpoint_type = "weights"  # for fine tuning
+            logging.info(
+                f"Fine-tuning training from checkpoint at: {checkpoint_path}"
+            )
+    else:
+        checkpoint_type = None
+
+    return checkpoint_type
