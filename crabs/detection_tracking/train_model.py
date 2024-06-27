@@ -192,6 +192,7 @@ class DectectorTrain:
             lightning_model = FasterRCNN.load_from_checkpoint(
                 self.checkpoint_path,
                 config=self.config,
+                optuna_log=self.args.optuna,
                 # overwrite checkpoint hyperparameters with config ones
                 # otherwise ckpt hyperparameters are logged to MLflow, but yaml hyperparameters are used
             )
