@@ -245,29 +245,22 @@ def slurm_logs_as_artifacts(logger, slurm_job_id):
 
 
 def get_checkpoint_type(checkpoint_path: Optional[str]) -> Optional[str]:
-    """Get checkpoint type (full or weights) from the checkpoint path.
-
-    If checkpoint_path is None, the checkpoint type is None.
-    """
-    # Get checkpoint type
-    if checkpoint_path:
-        checkpoint = torch.load(checkpoint_path)  # fails if path doesn't exist
-        if all(
-            [
-                param in checkpoint
-                for param in ["optimizer_states", "lr_schedulers"]
-            ]
-        ):
-            checkpoint_type = "full"  # for resuming training
-            logging.info(
-                f"Resuming training from checkpoint at: {checkpoint_path}"
-            )
-        else:
-            checkpoint_type = "weights"  # for fine tuning
-            logging.info(
-                f"Fine-tuning training from checkpoint at: {checkpoint_path}"
-            )
+    """Get checkpoint type (full or weights) from the checkpoint path."""
+    checkpoint = torch.load(checkpoint_path)  # fails if path doesn't exist
+    if all(
+        [
+            param in checkpoint
+            for param in ["optimizer_states", "lr_schedulers"]
+        ]
+    ):
+        checkpoint_type = "full"  # for resuming training
+        logging.info(
+            f"Resuming training from checkpoint at: {checkpoint_path}"
+        )
     else:
-        checkpoint_type = None
+        checkpoint_type = "weights"  # for fine tuning
+        logging.info(
+            f"Fine-tuning training from checkpoint at: {checkpoint_path}"
+        )
 
     return checkpoint_type

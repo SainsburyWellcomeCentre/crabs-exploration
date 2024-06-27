@@ -165,35 +165,34 @@ class DectectorTrain:
             self.seed_n,
         )
 
-        # Get checkpoint type: "full", "weights" or None
-        checkpoint_type = get_checkpoint_type(self.checkpoint_path)
-
         # Get model
-        if checkpoint_type == "weights":
-            lightning_model = FasterRCNN.load_from_checkpoint(
-                self.checkpoint_path,
-                config=self.config,  # overwrite hparams from ckpt with config
-                optuna_log=self.args.optuna,
-            )
-        else:
+        if not self.checkpoint_path:
             lightning_model = FasterRCNN(
                 self.config, optuna_log=self.args.optuna
             )
+            checkpoint_type = None
+        else:
+            checkpoint_type = get_checkpoint_type(self.checkpoint_path)
+            if checkpoint_type == "weights":
+                lightning_model = FasterRCNN.load_from_checkpoint(
+                    self.checkpoint_path,
+                    config=self.config,  # overwrite hparams from ckpt with config
+                    optuna_log=self.args.optuna,
+                )  # a 'weights' checkpoint is one saved with `save_weights_only=True`
 
         # Get trainer
         trainer = self.setup_trainer()
 
         # Run training
-        # Resume from full checkpoint if available
-        # (automatically restores model, epoch, step, LR schedulers, etc...)
-        # https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
         trainer.fit(
             lightning_model,
             data_module,
-            ckpt_path=self.checkpoint_path
-            if checkpoint_type == "full"
-            else None,
-            # needs to having been saved with `save_weights_only=False`
+            ckpt_path=(
+                self.checkpoint_path if checkpoint_type == "full" else None
+            ),
+            # a 'full' checkpoint is one saved with `save_weights_only=False`
+            # (automatically restores model, epoch, step, LR schedulers, etc...)
+            # see https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
         )
 
         return trainer
