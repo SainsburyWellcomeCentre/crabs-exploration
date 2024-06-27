@@ -50,8 +50,8 @@ def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
 
 
 def count_identity_switches(
-    prev_frame_id_map: Optional[list[int]],
-    gt_to_tracked_map: Optional[list[int]],
+    prev_frame_id_map: Optional[dict],
+    gt_to_tracked_map: dict,
 ) -> int:
     """
     Count the number of identity switches between two sets of object IDs.
@@ -73,7 +73,8 @@ def count_identity_switches(
         return 0
 
     switch_count = 0
-    set(prev_frame_id_map.values())
+    # set(prev_frame_id_map.values())
+    print(type(gt_to_tracked_map))
 
     for gt_id, current_tracked_id in gt_to_tracked_map.items():
         print(gt_id, current_tracked_id)
@@ -95,7 +96,7 @@ def evaluate_mota(
     tracked_boxes: np.ndarray,
     iou_threshold: float,
     prev_frame_id_map: Optional[dict],
-) -> float:
+) -> Tuple[float, dict]:
     """
     Evaluate MOTA (Multiple Object Tracking Accuracy).
 
@@ -171,6 +172,7 @@ def evaluate_mota(
     num_switches = count_identity_switches(
         prev_frame_id_map, gt_to_tracked_map
     )
+    print(num_switches)
 
     mota = 1 - (missed_detections + false_positive + num_switches) / total_gt
     return mota, gt_to_tracked_map
