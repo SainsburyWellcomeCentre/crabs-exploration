@@ -204,9 +204,6 @@ class DectectorTrain:
         # Get trainer
         trainer = self.setup_trainer()
 
-        # Get trainer
-        trainer = self.setup_trainer()
-
         # Run training
         # Resume from full checkpoint if available
         # (automatically restores model, epoch, step, LR schedulers, etc...)
