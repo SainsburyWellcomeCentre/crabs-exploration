@@ -12,6 +12,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
     get_checkpoint_type,
+    log_data_augm_as_artifacts,
     prep_annotation_files,
     prep_img_directories,
     set_mlflow_run_name,
@@ -183,6 +184,8 @@ class DectectorTrain:
 
         # Get trainer
         trainer = self.setup_trainer()
+        if self.args.log_data_augmentation:
+            log_data_augm_as_artifacts(trainer.logger, data_module)
 
         # Run training
         trainer.fit(
@@ -324,6 +327,11 @@ def train_parse_args(args):
         "--skip_data_augmentation",
         action="store_true",
         help="Ignore the data augmentation transforms defined in config file",
+    )
+    parser.add_argument(
+        "--log_data_augmentation",
+        action="store_true",
+        help="Log data augmentation transforms linked to datamodule as MLflow artifacts",
     )
     return parser.parse_args(args)
 
