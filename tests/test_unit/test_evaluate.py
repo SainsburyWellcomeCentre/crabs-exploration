@@ -1,6 +1,10 @@
 import torch
 
+<<<<<<< HEAD
 from crabs.detection.evaluate import (
+=======
+from crabs.detection_tracking.evaluate_utils import (
+>>>>>>> e18357e44d9c069ea617d3eaf41da3d2389812dd
     compute_confusion_matrix_elements,
     compute_precision_recall,
 )
