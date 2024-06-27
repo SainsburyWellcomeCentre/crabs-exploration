@@ -9,7 +9,6 @@ import optuna
 import torch
 import yaml  # type: ignore
 from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.loggers import MLFlowLogger
 
 from crabs.detection.datamodules import CrabsDataModule
 from crabs.detection.detection_utils import (
@@ -64,17 +63,11 @@ class DectectorTrain:
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
-    def set_run_name(self):
+    def setup_trainer(self):
+        """
+        Setup trainer with logging and checkpointing.
+        """
         self.run_name = set_mlflow_run_name()
-
-    def setup_logger(self) -> MLFlowLogger:
-        """
-        Setup MLflow logger for training, with checkpointing.
-
-        Includes logging metadata about the job (CLI arguments and SLURM job IDs).
-        """
-        # Assign run name
-        self.set_run_name()
 
         # Setup logger with checkpointing
         mlf_logger = setup_mlflow_logger(
@@ -85,15 +78,6 @@ class DectectorTrain:
             ckpt_config=self.config.get("checkpoint_saving", {}),
             # pass the checkpointing config if defined
         )
-
-        return mlf_logger
-
-    def setup_trainer(self):
-        """
-        Setup trainer with logging and checkpointing.
-        """
-        # Get MLflow logger
-        mlf_logger = self.setup_logger()
 
         # Define checkpointing callback for trainer
         config_ckpt = self.config.get("checkpoint_saving")
@@ -114,7 +98,7 @@ class DectectorTrain:
 
         # Return trainer linked to callbacks and logger
         return lightning.Trainer(
-            max_epochs=self.config["num_epochs"],
+            max_epochs=self.config["n_epochs"],
             accelerator=self.accelerator,
             logger=mlf_logger,
             enable_checkpointing=enable_checkpointing,
@@ -149,11 +133,11 @@ class DectectorTrain:
                 float(optuna_config["learning_rate"][1]),
             )
 
-        if "num_epochs" in optuna_config:
-            self.config["num_epochs"] = trial.suggest_int(
-                "num_epochs",
-                int(optuna_config["num_epochs"][0]),
-                int(optuna_config["num_epochs"][1]),
+        if "n_epochs" in optuna_config:
+            self.config["n_epochs"] = trial.suggest_int(
+                "n_epochs",
+                int(optuna_config["n_epochs"][0]),
+                int(optuna_config["n_epochs"][1]),
             )
 
         # Run training
@@ -216,9 +200,6 @@ class DectectorTrain:
             lightning_model = FasterRCNN(
                 self.config, optuna_log=self.args.optuna
             )
-
-        # Get trainer
-        trainer = self.setup_trainer()
 
         # Get trainer
         trainer = self.setup_trainer()
@@ -361,7 +342,7 @@ def train_parse_args(args):
     parser.add_argument(
         "--optuna",
         action="store_true",
-        help="Run a hyperparameter sweep using Optuna prior to training the model",
+        help="Run a hyperparameter optimisation using Optuna prior to training the model",
     )
     return parser.parse_args(args)
 

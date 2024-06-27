@@ -6,20 +6,13 @@ import sys
 import lightning
 import torch
 
-<<<<<<< HEAD:crabs/detection/evaluate_model.py
 from crabs.detection.datamodules import CrabsDataModule
 from crabs.detection.detection_utils import (
-    prep_annotation_files,
-    prep_img_directories,
-=======
-from crabs.detection_tracking.datamodules import CrabsDataModule
-from crabs.detection_tracking.detection_utils import (
->>>>>>> e18357e44d9c069ea617d3eaf41da3d2389812dd:crabs/detection_tracking/evaluate_model.py
     set_mlflow_run_name,
     setup_mlflow_logger,
     slurm_logs_as_artifacts,
 )
-from crabs.detection_tracking.evaluate_utils import (
+from crabs.detection.evaluate_utils import (
     get_annotation_files_from_ckpt,
     get_cli_arg_from_ckpt,
     get_config_from_ckpt,

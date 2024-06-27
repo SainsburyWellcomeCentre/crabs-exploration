@@ -10,7 +10,7 @@ import torch
 import torchvision.transforms.v2 as transforms
 import yaml  # type: ignore
 
-from crabs.detection_tracking.models import FasterRCNN
+from crabs.detection.models import FasterRCNN
 from crabs.tracking._utils import prep_sort
 from crabs.tracking.evaluation import Evaluation
 from crabs.tracking.inference import Inference

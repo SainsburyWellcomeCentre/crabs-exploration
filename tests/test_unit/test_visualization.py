@@ -173,8 +173,8 @@ def test_draw_detection(annotations, detections):
         ),
     ],
 )
-@patch("crabs.detection_tracking.visualization.cv2.imwrite")
-@patch("crabs.detection_tracking.visualization.os.makedirs")
+@patch("crabs.detection.visualization.cv2.imwrite")
+@patch("crabs.detection.visualization.os.makedirs")
 def test_save_images_with_boxes(
     mock_makedirs, mock_imwrite, detections, output_dir_name, expected_dir_name
 ):

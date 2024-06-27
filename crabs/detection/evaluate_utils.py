@@ -7,7 +7,7 @@ from pathlib import Path
 import torchvision
 import yaml  # type: ignore
 
-from crabs.detection_tracking.detection_utils import (
+from crabs.detection.detection_utils import (
     prep_annotation_files,
     prep_img_directories,
 )

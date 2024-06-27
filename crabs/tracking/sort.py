@@ -16,13 +16,26 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from __future__ import print_function
+from typing import Optional, Tuple
 
 import numpy as np
 from filterpy.kalman import KalmanFilter
 
 
-def linear_assignment(cost_matrix):
+def linear_assignment(cost_matrix: np.ndarray) -> np.ndarray:
+    """
+    Perform linear assignment using LAPJV algorithm if available, otherwise fallback to scipy's linear_sum_assignment.
+
+    Parameters
+    ----------
+    cost_matrix : np.ndarray
+        The cost matrix representing the assignment costs between tracks and detections.
+
+    Returns
+    -------
+    np.ndarray
+        An array containing the assignment indices. Each row corresponds to a pair (track index, detection index).
+    """
     try:
         import lap
 
@@ -35,9 +48,23 @@ def linear_assignment(cost_matrix):
         return np.array(list(zip(x, y)))
 
 
-def iou_batch(bb_test, bb_gt):
+def iou_batch(bb_test: np.ndarray, bb_gt: np.ndarray) -> np.ndarray:
     """
     From SORT: Computes IOU between two bboxes in the form [x1,y1,x2,y2]
+    Calculate Intersection over Union (IoU) between two batches of bounding boxes.
+
+    Parameters
+    ----------
+    bb_test : np.ndarray
+        Bounding boxes of shape (N, 4) representing N test boxes in format [x1, y1, x2, y2].
+    bb_gt : np.ndarray
+        Bounding boxes of shape (M, 4) representing M ground truth boxes in format [x1, y1, x2, y2].
+
+    Returns
+    -------
+    np.ndarray
+        IoU values between each pair of bounding boxes in bb_test and bb_gt.
+        The shape of the returned array is (N, M).
     """
     bb_gt = np.expand_dims(bb_gt, 0)
     bb_test = np.expand_dims(bb_test, 1)
@@ -58,11 +85,20 @@ def iou_batch(bb_test, bb_gt):
     return o
 
 
-def convert_bbox_to_z(bbox):
+def convert_bbox_to_z(bbox: np.ndarray) -> np.ndarray:
     """
-    Takes a bounding box in the form [x1,y1,x2,y2] and returns z in the form
-      [x,y,s,r] where x,y is the centre of the box and s is the scale/area and r is
-      the aspect ratio
+    Convert a bounding box from [x1, y1, x2, y2] to a representation [x, y, s, r].
+
+    Parameters
+    ----------
+    bbox : np.ndarray
+        Bounding box coordinates in the form [x1, y1, x2, y2].
+
+    Returns
+    -------
+    np.ndarray
+        Converted representation of the bounding box as [x, y, s, r].
+        T
     """
     w = bbox[2] - bbox[0]
     h = bbox[3] - bbox[1]
@@ -73,10 +109,24 @@ def convert_bbox_to_z(bbox):
     return np.array([x, y, s, r]).reshape((4, 1))
 
 
-def convert_x_to_bbox(x, score=None):
+def convert_x_to_bbox(
+    x: np.ndarray, score: Optional[float] = None
+) -> np.ndarray:
     """
-    Takes a bounding box in the centre form [x,y,s,r] and returns it in the form
-      [x1,y1,x2,y2] where x1,y1 is the top left and x2,y2 is the bottom right
+    Convert a bounding box from center form [x, y, s, r] to corner form [x1, y1, x2, y2].
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Bounding box coordinates in the center form [x, y, s, r].
+    score : float, optional
+        Optional score associated with the bounding box.
+
+    Returns
+    -------
+    np.ndarray
+        Converted representation of the bounding box as [x1, y1, x2, y2] (and score, if provided).
+        The shape of the returned array is (1, 4) or (1, 5) if score is provided.
     """
     w = np.sqrt(x[2] * x[3])
     h = x[2] / w
@@ -100,6 +150,12 @@ class KalmanBoxTracker(object):
     """
     This class represents the internal state of individual tracked objects
     observed as bbox.
+
+    Parameters
+    ----------
+    bbox : np.ndarray
+        Initial bounding box coordinates in the format [x1, y1, x2, y2].
+
     """
 
     count = 0
@@ -147,9 +203,14 @@ class KalmanBoxTracker(object):
         self.hit_streak = 0
         self.age = 0
 
-    def update(self, bbox):
+    def update(self, bbox: np.ndarray) -> None:
         """
-        Updates the state vector with observed bbox.
+        Updates the state vector with an observed bounding box.
+
+        Parameters
+        ----------
+        bbox : np.ndarray
+            Observed bounding box coordinates in the format [x1, y1, x2, y2].
         """
         self.time_since_update = 0
         self.history = []
@@ -157,9 +218,14 @@ class KalmanBoxTracker(object):
         self.hit_streak += 1
         self.kf.update(convert_bbox_to_z(bbox))
 
-    def predict(self):
+    def predict(self) -> np.ndarray:
         """
         Advances the state vector and returns the predicted bounding box estimate.
+
+        Returns
+        -------
+        np.ndarray
+            Predicted bounding box coordinates in the format [x1, y1, x2, y2].
         """
         if (self.kf.x[6] + self.kf.x[2]) <= 0:
             self.kf.x[6] *= 0.0
@@ -171,18 +237,40 @@ class KalmanBoxTracker(object):
         self.history.append(convert_x_to_bbox(self.kf.x))
         return self.history[-1]
 
-    def get_state(self):
+    def get_state(self) -> np.ndarray:
         """
         Returns the current bounding box estimate.
+
+        Returns
+        -------
+        np.ndarray
+            Current bounding box coordinates in the format [x1, y1, x2, y2].
         """
         return convert_x_to_bbox(self.kf.x)
 
 
-def associate_detections_to_trackers(detections, trackers, iou_threshold=0.3):
+def associate_detections_to_trackers(
+    detections: np.ndarray, trackers: np.ndarray, iou_threshold: float = 0.3
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Assigns detections to tracked object (both represented as bounding boxes)
+    Assigns detections to tracked objects (both represented as bounding boxes).
 
-    Returns 3 lists of matches, unmatched_detections and unmatched_trackers
+    Parameters
+    ----------
+    detections : np.ndarray
+        Array of shape (N, 4) representing N detection bounding boxes in format [x1, y1, x2, y2].
+    trackers : np.ndarray
+        Array of shape (M, 4) representing M tracker bounding boxes in format [x1, y1, x2, y2].
+    iou_threshold : float, optional
+        IOU threshold for associating detections with trackers. Default is 0.3.
+
+    Returns
+    -------
+    Tuple[np.ndarray, np.ndarray, np.ndarray]
+        Three arrays:
+        - matches: Array of shape (K, 2) containing indices of matched detections and trackers.
+        - unmatched_detections: Array of indices of detections that were not matched.
+        - unmatched_trackers: Array of indices of trackers that were not matched.
     """
     if len(trackers) == 0:
         return (
@@ -232,28 +320,44 @@ def associate_detections_to_trackers(detections, trackers, iou_threshold=0.3):
 
 
 class Sort(object):
-    def __init__(self, max_age=1, min_hits=3, iou_threshold=0.3):
+    def __init__(
+        self, max_age: int = 1, min_hits: int = 3, iou_threshold: float = 0.3
+    ):
         """
-        Sets key parameters for SORT
+        Sets key parameters for SORT.
+
+        Parameters
+        ----------
+        max_age : int, optional
+            Maximum number of frames to keep a tracker alive without an update. Default is 1.
+        min_hits : int, optional
+            Minimum number of consecutive hits to consider a tracker valid. Default is 3.
+        iou_threshold : float, optional
+            IOU threshold for associating detections with trackers. Default is 0.3.
         """
         self.max_age = max_age
         self.min_hits = min_hits
         self.iou_threshold = iou_threshold
-        self.trackers = []
+        self.trackers: list = []
         self.frame_count = 0
 
-    def update(self, dets=np.empty((0, 5))):
+    def update(self, dets: np.ndarray = np.empty((0, 5))) -> np.ndarray:
         """
-        Params:
-          dets - a numpy array of detections in the format
-          [[x1,y1,x2,y2,score],[x1,y1,x2,y2,score],...]
-        Requires: this method must be called once for each frame even with
-        empty detections (use np.empty((0, 5)) for frames without detections).
-        Returns the a similar array, where the last column is the object ID.
+        Updates the SORT tracker with new detections.
 
-        NOTE: The number of objects returned may differ from the number of
-        detections provided.
+        Parameters
+        ----------
+        dets : np.ndarray, optional
+            Array of shape (N, 5) representing N detection bounding boxes in format [x1, y1, x2, y2, score].
+            Use np.empty((0, 5)) for frames without detections.
+
+        Returns
+        -------
+        np.ndarray
+            Array of tracked objects with object IDs added as the last column.
+            The shape of the array is (M, 5), where M is the number of tracked objects.
         """
+
         self.frame_count += 1
         # get predicted locations from existing trackers.
         trks = np.zeros((len(self.trackers), 5))
