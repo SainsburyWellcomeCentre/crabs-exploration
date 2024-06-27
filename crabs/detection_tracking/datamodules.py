@@ -24,28 +24,19 @@ class CrabsDataModule(LightningDataModule):
         list_annotation_files: list[str],
         config: dict,
         split_seed: Optional[int] = None,
+        skip_data_augmentation: bool = False,
     ):
         super().__init__()
         self.list_img_dirs = list_img_dirs
         self.list_annotation_files = list_annotation_files
         self.split_seed = split_seed
         self.config = config
+        self.skip_data_augmentation = skip_data_augmentation
 
-    def _get_train_transform(self) -> torchvision.transforms:
-        """Define data augmentation transforms for the train set.
-
-        Using transforms.v2, for more details see:
-        https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
-        https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
-
-        ToDtype is the recommended replacement for ConvertImageDtype(dtype)
-        https://pytorch.org/vision/0.17/generated/torchvision.transforms.v2.ToDtype.html#torchvision.transforms.v2.ToDtype
-
-        """
-        # are transforms applied at every sample?
-        # add prob of applying any transform?
-
-        train_data_augm = []
+    def _read_transforms_from_config(
+        self, train_data_augm: list[torchvision.transforms.v2]
+    ) -> list[torchvision.transforms.v2]:
+        """Read transforms from config and add to list"""
 
         # Gaussian blur
         if self.config["gaussian_blur"]:
@@ -68,14 +59,14 @@ class CrabsDataModule(LightningDataModule):
         # RandomHorizontalFlip
         if self.config["random_horizontal_flip"]:
             hflip = transforms.RandomHorizontalFlip(
-                self.config["random_horizontal_flip"]["probability"]
+                p=self.config["random_horizontal_flip"]["probability"]
             )
             train_data_augm.append(hflip)
 
         # RandomRotation
         if self.config["random_rotation"]:
             random_rot = transforms.RandomRotation(
-                (
+                degrees=(
                     self.config["random_rotation"]["min_degrees"],
                     self.config["random_rotation"]["max_degrees"],
                 )
@@ -85,7 +76,9 @@ class CrabsDataModule(LightningDataModule):
         # RandomAdjustSharpness
         if self.config["random_adjust_sharpness"]:
             random_sharp = transforms.RandomAdjustSharpness(
-                self.config["random_adjust_sharpness"]["sharpness_factor"],
+                sharpness_factor=self.config["random_adjust_sharpness"][
+                    "sharpness_factor"
+                ],
                 p=self.config["random_adjust_sharpness"]["probability"],
             )
             train_data_augm.append(random_sharp)
@@ -93,24 +86,24 @@ class CrabsDataModule(LightningDataModule):
         # RandomAutoContrast
         if self.config["random_autocontrast"]:
             random_autocontrast = transforms.RandomAutocontrast(
-                self.config["random_autocontrast"]["probability"]
+                p=self.config["random_autocontrast"]["probability"]
             )
             train_data_augm.append(random_autocontrast)
 
         # RandomEqualize
         if self.config["random_equalize"]:
             random_equalize = transforms.RandomEqualize(
-                self.config["random_equalize"]["probability"]
+                p=self.config["random_equalize"]["probability"]
             )
             train_data_augm.append(random_equalize)
 
         # Sanitize bounding boxes:
-        # removes bboxes that are below a min_size
-        # - removes degenerate boxes that have for example X2 <= X1
+        # - removes bboxes that are below a min_size
+        # - removes degenerate bboxes (e.g., boxes that have X2 <= X1)
         # - removes bboxes with any coordinate outside image - use ClampBoundingBoxes first
         #   to avoid undesired removals.
-        # See https://pytorch.org/vision/main/generated/torchvision.transforms.v2.SanitizeBoundingBoxes.html#torchvision.transforms.v2.SanitizeBoundingBoxes
         # It is critical to call this transform if RandomIoUCrop was called
+        # See https://pytorch.org/vision/main/generated/torchvision.transforms.v2.SanitizeBoundingBoxes.html#torchvision.transforms.v2.SanitizeBoundingBoxes
         if self.config["clamp_and_sanitize_bboxes"]:
             # Clamp bounding boxes
             train_data_augm.append(transforms.ClampBoundingBoxes())
@@ -121,6 +114,29 @@ class CrabsDataModule(LightningDataModule):
                 labels_getter=None,  # only bboxes are sanitized
             )
             train_data_augm.append(sanitize)
+
+        return train_data_augm
+
+    def _get_train_transform(self) -> torchvision.transforms:
+        """Define data augmentation transforms for the train set.
+
+        Using transforms.v2, for more details see:
+        https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
+        https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
+
+        ToDtype is the recommended replacement for ConvertImageDtype(dtype)
+        https://pytorch.org/vision/0.17/generated/torchvision.transforms.v2.ToDtype.html#torchvision.transforms.v2.ToDtype
+
+        """
+        # are transforms applied at every sample?
+        # add prob of applying any transform?
+
+        train_data_augm: list[torchvision.transforms.v2] = []
+
+        if not self.skip_data_augmentation:
+            train_data_augm = self._read_transforms_from_config(
+                train_data_augm
+            )
 
         # Compose
         todtype = transforms.ToDtype(torch.float32, scale=True)
