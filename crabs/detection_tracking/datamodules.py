@@ -33,76 +33,43 @@ class CrabsDataModule(LightningDataModule):
         self.config = config
         self.skip_data_augmentation = skip_data_augmentation
 
-    def _read_transforms_from_config(
-        self, train_data_augm: list[torchvision.transforms.v2]
-    ) -> list[torchvision.transforms.v2]:
+    def _transform_str_to_operator(self, transform_str):
+        """Get transform operator from its name in snake case"""
+
+        def snake_to_camel_case(snake_str):
+            return "".join(
+                x.capitalize() for x in snake_str.lower().split("_")
+            )
+
+        transform_callable = getattr(
+            transforms, snake_to_camel_case(transform_str)
+        )
+
+        return transform_callable(**self.config[transform_str])
+
+    def _compute_list_of_transforms(self) -> list[torchvision.transforms.v2]:
         """Read transforms from config and add to list"""
 
-        # Gaussian blur
-        if "gaussian_blur" in self.config:
-            gauss = transforms.GaussianBlur(
-                kernel_size=self.config["gaussian_blur"]["kernel_size"],
-                sigma=self.config["gaussian_blur"]["sigma"],
-            )
-            train_data_augm.append(gauss)
+        # Initialise list
+        train_data_augm: list[torchvision.transforms.v2] = []
 
-        # Color jitter
-        if "color_jitter" in self.config:
-            jitter = transforms.ColorJitter(
-                brightness=self.config["color_jitter"]["brightness"],
-                contrast=self.config["color_jitter"]["contrast"],
-                saturation=self.config["color_jitter"]["saturation"],
-                hue=self.config["color_jitter"]["hue"],
-            )
-            train_data_augm.append(jitter)
-
-        # RandomHorizontalFlip
-        if "random_horizontal_flip" in self.config:
-            hflip = transforms.RandomHorizontalFlip(
-                p=self.config["random_horizontal_flip"]["probability"]
-            )
-            train_data_augm.append(hflip)
-
-        # RandomRotation
-        if "random_rotation" in self.config:
-            random_rot = transforms.RandomRotation(
-                degrees=(
-                    self.config["random_rotation"]["min_degrees"],
-                    self.config["random_rotation"]["max_degrees"],
+        # Apply standard transforms if defined
+        for transform_str in [
+            "gaussian_blur",
+            "color_jitter",
+            "random_horizontal_flip",
+            "random_rotation",
+            "random_adjust_sharpness",
+            "random_autocontrast",
+            "random_equalize",
+        ]:
+            if transform_str in self.config:
+                transform_operator = self._transform_str_to_operator(
+                    transform_str
                 )
-            )
-            train_data_augm.append(random_rot)
+                train_data_augm.append(transform_operator)
 
-        # RandomAdjustSharpness
-        if "random_adjust_sharpness" in self.config:
-            random_sharp = transforms.RandomAdjustSharpness(
-                sharpness_factor=self.config["random_adjust_sharpness"][
-                    "sharpness_factor"
-                ],
-                p=self.config["random_adjust_sharpness"]["probability"],
-            )
-            train_data_augm.append(random_sharp)
-
-        # RandomAutoContrast
-        if "random_autocontrast" in self.config:
-            random_autocontrast = transforms.RandomAutocontrast(
-                p=self.config["random_autocontrast"]["probability"]
-            )
-            train_data_augm.append(random_autocontrast)
-
-        # RandomEqualize
-        if "random_equalize" in self.config:
-            random_equalize = transforms.RandomEqualize(
-                p=self.config["random_equalize"]["probability"]
-            )
-            train_data_augm.append(random_equalize)
-
-        # Sanitize bounding boxes:
-        # - removes bboxes that are below a min_size
-        # - removes degenerate bboxes (e.g., boxes that have X2 <= X1)
-        # - removes bboxes with any coordinate outside image - use ClampBoundingBoxes first
-        #   to avoid undesired removals.
-        # It is critical to call this transform if RandomIoUCrop was called
+        # Apply clamp and sanitize bboxes if defined
         # See https://pytorch.org/vision/main/generated/torchvision.transforms.v2.SanitizeBoundingBoxes.html#torchvision.transforms.v2.SanitizeBoundingBoxes
         if "clamp_and_sanitize_bboxes" in self.config:
             # Clamp bounding boxes
@@ -128,19 +95,18 @@ class CrabsDataModule(LightningDataModule):
         https://pytorch.org/vision/0.17/generated/torchvision.transforms.v2.ToDtype.html#torchvision.transforms.v2.ToDtype
 
         """
-        # are transforms applied at every sample?
-        # add prob of applying any transform?
+        # Compute list of transforms to apply
+        if self.skip_data_augmentation:
+            train_data_augm = []
+        else:
+            train_data_augm = self._compute_list_of_transforms()
 
-        train_data_augm: list[torchvision.transforms.v2] = []
-
-        if not self.skip_data_augmentation:
-            train_data_augm = self._read_transforms_from_config(
-                train_data_augm
-            )
-
-        # Compose
-        todtype = transforms.ToDtype(torch.float32, scale=True)
-        train_transforms = [transforms.ToImage(), *train_data_augm, todtype]
+        # Define a Compose transform with them
+        train_transforms = [
+            transforms.ToImage(),
+            *train_data_augm,
+            transforms.ToDtype(torch.float32, scale=True),
+        ]
         return transforms.Compose(train_transforms)
 
     def _get_test_val_transform(self) -> torchvision.transforms:
