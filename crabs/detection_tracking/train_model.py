@@ -144,8 +144,8 @@ class DectectorTrain:
         trainer = self.core_training()
 
         # Return metric to maximise
-        val_precision = trainer.callback_metrics["val_precision"].item()
-        val_recall = trainer.callback_metrics["val_recall"].item()
+        val_precision = trainer.callback_metrics["val_precision_optuna"].item()
+        val_recall = trainer.callback_metrics["val_recall_optuna"].item()
         return (val_precision + val_recall) / 2
 
     def core_training(self) -> lightning.Trainer:
@@ -186,17 +186,7 @@ class DectectorTrain:
             checkpoint_type = None
 
         # Get model
-        if checkpoint_type == "weights":
-            # Note: weights-only checkpoint contains hyperparameters
-            # see https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
-            lightning_model = FasterRCNN.load_from_checkpoint(
-                self.checkpoint_path,
-                config=self.config,
-                # overwrite checkpoint hyperparameters with config ones
-                # otherwise ckpt hyperparameters are logged to MLflow, but yaml hyperparameters are used
-            )
-        else:
-            lightning_model = FasterRCNN(self.config)
+        lightning_model = FasterRCNN(self.config, optuna_log=self.args.optuna)
 
         # Get trainer
         trainer = self.setup_trainer()

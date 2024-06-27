@@ -1,12 +1,22 @@
+# Dataset
+#-------------
+train_fraction: 0.8
+val_over_test_fraction: 0.5
+num_workers: 4
+
+# -------------------
+# Model architecture
+# -------------------
+num_classes: 2
+
+# -------------------------------
+# Training & validation parameters
+# -------------------------------
 n_epochs: 250
 learning_rate: 0.00005
 wdecay: 0.00005
 batch_size_train: 4
-batch_size_test: 4
 batch_size_val: 4
-num_classes: 2
-train_fraction: 0.8
-val_over_test_fraction: 0.5
 checkpoint_saving:
   every_n_epochs: 50
   keep_last_n_ckpts: 5
@@ -17,8 +27,16 @@ checkpoint_saving:
   # if all, all checkpoints for every epoch are added as artifacts during training,
   # if False, no checkpoints are added as artifacts.
   save_last: True
+
+# -----------------------
+# Evaluation parameters
+# -----------------------
 iou_threshold: 0.1
-num_workers: 4
+batch_size_test: 4
+
+# -------------------
+# Data augmentation
+# -------------------
 apply_data_augm: True
 gaussian_blur:
   kernel_size:
@@ -46,6 +64,10 @@ random_equalize:
   probability: null # default is 0.5
 clamp_and_sanitize_bboxes:
   min_size: 1.0 # (px) min size for width and height of the box. Default 1.0
+
+# ----------------------------
+# Hyperparameter optimisation
+# -----------------------------
 # when we run Optuna, the n_trials and n_epochs above will be overwritten by the parameters set by Optuna
 optuna:
   # Parameters for hyperparameter optimisation with Optuna:
