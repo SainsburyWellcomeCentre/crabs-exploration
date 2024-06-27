@@ -24,14 +24,14 @@ class CrabsDataModule(LightningDataModule):
         list_annotation_files: list[str],
         config: dict,
         split_seed: Optional[int] = None,
-        skip_data_augmentation: bool = False,
+        no_data_augmentation: bool = False,
     ):
         super().__init__()
         self.list_img_dirs = list_img_dirs
         self.list_annotation_files = list_annotation_files
         self.split_seed = split_seed
         self.config = config
-        self.skip_data_augmentation = skip_data_augmentation
+        self.no_data_augmentation = no_data_augmentation
 
     def _transform_str_to_operator(self, transform_str):
         """Get transform operator from its name in snake case"""
@@ -96,7 +96,7 @@ class CrabsDataModule(LightningDataModule):
 
         """
         # Compute list of transforms to apply
-        if self.skip_data_augmentation:
+        if self.no_data_augmentation:
             train_data_augm = []
         else:
             train_data_augm = self._compute_list_of_transforms()

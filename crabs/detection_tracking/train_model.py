@@ -164,7 +164,7 @@ class DectectorTrain:
             list_annotation_files=self.annotation_files,
             split_seed=self.seed_n,
             config=self.config,
-            skip_data_augmentation=self.args.skip_data_augmentation,
+            no_data_augmentation=self.args.no_data_augmentation,
         )
 
         # Get model
@@ -324,7 +324,7 @@ def train_parse_args(args):
         help="Run a hyperparameter optimisation using Optuna prior to training the model",
     )
     parser.add_argument(
-        "--skip_data_augmentation",
+        "--no_data_augmentation",
         action="store_true",
         help="Ignore the data augmentation transforms defined in config file",
     )

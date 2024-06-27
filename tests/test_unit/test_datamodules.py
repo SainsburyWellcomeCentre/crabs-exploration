@@ -65,7 +65,7 @@ def crabs_data_module_with_data_augm(default_train_config):
         list_annotation_files=["anno1", "anno2"],
         config=default_train_config,
         split_seed=123,
-        skip_data_augmentation=False,
+        no_data_augmentation=False,
     )
 
 
@@ -76,7 +76,7 @@ def crabs_data_module_without_data_augm(default_train_config):
         list_annotation_files=["anno1", "anno2"],
         config=default_train_config,
         split_seed=123,
-        skip_data_augmentation=True,
+        no_data_augmentation=True,
     )
 
 
