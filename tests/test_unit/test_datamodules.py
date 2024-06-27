@@ -12,68 +12,166 @@ def train_config():
     return {
         "train_fraction": 0.8,
         "val_over_test_fraction": 0,
-        "transform_brightness": 0.5,
-        "transform_hue": 0.3,
-        "gaussian_blur_params": {"kernel_size": [5, 9], "sigma": [0.1, 5.0]},
+        "gaussian_blur": {"kernel_size": [5, 9], "sigma": [0.1, 5.0]},
+        "color_jitter": {
+            "brightness": 0.5,
+            "contrast": None,
+            "saturation": None,
+            "hue": 0.3,
+        },
+        "random_horizontal_flip": {"probability": 0.5},
+        "random_rotation": {"min_degrees": -10.0, "max_degrees": 10.0},
+        "random_adjust_sharpness": {
+            "sharpness_factor": 0.5,
+            "probability": 0.5,
+        },
+        "random_autocontrast": {"probability": 0.5},
+        "random_equalize": {"probability": 0.5},
+        "clamp_and_sanitize_bboxes": {"min_size": 1.0},
     }
 
 
 @pytest.fixture
-def crabs_data_module(train_config):
+def expected_data_augm_transforms():
+    return transforms.Compose(
+        [
+            transforms.ToImage(),
+            transforms.GaussianBlur(kernel_size=[5, 9], sigma=[0.1, 5.0]),
+            transforms.ColorJitter(brightness=(0.5, 1.5), hue=(-0.3, 0.3)),
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(
+                degrees=[-10.0, 10.0],
+                interpolation=transforms.InterpolationMode.NEAREST,
+                expand=False,
+                fill=0,
+            ),
+            transforms.RandomAdjustSharpness(p=0.5, sharpness_factor=0.5),
+            transforms.RandomAutocontrast(p=0.5),
+            transforms.RandomEqualize(p=0.5),
+            transforms.ClampBoundingBoxes(),
+            transforms.SanitizeBoundingBoxes(min_size=1.0, labels_getter=None),
+            transforms.ToDtype(torch.float32, scale=True),
+        ]
+    )
+
+
+@pytest.fixture
+def expected_no_data_augm_transforms():
+    return transforms.Compose(
+        [
+            transforms.ToImage(),
+            transforms.ToDtype(torch.float32, scale=True),
+        ]
+    )
+
+
+@pytest.fixture
+def crabs_data_module_with_data_augm(train_config):
     return CrabsDataModule(
         list_img_dirs=["dir1", "dir2"],
         list_annotation_files=["anno1", "anno2"],
         config=train_config,
         split_seed=123,
+        skip_data_augmentation=False,
     )
 
 
 @pytest.fixture
-def expected_transforms_train_set(train_config):
-    return [
-        transforms.ToImage(),
-        transforms.ColorJitter(
-            brightness=train_config["transform_brightness"],
-            hue=train_config["transform_hue"],
-        ),
-        transforms.GaussianBlur(
-            kernel_size=train_config["gaussian_blur_params"]["kernel_size"],
-            sigma=train_config["gaussian_blur_params"]["sigma"],
-        ),
-        transforms.ToDtype(torch.float32, scale=True),
-    ]
-
-
-def test_get_train_transform(crabs_data_module, expected_transforms_train_set):
-    train_transform = crabs_data_module._get_train_transform()
-    assert isinstance(train_transform, transforms.Compose)
-
-    assert len(train_transform.transforms) == len(
-        expected_transforms_train_set
+def crabs_data_module_without_data_augm(train_config):
+    return CrabsDataModule(
+        list_img_dirs=["dir1", "dir2"],
+        list_annotation_files=["anno1", "anno2"],
+        config=train_config,
+        split_seed=123,
+        skip_data_augmentation=True,
     )
-    for transform, expected_transform in zip(
-        train_transform.transforms, expected_transforms_train_set
+
+
+def compare_transforms_attrs_excluding(transform1, transform2, keys_to_skip):
+    """Compare the attributes of two transforms excluding those in list."""
+
+    transform1_attrs_without_fns = {
+        key: val
+        for key, val in transform1.__dict__.items()
+        if key not in keys_to_skip
+    }
+
+    transform2_attrs_without_fns = {
+        key: val
+        for key, val in transform2.__dict__.items()
+        if key not in keys_to_skip
+    }
+
+    return transform1_attrs_without_fns == transform2_attrs_without_fns
+
+
+@pytest.mark.parametrize(
+    "crabs_data_module, expected_train_transforms",
+    [
+        ("crabs_data_module_with_data_augm", "expected_data_augm_transforms"),
+        (
+            "crabs_data_module_without_data_augm",
+            "expected_no_data_augm_transforms",
+        ),
+    ],
+)
+def test_get_train_transform(
+    crabs_data_module, expected_train_transforms, request
+):
+    crabs_data_module = request.getfixturevalue(crabs_data_module)
+    expected_train_transforms = request.getfixturevalue(
+        expected_train_transforms
+    )
+
+    train_transforms = crabs_data_module._get_train_transform()
+
+    assert isinstance(train_transforms, transforms.Compose)
+
+    # assert all transforms in Compose have same attributes
+    for train_tr, expected_train_tr in zip(
+        train_transforms.transforms,
+        expected_train_transforms.transforms,
     ):
-        assert isinstance(transform, type(expected_transform))
+        # we skip the attribute `_labels_getter` of `SanitizeBoundingBoxes`
+        # because it points to a lambda function, which does not have a comparison defined.
+        assert compare_transforms_attrs_excluding(
+            transform1=train_tr,
+            transform2=expected_train_tr,
+            keys_to_skip=["_labels_getter"],
+        )
 
 
-@pytest.fixture
-def expected_transforms_test_set():
-    return [
-        transforms.ToImage(),
-        transforms.ToDtype(torch.float32, scale=True),
-    ]
+@pytest.mark.parametrize(
+    "crabs_data_module, expected_test_val_transforms",
+    [
+        (
+            "crabs_data_module_with_data_augm",
+            "expected_no_data_augm_transforms",
+        ),
+        (
+            "crabs_data_module_without_data_augm",
+            "expected_no_data_augm_transforms",
+        ),
+    ],
+)
+def test_get_test_val_transform(
+    crabs_data_module, expected_test_val_transforms, request
+):
+    crabs_data_module = request.getfixturevalue(crabs_data_module)
+    expected_test_val_transforms = request.getfixturevalue(
+        expected_test_val_transforms
+    )
 
+    test_val_transforms = crabs_data_module._get_test_val_transform()
 
-def test_get_test_transform(crabs_data_module, expected_transforms_test_set):
-    test_transform = crabs_data_module._get_test_val_transform()
-    assert isinstance(test_transform, transforms.Compose)
+    assert isinstance(test_val_transforms, transforms.Compose)
 
-    assert len(test_transform.transforms) == len(expected_transforms_test_set)
-    for transform, expected_transform in zip(
-        test_transform.transforms, expected_transforms_test_set
+    # assert all transforms in Compose have same attributes
+    for test_val_tr, expected_test_val_tr in zip(
+        test_val_transforms.transforms,
+        expected_test_val_transforms.transforms,
     ):
-        assert isinstance(transform, type(expected_transform))
+        assert test_val_tr.__dict__ == expected_test_val_tr.__dict__
 
 
 @pytest.fixture
@@ -97,7 +195,15 @@ def dummy_dataset():
     return images, annotations
 
 
-def test_collate_fn(crabs_data_module, dummy_dataset):
+@pytest.mark.parametrize(
+    "crabs_data_module",
+    [
+        "crabs_data_module_with_data_augm",
+        "crabs_data_module_without_data_augm",
+    ],
+)
+def test_collate_fn(crabs_data_module, dummy_dataset, request):
+    crabs_data_module = request.getfixturevalue(crabs_data_module)
     collated_data = crabs_data_module._collate_fn(dummy_dataset)
 
     assert len(collated_data) == len(dummy_dataset[0])  # images
