@@ -106,10 +106,10 @@ class DetectorEvaluation:
         """
         # Create datamodule
         data_module = CrabsDataModule(
-            self.images_dirs,
-            self.annotation_files,
-            self.config,
-            self.seed_n,
+            list_img_dirs=self.images_dirs,
+            list_annotation_files=self.annotation_files,
+            split_seed=self.seed_n,
+            config=self.config,
         )
 
         # Get trained model
