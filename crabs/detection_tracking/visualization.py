@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from typing import Any, Optional
 
 import cv2
@@ -152,6 +153,7 @@ def draw_detection(
 def save_images_with_boxes(
     test_dataloader: torch.utils.data.DataLoader,
     trained_model: torch.nn.Module,
+    output_dir: str,
     score_threshold: float,
 ) -> None:
     """
@@ -175,20 +177,28 @@ def save_images_with_boxes(
         if torch.cuda.is_available()
         else torch.device("cpu")
     )
+
+    trained_model.to(device)
     trained_model.eval()
-    directory = "results"
-    os.makedirs(directory, exist_ok=True)
+
+    if not output_dir:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = f"results_{timestamp}"
+    os.makedirs(output_dir, exist_ok=True)
+
     with torch.no_grad():
         imgs_id = 0
         for imgs, annotations in test_dataloader:
             imgs_id += 1
             imgs = list(img.to(device) for img in imgs)
+
             detections = trained_model(imgs)
 
             image_with_boxes = draw_detection(
                 imgs, annotations, detections, score_threshold
             )
-            cv2.imwrite(f"{directory}/imgs{imgs_id}.jpg", image_with_boxes)
+
+            cv2.imwrite(f"{output_dir}/imgs{imgs_id}.jpg", image_with_boxes)
 
 
 def plot_sample(imgs: list, row_title: Optional[str] = None, **imshow_kwargs):
