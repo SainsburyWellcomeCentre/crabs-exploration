@@ -37,7 +37,6 @@ batch_size_test: 4
 # -------------------
 # Data augmentation
 # -------------------
-apply_data_augm: True
 gaussian_blur:
   kernel_size:
     - 5
@@ -51,17 +50,17 @@ color_jitter:
   saturation: null
   hue: 0.3
 random_horizontal_flip:
-  probability: null # default is 0.5
+  p: 0.5 # probability, default is 0.5
 random_rotation:
-  min_degrees: -10.0
-  max_degrees: 10.0
+  degrees: [-10.0, 10.0]
+  # max_degrees: 10.0
 random_adjust_sharpness:
   sharpness_factor: 0.5 #  0 gives a blurred image, 1 gives the original image while 2 increases the sharpness by a factor of 2.
-  probability: null # default is 0.5
+  p: 0.5 # default is 0.5
 random_autocontrast:
-  probability: null # default is 0.5
+  p: 0.5 # default is 0.5
 random_equalize:
-  probability: null # default is 0.5
+  p: 0.5 # default is 0.5
 clamp_and_sanitize_bboxes:
   min_size: 1.0 # (px) min size for width and height of the box. Default 1.0
 
