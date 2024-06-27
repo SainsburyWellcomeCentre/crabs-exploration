@@ -1,3 +1,4 @@
+import re
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -150,6 +151,10 @@ def test_draw_detection(annotations, detections):
 
 
 @pytest.mark.parametrize(
+    "output_dir_name, expected_dir_name",
+    [("output", r"^output$"), ("", r"^results_\d{8}_\d{6}$")],
+)
+@pytest.mark.parametrize(
     "detections",
     [
         (
@@ -168,9 +173,11 @@ def test_draw_detection(annotations, detections):
         ),
     ],
 )
-@patch("cv2.imwrite")
-@patch("os.makedirs")
-def test_save_images_with_boxes(mock_makedirs, mock_imwrite, detections):
+@patch("crabs.detection_tracking.visualization.cv2.imwrite")
+@patch("crabs.detection_tracking.visualization.os.makedirs")
+def test_save_images_with_boxes(
+    mock_makedirs, mock_imwrite, detections, output_dir_name, expected_dir_name
+):
     trained_model = MagicMock()
     test_dataloader = MagicMock()
     trained_model.return_value = detections
@@ -178,8 +185,12 @@ def test_save_images_with_boxes(mock_makedirs, mock_imwrite, detections):
     save_images_with_boxes(
         test_dataloader,
         trained_model,
+        output_dir=output_dir_name,
         score_threshold=0.5,
     )
 
-    assert mock_makedirs.called_once_with("results", exist_ok=True)
+    # extract and check first positional argument to (mocked) os.makedirs
+    input_path_makedirs = mock_makedirs.call_args[0][0]
+    assert re.match(expected_dir_name, input_path_makedirs)
+
     assert mock_imwrite.call_count == len(test_dataloader)
