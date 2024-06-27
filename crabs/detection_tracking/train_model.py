@@ -186,7 +186,23 @@ class DectectorTrain:
             checkpoint_type = None
 
         # Get model
-        lightning_model = FasterRCNN(self.config, optuna_log=self.args.optuna)
+        if checkpoint_type == "weights":
+            # Note: weights-only checkpoint contains hyperparameters
+            # see https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
+            lightning_model = FasterRCNN.load_from_checkpoint(
+                self.checkpoint_path,
+                config=self.config,
+                optuna_log=self.args.optuna,
+                # overwrite checkpoint hyperparameters with config ones
+                # otherwise ckpt hyperparameters are logged to MLflow, but yaml hyperparameters are used
+            )
+        else:
+            lightning_model = FasterRCNN(
+                self.config, optuna_log=self.args.optuna
+            )
+
+        # Get trainer
+        trainer = self.setup_trainer()
 
         # Get trainer
         trainer = self.setup_trainer()
