@@ -1,34 +1,27 @@
 import random
+from pathlib import Path
 
 import pytest
 import torch
 import torchvision.transforms.v2 as transforms
+import yaml  # type: ignore
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 
+DEFAULT_CONFIG = (
+    Path(__file__).parents[2]
+    / "crabs"
+    / "detection_tracking"
+    / "config"
+    / "faster_rcnn.yaml"
+)
+
 
 @pytest.fixture
-def train_config():
-    return {
-        "train_fraction": 0.8,
-        "val_over_test_fraction": 0,
-        "gaussian_blur": {"kernel_size": [5, 9], "sigma": [0.1, 5.0]},
-        "color_jitter": {
-            "brightness": 0.5,
-            "contrast": None,
-            "saturation": None,
-            "hue": 0.3,
-        },
-        "random_horizontal_flip": {"probability": 0.5},
-        "random_rotation": {"min_degrees": -10.0, "max_degrees": 10.0},
-        "random_adjust_sharpness": {
-            "sharpness_factor": 0.5,
-            "probability": 0.5,
-        },
-        "random_autocontrast": {"probability": 0.5},
-        "random_equalize": {"probability": 0.5},
-        "clamp_and_sanitize_bboxes": {"min_size": 1.0},
-    }
+def default_train_config():
+    config_file = DEFAULT_CONFIG
+    with open(config_file, "r") as f:
+        return yaml.safe_load(f)
 
 
 @pytest.fixture
@@ -66,22 +59,22 @@ def expected_no_data_augm_transforms():
 
 
 @pytest.fixture
-def crabs_data_module_with_data_augm(train_config):
+def crabs_data_module_with_data_augm(default_train_config):
     return CrabsDataModule(
         list_img_dirs=["dir1", "dir2"],
         list_annotation_files=["anno1", "anno2"],
-        config=train_config,
+        config=default_train_config,
         split_seed=123,
         skip_data_augmentation=False,
     )
 
 
 @pytest.fixture
-def crabs_data_module_without_data_augm(train_config):
+def crabs_data_module_without_data_augm(default_train_config):
     return CrabsDataModule(
         list_img_dirs=["dir1", "dir2"],
         list_annotation_files=["anno1", "anno2"],
-        config=train_config,
+        config=default_train_config,
         split_seed=123,
         skip_data_augmentation=True,
     )
