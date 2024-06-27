@@ -39,7 +39,7 @@ class CrabsDataModule(LightningDataModule):
         """Read transforms from config and add to list"""
 
         # Gaussian blur
-        if self.config["gaussian_blur"]:
+        if "gaussian_blur" in self.config:
             gauss = transforms.GaussianBlur(
                 kernel_size=self.config["gaussian_blur"]["kernel_size"],
                 sigma=self.config["gaussian_blur"]["sigma"],
@@ -47,7 +47,7 @@ class CrabsDataModule(LightningDataModule):
             train_data_augm.append(gauss)
 
         # Color jitter
-        if self.config["color_jitter"]:
+        if "color_jitter" in self.config:
             jitter = transforms.ColorJitter(
                 brightness=self.config["color_jitter"]["brightness"],
                 contrast=self.config["color_jitter"]["contrast"],
@@ -57,14 +57,14 @@ class CrabsDataModule(LightningDataModule):
             train_data_augm.append(jitter)
 
         # RandomHorizontalFlip
-        if self.config["random_horizontal_flip"]:
+        if "random_horizontal_flip" in self.config:
             hflip = transforms.RandomHorizontalFlip(
                 p=self.config["random_horizontal_flip"]["probability"]
             )
             train_data_augm.append(hflip)
 
         # RandomRotation
-        if self.config["random_rotation"]:
+        if "random_rotation" in self.config:
             random_rot = transforms.RandomRotation(
                 degrees=(
                     self.config["random_rotation"]["min_degrees"],
@@ -74,7 +74,7 @@ class CrabsDataModule(LightningDataModule):
             train_data_augm.append(random_rot)
 
         # RandomAdjustSharpness
-        if self.config["random_adjust_sharpness"]:
+        if "random_adjust_sharpness" in self.config:
             random_sharp = transforms.RandomAdjustSharpness(
                 sharpness_factor=self.config["random_adjust_sharpness"][
                     "sharpness_factor"
@@ -84,14 +84,14 @@ class CrabsDataModule(LightningDataModule):
             train_data_augm.append(random_sharp)
 
         # RandomAutoContrast
-        if self.config["random_autocontrast"]:
+        if "random_autocontrast" in self.config:
             random_autocontrast = transforms.RandomAutocontrast(
                 p=self.config["random_autocontrast"]["probability"]
             )
             train_data_augm.append(random_autocontrast)
 
         # RandomEqualize
-        if self.config["random_equalize"]:
+        if "random_equalize" in self.config:
             random_equalize = transforms.RandomEqualize(
                 p=self.config["random_equalize"]["probability"]
             )
@@ -104,7 +104,7 @@ class CrabsDataModule(LightningDataModule):
         #   to avoid undesired removals.
         # It is critical to call this transform if RandomIoUCrop was called
         # See https://pytorch.org/vision/main/generated/torchvision.transforms.v2.SanitizeBoundingBoxes.html#torchvision.transforms.v2.SanitizeBoundingBoxes
-        if self.config["clamp_and_sanitize_bboxes"]:
+        if "clamp_and_sanitize_bboxes" in self.config:
             # Clamp bounding boxes
             train_data_augm.append(transforms.ClampBoundingBoxes())
 
