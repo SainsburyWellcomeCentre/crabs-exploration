@@ -9,19 +9,19 @@ import torch
 import yaml  # type: ignore
 from lightning.pytorch.callbacks import ModelCheckpoint
 
-from crabs.detection_tracking.datamodules import CrabsDataModule
-from crabs.detection_tracking.detection_utils import (
-    get_checkpoint_type,
-    log_data_augm_as_artifacts,
+from crabs.detector.datamodules import CrabsDataModule
+from crabs.detector.models import FasterRCNN
+from crabs.detector.utils.detection import (
     prep_annotation_files,
     prep_img_directories,
     set_mlflow_run_name,
     setup_mlflow_logger,
     slurm_logs_as_artifacts,
 )
-from crabs.detection_tracking.models import FasterRCNN
-from crabs.detection_tracking.optuna_utils import (
-    compute_optimal_hyperparameters,
+from crabs.detector.utils.hpo import compute_optimal_hyperparameters
+from crabs.detector.utils.train import (
+    get_checkpoint_type,
+    log_data_augm_as_artifacts,
 )
 
 
@@ -34,7 +34,7 @@ class DectectorTrain:
         An object containing the parsed command-line arguments.
     """
 
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace):
         # inputs
         self.args = args
         self.config_file = args.config_file
@@ -62,6 +62,9 @@ class DectectorTrain:
         self.checkpoint_path = args.checkpoint_path
 
     def load_config_yaml(self):
+        """
+        Load yaml file that contains config parameters.
+        """
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
