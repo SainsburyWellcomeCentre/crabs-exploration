@@ -1,3 +1,5 @@
+"""Utils used in evaluation"""
+
 import argparse
 import ast
 import logging
@@ -7,7 +9,7 @@ from pathlib import Path
 import torchvision
 import yaml  # type: ignore
 
-from crabs.detection.detection_utils import (
+from crabs.detector.utils.detection import (
     prep_annotation_files,
     prep_img_directories,
 )

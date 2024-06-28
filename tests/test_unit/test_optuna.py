@@ -3,10 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from crabs.detection.optuna_utils import (
-    compute_optimal_hyperparameters,
-)
-from crabs.detection.train_model import DectectorTrain
+from crabs.detector.train_model import DectectorTrain
+from crabs.detector.utils.optuna import compute_optimal_hyperparameters
 
 
 @pytest.fixture

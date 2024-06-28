@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from crabs.detection.datasets import CrabsCocoDetection
+from crabs.detector.datasets import CrabsCocoDetection
 
 DATASET_1 = "/home/data/dataset1"
 DATASET_2 = "/home/data/dataset2"

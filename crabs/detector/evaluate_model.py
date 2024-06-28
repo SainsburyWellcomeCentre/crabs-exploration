@@ -6,23 +6,23 @@ import sys
 import lightning
 import torch
 
-from crabs.detection.datamodules import CrabsDataModule
-from crabs.detection.detection_utils import (
+from crabs.detector.datamodules import CrabsDataModule
+from crabs.detector.models import FasterRCNN
+from crabs.detector.utils.detection import (
     set_mlflow_run_name,
     setup_mlflow_logger,
     slurm_logs_as_artifacts,
 )
-from crabs.detection.evaluate_utils import (
+from crabs.detector.utils.evaluate import (
     get_annotation_files_from_ckpt,
     get_cli_arg_from_ckpt,
     get_config_from_ckpt,
     get_img_directories_from_ckpt,
 )
-from crabs.detection.models import FasterRCNN
-from crabs.detection.visualization import save_images_with_boxes
+from crabs.detector.utils.visualization import save_images_with_boxes
 
 
-class DetectorEvaluation:
+class DetectorEvaluate:
     """
     A class for evaluating an object detector.
 
@@ -152,7 +152,7 @@ def main(args) -> None:
     -------
         None
     """
-    evaluator = DetectorEvaluation(args)
+    evaluator = DetectorEvaluate(args)
     evaluator.evaluate_model()
 
 

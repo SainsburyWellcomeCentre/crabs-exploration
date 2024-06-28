@@ -3,13 +3,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from crabs.tracking.evaluation import Evaluation
+from crabs.tracker.evaluate_tracker import TrackerEvaluate
 
 
 @pytest.fixture
 def evaluation():
     test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
-    return Evaluation(test_csv_file, tracked_list=[], iou_threshold=0.1)
+    return TrackerEvaluate(test_csv_file, tracked_list=[], iou_threshold=0.1)
 
 
 def test_get_ground_truth_data(evaluation):

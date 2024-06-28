@@ -6,7 +6,7 @@ import torchvision.transforms.v2 as transforms
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, random_split
 
-from crabs.detection.datasets import CrabsCocoDetection
+from crabs.detector.datasets import CrabsCocoDetection
 
 
 class CrabsDataModule(LightningDataModule):

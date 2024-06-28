@@ -4,7 +4,7 @@ import io
 import numpy as np
 import pytest
 
-from crabs.tracking._utils import (
+from crabs.tracker.utils.tracking import (
     extract_bounding_box_info,
     write_tracked_bbox_to_csv,
 )

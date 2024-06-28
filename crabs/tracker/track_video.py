@@ -10,11 +10,17 @@ import torch
 import torchvision.transforms.v2 as transforms
 import yaml  # type: ignore
 
-from crabs.detection.models import FasterRCNN
-from crabs.tracking._utils import prep_sort
-from crabs.tracking.evaluation import Evaluation
-from crabs.tracking.inference import Inference
-from crabs.tracking.sort import Sort
+from crabs.detector.models import FasterRCNN
+from crabs.tracker.evaluate_tracker import TrackerEvaluate
+from crabs.tracker.sort import Sort
+from crabs.tracker.utils.io import (
+    close_csv_file,
+    prep_csv_writer,
+    prep_video_writer,
+    release_video,
+    save_required_output,
+)
+from crabs.tracker.utils.tracking import prep_sort
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -41,23 +47,32 @@ class Tracking:
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-        self.config_file = args.config_file
-        self.video_path = args.video_path
 
+        self.config_file = args.config_file
+        self.load_config_yaml()  # TODO: load config from trained model (like in evaluation)?
+
+        self.video_path = args.video_path
         self.video_file_root = f"{Path(self.video_path).stem}"
+
         self.trained_model = self.load_trained_model()
-        self.load_config_yaml()
+
         self.sort_tracker = Sort(
             max_age=self.config["max_age"],
             min_hits=self.config["min_hits"],
             iou_threshold=self.config["iou_threshold"],
         )
-        self.inference = Inference(
-            self.args.output_dir,
-            self.video_file_root,
-            self.config["save_csv_and_frames"],
-            self.config["save_video"],
+
+        self.output_dir = self.args.output_dir
+
+        self.csv_writer, self.csv_file = prep_csv_writer(
+            self.output_dir, self.video_file_root
         )
+        # self.inference = Inference(
+        #     self.args.output_dir,
+        #     self.video_file_root,
+        #     self.config["save_csv_and_frames"],
+        #     self.config["save_video"],
+        # )
 
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
@@ -76,7 +91,7 @@ class Tracking:
             self.args.checkpoint_path
         )
         trained_model.eval()
-        trained_model.to(DEVICE)
+        trained_model.to(DEVICE)  # Should device be a CLI?
         return trained_model
 
     def load_video(self) -> None:
@@ -92,9 +107,13 @@ class Tracking:
             frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap_fps = self.video.get(cv2.CAP_PROP_FPS)
 
-            self.inference.prep_video_writer(
-                frame_width, frame_height, cap_fps
-            )
+            self.video_output = prep_video_writer(
+                self.output_dir,
+                self.video_file_root,
+                frame_width,
+                frame_height,
+                cap_fps,
+            )  ###
 
     def get_prediction(self, frame: np.ndarray) -> torch.Tensor:
         """
@@ -145,13 +164,21 @@ class Tracking:
         """
         Run object detection + tracking on the video frames.
         """
-        # Check if the ground truth file exists
+        # If we pass ground truth: run evaluation
         if self.args.gt_path and not os.path.exists(self.args.gt_path):
             logging.info(
                 f"Ground truth file {self.args.gt_path} does not exist. Exiting..."
             )
             return
+        elif self.args.gt_path:
+            evaluation = TrackerEvaluate(
+                self.args.gt_path,
+                self.tracked_list,
+                self.config["iou_threshold"],
+            )
+            evaluation.run_evaluation()
 
+        # In any case run inference
         # initialisation
         frame_number = 1
         self.tracked_list = []
@@ -171,34 +198,35 @@ class Tracking:
                 print("No frame read. Exiting...")
                 break
 
+            # predict bounding boxes
             prediction = self.get_prediction(frame)
 
             # run tracking
             tracked_boxes = self.update_tracking(prediction)
-            self.inference.save_required_output(
-                tracked_boxes, frame, frame_number
+            save_required_output(
+                self.video_file_root,
+                self.config["save_csv_and_frames"],
+                self.output_dir,
+                self.csv_writer,
+                self.config["save_video"],
+                self.video_output,
+                tracked_boxes,
+                frame,
+                frame_number,
             )
 
-            # update frame
+            # update frame number
             frame_number += 1
-
-        if self.args.gt_path:
-            evaluation = Evaluation(
-                self.args.gt_path,
-                self.tracked_list,
-                self.config["iou_threshold"],
-            )
-            evaluation.run_evaluation()
 
         # Close input video
         self.video.release()
 
         # Close outputs
         if self.config["save_video"]:
-            self.inference.release_video()
+            release_video(self.video_output)
 
         if self.config["save_csv_and_frames"]:
-            self.inference.close_csv_file()
+            close_csv_file(self.csv_file)
 
 
 def main(args) -> None:
@@ -239,7 +267,7 @@ def tracking_parse_args(args):
         type=str,
         default=str(Path(__file__).parent / "config" / "tracking_config.yaml"),
         help=(
-            "Location of YAML config to control training. "
+            "Location of YAML config to control tracking. "
             "Default: crabs-exploration/crabs/tracking/config/tracking_config.yaml"
         ),
     )
@@ -247,7 +275,7 @@ def tracking_parse_args(args):
         "--output_dir",
         type=str,
         default="crabs_track_output",
-        help="Directory to save the track output",
+        help="Directory to save the track output",  # is this a csv or a video? (or both)
     )
     parser.add_argument(
         "--max_frames_to_read",
@@ -259,7 +287,10 @@ def tracking_parse_args(args):
         "--gt_path",
         type=str,
         default=None,
-        help="Location of json file containing ground truth annotations.",
+        help=(
+            "Location of json file containing ground truth annotations (optional)."
+            "If passed, evaluation metrics are computed."
+        ),
     )
     return parser.parse_args(args)
 

@@ -1,11 +1,11 @@
+"""Utils used in training and evaluation."""
+
 import argparse
 import datetime
-import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
-import torch
 from lightning.pytorch.loggers import MLFlowLogger
 
 DEFAULT_ANNOTATIONS_FILENAME = "VIA_JSON_combined_coco_gen.json"
@@ -81,34 +81,6 @@ def prep_annotation_files(
     return annotation_files
 
 
-def set_mlflow_run_name() -> str:
-    """
-    Set MLflow run name.
-
-    Use the slurm job ID if it is a SLURM job, else use a timestamp.
-    For SLURM jobs:
-    - if it is a single job use <job_ID>, else
-    - if it is an array job use <job_ID_parent>_<task_ID>
-    """
-    # Get slurm environment variables
-    slurm_job_id = os.environ.get("SLURM_JOB_ID")
-    slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
-
-    # If job is a slurm array job
-    if slurm_job_id and slurm_array_job_id:
-        slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-        run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
-    # If job is a slurm single job
-    elif slurm_job_id:
-        run_name = f"run_slurm_{slurm_job_id}"
-    # If not a slurm job: use timestamp
-    else:
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_name = f"run_{timestamp}"
-
-    return run_name
-
-
 def log_metadata_to_logger(
     mlf_logger: MLFlowLogger,
     cli_args: argparse.Namespace,
@@ -150,6 +122,34 @@ def log_metadata_to_logger(
         mlf_logger.log_hyperparams({"slurm_job_id": slurm_job_id})
 
     return mlf_logger
+
+
+def set_mlflow_run_name() -> str:
+    """
+    Set MLflow run name.
+
+    Use the slurm job ID if it is a SLURM job, else use a timestamp.
+    For SLURM jobs:
+    - if it is a single job use <job_ID>, else
+    - if it is an array job use <job_ID_parent>_<task_ID>
+    """
+    # Get slurm environment variables
+    slurm_job_id = os.environ.get("SLURM_JOB_ID")
+    slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
+
+    # If job is a slurm array job
+    if slurm_job_id and slurm_array_job_id:
+        slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+        run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
+    # If job is a slurm single job
+    elif slurm_job_id:
+        run_name = f"run_slurm_{slurm_job_id}"
+    # If not a slurm job: use timestamp
+    else:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_name = f"run_{timestamp}"
+
+    return run_name
 
 
 def setup_mlflow_logger(
@@ -241,36 +241,4 @@ def slurm_logs_as_artifacts(logger, slurm_job_id):
         logger.experiment.log_artifact(
             logger.run_id,
             f"{log_filename}.{ext}",
-        )
-
-
-def get_checkpoint_type(checkpoint_path: Optional[str]) -> Optional[str]:
-    """Get checkpoint type (full or weights) from the checkpoint path."""
-    checkpoint = torch.load(checkpoint_path)  # fails if path doesn't exist
-    if all(
-        [
-            param in checkpoint
-            for param in ["optimizer_states", "lr_schedulers"]
-        ]
-    ):
-        checkpoint_type = "full"  # for resuming training
-        logging.info(
-            f"Resuming training from checkpoint at: {checkpoint_path}"
-        )
-    else:
-        checkpoint_type = "weights"  # for fine tuning
-        logging.info(
-            f"Fine-tuning training from checkpoint at: {checkpoint_path}"
-        )
-
-    return checkpoint_type
-
-
-def log_data_augm_as_artifacts(logger, data_module):
-    """Log data augmentation transforms as artifacts in MLflow."""
-    for transform_str in ["train_transform", "test_val_transform"]:
-        logger.experiment.log_text(
-            text=str(getattr(data_module, f"_get_{transform_str}")()),
-            artifact_file=f"{transform_str}.txt",
-            run_id=logger.run_id,
         )

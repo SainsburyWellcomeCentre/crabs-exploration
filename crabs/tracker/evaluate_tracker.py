@@ -4,10 +4,10 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 
-from crabs.tracking._utils import extract_bounding_box_info
+from crabs.tracker.utils.tracking import extract_bounding_box_info
 
 
-class Evaluation:
+class TrackerEvaluate:
     def __init__(self, gt_dir: str, tracked_list: list, iou_threshold: float):
         self.gt_dir = gt_dir
         self.tracked_list = tracked_list
