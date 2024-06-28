@@ -1,5 +1,4 @@
 import argparse
-import logging
 import os
 import sys
 from pathlib import Path
@@ -12,6 +11,8 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 
 from crabs.detection_tracking.datamodules import CrabsDataModule
 from crabs.detection_tracking.detection_utils import (
+    get_checkpoint_type,
+    log_data_augm_as_artifacts,
     prep_annotation_files,
     prep_img_directories,
     set_mlflow_run_name,
@@ -57,6 +58,7 @@ class DectectorTrain:
         self.fast_dev_run = args.fast_dev_run
         self.limit_train_batches = args.limit_train_batches
 
+        # Restart from checkpoint
         self.checkpoint_path = args.checkpoint_path
 
     def load_config_yaml(self):
@@ -158,67 +160,44 @@ class DectectorTrain:
         """
         # Create data module
         data_module = CrabsDataModule(
-            self.images_dirs,
-            self.annotation_files,
-            self.config,
-            self.seed_n,
+            list_img_dirs=self.images_dirs,
+            list_annotation_files=self.annotation_files,
+            split_seed=self.seed_n,
+            config=self.config,
+            no_data_augmentation=self.args.no_data_augmentation,
         )
 
-        # Get checkpoint type
-        if self.checkpoint_path and os.path.exists(self.checkpoint_path):
-            checkpoint = torch.load(self.checkpoint_path)
-            if all(
-                [
-                    param in checkpoint
-                    for param in ["optimizer_states", "lr_schedulers"]
-                ]
-            ):
-                checkpoint_type = "full"  # for resuming training
-                logging.info(
-                    f"Resuming training from checkpoint at: {self.checkpoint_path}"
-                )
-            else:
-                checkpoint_type = "weights"  # for fine tuning
-                logging.info(
-                    f"Fine-tuning training from checkpoint at: {self.checkpoint_path}"
-                )
-        else:
-            checkpoint_type = None
-
         # Get model
-        if checkpoint_type == "weights":
-            # Note: weights-only checkpoint contains hyperparameters
-            # see https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
-            lightning_model = FasterRCNN.load_from_checkpoint(
-                self.checkpoint_path,
-                config=self.config,
-                optuna_log=self.args.optuna,
-                # overwrite checkpoint hyperparameters with config ones
-                # otherwise ckpt hyperparameters are logged to MLflow, but yaml hyperparameters are used
-            )
-        else:
+        if not self.checkpoint_path:
             lightning_model = FasterRCNN(
                 self.config, optuna_log=self.args.optuna
             )
+            checkpoint_type = None
+        else:
+            checkpoint_type = get_checkpoint_type(self.checkpoint_path)
+            if checkpoint_type == "weights":
+                lightning_model = FasterRCNN.load_from_checkpoint(
+                    self.checkpoint_path,
+                    config=self.config,  # overwrite hparams from ckpt with config
+                    optuna_log=self.args.optuna,
+                )  # a 'weights' checkpoint is one saved with `save_weights_only=True`
 
         # Get trainer
         trainer = self.setup_trainer()
+        if self.args.log_data_augmentation:
+            log_data_augm_as_artifacts(trainer.logger, data_module)
 
         # Run training
-        # Resume from full checkpoint if available
-        # (automatically restores model, epoch, step, LR schedulers, etc...)
-        # https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
-        if checkpoint_type == "full":
-            trainer.fit(
-                lightning_model,
-                data_module,
-                ckpt_path=self.checkpoint_path,  # needs to having been saved with `save_weights_only=False`
-            )
-        else:  # for "weights" or no checkpoint
-            trainer.fit(
-                lightning_model,
-                data_module,
-            )
+        trainer.fit(
+            lightning_model,
+            data_module,
+            ckpt_path=(
+                self.checkpoint_path if checkpoint_type == "full" else None
+            ),
+            # a 'full' checkpoint is one saved with `save_weights_only=False`
+            # (automatically restores model, epoch, step, LR schedulers, etc...)
+            # see https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
+        )
 
         return trainer
 
@@ -343,6 +322,16 @@ def train_parse_args(args):
         "--optuna",
         action="store_true",
         help="Run a hyperparameter optimisation using Optuna prior to training the model",
+    )
+    parser.add_argument(
+        "--no_data_augmentation",
+        action="store_true",
+        help="Ignore the data augmentation transforms defined in config file",
+    )
+    parser.add_argument(
+        "--log_data_augmentation",
+        action="store_true",
+        help="Log data augmentation transforms linked to datamodule as MLflow artifacts",
     )
     return parser.parse_args(args)
 
