@@ -73,13 +73,9 @@ def count_identity_switches(
         return 0
 
     switch_count = 0
-    # set(prev_frame_id_map.values())
-    print(type(gt_to_tracked_map))
 
     for gt_id, current_tracked_id in gt_to_tracked_map.items():
-        print(gt_id, current_tracked_id)
         prev_tracked_id = prev_frame_id_map.get(gt_id)
-        print(prev_tracked_id)
         if prev_tracked_id is not None:
             if prev_tracked_id != current_tracked_id:
                 switch_count += 1

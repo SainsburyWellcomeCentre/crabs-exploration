@@ -109,7 +109,7 @@ def compute_confusion_matrix_elements(
 
 def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
     """Get MLflow client from ckpt path and associated params."""
-    import mlflow
+    from mlflow.tracking import MlflowClient
 
     # roughly assert the format of the path is correct
     # Note: to check if this is an MLflow chekcpoint,
@@ -129,7 +129,7 @@ def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
     ckpt_runID = Path(trained_model_path).parents[1].stem
 
     # create an Mlflow client to interface with mlflow runs
-    mlrun_client = mlflow.tracking.MlflowClient(
+    mlrun_client = MlflowClient(
         tracking_uri=ckpt_mlruns_path,
     )
 

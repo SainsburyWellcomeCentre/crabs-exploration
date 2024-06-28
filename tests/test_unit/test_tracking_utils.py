@@ -24,6 +24,7 @@ from crabs.detection_tracking.tracking_utils import (
         ({1: 1, 2: 2, 3: 3, 4: 4}, {1: 2, 2: 1, 3: 3, 4: 4}, 2),
         ({1: 1, 2: 2, 3: 3, 4: 4}, {1: 1, 2: 2, 3: 3}, 0),
         ({1: 1, 2: 2, 3: 3}, {1: 1, 2: 2, 3: 3, 4: 4}, 0),
+        ({1: 1, 2: 2, 3: 3}, {1: 1, 2: 2, 4: 3}, 1),
         ({1: 1, 2: 2, 3: 3, 4: 4}, {1: 1, 2: 2, 3: 3, 4: 5}, 1),
         ({1: 1, 2: 2, 3: 3, 4: 4}, {1: 1, 2: 2, 3: 3, 4: 5, 5: 6}, 2),
     ],
@@ -56,100 +57,174 @@ def test_calculate_iou(box1, box2, expected_iou):
     assert iou == pytest.approx(expected_iou, abs=1e-2)
 
 
-@pytest.fixture
-def gt_boxes():
-    return np.array(
-        [
-            [10.0, 10.0, 20.0, 20.0, 1.0],
-            [30.0, 30.0, 40.0, 40.0, 2.0],
-            [50.0, 50.0, 60.0, 60.0, 3.0],
-        ]
-    )
-
-
-@pytest.fixture
-def gt_ids():
-    return [1, 2, 3]
-
-
-@pytest.fixture
-def tracked_boxes():
-    return np.array(
-        [
-            [10.0, 10.0, 20.0, 20.0, 1.0],
-            [30.0, 30.0, 40.0, 40.0, 2.0],
-            [50.0, 50.0, 60.0, 60.0, 3.0],
-        ]
-    )
-
-
-@pytest.fixture
-def prev_frame_id_map():
-    return {1: 1, 2: 2, 3: 3}
-
-
-def test_perfect_tracking(gt_boxes, gt_ids, tracked_boxes, prev_frame_id_map):
-    mota, _ = evaluate_mota(
-        gt_boxes,
-        gt_ids,
-        tracked_boxes,
-        iou_threshold=0.1,
-        prev_frame_id_map=prev_frame_id_map,
-    )
-    assert mota == pytest.approx(1.0)
-    # assert mota == 0
-
-
-def test_missed_detections(gt_boxes, gt_ids, tracked_boxes, prev_frame_id_map):
-    # Remove one tracked box to simulate a missed detection
-    tracked_boxes = np.delete(tracked_boxes, 0, axis=0)
-    mota, _ = evaluate_mota(
-        gt_boxes,
-        gt_ids,
-        tracked_boxes,
-        iou_threshold=0.1,
-        prev_frame_id_map=prev_frame_id_map,
-    )
-    # mota = 1 - (1 + 0 + 0) / 3
-    assert mota < 1.0
-    assert mota == pytest.approx(2 / 3)
-
-
-def test_false_positives(gt_boxes, gt_ids, tracked_boxes, prev_frame_id_map):
-    # Add one extra tracked box to simulate a false positive
-    tracked_boxes = np.vstack([tracked_boxes, [70, 70, 80, 80, 4]])
-    mota, _ = evaluate_mota(
-        gt_boxes,
-        gt_ids,
-        tracked_boxes,
-        iou_threshold=0.1,
-        prev_frame_id_map=prev_frame_id_map,
-    )
-    # mota = 1 - (0 + 1 + 0) / 3
-    assert mota < 1.0
-    assert mota == pytest.approx(2 / 3)
-
-
-def test_identity_switches(gt_boxes, gt_ids, tracked_boxes, prev_frame_id_map):
-    # Change ID of one tracked box to simulate an identity switch
-    tracked_boxes[0][-1] = 5
-    mota, _ = evaluate_mota(
-        gt_boxes,
-        gt_ids,
-        tracked_boxes,
-        iou_threshold=0.1,
-        prev_frame_id_map=prev_frame_id_map,
-    )
-    # mota = 1 - (0 + 0 + 1) / 3
-    assert mota < 1.0
-    assert mota == pytest.approx(2 / 3)
-
-
-def test_low_iou_false_positive_and_missed_detection(
-    gt_boxes, gt_ids, tracked_boxes, prev_frame_id_map
+@pytest.mark.parametrize(
+    "gt_boxes, gt_ids, tracked_boxes, prev_frame_id_map, expected_mota",
+    [
+        # perfect tracking
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 3],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 1.0],
+                    [30.0, 30.0, 40.0, 40.0, 2.0],
+                    [50.0, 50.0, 60.0, 60.0, 3.0],
+                ]
+            ),
+            {1: 1, 2: 2, 3: 3},
+            1.0,
+        ),
+        # prev_map = {1: 1, 2: 2, 3: 3}, curr_map = {1: 1, 2: 2, 4: 4}
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 4],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 1.0],
+                    [30.0, 30.0, 40.0, 40.0, 2.0],
+                    [50.0, 50.0, 60.0, 60.0, 4.0],
+                ]
+            ),
+            {1: 1, 2: 2, 3: 3},
+            1.0,
+        ),
+        # missed detection
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 4],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 1.0],
+                    [30.0, 30.0, 40.0, 40.0, 2.0],
+                ]
+            ),
+            {1: 1, 2: 2, 3: 3},
+            2 / 3,
+        ),
+        # false positive
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 3],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 1.0],
+                    [30.0, 30.0, 40.0, 40.0, 2.0],
+                    [50.0, 50.0, 60.0, 60.0, 3.0],
+                    [70.0, 70.0, 80.0, 80.0, 4.0],
+                ]
+            ),
+            {1: 1, 2: 2, 3: 3},
+            2 / 3,
+        ),
+        # one with low IOU and another one has ID switch
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 3],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 1.0],
+                    [30.0, 30.0, 30.0, 30.0, 2.0],
+                    [50.0, 50.0, 60.0, 60.0, 4.0],
+                ]
+            ),
+            {1: 1, 2: 2, 3: 3},
+            0,
+        ),
+        # low IOU and one ID switch on the same box
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 3],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 1.0],
+                    [30.0, 30.0, 30.0, 30.0, 4.0],
+                    [50.0, 50.0, 60.0, 60.0, 3.0],
+                ]
+            ),
+            {1: 1, 2: 2, 3: 3},
+            1 / 3,
+        ),
+        # current tracked id = prev id, but != current gt id
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 4],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 1.0],
+                    [30.0, 30.0, 40.0, 40.0, 2.0],
+                    [50.0, 50.0, 60.0, 60.0, 3.0],
+                ]
+            ),
+            {1: 1, 2: 2, 3: 3},
+            2 / 3,
+        ),
+        # ID swapped
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 3],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 1.0],
+                    [30.0, 30.0, 40.0, 40.0, 3.0],
+                    [50.0, 50.0, 60.0, 60.0, 2.0],
+                ]
+            ),
+            {1: 1, 2: 2, 3: 3},
+            1 / 3,
+        ),
+    ],
+)
+def test_evaluate_mota(
+    gt_boxes, gt_ids, tracked_boxes, prev_frame_id_map, expected_mota
 ):
-    # set one of the tracked_box to have low IOU
-    tracked_boxes[1] = [30.0, 30.0, 30.0, 30.0, 2.0]
     mota, _ = evaluate_mota(
         gt_boxes,
         gt_ids,
@@ -157,62 +232,7 @@ def test_low_iou_false_positive_and_missed_detection(
         iou_threshold=0.1,
         prev_frame_id_map=prev_frame_id_map,
     )
-    # mota = 1 - (1 + 1 + 0) / 3
-    assert mota < 1.0
-    assert mota == pytest.approx(1 / 3)
-
-
-# def test_mota_zero(gt_boxes, tracked_boxes, prev_frame_id_map):
-#     # set one of the tracked_box to have low IOU and one of tracked_box has ID switch
-#     tracked_boxes[1] = [30.0, 30.0, 30.0, 30.0, 2.0]
-#     tracked_boxes[0][-1] = 4
-#     mota, _ = evaluate_mota(
-#         gt_boxes,
-#         gt_ids,
-#         tracked_boxes,
-#         iou_threshold=0.1,
-#         prev_frame_id_map=prev_frame_id_map,
-#     )
-#     # mota = 1 - (1 + 1 + 1) / 3
-#     assert mota == 0
-
-
-# def test_more_than_one_switches(
-#     gt_boxes, gt_ids, tracked_boxes, prev_frame_id_map
-# ):
-#     # set one of the tracked_box to have low IOU and the other two tracked_boxes have ID switch
-#     tracked_boxes[1] = [30.0, 30.0, 30.0, 30.0, 2.0]
-#     tracked_boxes[0][-1] = 4
-#     tracked_boxes[2][-1] = 5
-#     mota = evaluate_mota(
-#         gt_boxes,
-#         gt_ids,
-#         tracked_boxes,
-#         iou_threshold=0.1,
-#         prev_frame_id_map=prev_frame_id_map,
-#     )
-#     # mota = 1 - (1 + 1 + 2) / 3
-#     assert mota < 0
-#     assert mota == pytest.approx(-1 / 3)
-
-
-# def test_more_than_one_switches_same_box(
-#     gt_boxes, gt_ids, tracked_boxes, prev_frame_ids
-# ):
-#     # set one of the tracked_box to have low IOU and
-#     # the two tracked_boxes have ID switch (one is the one with low IOU)
-#     tracked_boxes[1] = [30.0, 30.0, 30.0, 30.0, 2.0]
-#     tracked_boxes[1][-1] = 4
-#     tracked_boxes[2][-1] = 5
-#     mota = evaluate_mota(
-#         gt_boxes,
-#         gt_ids,
-#         tracked_boxes,
-#         iou_threshold=0.1,
-#         prev_frame_ids=prev_frame_ids,
-#     )
-#     # mota = 1 - (1 + 1 + 1) / 3
-#     assert mota == 0
+    assert mota == pytest.approx(expected_mota)
 
 
 def test_get_ground_truth_data():
