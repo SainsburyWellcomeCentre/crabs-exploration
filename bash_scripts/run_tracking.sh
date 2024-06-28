@@ -33,13 +33,9 @@
  # Define variables
  # ----------------------
 
- # mlflow
- EXPERIMENT_NAME="Sept2023_inference"
- MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
-
  # video and inference config
  VIDEO_PATH=/ceph/zoo/users/sminano/crabs_tracks_label/04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test_output_video.mp4
- CONFIG_FILE=/ceph/scratch/nikkna/crabs-exploration/crabs/detection_tracking/config/inference_config.yaml
+ CONFIG_FILE=/ceph/scratch/nikkna/crabs-exploration/crabs/tracker/config/tracking_config.yaml
 
  # checkpoint
  CKPT_PATH=/ceph/scratch/nikkna/crabs-exploration/ml_ckpt/595664011639950974/e24234398e4b4d5790a9ea3599570637/checkpoints/last.ckpt
@@ -48,57 +44,57 @@
  OUTPUT_DIR=/ceph/scratch/nikkna/crabs-exploration/crabs_track_output
 
  # ground truth is available
- GT_DIR=/ceph/zoo/users/sminano/crabs_tracks_label/04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test_corrected_ST_csv.csv
+ GT_PATH=/ceph/zoo/users/sminano/crabs_tracks_label/04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test_corrected_ST_csv.csv
 
  # version of the codebase
  GIT_BRANCH=nikkna/inference_cluster
 
  # -----------------------------
-# Create virtual environment
-# -----------------------------
-module load miniconda
+ # Create virtual environment
+ # -----------------------------
+ module load miniconda
 
-# Define a environment for each job in the
-# temporary directory of the compute node
-ENV_NAME=crabs-dev-$SLURM_JOB_ID
-ENV_PREFIX=$TMPDIR/$ENV_NAME
+ # Define a environment for each job in the
+ # temporary directory of the compute node
+ ENV_NAME=crabs-dev-$SLURM_JOB_ID
+ ENV_PREFIX=$TMPDIR/$ENV_NAME
 
-# create environment
-conda create \
+ # create environment
+ conda create \
     --prefix $ENV_PREFIX \
     -y \
     python=3.10
 
-# activate environment
-conda activate $ENV_PREFIX
+ # activate environment
+ conda activate $ENV_PREFIX
 
-# install crabs package in virtual env
-python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
+ # install crabs package in virtual env
+ python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
 
-# log pip and python locations
-echo $ENV_PREFIX
-which python
-which pip
+ # log pip and python locations
+ echo $ENV_PREFIX
+ which python
+ which pip
 
-# print the version of crabs package (last number is the commit hash)
-echo "Git branch: $GIT_BRANCH"
-conda list crabs
-echo "-----"
+ # print the version of crabs package (last number is the commit hash)
+ echo "Git branch: $GIT_BRANCH"
+ conda list crabs
+ echo "-----"
 
-# ------------------------------------
-# GPU specs
-# ------------------------------------
-echo "Memory used per GPU before training"
-echo $(nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used --format=csv) #noheader
-echo "-----"
+ # ------------------------------------
+ # GPU specs
+ # ------------------------------------
+ echo "Memory used per GPU before training"
+ echo $(nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used --format=csv) #noheader
+ echo "-----"
 
  # -------------------
  # Run evaluation script
  # -------------------
- inference-detector  \
+ detect-and-track-video  \
   --checkpoint_path $CKPT_PATH \
   --video_path $VIDEO_PATH \
   --config_file $CONFIG_FILE \
   --output_dir $OUTPUT_DIR \
-  --gt_dir $GT_DIR
+  --gt_path $GT_PATH

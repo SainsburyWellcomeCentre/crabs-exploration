@@ -45,7 +45,7 @@
 
 4.  **Edit the bash script!**
 
-    For inference, we need to ensure the correct trained model is used. All the parameters used in any training is logged into `mlflow`.
+    For run the tracker, we need to ensure the correct trained model is used. All the parameters used in any training is logged into `mlflow`.
 
     We can see the perfomance of each training session by inspecting the `metrics` tab in `mlflow UI` where the `training loss`, `validation precision` and `validation recall` are plotted. The trained model (`checkpoint path`) are logged in `parameters` section under `overview` tab.
 
@@ -69,14 +69,14 @@
 
     Additionally if we have ground truth of the video we used, we may want to add that to get the tracking evaluation:
 
-    - `GT_DIR`
+    - `GT_PATH`
 
     ```
-        inference-detector  \
+    detect-and-track-video  \
     --checkpoint_path $CKPT_PATH \
     --video_path $VIDEO_PATH \
     --config_file $CONFIG_FILE \
-    --gt_dir $GT_DIR
+    --gt_PATH $GT_PATH
 
     ```
 
