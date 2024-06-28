@@ -1,17 +1,27 @@
 import csv
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 
 from crabs.tracker.utils.tracking import extract_bounding_box_info
 
 
 class TrackerEvaluate:
-    def __init__(self, gt_dir: str, tracked_list: list, iou_threshold: float):
+    def __init__(
+        self,
+        gt_dir: str,
+        tracked_list: list,
+        iou_threshold: float,
+        video_name: str,
+        ckpt_name: str,
+    ):
         self.gt_dir = gt_dir
         self.tracked_list = tracked_list
         self.iou_threshold = iou_threshold
+        self.video_name = video_name
+        self.ckpt_name = ckpt_name
 
     def create_gt_list(
         self,
@@ -88,6 +98,16 @@ class TrackerEvaluate:
 
         gt_boxes_list = self.create_gt_list(ground_truth_data, gt_boxes_list)
         return gt_boxes_list
+
+    def save_tracking_results_to_csv(
+        self,
+        track_results: dict[str, Any],
+    ) -> None:
+        track_df = pd.DataFrame(track_results)
+        output_filename = (
+            f"{self.video_name}_{self.ckpt_name}_tracking_output.csv"
+        )
+        track_df.to_csv(output_filename, index=False)
 
     def calculate_iou(self, box1: np.ndarray, box2: np.ndarray) -> float:
         """
@@ -170,7 +190,7 @@ class TrackerEvaluate:
         tracked_boxes: np.ndarray,
         iou_threshold: float,
         prev_frame_ids: Optional[list[list[int]]],
-    ) -> float:
+    ) -> Tuple[int, int, int, int, int, float]:
         """
         Evaluate MOTA (Multiple Object Tracking Accuracy).
 
@@ -189,8 +209,14 @@ class TrackerEvaluate:
 
         Returns
         -------
-        float
-            The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
+        Tuple[int, int, int, int, int, float]
+            A tuple containing:
+            - Number of true positives
+            - Number of missed detections
+            - Number of false positives
+            - Number of identity switches
+            - Total ground truth objects
+            - The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
 
         Notes
         -----
@@ -208,6 +234,7 @@ class TrackerEvaluate:
         """
         total_gt = len(gt_boxes)
         false_positive = 0
+        true_positives = 0
 
         for i, tracked_box in enumerate(tracked_boxes):
             best_iou = 0.0
@@ -219,6 +246,7 @@ class TrackerEvaluate:
                     best_iou = iou
                     best_match = j
             if best_match is not None:
+                true_positives += 1
                 # successfully found a matching ground truth box for the tracked box.
                 # set the corresponding ground truth box to None.
                 gt_boxes[best_match] = None
@@ -240,11 +268,19 @@ class TrackerEvaluate:
         mota = (
             1 - (missed_detections + false_positive + num_switches) / total_gt
         )
-        return mota
+        return (
+            true_positives,
+            missed_detections,
+            missed_detections,
+            num_switches,
+            total_gt,
+            mota,
+        )
 
     def evaluate_tracking(self, gt_boxes_list: list) -> list[float]:
         """
         Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
+        Save the output of the metric to csv file.
 
         Parameters
         ----------
@@ -260,16 +296,41 @@ class TrackerEvaluate:
         """
         mota_values = []
         prev_frame_ids: Optional[list[list[int]]] = None
-        for gt_boxes, tracked_boxes in zip(gt_boxes_list, self.tracked_list):
-            mota = self.evaluate_mota(
-                gt_boxes,
-                tracked_boxes,
-                self.iou_threshold,
-                prev_frame_ids,
+        results: dict[str, Any] = {
+            "Frame Number": [],
+            "Total Ground Truth": [],
+            "True Positives": [],
+            "Missed Detections": [],
+            "False Positives": [],
+            "Number of Switches": [],
+            "Mota": [],
+        }
+
+        for frame_idx, (gt_boxes, tracked_boxes) in zip(
+            gt_boxes_list, self.tracked_list
+        ):
+            (
+                true_positives,
+                missed_detections,
+                false_positives,
+                num_switches,
+                total_gt,
+                mota,
+            ) = self.evaluate_mota(
+                gt_boxes, tracked_boxes, self.iou_threshold, prev_frame_ids
             )
             mota_values.append(mota)
-            # Update previous frame IDs for the next iteration
-            prev_frame_ids = [[box[-1] for box in tracked_boxes]]
+            results["Frame Number"].append(frame_idx + 1)
+            results["Total Ground Truth"].append(total_gt)
+            results["True Positives"].append(true_positives)
+            results["Missed Detections"].append(missed_detections)
+            results["False Positives"].append(false_positives)
+            results["Number of Switches"].append(num_switches)
+            results["Mota"].append(mota)
+
+            prev_frame_ids = [[int(box[-1]) for box in tracked_boxes]]
+
+        self.save_tracking_results_to_csv(results)
 
         return mota_values
 
