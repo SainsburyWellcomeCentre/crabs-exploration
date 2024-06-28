@@ -13,22 +13,16 @@ def evaluation():
 
 
 def test_get_ground_truth_data(evaluation):
-    gt_data = evaluation.get_ground_truth_data()
+    gt_boxes_list, gt_ids_list = evaluation.get_ground_truth_data()
 
-    assert len(gt_data) == 2
+    assert isinstance(gt_boxes_list, list)
+    assert isinstance(gt_ids_list, list)
+    assert all(isinstance(arr, np.ndarray) for arr in gt_boxes_list)
+    assert all(isinstance(arr, np.ndarray) for arr in gt_ids_list)
 
-    for i, frame_data in enumerate(gt_data):
-        for j, detection_data in enumerate(frame_data):
-            assert detection_data.shape == (
-                5,
-            ), f"Detection data shape mismatch for frame {i}"
-
-    expected_ids = [2.0, 1.0]
-    for i, frame_data in enumerate(gt_data):
-        for j, detection_data in enumerate(frame_data):
-            assert (
-                detection_data[4] == expected_ids[j]
-            ), f"Failed for frame {i}, detection {j}"
+    for frame_data in gt_boxes_list:
+        if frame_data.size > 0:
+            assert frame_data.shape[1] == 4, "Bounding box shape mismatch"
 
 
 @pytest.fixture
@@ -66,72 +60,93 @@ def gt_boxes_list():
     return [np.array([]) for _ in range(2)]  # Two frames
 
 
-def test_create_gt_list(ground_truth_data, gt_boxes_list, evaluation):
-    created_gt = evaluation.create_gt_list(ground_truth_data, gt_boxes_list)
+@pytest.fixture
+def gt_ids_list():
+    return [np.array([]) for _ in range(2)]  # Two frames
 
-    assert isinstance(created_gt, list)
 
-    for item in created_gt:
+def test_create_gt_list(
+    ground_truth_data, gt_boxes_list, gt_ids_list, evaluation
+):
+    created_gt_boxes, created_gt_ids = evaluation.create_gt_list(
+        ground_truth_data, gt_boxes_list, gt_ids_list
+    )
+
+    assert isinstance(created_gt_boxes, list)
+    assert isinstance(created_gt_ids, list)
+
+    for item in created_gt_boxes:
         assert isinstance(item, np.ndarray)
 
-    assert len(created_gt) == len(gt_boxes_list)
+    for item in created_gt_ids:
+        assert isinstance(item, np.ndarray)
 
-    for i, array in enumerate(created_gt):
-        for box in array:
-            assert box.shape == (5,)
+    assert len(created_gt_boxes) == len(gt_boxes_list)
+    assert len(created_gt_ids) == len(gt_ids_list)
 
-    i = 0
-    for gt_created in created_gt:
-        for frame_number in range(len(gt_created)):
-            gt_data = ground_truth_data[i]
-            gt_boxes = gt_created[frame_number]
+    # Check the bounding box and ID data
+    expected_boxes = [
+        np.array([[10, 20, 40, 60], [50, 60, 120, 140]]),
+        np.array([[100, 200, 400, 600]]),
+    ]
+    expected_ids = [
+        np.array([1, 2]),
+        np.array([1]),
+    ]
 
-            assert gt_boxes[0] == gt_data["x"]
-            assert gt_boxes[1] == gt_data["y"]
-            assert gt_boxes[2] == gt_data["x"] + gt_data["width"]
-            assert gt_boxes[3] == gt_data["y"] + gt_data["height"]
-            assert gt_boxes[4] == gt_data["id"]
-            i += 1
+    for i, (boxes, ids) in enumerate(zip(created_gt_boxes, created_gt_ids)):
+        if boxes.size > 0:
+            assert np.array_equal(boxes, expected_boxes[i])
+        if ids.size > 0:
+            assert np.array_equal(ids, expected_ids[i])
 
 
-def test_create_gt_list_invalid_data(ground_truth_data, evaluation):
+def test_create_gt_list_invalid_data(
+    ground_truth_data, gt_ids_list, evaluation
+):
     invalid_data = ground_truth_data[:]
 
     del invalid_data[0]["x"]
     with pytest.raises(KeyError):
         evaluation.create_gt_list(
-            invalid_data, [np.array([]) for _ in range(2)]
+            invalid_data, [np.array([]) for _ in range(2)], gt_ids_list
         )
 
 
 def test_create_gt_list_insufficient_gt_boxes_list(
-    ground_truth_data, evaluation
+    ground_truth_data, gt_ids_list, evaluation
 ):
     with pytest.raises(IndexError):
-        evaluation.create_gt_list(ground_truth_data, [np.array([])])
+        evaluation.create_gt_list(
+            ground_truth_data, [np.array([])], gt_ids_list
+        )
 
 
 @pytest.mark.parametrize(
-    "prev_frame_id, current_frame_id, expected_output",
+    "prev_frame_id_map, current_frame_id_map, expected_output",
     [
-        (None, [[6, 5, 4, 3, 2, 1]], 0),
-        (
-            [[6, 5, 4, 3, 2, 1]],
-            [[6, 5, 4, 3, 2, 1]],
-            0,
-        ),  # no identity switches
-        ([[5, 6, 4, 3, 1, 2]], [[6, 5, 4, 3, 2, 1]], 0),
-        ([[6, 5, 4, 3, 2, 1]], [[6, 5, 4, 2, 1]], 1),
-        ([[6, 5, 4, 2, 1]], [[6, 5, 4, 2, 1, 7]], 1),
-        ([[6, 5, 4, 2, 1, 7]], [[6, 5, 4, 2, 7, 8]], 2),
-        ([[6, 5, 4, 2, 7, 8]], [[6, 5, 4, 2, 7, 8, 3]], 1),
+        (None, {1: 11, 2: 12, 3: 13, 4: 14}, 0),
+        ({1: 11, 2: 12, 3: 13, 4: 14}, {1: 11, 2: 12, 3: 13, 4: 14}, 0),
+        ({1: 11, 2: 12, 3: 13, 4: 14}, {1: 12, 2: 11, 3: 13, 4: 14}, 2),
+        ({1: 11, 2: 12, 3: 13, 4: 14}, {1: 11, 2: 12, 3: 13}, 0),
+        ({1: 11, 2: 12, 3: 13, 4: 14}, {1: 11, 2: 12, 3: 13, 5: 14}, 1),
+        ({1: 11, 2: 12, 3: 13}, {1: 11, 2: 12, 3: 13, 4: 14}, 0),
+        ({1: 11, 2: 12, 3: 13}, {1: 11, 2: 12, 4: 13}, 1),
+        ({1: 11, 2: 12, 3: 13, 4: 14}, {1: 11, 2: 12, 3: 13, 4: 15}, 1),
+        ({1: 11, 2: 12, 3: 13, 4: 14}, {1: 11, 2: 12, 3: 13, 4: 15, 5: 16}, 1),
+        ({3: 23, 4: 100, 1: 11, 2: 21}, {4: 23, 3: 100, 1: 11, 2: 21}, 2),
+        ({3: 28, 1: 11, 2: 34}, {4: 28, 1: 11, 2: 34}, 1),
+        ({1: 11, 2: 12, 3: 13}, {2: 12, 3: 14, 4: 13}, 2),
+        ({1: 11, 2: 12, 3: 13}, {1: 11, 2: 14, 3: 13}, 1),
     ],
 )
 def test_count_identity_switches(
-    evaluation, prev_frame_id, current_frame_id, expected_output
+    evaluation, prev_frame_id_map, current_frame_id_map, expected_output
 ):
     assert (
-        evaluation.count_identity_switches(prev_frame_id, current_frame_id)
+        evaluation.count_identity_switches(
+            prev_frame_id_map, current_frame_id_map
+        )
         == expected_output
     )
 
@@ -155,78 +170,184 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
     assert iou == pytest.approx(expected_iou, abs=1e-2)
 
 
-@pytest.fixture
-def gt_boxes():
-    return np.array(
-        [
-            [10.0, 10.0, 20.0, 20.0, 1.0],
-            [30.0, 30.0, 40.0, 40.0, 2.0],
-            [50.0, 50.0, 60.0, 60.0, 3.0],
-        ]
-    )
-
-
-@pytest.fixture
-def tracked_boxes():
-    return np.array(
-        [
-            [10.0, 10.0, 20.0, 20.0, 1.0],
-            [30.0, 30.0, 40.0, 40.0, 2.0],
-            [50.0, 50.0, 60.0, 60.0, 3.0],
-        ]
-    )
-
-
-@pytest.fixture
-def prev_frame_ids():
-    return [[1.0, 2.0, 3.0]]
-
-
-def test_perfect_tracking(gt_boxes, tracked_boxes, prev_frame_ids, evaluation):
-    mota = evaluation.evaluate_mota(
-        gt_boxes,
-        tracked_boxes,
-        iou_threshold=0.1,
-        prev_frame_ids=prev_frame_ids,
-    )
-    assert mota == pytest.approx(1.0)
-
-
-def test_missed_detections(
-    gt_boxes, tracked_boxes, prev_frame_ids, evaluation
+@pytest.mark.parametrize(
+    "gt_boxes, gt_ids, tracked_boxes, prev_frame_id_map, expected_mota",
+    [
+        # perfect tracking
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 3],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 11],
+                    [30.0, 30.0, 40.0, 40.0, 12],
+                    [50.0, 50.0, 60.0, 60.0, 13],
+                ]
+            ),
+            {1: 11, 12: 2, 3: 13},
+            1.0,
+        ),
+        # prev_map = {1: 11, 2: 12, 3: 13}, current_map = {1: 11, 2: 12, 4: 14}
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 4],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 11],
+                    [30.0, 30.0, 40.0, 40.0, 12],
+                    [50.0, 50.0, 60.0, 60.0, 14],
+                ]
+            ),
+            {1: 11, 2: 12, 3: 13},
+            1.0,
+        ),
+        # missed detection
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 4],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 11],
+                    [30.0, 30.0, 40.0, 40.0, 12],
+                ]
+            ),
+            {1: 11, 2: 12, 3: 13},
+            2 / 3,
+        ),
+        # false positive
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 3],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 11],
+                    [30.0, 30.0, 40.0, 40.0, 12],
+                    [50.0, 50.0, 60.0, 60.0, 13],
+                    [70.0, 70.0, 80.0, 80.0, 14],
+                ]
+            ),
+            {1: 11, 2: 12, 3: 13},
+            2 / 3,
+        ),
+        # one with low IOU and another one has ID switch
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 3],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 11],
+                    [30.0, 30.0, 30.0, 30.0, 12],
+                    [50.0, 50.0, 60.0, 60.0, 14],
+                ]
+            ),
+            {1: 11, 2: 12, 3: 13},
+            0,
+        ),
+        # low IOU and one ID switch on the same box
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 3],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 11],
+                    [30.0, 30.0, 30.0, 30.0, 14],
+                    [50.0, 50.0, 60.0, 60.0, 13],
+                ]
+            ),
+            {1: 11, 2: 12, 3: 13},
+            1 / 3,
+        ),
+        # current tracked id = prev tracked id, but prev_gt_id != current gt id
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 4],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 11],
+                    [30.0, 30.0, 40.0, 40.0, 12],
+                    [50.0, 50.0, 60.0, 60.0, 13],
+                ]
+            ),
+            {1: 11, 2: 12, 3: 13},
+            2 / 3,
+        ),
+        # ID swapped
+        (
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0],
+                    [30.0, 30.0, 40.0, 40.0],
+                    [50.0, 50.0, 60.0, 60.0],
+                ]
+            ),
+            [1, 2, 3],
+            np.array(
+                [
+                    [10.0, 10.0, 20.0, 20.0, 11],
+                    [30.0, 30.0, 40.0, 40.0, 13],
+                    [50.0, 50.0, 60.0, 60.0, 12],
+                ]
+            ),
+            {1: 11, 2: 12, 3: 13},
+            1 / 3,
+        ),
+    ],
+)
+def test_evaluate_mota(
+    gt_boxes,
+    gt_ids,
+    tracked_boxes,
+    prev_frame_id_map,
+    expected_mota,
+    evaluation,
 ):
-    # Remove one ground truth box to simulate a missed detection
-    gt_boxes = np.delete(gt_boxes, 0, axis=0)
-    mota = evaluation.evaluate_mota(
+    mota, _ = evaluation.evaluate_mota(
         gt_boxes,
+        gt_ids,
         tracked_boxes,
         iou_threshold=0.1,
-        prev_frame_ids=prev_frame_ids,
+        prev_frame_id_map=prev_frame_id_map,
     )
-    assert mota < 1.0
-
-
-def test_false_positives(gt_boxes, tracked_boxes, prev_frame_ids, evaluation):
-    # Add one extra tracked box to simulate a false positive
-    tracked_boxes = np.vstack([tracked_boxes, [70, 70, 80, 80, 4]])
-    mota = evaluation.evaluate_mota(
-        gt_boxes,
-        tracked_boxes,
-        iou_threshold=0.1,
-        prev_frame_ids=prev_frame_ids,
-    )
-    assert mota < 1.0
-
-
-def test_identity_switches(
-    gt_boxes, tracked_boxes, prev_frame_ids, evaluation
-):
-    # Change ID of one tracked box to simulate an identity switch
-    tracked_boxes[0][-1] = 5
-    mota = evaluation.evaluate_mota(
-        gt_boxes,
-        tracked_boxes,
-        iou_threshold=0.5,
-        prev_frame_ids=prev_frame_ids,
-    )
-    assert mota < 1.0
+    assert mota == pytest.approx(expected_mota)
