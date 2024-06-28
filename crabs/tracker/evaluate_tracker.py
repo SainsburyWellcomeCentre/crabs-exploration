@@ -65,16 +65,10 @@ class TrackerEvaluate:
         return gt_boxes_list, gt_ids_list
 
     def get_ground_truth_data(
-            self,
-        gt_dir: str,
+        self,
     ) -> Tuple[list[np.ndarray], list[np.ndarray]]:
         """
         Extract ground truth bounding box data from a CSV file.
-
-        Parameters
-        ----------
-        gt_dir : str
-            The path to the CSV file containing ground truth data.
 
         Returns
         -------
@@ -89,7 +83,7 @@ class TrackerEvaluate:
         max_frame_number = 0
 
         # Open the CSV file and read its contents line by line
-        with open(gt_dir, "r") as csvfile:
+        with open(self.gt_dir, "r") as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)  # Skip the header row
             for row in csvreader:
@@ -250,7 +244,9 @@ class TrackerEvaluate:
                 # successfully found a matching ground truth box for the tracked box.
                 matched_gt_boxes.add(best_match)
                 # Map ground truth ID to tracked ID
-                gt_to_tracked_map[int(gt_ids[best_match])] = int(tracked_box[-1])
+                gt_to_tracked_map[int(gt_ids[best_match])] = int(
+                    tracked_box[-1]
+                )
             else:
                 false_positive += 1
 
@@ -260,15 +256,15 @@ class TrackerEvaluate:
             prev_frame_id_map, gt_to_tracked_map
         )
 
-        mota = 1 - (missed_detections + false_positive + num_switches) / total_gt
+        mota = (
+            1 - (missed_detections + false_positive + num_switches) / total_gt
+        )
         return mota, gt_to_tracked_map
 
     def evaluate_tracking(
         self,
         gt_boxes_list: list,
         gt_ids_list: list,
-        tracked_boxes_list: list,
-        iou_threshold: float,
     ) -> list[float]:
         """
         Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
@@ -279,10 +275,6 @@ class TrackerEvaluate:
             List of ground truth bounding boxes for each frame.
         gt_id_list : list[float]
             List of ground truth ID for each frame.
-        tracked_boxes_list : list[float]
-            List of tracked bounding boxes for each frame.
-        iou_threshold : float
-            The IoU threshold used to determine matches between ground truth and tracked boxes.
 
         Returns
         -------
@@ -293,13 +285,13 @@ class TrackerEvaluate:
         # prev_frame_ids: Optional[list[int]] = None
         prev_frame_id_map: Optional[dict] = None
         for gt_boxes, gt_ids, tracked_boxes in zip(
-            gt_boxes_list, gt_ids_list, tracked_boxes_list
+            gt_boxes_list, gt_ids_list, self.tracked_list
         ):
             mota, prev_frame_id_map = self.evaluate_mota(
                 gt_boxes,
                 gt_ids,
                 tracked_boxes,
-                iou_threshold,
+                self.iou_threshold,
                 prev_frame_id_map,
             )
             mota_values.append(mota)
@@ -312,7 +304,7 @@ class TrackerEvaluate:
         """
         Run evaluation of tracking based on tracking ground truth.
         """
-        gt_boxes_list = self.get_ground_truth_data()
-        mota_values = self.evaluate_tracking(gt_boxes_list)
+        gt_boxes_list, gt_id_list = self.get_ground_truth_data()
+        mota_values = self.evaluate_tracking(gt_boxes_list, gt_id_list)
         overall_mota = np.mean(mota_values)
         logging.info("Overall MOTA: %f" % overall_mota)

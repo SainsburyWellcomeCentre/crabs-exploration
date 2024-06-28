@@ -88,7 +88,7 @@ class Tracking:
             self.args.checkpoint_path
         )
         trained_model.eval()
-        trained_model.to(DEVICE) 
+        trained_model.to(DEVICE)
         return trained_model
 
     def load_video(self) -> None:

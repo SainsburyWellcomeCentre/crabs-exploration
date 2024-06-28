@@ -13,9 +13,8 @@ def evaluation():
 
 
 def test_get_ground_truth_data(evaluation):
-    test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
 
-    gt_boxes_list, gt_ids_list = evaluation.get_ground_truth_data(test_csv_file)
+    gt_boxes_list, gt_ids_list = evaluation.get_ground_truth_data()
 
     assert isinstance(gt_boxes_list, list)
     assert isinstance(gt_ids_list, list)
@@ -67,9 +66,12 @@ def gt_ids_list():
     return [np.array([]) for _ in range(2)]  # Two frames
 
 
-
-def test_create_gt_list(ground_truth_data, gt_boxes_list, gt_ids_list, evaluation):
-    created_gt_boxes, created_gt_ids = evaluation.create_gt_list(ground_truth_data, gt_boxes_list, gt_ids_list)
+def test_create_gt_list(
+    ground_truth_data, gt_boxes_list, gt_ids_list, evaluation
+):
+    created_gt_boxes, created_gt_ids = evaluation.create_gt_list(
+        ground_truth_data, gt_boxes_list, gt_ids_list
+    )
 
     assert isinstance(created_gt_boxes, list)
     assert isinstance(created_gt_ids, list)
@@ -100,8 +102,9 @@ def test_create_gt_list(ground_truth_data, gt_boxes_list, gt_ids_list, evaluatio
             assert np.array_equal(ids, expected_ids[i])
 
 
-
-def test_create_gt_list_invalid_data(ground_truth_data, gt_ids_list, evaluation):
+def test_create_gt_list_invalid_data(
+    ground_truth_data, gt_ids_list, evaluation
+):
     invalid_data = ground_truth_data[:]
 
     del invalid_data[0]["x"]
@@ -115,7 +118,9 @@ def test_create_gt_list_insufficient_gt_boxes_list(
     ground_truth_data, gt_ids_list, evaluation
 ):
     with pytest.raises(IndexError):
-        evaluation.create_gt_list(ground_truth_data, [np.array([])], gt_ids_list)
+        evaluation.create_gt_list(
+            ground_truth_data, [np.array([])], gt_ids_list
+        )
 
 
 @pytest.mark.parametrize(
@@ -135,7 +140,9 @@ def test_count_identity_switches(
     evaluation, prev_frame_id_map, current_frame_id_map, expected_output
 ):
     assert (
-        evaluation.count_identity_switches(prev_frame_id_map, current_frame_id_map)
+        evaluation.count_identity_switches(
+            prev_frame_id_map, current_frame_id_map
+        )
         == expected_output
     )
 
@@ -325,7 +332,12 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
     ],
 )
 def test_evaluate_mota(
-    gt_boxes, gt_ids, tracked_boxes, prev_frame_id_map, expected_mota, evaluation
+    gt_boxes,
+    gt_ids,
+    tracked_boxes,
+    prev_frame_id_map,
+    expected_mota,
+    evaluation,
 ):
     mota, _ = evaluation.evaluate_mota(
         gt_boxes,
