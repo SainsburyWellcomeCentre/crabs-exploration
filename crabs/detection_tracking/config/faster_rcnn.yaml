@@ -37,16 +37,29 @@ batch_size_test: 4
 # -------------------
 # Data augmentation
 # -------------------
-transform_brightness: 0.5
-transform_hue: 0.3
-gaussian_blur_params:
+gaussian_blur:
   kernel_size:
     - 5
     - 9
   sigma:
     - 0.1
     - 5.0
-
+color_jitter:
+  brightness: 0.5
+  hue: 0.3
+random_horizontal_flip:
+  p: 0.5
+random_rotation:
+  degrees: [-10.0, 10.0]
+random_adjust_sharpness:
+  p: 0.5
+  sharpness_factor: 0.5
+random_autocontrast:
+  p: 0.5
+random_equalize:
+  p: 0.5
+clamp_and_sanitize_bboxes:
+  min_size: 1.0
 # ----------------------------
 # Hyperparameter optimisation
 # -----------------------------

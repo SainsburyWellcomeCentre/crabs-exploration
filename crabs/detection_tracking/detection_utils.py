@@ -264,3 +264,13 @@ def get_checkpoint_type(checkpoint_path: Optional[str]) -> Optional[str]:
         )
 
     return checkpoint_type
+
+
+def log_data_augm_as_artifacts(logger, data_module):
+    """Log data augmentation transforms as artifacts in MLflow."""
+    for transform_str in ["train_transform", "test_val_transform"]:
+        logger.experiment.log_text(
+            text=str(getattr(data_module, f"_get_{transform_str}")()),
+            artifact_file=f"{transform_str}.txt",
+            run_id=logger.run_id,
+        )
