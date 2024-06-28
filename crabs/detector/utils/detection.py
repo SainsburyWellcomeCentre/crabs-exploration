@@ -215,7 +215,7 @@ def setup_mlflow_logger(
     return mlf_logger
 
 
-def slurm_logs_as_artifacts(logger, slurm_job_id):
+def slurm_logs_as_artifacts(logger: MLFlowLogger, slurm_job_id: str):
     """
     Add slurm logs as an MLflow artifacts of the current run.
     The filenaming convention from the training scripts at crabs-exploration/bash_scripts/ is assumed.

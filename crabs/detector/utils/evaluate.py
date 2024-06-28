@@ -17,7 +17,7 @@ from crabs.detector.utils.detection import (
 logging.basicConfig(level=logging.INFO)
 
 
-def compute_precision_recall(class_stats) -> tuple[float, float, dict]:
+def compute_precision_recall(class_stats: dict) -> tuple[float, float, dict]:
     """
     Compute precision and recall.
 
@@ -39,7 +39,7 @@ def compute_precision_recall(class_stats) -> tuple[float, float, dict]:
 
 
 def compute_confusion_matrix_elements(
-    targets, detections, ious_threshold
+    targets: list, detections: list, ious_threshold: float
 ) -> tuple[float, float, dict]:
     """
     Compute metrics (true positive, false positive, false negative) for object detection.
@@ -111,7 +111,7 @@ def compute_confusion_matrix_elements(
 
 def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
     """Get MLflow client from ckpt path and associated params."""
-    import mlflow
+    from mlflow.tracking import MlflowClient
 
     # roughly assert the format of the path is correct
     # Note: to check if this is an MLflow chekcpoint,
@@ -131,7 +131,7 @@ def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
     ckpt_runID = Path(trained_model_path).parents[1].stem
 
     # create an Mlflow client to interface with mlflow runs
-    mlrun_client = mlflow.tracking.MlflowClient(
+    mlrun_client = MlflowClient(
         tracking_uri=ckpt_mlruns_path,
     )
 

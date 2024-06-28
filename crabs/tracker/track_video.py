@@ -69,6 +69,9 @@ class Tracking:
         ) = prep_csv_writer(self.args.output_dir, self.video_file_root)
 
     def load_config_yaml(self):
+        """
+        Load yaml file that contains config parameters.
+        """
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 

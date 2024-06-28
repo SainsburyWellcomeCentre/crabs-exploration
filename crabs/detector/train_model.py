@@ -34,7 +34,7 @@ class DectectorTrain:
         An object containing the parsed command-line arguments.
     """
 
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace):
         # inputs
         self.args = args
         self.config_file = args.config_file
@@ -62,6 +62,9 @@ class DectectorTrain:
         self.checkpoint_path = args.checkpoint_path
 
     def load_config_yaml(self):
+        """
+        Load yaml file that contains config parameters.
+        """
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 

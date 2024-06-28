@@ -273,7 +273,10 @@ class TrackerEvaluate:
 
         return mota_values
 
-    def run_evaluation(self):
+    def run_evaluation(self) -> None:
+        """
+        Run evaluation of tracking based on tracking ground truth.
+        """
         gt_boxes_list = self.get_ground_truth_data()
         mota_values = self.evaluate_tracking(gt_boxes_list)
         overall_mota = np.mean(mota_values)

@@ -12,9 +12,21 @@ from crabs.tracker.utils.tracking import (
 )
 
 
-def prep_csv_writer(output_dir, video_file_root):
+def prep_csv_writer(output_dir: str, video_file_root: str):
     """
-    Prepare csv writer to output tracking results
+    Prepare csv writer to output tracking results.
+
+    Parameters
+    ----------
+    output_dir : str
+        The output folder where the output will be stored.
+    video_file_root : str
+        The root name of the video file.
+
+    Returns
+    -------
+    Tuple
+        A tuple containing the CSV writer, the CSV file object, and the tracking output directory path.
     """
 
     crabs_tracks_label_dir = Path(output_dir) / "crabs_tracks_label"
@@ -46,8 +58,33 @@ def prep_csv_writer(output_dir, video_file_root):
 
 
 def prep_video_writer(
-    output_dir, video_file_root, frame_width, frame_height, cap_fps
-):
+    output_dir: str,
+    video_file_root: str,
+    frame_width: int,
+    frame_height: int,
+    cap_fps: float,
+) -> cv2.VideoWriter:
+    """
+    Prepare video writer to output processed video.
+
+    Parameters
+    ----------
+    output_dir : str
+        The output folder where the output will be stored.
+    video_file_root :str
+        The root name of the video file.
+    frame_width : int
+        The width of the video frames.
+    frame_height : int
+        The height of the video frames.
+    cap_fps : float
+        The frames per second of the video.
+
+    Returns
+    -------
+    cv2.VideoWriter
+        The video writer object for writing video frames.
+    """
     output_file = os.path.join(
         output_dir,
         f"{os.path.basename(video_file_root)}_output_video.mp4",
@@ -63,21 +100,33 @@ def prep_video_writer(
 def save_required_output(
     video_file_root: Path,
     save_csv_and_frames: bool,
-    tracking_output_dir,
-    csv_writer,
-    save_video,
-    video_output,
+    tracking_output_dir: Path,
+    csv_writer: cv2.VideoWriter,
+    save_video: bool,
+    video_output: cv2.VideoWriter,
     tracked_boxes: list[list[float]],
     frame: np.ndarray,
     frame_number: int,
 ) -> None:
     """
-    Handle the output based argument options.
+    Handle the output based on argument options.
 
     Parameters
     ----------
+    video_file_root : Path
+        The root name of the video file.
+    save_csv_and_frames : bool
+        Flag to save CSV and frames.
+    tracking_output_dir : Path
+        Directory to save tracking output.
+    csv_writer : Any
+        CSV writer object.
+    save_video : bool
+        Flag to save video.
+    video_output : cv2.VideoWriter
+        Video writer object for writing video frames.
     tracked_boxes : list[list[float]]
-        list of tracked bounding boxes.
+        List of tracked bounding boxes.
     frame : np.ndarray
         The current frame.
     frame_number : int
