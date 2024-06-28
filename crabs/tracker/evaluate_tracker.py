@@ -166,15 +166,24 @@ class TrackerEvaluate:
 
         if prev_frame_id_map is None:
             return 0
+        
+        prev_frame_gt_id_map = { v: k  for k, v in prev_frame_id_map.items() }
 
         switch_count = 0
 
         for current_gt_id, current_tracked_id in current_frame_id_map.items():
+            # print(current_gt_id, current_tracked_id)
             prev_tracked_id = prev_frame_id_map.get(current_gt_id)
+            # print(prev_tracked_id)
+            prev_gt_id = prev_frame_gt_id_map.get(current_tracked_id)
+            # print(prev_gt_id)
             if prev_tracked_id is not None:
                 if prev_tracked_id != current_tracked_id:
                     switch_count += 1
-
+            elif prev_gt_id is not None:
+                if current_gt_id != prev_gt_id:
+                    switch_count += 1
+            
         return switch_count
 
     def evaluate_mota(
@@ -259,6 +268,7 @@ class TrackerEvaluate:
         mota = (
             1 - (missed_detections + false_positive + num_switches) / total_gt
         )
+        print(missed_detections, false_positive, num_switches)
         return mota, gt_to_tracked_map
 
     def evaluate_tracking(
