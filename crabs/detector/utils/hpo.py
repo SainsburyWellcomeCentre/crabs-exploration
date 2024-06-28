@@ -1,3 +1,5 @@
+"""Utils for hyperparameter optimisation"""
+
 from typing import Callable, Dict
 
 import optuna

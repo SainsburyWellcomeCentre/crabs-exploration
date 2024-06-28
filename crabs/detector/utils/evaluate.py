@@ -1,3 +1,5 @@
+"""Utils used in evaluation"""
+
 import argparse
 import ast
 import logging
@@ -7,7 +9,7 @@ from pathlib import Path
 import torchvision
 import yaml  # type: ignore
 
-from crabs.detection_tracking.detection_utils import (
+from crabs.detector.utils.detection import (
     prep_annotation_files,
     prep_img_directories,
 )
@@ -15,7 +17,7 @@ from crabs.detection_tracking.detection_utils import (
 logging.basicConfig(level=logging.INFO)
 
 
-def compute_precision_recall(class_stats) -> tuple[float, float, dict]:
+def compute_precision_recall(class_stats: dict) -> tuple[float, float, dict]:
     """
     Compute precision and recall.
 
@@ -37,7 +39,7 @@ def compute_precision_recall(class_stats) -> tuple[float, float, dict]:
 
 
 def compute_confusion_matrix_elements(
-    targets, detections, ious_threshold
+    targets: list, detections: list, ious_threshold: float
 ) -> tuple[float, float, dict]:
     """
     Compute metrics (true positive, false positive, false negative) for object detection.

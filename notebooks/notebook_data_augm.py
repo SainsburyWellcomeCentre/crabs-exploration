@@ -1,8 +1,8 @@
 # %%
 import yaml  # type: ignore
 
-from crabs.detection_tracking.datamodules import CrabsDataModule
-from crabs.detection_tracking.visualization import plot_sample
+from crabs.detector.datamodules import CrabsDataModule
+from crabs.detector.utils.visualization import plot_sample
 
 # %%%%%%%%%%%%%%%%%%%
 # Input data

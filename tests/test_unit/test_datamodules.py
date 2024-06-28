@@ -6,12 +6,12 @@ import torch
 import torchvision.transforms.v2 as transforms
 import yaml  # type: ignore
 
-from crabs.detection_tracking.datamodules import CrabsDataModule
+from crabs.detector.datamodules import CrabsDataModule
 
 DEFAULT_CONFIG = (
     Path(__file__).parents[2]
     / "crabs"
-    / "detection_tracking"
+    / "detector"
     / "config"
     / "faster_rcnn.yaml"
 )

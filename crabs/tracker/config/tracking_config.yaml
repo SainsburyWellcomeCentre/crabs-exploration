@@ -1,0 +1,11 @@
+iou_threshold: 0.1
+score_threshold: 0.1
+# Maximum number of frames to keep alive a track without associated detections.
+max_age: 10
+# Minimum number of associated detections before track is initialised
+min_hits: 1
+# save video inference
+save_video: True
+# Save predicted tracks in VIA csv format and export corresponding frames
+# This is useful to prepare for manual labelling of tracks
+save_csv_and_frames: True
