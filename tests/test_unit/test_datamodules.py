@@ -11,7 +11,7 @@ from crabs.detection.datamodules import CrabsDataModule
 DEFAULT_CONFIG = (
     Path(__file__).parents[2]
     / "crabs"
-    / "detection_tracking"
+    / "detection"
     / "config"
     / "faster_rcnn.yaml"
 )
