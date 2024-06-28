@@ -96,9 +96,6 @@ class Tracking:
         if not self.video.isOpened():
             raise Exception("Error opening video file")
 
-        # create directory to save output
-        os.makedirs(self.args.output_dir, exist_ok=True)
-
         if self.config["save_video"]:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
