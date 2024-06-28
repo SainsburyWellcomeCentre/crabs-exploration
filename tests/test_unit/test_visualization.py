@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import torch
 
-from crabs.detection_tracking.visualization import (
+from crabs.detector.utils.visualization import (
     draw_bbox,
     draw_detection,
     save_images_with_boxes,
@@ -173,8 +173,8 @@ def test_draw_detection(annotations, detections):
         ),
     ],
 )
-@patch("crabs.detection_tracking.visualization.cv2.imwrite")
-@patch("crabs.detection_tracking.visualization.os.makedirs")
+@patch("crabs.detector.utils.visualization.cv2.imwrite")
+@patch("crabs.detector.utils.visualization.os.makedirs")
 def test_save_images_with_boxes(
     mock_makedirs, mock_imwrite, detections, output_dir_name, expected_dir_name
 ):

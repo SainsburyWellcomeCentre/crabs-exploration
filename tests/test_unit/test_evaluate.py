@@ -1,6 +1,6 @@
 import torch
 
-from crabs.detection_tracking.evaluate_utils import (
+from crabs.detector.utils.evaluate import (
     compute_confusion_matrix_elements,
     compute_precision_recall,
 )
