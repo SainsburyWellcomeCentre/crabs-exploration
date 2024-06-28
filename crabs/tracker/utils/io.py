@@ -42,15 +42,12 @@ def prep_csv_writer(output_dir, video_file_root):
         )
     )
 
-    return csv_writer, csv_file
+    return csv_writer, csv_file, tracking_output_dir
 
 
 def prep_video_writer(
     output_dir, video_file_root, frame_width, frame_height, cap_fps
 ):
-    # create directory to save output
-    os.makedirs(output_dir, exist_ok=True)
-
     output_file = os.path.join(
         output_dir,
         f"{os.path.basename(video_file_root)}_output_video.mp4",
@@ -64,8 +61,8 @@ def prep_video_writer(
 
 
 def save_required_output(
-    video_file_root,
-    save_csv_and_frames,
+    video_file_root: Path,
+    save_csv_and_frames: bool,
     tracking_output_dir,
     csv_writer,
     save_video,

@@ -277,4 +277,4 @@ class TrackerEvaluate:
         gt_boxes_list = self.get_ground_truth_data()
         mota_values = self.evaluate_tracking(gt_boxes_list)
         overall_mota = np.mean(mota_values)
-        logging.info("Overall MOTA:", overall_mota)
+        logging.info("Overall MOTA: %f" % overall_mota)

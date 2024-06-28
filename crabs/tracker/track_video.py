@@ -62,17 +62,11 @@ class Tracking:
             iou_threshold=self.config["iou_threshold"],
         )
 
-        self.output_dir = self.args.output_dir
-
-        self.csv_writer, self.csv_file = prep_csv_writer(
-            self.output_dir, self.video_file_root
-        )
-        # self.inference = Inference(
-        #     self.args.output_dir,
-        #     self.video_file_root,
-        #     self.config["save_csv_and_frames"],
-        #     self.config["save_video"],
-        # )
+        (
+            self.csv_writer,
+            self.csv_file,
+            self.tracking_output_dir,
+        ) = prep_csv_writer(self.args.output_dir, self.video_file_root)
 
     def load_config_yaml(self):
         with open(self.config_file, "r") as f:
@@ -102,18 +96,21 @@ class Tracking:
         if not self.video.isOpened():
             raise Exception("Error opening video file")
 
+        # create directory to save output
+        os.makedirs(self.args.output_dir, exist_ok=True)
+
         if self.config["save_video"]:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap_fps = self.video.get(cv2.CAP_PROP_FPS)
 
             self.video_output = prep_video_writer(
-                self.output_dir,
+                self.tracking_output_dir,
                 self.video_file_root,
                 frame_width,
                 frame_height,
                 cap_fps,
-            )  ###
+            )
 
     def get_prediction(self, frame: np.ndarray) -> torch.Tensor:
         """
@@ -164,19 +161,12 @@ class Tracking:
         """
         Run object detection + tracking on the video frames.
         """
-        # If we pass ground truth: run evaluation
+        # If we pass ground truth: check the path exist
         if self.args.gt_path and not os.path.exists(self.args.gt_path):
             logging.info(
                 f"Ground truth file {self.args.gt_path} does not exist. Exiting..."
             )
             return
-        elif self.args.gt_path:
-            evaluation = TrackerEvaluate(
-                self.args.gt_path,
-                self.tracked_list,
-                self.config["iou_threshold"],
-            )
-            evaluation.run_evaluation()
 
         # In any case run inference
         # initialisation
@@ -206,7 +196,7 @@ class Tracking:
             save_required_output(
                 self.video_file_root,
                 self.config["save_csv_and_frames"],
-                self.output_dir,
+                self.tracking_output_dir,
                 self.csv_writer,
                 self.config["save_video"],
                 self.video_output,
@@ -217,6 +207,14 @@ class Tracking:
 
             # update frame number
             frame_number += 1
+
+        if self.args.gt_path:
+            evaluation = TrackerEvaluate(
+                self.args.gt_path,
+                self.tracked_list,
+                self.config["iou_threshold"],
+            )
+            evaluation.run_evaluation()
 
         # Close input video
         self.video.release()
