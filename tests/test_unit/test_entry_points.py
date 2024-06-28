@@ -10,6 +10,7 @@ import pytest
         "combine-annotations",
         "train-detector",
         "evaluate-detector",
+        "detect-and-track-video",
     ],
 )
 def test_smoke(cli_command: str) -> None:

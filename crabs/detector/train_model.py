@@ -4,20 +4,25 @@ import sys
 from pathlib import Path
 
 import lightning
+import optuna
 import torch
 import yaml  # type: ignore
 from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.loggers import MLFlowLogger
 
-from crabs.detection_tracking.datamodules import CrabsDataModule
-from crabs.detection_tracking.detection_utils import (
-    log_metadata_to_logger,
+from crabs.detector.datamodules import CrabsDataModule
+from crabs.detector.models import FasterRCNN
+from crabs.detector.utils.detection import (
     prep_annotation_files,
     prep_img_directories,
     set_mlflow_run_name,
     setup_mlflow_logger,
+    slurm_logs_as_artifacts,
 )
-from crabs.detection_tracking.models import FasterRCNN
+from crabs.detector.utils.hpo import compute_optimal_hyperparameters
+from crabs.detector.utils.train import (
+    get_checkpoint_type,
+    log_data_augm_as_artifacts,
+)
 
 
 class DectectorTrain:
@@ -29,7 +34,7 @@ class DectectorTrain:
         An object containing the parsed command-line arguments.
     """
 
-    def __init__(self, args):
+    def __init__(self, args: argparse.Namespace):
         # inputs
         self.args = args
         self.config_file = args.config_file
@@ -53,64 +58,43 @@ class DectectorTrain:
         self.fast_dev_run = args.fast_dev_run
         self.limit_train_batches = args.limit_train_batches
 
+        # Restart from checkpoint
+        self.checkpoint_path = args.checkpoint_path
+
     def load_config_yaml(self):
+        """
+        Load yaml file that contains config parameters.
+        """
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
-    def set_run_name(self):
+    def setup_trainer(self):
+        """
+        Setup trainer with logging and checkpointing.
+        """
         self.run_name = set_mlflow_run_name()
-
-    def setup_logger(self) -> MLFlowLogger:
-        """
-        Setup MLflow logger for training, with checkpointing.
-
-        Includes logging metadata about the job (CLI arguments and SLURM job IDs).
-        """
-        # Assign run name
-        self.set_run_name()
 
         # Setup logger with checkpointing
         mlf_logger = setup_mlflow_logger(
             experiment_name=self.experiment_name,
             run_name=self.run_name,
             mlflow_folder=self.mlflow_folder,
+            cli_args=self.args,
             ckpt_config=self.config.get("checkpoint_saving", {}),
+            # pass the checkpointing config if defined
         )
-
-        # Log metadata: CLI arguments and SLURM (if required)
-        mlf_logger = log_metadata_to_logger(mlf_logger, self.args)
-
-        # Log (assumed) path to checkpoints directory
-        path_to_checkpoints = (
-            Path(mlf_logger._tracking_uri)
-            / mlf_logger._experiment_id
-            / mlf_logger._run_id
-            / "checkpoints"
-        )
-        mlf_logger.log_hyperparams(
-            {"path_to_checkpoints": str(path_to_checkpoints)}
-        )
-
-        return mlf_logger
-
-    def setup_trainer(self):
-        """
-        Setup trainer with logging and checkpointing.
-        """
-        # Get MLflow logger
-        mlf_logger = self.setup_logger()
 
         # Define checkpointing callback for trainer
-        config = self.config.get("checkpoint_saving")
-        if config:
+        config_ckpt = self.config.get("checkpoint_saving")
+        if config_ckpt:
             checkpoint_callback = ModelCheckpoint(
                 filename="checkpoint-{epoch}",
-                every_n_epochs=config["every_n_epochs"],
-                save_top_k=config["keep_last_n_ckpts"],
+                every_n_epochs=config_ckpt["every_n_epochs"],
+                save_top_k=config_ckpt["keep_last_n_ckpts"],
                 monitor="epoch",  # monitor the metric "epoch" for selecting which checkpoints to save
                 mode="max",  # get the max of the monitored metric
-                save_last=config["save_last"],
-                save_weights_only=config["save_weights_only"],
+                save_last=config_ckpt["save_last"],
+                save_weights_only=config_ckpt["save_weights_only"],
             )
             enable_checkpointing = True
         else:
@@ -119,7 +103,7 @@ class DectectorTrain:
 
         # Return trainer linked to callbacks and logger
         return lightning.Trainer(
-            max_epochs=self.config["num_epochs"],
+            max_epochs=self.config["n_epochs"],
             accelerator=self.accelerator,
             logger=mlf_logger,
             enable_checkpointing=enable_checkpointing,
@@ -128,53 +112,118 @@ class DectectorTrain:
             limit_train_batches=self.limit_train_batches,
         )
 
-    def slurm_logs_as_artifacts(self, logger, slurm_job_id):
+    def optuna_objective_fn(self, trial: optuna.Trial) -> float:
+        """Objective function for Optuna.
+
+        When used with Optuna, it wil maximise precision and recall on the
+        validation set.
+
+        Parameters
+        ----------
+        trial : optuna.Trial
+            The trial to optimise.
+
+        Returns
+        -------
+        float
+            The value to maximise.
         """
-        Add slurm logs as an MLflow artifacts of the current run.
+        # Sample hyperparameters from the search space for this trial
+        optuna_config = self.config["optuna"]
 
-        The filenaming convention from the training scripts at crabs-exploration/bash_scripts/ is assumed.
-        """
-
-        # Get slurm env variables: slurm and array job ID
-        slurm_node = os.environ.get("SLURMD_NODENAME")
-        slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
-
-        # Get root of log filenames
-        # for array job
-        if slurm_array_job_id:
-            slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-            log_filename = f"slurm_array.{slurm_array_job_id}-{slurm_task_id}.{slurm_node}"
-        # for single job
-        else:
-            log_filename = f"slurm.{slurm_job_id}.{slurm_node}"
-
-        # Add log files as artifacts of this run
-        for ext in ["out", "err"]:
-            logger.experiment.log_artifact(
-                logger.run_id,
-                f"{log_filename}.{ext}",
+        if "learning_rate" in optuna_config:
+            self.config["learning_rate"] = trial.suggest_float(
+                "learning_rate",
+                float(optuna_config["learning_rate"][0]),
+                float(optuna_config["learning_rate"][1]),
             )
 
-    def train_model(self):
+        if "n_epochs" in optuna_config:
+            self.config["n_epochs"] = trial.suggest_int(
+                "n_epochs",
+                int(optuna_config["n_epochs"][0]),
+                int(optuna_config["n_epochs"][1]),
+            )
+
+        # Run training
+        trainer = self.core_training()
+
+        # Return metric to maximise
+        val_precision = trainer.callback_metrics["val_precision_optuna"].item()
+        val_recall = trainer.callback_metrics["val_recall_optuna"].item()
+        return (val_precision + val_recall) / 2
+
+    def core_training(self) -> lightning.Trainer:
+        """Create data module and model and run training.
+
+        Returns
+        -------
+        lightning.Trainer
+            The trainer object used for training.
+        """
         # Create data module
         data_module = CrabsDataModule(
-            self.images_dirs,
-            self.annotation_files,
-            self.config,
-            self.seed_n,
+            list_img_dirs=self.images_dirs,
+            list_annotation_files=self.annotation_files,
+            split_seed=self.seed_n,
+            config=self.config,
+            no_data_augmentation=self.args.no_data_augmentation,
         )
 
         # Get model
-        lightning_model = FasterRCNN(self.config)
+        if not self.checkpoint_path:
+            lightning_model = FasterRCNN(
+                self.config, optuna_log=self.args.optuna
+            )
+            checkpoint_type = None
+        else:
+            checkpoint_type = get_checkpoint_type(self.checkpoint_path)
+            if checkpoint_type == "weights":
+                lightning_model = FasterRCNN.load_from_checkpoint(
+                    self.checkpoint_path,
+                    config=self.config,  # overwrite hparams from ckpt with config
+                    optuna_log=self.args.optuna,
+                )  # a 'weights' checkpoint is one saved with `save_weights_only=True`
+
+        # Get trainer
+        trainer = self.setup_trainer()
+        if self.args.log_data_augmentation:
+            log_data_augm_as_artifacts(trainer.logger, data_module)
 
         # Run training
-        trainer = self.setup_trainer()
-        trainer.fit(lightning_model, data_module)
+        trainer.fit(
+            lightning_model,
+            data_module,
+            ckpt_path=(
+                self.checkpoint_path if checkpoint_type == "full" else None
+            ),
+            # a 'full' checkpoint is one saved with `save_weights_only=False`
+            # (automatically restores model, epoch, step, LR schedulers, etc...)
+            # see https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
+        )
+
+        return trainer
+
+    def train_model(self):
+        # Run hyperparameter sweep with Optuna if required
+        if self.args.optuna:
+            # Optimize hyperparameters in config
+            # to maximise validation precision and recall
+            best_hyperparameters = compute_optimal_hyperparameters(
+                self.optuna_objective_fn,
+                config_optuna=self.config["optuna"],
+            )
+
+            # Update the config with the best hyperparameters
+            self.config.update(best_hyperparameters)
+
+        # Run training
+        trainer = self.core_training()
 
         # if this is a slurm job: add slurm logs as artifacts
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
         if slurm_job_id:
-            self.slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
+            slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
 
 
 def main(args) -> None:
@@ -266,7 +315,27 @@ def train_parse_args(args):
         default="./ml-runs",
         help=("Path to MLflow directory. Default: ./ml-runs"),
     )
-
+    parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        default=None,
+        help=("Path to checkpoint for resume training"),
+    )
+    parser.add_argument(
+        "--optuna",
+        action="store_true",
+        help="Run a hyperparameter optimisation using Optuna prior to training the model",
+    )
+    parser.add_argument(
+        "--no_data_augmentation",
+        action="store_true",
+        help="Ignore the data augmentation transforms defined in config file",
+    )
+    parser.add_argument(
+        "--log_data_augmentation",
+        action="store_true",
+        help="Log data augmentation transforms linked to datamodule as MLflow artifacts",
+    )
     return parser.parse_args(args)
 
 

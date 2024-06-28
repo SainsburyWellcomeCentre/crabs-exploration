@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Union
+from typing import Any, Tuple, Union
 
 import torch
 from lightning import LightningModule
@@ -8,7 +8,7 @@ from torchvision.models.detection import (
     fasterrcnn_resnet50_fpn_v2,
 )
 
-from crabs.detection_tracking.evaluate import compute_confusion_matrix_elements
+from crabs.detector.utils.evaluate import compute_confusion_matrix_elements
 
 
 class FasterRCNN(LightningModule):
@@ -43,10 +43,11 @@ class FasterRCNN(LightningModule):
         Dictionary to store test metrics.
     """
 
-    def __init__(self, config: dict[str, Any]):
+    def __init__(self, config: dict[str, Any], optuna_log=False):
         super().__init__()
         self.config = config
         self.model = self.configure_model()
+        self.optuna_log = optuna_log
 
         # save all arguments passed to __init__
         self.save_hyperparameters()
@@ -105,10 +106,12 @@ class FasterRCNN(LightningModule):
 
     def compute_precision_recall_epoch(
         self, step_outputs: dict[str, Union[float, int]], log_str: str
-    ) -> dict[str, Union[float, int]]:
+    ) -> Tuple[float, float]:
         """
         Computes and logs mean precision and recall for the current epoch.
         """
+
+        # compute mean precision and recall
         mean_precision = (
             step_outputs["precision_epoch"] / step_outputs["num_batches"]
         )
@@ -116,37 +119,38 @@ class FasterRCNN(LightningModule):
             step_outputs["recall_epoch"] / step_outputs["num_batches"]
         )
 
+        # add metrics to logger
         self.logger.log_metrics(
             {f"{log_str}_precision": mean_precision}, step=self.current_epoch
         )
         self.logger.log_metrics(
             {f"{log_str}_recall": mean_recall}, step=self.current_epoch
         )
+
+        # log to screen
         logging.info(
             f"Average Precision ({log_str}): {mean_precision:.4f},"
             f"Average Recall ({log_str}): {mean_recall:.4f}"
         )
 
-        # Reset metrics for next epoch
-        step_outputs = {
-            "precision_epoch": 0.0,
-            "recall_epoch": 0.0,
-            "num_batches": 0,
-        }
-
-        return step_outputs
+        return mean_precision, mean_recall
 
     def on_train_epoch_end(self) -> None:
         """
         Hook called after each training epoch to perform tasks such as logging and resetting metrics.
         """
+        # compute average loss
         avg_loss = (
             self.training_step_outputs["training_loss_epoch"]
             / self.training_step_outputs["num_batches"]
         )
+
+        # log
         self.logger.log_metrics(
             {"train_loss": avg_loss}, step=self.current_epoch
         )
+
+        # reset
         self.training_step_outputs = {
             "training_loss_epoch": 0.0,
             "num_batches": 0,
@@ -156,17 +160,36 @@ class FasterRCNN(LightningModule):
         """
         Hook called after each validation epoch to compute metrics and logging.
         """
-        self.validation_step_outputs = self.compute_precision_recall_epoch(
+        (val_precision, val_recall) = self.compute_precision_recall_epoch(
             self.validation_step_outputs, "val"
         )
+
+        # we need these logs for hyperparameter optimisation
+        if self.optuna_log:
+            self.log("val_precision_optuna", val_precision)
+            self.log("val_recall_optuna", val_recall)
+
+        # Reset metrics for next epoch
+        self.validation_step_outputs = {
+            "precision_epoch": 0.0,
+            "recall_epoch": 0.0,
+            "num_batches": 0,
+        }
 
     def on_test_epoch_end(self) -> None:
         """
         Hook called after each testing epoch to compute metrics and logging.
         """
-        self.test_step_outputs = self.compute_precision_recall_epoch(
+        (test_precision, test_recall) = self.compute_precision_recall_epoch(
             self.test_step_outputs, "test"
         )
+
+        # Reset metrics for next epoch
+        self.test_step_outputs = {
+            "precision_epoch": 0.0,
+            "recall_epoch": 0.0,
+            "num_batches": 0,
+        }
 
     def training_step(
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
@@ -177,8 +200,10 @@ class FasterRCNN(LightningModule):
         images, targets = batch
         loss_dict = self.model(images, targets)
         total_loss = sum(loss for loss in loss_dict.values())
+
         self.training_step_outputs["training_loss_epoch"] += total_loss.item()
         self.training_step_outputs["num_batches"] += 1
+
         return total_loss
 
     def val_test_step(
