@@ -6,7 +6,7 @@ import torchvision.transforms.v2 as transforms
 from lightning import LightningDataModule
 from torch.utils.data import DataLoader, random_split
 
-from crabs.detection_tracking.datasets import CrabsCocoDetection
+from crabs.detector.datasets import CrabsCocoDetection
 
 
 class CrabsDataModule(LightningDataModule):
@@ -24,12 +24,65 @@ class CrabsDataModule(LightningDataModule):
         list_annotation_files: list[str],
         config: dict,
         split_seed: Optional[int] = None,
+        no_data_augmentation: bool = False,
     ):
         super().__init__()
         self.list_img_dirs = list_img_dirs
         self.list_annotation_files = list_annotation_files
         self.split_seed = split_seed
         self.config = config
+        self.no_data_augmentation = no_data_augmentation
+
+    def _transform_str_to_operator(self, transform_str):
+        """Get transform operator from its name in snake case"""
+
+        def snake_to_camel_case(snake_str):
+            return "".join(
+                x.capitalize() for x in snake_str.lower().split("_")
+            )
+
+        transform_callable = getattr(
+            transforms, snake_to_camel_case(transform_str)
+        )
+
+        return transform_callable(**self.config[transform_str])
+
+    def _compute_list_of_transforms(self) -> list[torchvision.transforms.v2]:
+        """Read transforms from config and add to list"""
+
+        # Initialise list
+        train_data_augm: list[torchvision.transforms.v2] = []
+
+        # Apply standard transforms if defined
+        for transform_str in [
+            "gaussian_blur",
+            "color_jitter",
+            "random_horizontal_flip",
+            "random_rotation",
+            "random_adjust_sharpness",
+            "random_autocontrast",
+            "random_equalize",
+        ]:
+            if transform_str in self.config:
+                transform_operator = self._transform_str_to_operator(
+                    transform_str
+                )
+                train_data_augm.append(transform_operator)
+
+        # Apply clamp and sanitize bboxes if defined
+        # See https://pytorch.org/vision/main/generated/torchvision.transforms.v2.SanitizeBoundingBoxes.html#torchvision.transforms.v2.SanitizeBoundingBoxes
+        if "clamp_and_sanitize_bboxes" in self.config:
+            # Clamp bounding boxes
+            train_data_augm.append(transforms.ClampBoundingBoxes())
+
+            # Sanitize
+            sanitize = transforms.SanitizeBoundingBoxes(
+                min_size=self.config["clamp_and_sanitize_bboxes"]["min_size"],
+                labels_getter=None,  # only bboxes are sanitized
+            )
+            train_data_augm.append(sanitize)
+
+        return train_data_augm
 
     def _get_train_transform(self) -> torchvision.transforms:
         """Define data augmentation transforms for the train set.
@@ -38,17 +91,22 @@ class CrabsDataModule(LightningDataModule):
         https://pytorch.org/vision/stable/transforms.html#v1-or-v2-which-one-should-i-use
         https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_e2e.html#transforms
 
+        ToDtype is the recommended replacement for ConvertImageDtype(dtype)
+        https://pytorch.org/vision/0.17/generated/torchvision.transforms.v2.ToDtype.html#torchvision.transforms.v2.ToDtype
+
         """
-        jitter = transforms.ColorJitter(
-            brightness=self.config["transform_brightness"],
-            hue=self.config["transform_hue"],
-        )
-        gauss = transforms.GaussianBlur(
-            kernel_size=self.config["gaussian_blur_params"]["kernel_size"],
-            sigma=self.config["gaussian_blur_params"]["sigma"],
-        )
-        todtype = transforms.ToDtype(torch.float32, scale=True)
-        train_transforms = [transforms.ToImage(), jitter, gauss, todtype]
+        # Compute list of transforms to apply
+        if self.no_data_augmentation:
+            train_data_augm = []
+        else:
+            train_data_augm = self._compute_list_of_transforms()
+
+        # Define a Compose transform with them
+        train_transforms = [
+            transforms.ToImage(),
+            *train_data_augm,
+            transforms.ToDtype(torch.float32, scale=True),
+        ]
         return transforms.Compose(train_transforms)
 
     def _get_test_val_transform(self) -> torchvision.transforms:

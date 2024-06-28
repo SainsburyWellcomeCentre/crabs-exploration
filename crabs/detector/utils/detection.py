@@ -1,3 +1,5 @@
+"""Utils used in training and evaluation."""
+
 import argparse
 import datetime
 import os
@@ -79,41 +81,12 @@ def prep_annotation_files(
     return annotation_files
 
 
-def set_mlflow_run_name() -> str:
-    """
-    Set MLflow run name.
-
-    Use the slurm job ID if it is a SLURM job, else use a timestamp.
-    For SLURM jobs:
-    - if it is a single job use <job_ID>, else
-    - if it is an array job use <job_ID_parent>_<task_ID>
-    """
-    # Get slurm environment variables
-    slurm_job_id = os.environ.get("SLURM_JOB_ID")
-    slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
-
-    # If job is a slurm array job
-    if slurm_job_id and slurm_array_job_id:
-        slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
-        run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
-    # If job is a slurm single job
-    elif slurm_job_id:
-        run_name = f"run_slurm_{slurm_job_id}"
-    # If not a slurm job: use timestamp
-    else:
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_name = f"run_{timestamp}"
-
-    return run_name
-
-
 def log_metadata_to_logger(
     mlf_logger: MLFlowLogger,
     cli_args: argparse.Namespace,
 ) -> MLFlowLogger:
     """
     Log metadata to MLflow logger.
-
     Add CLI arguments and, if available, SLURM job information.
 
     Parameters
@@ -151,6 +124,34 @@ def log_metadata_to_logger(
     return mlf_logger
 
 
+def set_mlflow_run_name() -> str:
+    """
+    Set MLflow run name.
+
+    Use the slurm job ID if it is a SLURM job, else use a timestamp.
+    For SLURM jobs:
+    - if it is a single job use <job_ID>, else
+    - if it is an array job use <job_ID_parent>_<task_ID>
+    """
+    # Get slurm environment variables
+    slurm_job_id = os.environ.get("SLURM_JOB_ID")
+    slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")
+
+    # If job is a slurm array job
+    if slurm_job_id and slurm_array_job_id:
+        slurm_task_id = os.environ.get("SLURM_ARRAY_TASK_ID")
+        run_name = f"run_slurm_{slurm_array_job_id}_{slurm_task_id}"
+    # If job is a slurm single job
+    elif slurm_job_id:
+        run_name = f"run_slurm_{slurm_job_id}"
+    # If not a slurm job: use timestamp
+    else:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_name = f"run_{timestamp}"
+
+    return run_name
+
+
 def setup_mlflow_logger(
     experiment_name: str,
     run_name: str,
@@ -165,7 +166,6 @@ def setup_mlflow_logger(
     checkpointing config is passed, it will setup the logger with a
     checkpointing callback. A job metadata is the job's CLI arguments and
     the SLURM job IDs (if relevant).
-
 
     Parameters
     ----------
@@ -215,10 +215,9 @@ def setup_mlflow_logger(
     return mlf_logger
 
 
-def slurm_logs_as_artifacts(logger, slurm_job_id):
+def slurm_logs_as_artifacts(logger: MLFlowLogger, slurm_job_id: str):
     """
     Add slurm logs as an MLflow artifacts of the current run.
-
     The filenaming convention from the training scripts at crabs-exploration/bash_scripts/ is assumed.
     """
 

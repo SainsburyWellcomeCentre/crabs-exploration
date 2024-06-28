@@ -92,41 +92,85 @@
 >
 > If we launch a job and then modify the config file _before_ the job has been able to read it, we may be using an undesired version of the config in our job! To avoid this, it is best to wait until you can verify in MLflow that the job has the expected config parameters (and then edit the file to launch a new job if needed).
 
-6.  **Run the training job using the SLURM scheduler**
+6. **Restarting training from a checkpoint**
 
-    To launch a job, use the `sbatch` command with the relevant training script:
+   The `checkpoint_path` argument can be useful. There are two primary options related to checkpoints:
 
-    ```
-    sbatch <path-to-training-bash-script>
-    ```
+   - Resume training
 
-1.  **Check the status of the training job**
+     - This option is useful for interrupted training sessions or extending training duration.
+     - If training is disrupted and stops mid-way, you can resume it by adding `--checkpoint_path $CKPT_PATH \` to your bash script.
+     - The training will pick up from the last saved epoch and continue until the specified n_epoch.
+     - Similarly, if training completes but you want to extend it based on metric evaluations, you can increase the n_epoch value (e.g., from `n` to `n + y`). If n_epoch is the same, no new training will be continued as the max_epoch has been reached.
+       Again, use `--checkpoint_path $CKPT_PATH \` in your bash script, and training will resume from epoch `n` to `n + y`.
+     - Ensure the `save_weights_only` parameter under `checkpoint_saving` in the config file is set to `False` to resume training, as this option requires loading both weights and the training state.
 
-    To do this, we can:
+   - Fine-tunning
+     - This option is useful for fine-tuning a pre-trained model on a different dataset.
+     - It loads the weights from a checkpoint, allowing you to leverage pre-trained weights from another dataset.
+     - Add `--checkpoint_path $CKPT_PATH \` to your bash script to use this option.
+     - Set the `save_weights_only` parameter under `checkpoint_saving` in the config file to `True`, as only the weights are needed for fine-tuning.
 
-    - Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run.
-    - Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
-    - Check the MLFlow logs. To do this, first create or activate an existing conda environment with `mlflow` installed, and then run the `mlflow` command from the login node.
+7. **Optional argument - Optuna**
 
-      - Create and activate a conda environment.
-        ```
-        module load miniconda
-        conda create -n mlflow-env python=3.10 mlflow -y
-        conda activate mlflow-env
-        ```
-      - Run `mlflow` to visualise the results logged to the `ml-runs` folder.
+   We have the option to run [Optuna](https://optuna.org) which is a hyperparameter optimization framework that allows us the find the best hyperparameters for our model.
 
-        - If using the "scratch" folder:
+   Currently, we can use Optuna to find the optimal number of epochs and the optimal learning rate, within a specified range of values. These will be optimal by maximizing the validation precision and recall. We then use these optimal parameters to train the model.
 
-          ```
-          mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
-          ```
+   To run an `Optuna` hyperparameter optimization, we need to specify the range of values we wish to optimize in the configuration file (`/crabs/detection_tracking/config/faster_rcnn.yaml`). Under `optuna`, specify the following:
 
-        - If using the selected runs folder:
+   - `n_trials`: The number of trials you want Optuna to run. Each trial will explore a different combination of hyperparameters within the defined search space., and their performance metrics will be compared.
+   - `learning_rate`: The lower bound and the upper bound of the learning rate parameter to consider.
+   - `n_epochs`: The lower bound and the upper bound of the number of epochs to consider.
 
-          ```
-          mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs
-          ```
+   To run Optuna, we can add the `--optuna` argument to the bash script. For example:
+
+   ```
+   train-detector  \
+   --dataset_dirs $DATASET_DIR \
+   --config_file $TRAIN_CONFIG_FILE \
+   --accelerator gpu \
+   --experiment_name $EXPERIMENT_NAME \
+   --seed_n $SPLIT_SEED \
+   --mlflow_folder $MLFLOW_FOLDER \
+   --optuna
+   ```
+
+8. **Run the training job using the SLURM scheduler**
+
+   To launch a job, use the `sbatch` command with the relevant training script:
+
+   ```
+   sbatch <path-to-training-bash-script>
+   ```
+
+9. **Check the status of the training job**
+
+   To do this, we can:
+
+   - Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run.
+   - Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
+   - Check the MLFlow logs. To do this, first create or activate an existing conda environment with `mlflow` installed, and then run the `mlflow` command from the login node.
+
+     - Create and activate a conda environment.
+       ```
+       module load miniconda
+       conda create -n mlflow-env python=3.10 mlflow -y
+       conda activate mlflow-env
+       ```
+     - Run `mlflow` to visualise the results logged to the `ml-runs` folder.
+
+       - If using the "scratch" folder:
+
+         ```
+         mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
+         ```
+
+       - If using the selected runs folder:
+
+         ```
+         mlflow ui --backend-store-uri file:////ceph/zoo/users/sminano/ml-runs-all/ml-runs
+         ```
 
 ### Some useful SLURM commands
 
