@@ -80,9 +80,6 @@ def count_identity_switches(
         if prev_tracked_id is not None:
             if prev_tracked_id != current_tracked_id:
                 switch_count += 1
-        else:
-            if current_tracked_id != current_gt_id:
-                switch_count += 1
 
     return switch_count
 
