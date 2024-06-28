@@ -13,7 +13,6 @@ def evaluation():
 
 
 def test_get_ground_truth_data(evaluation):
-
     gt_boxes_list, gt_ids_list = evaluation.get_ground_truth_data()
 
     assert isinstance(gt_boxes_list, list)
