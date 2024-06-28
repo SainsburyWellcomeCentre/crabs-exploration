@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from crabs.detector.train_model import DectectorTrain
-from crabs.detector.utils.optuna import compute_optimal_hyperparameters
+from crabs.detector.utils.hpo import compute_optimal_hyperparameters
 
 
 @pytest.fixture

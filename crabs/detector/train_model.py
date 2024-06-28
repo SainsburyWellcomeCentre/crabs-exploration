@@ -18,7 +18,7 @@ from crabs.detector.utils.detection import (
     setup_mlflow_logger,
     slurm_logs_as_artifacts,
 )
-from crabs.detector.utils.optuna import compute_optimal_hyperparameters
+from crabs.detector.utils.hpo import compute_optimal_hyperparameters
 from crabs.detector.utils.train import (
     get_checkpoint_type,
     log_data_augm_as_artifacts,
