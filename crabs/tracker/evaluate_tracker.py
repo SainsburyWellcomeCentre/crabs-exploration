@@ -183,6 +183,10 @@ class TrackerEvaluate:
             elif prev_gt_id is not None:
                 if current_gt_id != prev_gt_id:
                     switch_count += 1
+        if switch_count != 0:
+            print("previous:", prev_frame_id_map)
+            print("current:", current_frame_id_map)
+            print(switch_count)
 
         return switch_count
 
@@ -268,7 +272,6 @@ class TrackerEvaluate:
         mota = (
             1 - (missed_detections + false_positive + num_switches) / total_gt
         )
-        print(missed_detections, false_positive, num_switches)
         return mota, gt_to_tracked_map
 
     def evaluate_tracking(
@@ -292,7 +295,6 @@ class TrackerEvaluate:
             The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
         """
         mota_values = []
-        # prev_frame_ids: Optional[list[int]] = None
         prev_frame_id_map: Optional[dict] = None
         for gt_boxes, gt_ids, tracked_boxes in zip(
             gt_boxes_list, gt_ids_list, self.tracked_list
@@ -305,8 +307,6 @@ class TrackerEvaluate:
                 prev_frame_id_map,
             )
             mota_values.append(mota)
-            # # Update previous frame IDs for the next iteration
-            # prev_frame_ids = [box[-1] for box in tracked_boxes]
 
         return mota_values
 
