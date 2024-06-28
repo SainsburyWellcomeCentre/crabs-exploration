@@ -50,18 +50,19 @@ def calculate_iou(box1: np.ndarray, box2: np.ndarray) -> float:
 
 
 def count_identity_switches(
-    prev_frame_id_map: Optional[dict],
-    gt_to_tracked_map: dict,
+    prev_frame_id_map: Optional[Dict[int, int]],
+    current_frame_id_map: Dict[int, int],
 ) -> int:
     """
     Count the number of identity switches between two sets of object IDs.
 
     Parameters
     ----------
-    prev_frame_ids : Optional[list[int]]
-        List of object IDs in the previous frame.
-    current_frame_ids : Optional[list[int]]
-        List of object IDs in the current frame.
+    prev_frame_id_map : Optional[Dict[int, int]]
+        A dictionary mapping ground truth IDs to predicted IDs from the previous frame.
+    gt_to_tracked_map : Dict[int, int]
+        A dictionary mapping ground truth IDs to predicted IDs for the current frame.
+
 
     Returns
     -------
@@ -74,13 +75,13 @@ def count_identity_switches(
 
     switch_count = 0
 
-    for gt_id, current_tracked_id in gt_to_tracked_map.items():
-        prev_tracked_id = prev_frame_id_map.get(gt_id)
+    for current_gt_id, current_tracked_id in current_frame_id_map.items():
+        prev_tracked_id = prev_frame_id_map.get(current_gt_id)
         if prev_tracked_id is not None:
             if prev_tracked_id != current_tracked_id:
                 switch_count += 1
         else:
-            if current_tracked_id != gt_id:
+            if current_tracked_id != current_gt_id:
                 switch_count += 1
 
     return switch_count
@@ -91,8 +92,8 @@ def evaluate_mota(
     gt_ids: np.ndarray,
     tracked_boxes: np.ndarray,
     iou_threshold: float,
-    prev_frame_id_map: Optional[dict],
-) -> Tuple[float, dict]:
+    prev_frame_id_map: Optional[Dict[int, int]],
+) -> Tuple[float, Dict[int, int]]:
     """
     Evaluate MOTA (Multiple Object Tracking Accuracy).
 
@@ -102,17 +103,21 @@ def evaluate_mota(
     ----------
     gt_boxes : np.ndarray
         Ground truth bounding boxes of objects.
+    gt_ids : np.ndarray
+        Ground truth IDs corresponding to the bounding boxes.
     tracked_boxes : np.ndarray
         Tracked bounding boxes of objects.
     iou_threshold : float
         Intersection over Union (IoU) threshold for considering a match.
-    prev_frame_ids : Optional[list[list[int]]]
-        IDs from the previous frame for identity switch detection.
+    prev_frame_id_map : Optional[Dict[int, int]]
+        A dictionary mapping ground truth IDs to predicted IDs from the previous frame.
 
     Returns
     -------
     float
         The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
+    Dict[int, int]
+        A dictionary mapping ground truth IDs to predicted IDs for the current frame.
 
     Notes
     -----
@@ -131,7 +136,6 @@ def evaluate_mota(
     total_gt = len(gt_boxes)
     false_positive = 0
     matched_gt_boxes = set()
-    # matched_tracked_boxes = set()
     gt_to_tracked_map = {}
 
     for i, tracked_box in enumerate(tracked_boxes):
@@ -148,27 +152,16 @@ def evaluate_mota(
         if best_match is not None:
             # successfully found a matching ground truth box for the tracked box.
             matched_gt_boxes.add(best_match)
-            # matched_tracked_boxes.add(i)
-            gt_to_tracked_map[gt_ids[best_match]] = tracked_box[
-                -1
-            ]  # Map ground truth ID to tracked ID
+            # Map ground truth ID to tracked ID
+            gt_to_tracked_map[int(gt_ids[best_match])] = int(tracked_box[-1])
         else:
             false_positive += 1
 
     missed_detections = total_gt - len(matched_gt_boxes)
 
-    # tracked_ids = [tracked_boxes[i][-1] for i in matched_tracked_boxes]
-    # print(tracked_ids)
-
-    # gt_to_tracked_map = {}
-    # for gt_id, tracked_id in zip(gt_ids, tracked_ids):
-    #     gt_to_tracked_map[gt_id] = tracked_id
-    # print(gt_to_tracked_map)
-
     num_switches = count_identity_switches(
         prev_frame_id_map, gt_to_tracked_map
     )
-    print(num_switches)
 
     mota = 1 - (missed_detections + false_positive + num_switches) / total_gt
     return mota, gt_to_tracked_map
