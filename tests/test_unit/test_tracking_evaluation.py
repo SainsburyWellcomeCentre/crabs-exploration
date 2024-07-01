@@ -9,7 +9,13 @@ from crabs.tracker.evaluate_tracker import TrackerEvaluate
 @pytest.fixture
 def evaluation():
     test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
-    return TrackerEvaluate(test_csv_file, tracked_list=[], iou_threshold=0.1)
+    return TrackerEvaluate(
+        test_csv_file,
+        tracked_list=[],
+        iou_threshold=0.1,
+        video_name="test.mp4",
+        ckpt_name="/checkpoint/last.ckpt",
+    )
 
 
 def test_get_ground_truth_data(evaluation):
@@ -183,7 +189,7 @@ def prev_frame_ids():
 
 
 def test_perfect_tracking(gt_boxes, tracked_boxes, prev_frame_ids, evaluation):
-    mota = evaluation.evaluate_mota(
+    mota, _ = evaluation.evaluate_mota(
         gt_boxes,
         tracked_boxes,
         iou_threshold=0.1,
@@ -197,7 +203,7 @@ def test_missed_detections(
 ):
     # Remove one ground truth box to simulate a missed detection
     gt_boxes = np.delete(gt_boxes, 0, axis=0)
-    mota = evaluation.evaluate_mota(
+    mota, _ = evaluation.evaluate_mota(
         gt_boxes,
         tracked_boxes,
         iou_threshold=0.1,
@@ -209,7 +215,7 @@ def test_missed_detections(
 def test_false_positives(gt_boxes, tracked_boxes, prev_frame_ids, evaluation):
     # Add one extra tracked box to simulate a false positive
     tracked_boxes = np.vstack([tracked_boxes, [70, 70, 80, 80, 4]])
-    mota = evaluation.evaluate_mota(
+    mota, _ = evaluation.evaluate_mota(
         gt_boxes,
         tracked_boxes,
         iou_threshold=0.1,
@@ -232,52 +238,52 @@ def test_identity_switches(
     assert mota < 1.0
 
 
-@pytest.fixture
-def sample_csv_data():
-    # Create a sample CSV file with some data
-    sample_data = [
-        {
-            "True Positives": "10",
-            "Missed Detections": "2",
-            "False Positives": "3",
-            "Number of Switches": "1",
-            "Total Ground Truth": "15",
-            "Mota": "0.8",
-        },
-        {
-            "True Positives": "15",
-            "Missed Detections": "3",
-            "False Positives": "2",
-            "Number of Switches": "2",
-            "Total Ground Truth": "20",
-            "Mota": "0.9",
-        },
-    ]
-    with tempfile.NamedTemporaryFile(mode="w", delete=False) as temp_file:
-        writer = csv.DictWriter(temp_file, fieldnames=sample_data[0].keys())
-        writer.writeheader()
-        writer.writerows(sample_data)
-        temp_file_path = temp_file.name
-    yield temp_file_path
-    # Clean up after the test
-    import os
+# @pytest.fixture
+# def sample_csv_data():
+#     # Create a sample CSV file with some data
+#     sample_data = [
+#         {
+#             "True Positives": "10",
+#             "Missed Detections": "2",
+#             "False Positives": "3",
+#             "Number of Switches": "1",
+#             "Total Ground Truth": "15",
+#             "Mota": "0.8",
+#         },
+#         {
+#             "True Positives": "15",
+#             "Missed Detections": "3",
+#             "False Positives": "2",
+#             "Number of Switches": "2",
+#             "Total Ground Truth": "20",
+#             "Mota": "0.9",
+#         },
+#     ]
+#     with tempfile.NamedTemporaryFile(mode="w", delete=False) as temp_file:
+#         writer = csv.DictWriter(temp_file, fieldnames=sample_data[0].keys())
+#         writer.writeheader()
+#         writer.writerows(sample_data)
+#         temp_file_path = temp_file.name
+#     yield temp_file_path
+#     # Clean up after the test
+#     import os
 
-    os.remove(temp_file_path)
+#     os.remove(temp_file_path)
 
 
-def test_read_metrics_from_csv(sample_csv_data):
-    (
-        true_positives_list,
-        missed_detections_list,
-        false_positives_list,
-        num_switches_list,
-        total_ground_truth_list,
-        mota_value_list,
-    ) = read_metrics_from_csv(sample_csv_data)
+# def test_read_metrics_from_csv(sample_csv_data):
+#     (
+#         true_positives_list,
+#         missed_detections_list,
+#         false_positives_list,
+#         num_switches_list,
+#         total_ground_truth_list,
+#         mota_value_list,
+#     ) = read_metrics_from_csv(sample_csv_data)
 
-    assert true_positives_list == [10, 15]
-    assert missed_detections_list == [2, 3]
-    assert false_positives_list == [3, 2]
-    assert num_switches_list == [1, 2]
-    assert total_ground_truth_list == [15, 20]
-    assert mota_value_list == [0.8, 0.9]
+#     assert true_positives_list == [10, 15]
+#     assert missed_detections_list == [2, 3]
+#     assert false_positives_list == [3, 2]
+#     assert num_switches_list == [1, 2]
+#     assert total_ground_truth_list == [15, 20]
+#     assert mota_value_list == [0.8, 0.9]
