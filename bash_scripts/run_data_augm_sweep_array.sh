@@ -29,7 +29,7 @@ set -o pipefail  # make the pipe fail if any part of it fails
 # Source bashrc
 # ----------------------
 # Otherwise `which python` points to the miniconda module's Python
-source ~/.bashrc
+# source ~/.bashrc #
 
 
 # ---------------------
@@ -85,6 +85,7 @@ echo "-----------------"
 # -----------------------------
 # Create virtual environment
 # -----------------------------
+export PYTHONNOUSERSITE=True
 module load miniconda
 
 # Define a environment for each job in the
@@ -99,17 +100,18 @@ conda create \
     python=3.10
 
 # activate environment
-conda activate $ENV_PREFIX
-
-# install crabs package in virtual env
-python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
-
+# replace conda --> source, otherwise conda activate not found?
+source activate $ENV_PREFIX
 
 # log pip and python locations
 echo $ENV_PREFIX
-which python
-which pip
+which python  # should be python of the environment
+which pip  # should be pip of the environment
 echo "-----------------"
+
+# install crabs package in virtual env
+# pip install --upgrade pip ---> python -m pip install --upgrade pip?
+python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
 # print the version of crabs package (last number is the commit hash)
 echo "Git branch: $GIT_BRANCH"
