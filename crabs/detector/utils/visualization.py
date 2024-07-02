@@ -43,6 +43,7 @@ def draw_bbox(
     -------
     None
     """
+    print("in here in draw_bbox function")
     # Draw bounding box
     cv2.rectangle(
         frame,
