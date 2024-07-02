@@ -20,7 +20,11 @@ from crabs.tracker.utils.io import (
     release_video,
     save_required_output,
 )
-from crabs.tracker.utils.tracking import prep_sort
+from crabs.tracker.utils.tracking import (
+    calculate_velocity,
+    prep_sort,
+    visualize_orientation,
+)
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -99,10 +103,12 @@ class Tracking:
         if not self.video.isOpened():
             raise Exception("Error opening video file")
 
+        cap_fps = self.video.get(cv2.CAP_PROP_FPS)
+        self.frame_time_interval = 1 / cap_fps
+
         if self.config["save_video"]:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            cap_fps = self.video.get(cv2.CAP_PROP_FPS)
 
             self.video_output = prep_video_writer(
                 self.tracking_output_dir,
@@ -111,6 +117,8 @@ class Tracking:
                 frame_height,
                 cap_fps,
             )
+        else:
+            self.video_output = None
 
     def get_prediction(self, frame: np.ndarray) -> torch.Tensor:
         """
@@ -172,6 +180,7 @@ class Tracking:
         # initialisation
         frame_number = 1
         self.tracked_list = []
+        previous_positions = {}
 
         # Loop through frames of the video in batches
         while self.video.isOpened():
@@ -193,6 +202,22 @@ class Tracking:
 
             # run tracking
             tracked_boxes = self.update_tracking(prediction)
+
+            velocities = calculate_velocity(
+                tracked_boxes, previous_positions, self.frame_time_interval
+            )
+
+            frame_with_arrows, theta_list = visualize_orientation(
+                frame, tracked_boxes, velocities
+            )
+
+            # Display frame with arrows
+            cv2.imshow("Orientation Visualization", frame_with_arrows)
+            cv2.imwrite(f"frame_{frame_number}.jpg", frame_with_arrows)
+
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+
             save_required_output(
                 self.video_file_root,
                 self.config["save_csv_and_frames"],
@@ -203,6 +228,7 @@ class Tracking:
                 tracked_boxes,
                 frame,
                 frame_number,
+                theta_list,
             )
 
             # update frame number
