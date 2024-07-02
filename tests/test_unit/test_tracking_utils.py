@@ -3,6 +3,7 @@ import io
 
 import numpy as np
 import pytest
+import torch
 
 from crabs.tracker.utils.tracking import (
     extract_bounding_box_info,
@@ -63,3 +64,100 @@ def test_write_tracked_bbox_to_csv(csv_writer, csv_output):
     )
     expected_row_str = ",".join(map(str, expected_row))
     assert csv_output.getvalue().strip() == expected_row_str
+
+
+@pytest.fixture
+def mock_tracker():
+    # Assuming mock_tracker has prep_sort method
+    class MockTracker:
+        def prep_sort(self, prediction):
+            pred_boxes = prediction[0]["boxes"].detach().cpu().numpy()
+            pred_scores = prediction[0]["scores"].detach().cpu().numpy()
+            pred_labels = prediction[0]["labels"].detach().cpu().numpy()
+
+            pred_sort = []
+            for box, score, label in zip(pred_boxes, pred_scores, pred_labels):
+                if (
+                    score > self.score_threshold
+                ):  # Assuming score_threshold is a property of mock_tracker
+                    bbox = np.concatenate((box, [score]))
+                    pred_sort.append(bbox)
+
+            return np.asarray(pred_sort)
+
+    return MockTracker()
+
+
+@pytest.fixture
+def prediction():
+    return [
+        {
+            "boxes": torch.tensor([[10, 20, 30, 40], [50, 60, 70, 80]]),
+            "scores": torch.tensor([0.8, 0.05]),
+            "labels": torch.tensor([1, 2]),
+        }
+    ]
+
+
+@pytest.fixture
+def expected_output():
+    return np.array([[10.0, 20.0, 30.0, 40.0, 0.8]])
+
+
+@pytest.mark.parametrize(
+    "score_threshold, prediction, expected_output",
+    [
+        (
+            0.5,
+            [
+                {
+                    "boxes": torch.tensor(
+                        [[10, 20, 30, 40], [50, 60, 70, 80]]
+                    ),
+                    "scores": torch.tensor([0.8, 0.05]),
+                    "labels": torch.tensor([1, 2]),
+                }
+            ],
+            np.array([[10.0, 20.0, 30.0, 40.0, 0.8]]),
+        ),
+        (
+            0.3,
+            [
+                {
+                    "boxes": torch.tensor(
+                        [[10, 20, 30, 40], [50, 60, 70, 80]]
+                    ),
+                    "scores": torch.tensor([0.8, 0.4]),
+                    "labels": torch.tensor([1, 2]),
+                }
+            ],
+            np.array(
+                [[10.0, 20.0, 30.0, 40.0, 0.8], [50.0, 60.0, 70.0, 80.0, 0.4]]
+            ),
+        ),
+        (
+            0.6,
+            [
+                {
+                    "boxes": torch.tensor(
+                        [[10, 20, 30, 40], [50, 60, 70, 80]]
+                    ),
+                    "scores": torch.tensor([0.05, 0.05]),
+                    "labels": torch.tensor([1, 2]),
+                }
+            ],
+            np.array([]),
+        ),
+    ],
+)
+def test_prep_sort(mock_tracker, score_threshold, prediction, expected_output):
+    mock_tracker.score_threshold = score_threshold
+    output = mock_tracker.prep_sort(prediction)
+
+    assert np.allclose(
+        output, expected_output
+    ), "The output of prep_sort is not as expected."
+    assert (
+        output.shape == expected_output.shape
+    ), "The shape of the output is incorrect."
+    assert isinstance(output, np.ndarray), "The output type is incorrect."

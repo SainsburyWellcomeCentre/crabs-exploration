@@ -134,7 +134,12 @@ def save_required_output(
         The frame number.
     """
     frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
+    print(
+        f"save_csv_and_frames: {save_csv_and_frames}, save_video: {save_video}"
+    )
+
     if save_csv_and_frames:
+        print(f"Calling save_frame_and_csv with {frame_name}")
         save_frame_and_csv(
             frame_name,
             tracking_output_dir,
@@ -145,12 +150,17 @@ def save_required_output(
         )
     else:
         for bbox in tracked_boxes:
+            print(
+                f"Calling write_tracked_bbox_to_csv with {bbox}, {frame_name}"
+            )
+
             write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer)
 
     if save_video:
         frame_copy = frame.copy()
         for bbox in tracked_boxes:
             xmin, ymin, xmax, ymax, id = bbox
+            print(f"Calling draw_bbox with {bbox}")
             draw_bbox(
                 frame_copy,
                 (xmin, ymin),
