@@ -47,6 +47,7 @@ def write_tracked_bbox_to_csv(
     frame: np.ndarray,
     frame_name: str,
     csv_writer: Any,
+    theta: float,
 ) -> None:
     """
     Write bounding box annotation to a CSV file.
@@ -67,7 +68,8 @@ def write_tracked_bbox_to_csv(
     xmin, ymin, xmax, ymax, id = bbox
     width_box = int(xmax - xmin)
     height_box = int(ymax - ymin)
-
+    print(bbox.shape)
+    print(theta)
     # Add to csv
     csv_writer.writerow(
         (
@@ -80,6 +82,7 @@ def write_tracked_bbox_to_csv(
                 xmin, ymin, width_box, height_box
             ),
             '{{"track":"{}"}}'.format(int(id)),
+            '{{"theta":"{}"}}'.format(theta),
         )
     )
 
@@ -152,3 +155,75 @@ def prep_sort(prediction: dict, score_threshold: float) -> np.ndarray:
             pred_sort.append(bbox)
 
     return np.asarray(pred_sort)
+
+
+def calculate_velocity(tracked_boxes, previous_positions, frame_time_interval):
+    velocities = []
+    for track_box in tracked_boxes:
+        track_id = int(track_box[4])  # track ID
+        x_min, y_min, x_max, y_max = track_box[:4]
+        cx, cy = (x_min + x_max) / 2, (
+            y_min + y_max
+        ) / 2  # center of the bounding box
+
+        if track_id in previous_positions:
+            prev_cx, prev_cy = previous_positions[track_id]
+            # distance between current centre to the previous one
+            dx = cx - prev_cx
+            dy = cy - prev_cy
+            # velocity = distance/time
+            vx = dx / frame_time_interval
+            vy = dy / frame_time_interval
+            velocities.append((track_id, vx, vy))
+
+        # Update previous positions
+        previous_positions[track_id] = (cx, cy)
+
+    return velocities
+
+
+def visualize_orientation(frame, tracked_boxes, velocities):
+    theta_list = []
+    for track_box, (track_id, vx, vy) in zip(tracked_boxes, velocities):
+        x_min, y_min, x_max, y_max, _ = track_box
+        cx, cy = (x_min + x_max) / 2, (
+            y_min + y_max
+        ) / 2  # center of the bounding box
+
+        # Calculate orientation angle in radians from velocity components
+        if vx != 0 or vy != 0:
+            theta = np.arctan2(vy, vx)
+        else:
+            theta = 0
+        theta_list.append(theta)
+
+        # for visualisation for now
+        # Calculate arrow endpoints
+        arrow_length = 50  # Length of the arrow in pixels
+        end_x = int(cx + arrow_length * np.cos(theta))
+        end_y = int(cy + arrow_length * np.sin(theta))
+
+        # Draw arrow on the frame
+        cv2.arrowedLine(
+            frame, (int(cx), int(cy)), (end_x, end_y), (0, 255, 0), 2
+        )
+
+        # Optionally, draw bounding box and object ID
+        cv2.rectangle(
+            frame,
+            (int(x_min), int(y_min)),
+            (int(x_max), int(y_max)),
+            (0, 255, 0),
+            2,
+        )
+        cv2.putText(
+            frame,
+            f"ID: {int(track_box[4])}",
+            (int(x_min), int(y_min) - 10),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (0, 255, 0),
+            2,
+        )
+
+    return frame, theta_list

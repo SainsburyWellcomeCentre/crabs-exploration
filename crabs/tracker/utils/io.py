@@ -107,6 +107,7 @@ def save_required_output(
     tracked_boxes: list[list[float]],
     frame: np.ndarray,
     frame_number: int,
+    theta_list: list[float],
 ) -> None:
     """
     Handle the output based on argument options.
@@ -143,8 +144,10 @@ def save_required_output(
             csv_writer,
         )
     else:
-        for bbox in tracked_boxes:
-            write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer)
+        for bbox, theta in zip(tracked_boxes, theta_list):
+            write_tracked_bbox_to_csv(
+                bbox, frame, frame_name, csv_writer, theta
+            )
 
     if save_video:
         frame_copy = frame.copy()
