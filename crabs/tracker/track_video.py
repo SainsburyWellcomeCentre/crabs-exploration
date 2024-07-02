@@ -53,6 +53,7 @@ class Tracking:
 
         self.video_path = args.video_path
         self.video_file_root = f"{Path(self.video_path).stem}"
+        self.trained_model_path = self.args.trained_model_path
 
         self.trained_model = self.load_trained_model()
 
@@ -85,7 +86,7 @@ class Tracking:
         """
         # Get trained model
         trained_model = FasterRCNN.load_from_checkpoint(
-            self.args.checkpoint_path
+            self.trained_model_path
         )
         trained_model.eval()
         trained_model.to(DEVICE)  # Should device be a CLI?
@@ -111,6 +112,8 @@ class Tracking:
                 frame_height,
                 cap_fps,
             )
+        else:
+            self.video_output = None
 
     def get_prediction(self, frame: np.ndarray) -> torch.Tensor:
         """
@@ -249,7 +252,7 @@ def main(args) -> None:
 def tracking_parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--checkpoint_path",
+        "--trained_model_path",
         type=str,
         required=True,
         help="location of checkpoint of the trained model",
