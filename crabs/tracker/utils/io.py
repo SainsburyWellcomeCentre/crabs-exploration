@@ -107,6 +107,7 @@ def save_required_output(
     tracked_boxes: list[list[float]],
     frame: np.ndarray,
     frame_number: int,
+    pred_scores: np.ndarray,
 ) -> None:
     """
     Handle the output based on argument options.
@@ -131,6 +132,8 @@ def save_required_output(
         The current frame.
     frame_number : int
         The frame number.
+    pred_scores : np.ndarray
+        The prediction score from detector
     """
     frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
     if save_csv_and_frames:
@@ -141,10 +144,13 @@ def save_required_output(
             frame,
             frame_number,
             csv_writer,
+            pred_scores,
         )
     else:
-        for bbox in tracked_boxes:
-            write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer)
+        for bbox, pred_score in zip(tracked_boxes, pred_scores):
+            write_tracked_bbox_to_csv(
+                bbox, frame, frame_name, csv_writer, pred_score
+            )
 
     if save_video:
         frame_copy = frame.copy()
