@@ -183,10 +183,6 @@ class TrackerEvaluate:
             elif prev_gt_id is not None:
                 if current_gt_id != prev_gt_id:
                     switch_count += 1
-        if switch_count != 0:
-            print("previous:", prev_frame_id_map)
-            print("current:", current_frame_id_map)
-            print(switch_count)
 
         return switch_count
 
