@@ -53,6 +53,7 @@ class Tracking:
 
         self.video_path = args.video_path
         self.video_file_root = f"{Path(self.video_path).stem}"
+        self.trained_model_path = self.args.trained_model_path
 
         self.trained_model = self.load_trained_model()
 
@@ -85,7 +86,7 @@ class Tracking:
         """
         # Get trained model
         trained_model = FasterRCNN.load_from_checkpoint(
-            self.args.checkpoint_path
+            self.trained_model_path
         )
         trained_model.eval()
         trained_model.to(DEVICE)  # Should device be a CLI?
@@ -99,7 +100,7 @@ class Tracking:
         if not self.video.isOpened():
             raise Exception("Error opening video file")
 
-        if self.config["save_video"]:
+        if self.args.save_video:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap_fps = self.video.get(cv2.CAP_PROP_FPS)
@@ -111,6 +112,8 @@ class Tracking:
                 frame_height,
                 cap_fps,
             )
+        else:
+            self.video_output = None
 
     def get_prediction(self, frame: np.ndarray) -> torch.Tensor:
         """
@@ -195,10 +198,10 @@ class Tracking:
             tracked_boxes = self.update_tracking(prediction)
             save_required_output(
                 self.video_file_root,
-                self.config["save_csv_and_frames"],
+                self.args.save_frames,
                 self.tracking_output_dir,
                 self.csv_writer,
-                self.config["save_video"],
+                self.args.save_video,
                 self.video_output,
                 tracked_boxes,
                 frame,
@@ -220,10 +223,10 @@ class Tracking:
         self.video.release()
 
         # Close outputs
-        if self.config["save_video"]:
+        if self.args.save_video:
             release_video(self.video_output)
 
-        if self.config["save_csv_and_frames"]:
+        if self.args.save_frames:
             close_csv_file(self.csv_file)
 
 
@@ -249,7 +252,7 @@ def main(args) -> None:
 def tracking_parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--checkpoint_path",
+        "--trained_model_path",
         type=str,
         required=True,
         help="location of checkpoint of the trained model",
@@ -289,6 +292,16 @@ def tracking_parse_args(args):
             "Location of json file containing ground truth annotations (optional)."
             "If passed, evaluation metrics are computed."
         ),
+    )
+    parser.add_argument(
+        "--save_video",
+        action="store_true",
+        help="Save video inference with tracking output",
+    )
+    parser.add_argument(
+        "--save_frames",
+        action="store_true",
+        help="Save frame to be used in correcting track labelling",
     )
     return parser.parse_args(args)
 
