@@ -49,10 +49,10 @@ class Tracking:
         self.args = args
         self.config_file = args.config_file
         self.video_path = args.video_path
+        self.trained_model_path = self.args.trained_model_path
+
         self.setup()
         self.prep_outputs()
-        self.video_file_root = f"{Path(self.video_path).stem}"
-        self.trained_model_path = self.args.trained_model_path
 
         self.sort_tracker = Sort(
             max_age=self.config["max_age"],
@@ -69,7 +69,7 @@ class Tracking:
 
         # Get trained model
         self.trained_model = FasterRCNN.load_from_checkpoint(
-            self.args.checkpoint_path
+            self.trained_model_path
         )
         self.trained_model.eval()
         self.trained_model.to(DEVICE)
@@ -94,14 +94,10 @@ class Tracking:
 
             self.video_output = prep_video_writer(
                 self.tracking_output_dir,
-                self.video_file_root,
                 frame_width,
                 frame_height,
                 cap_fps,
             )
-        else:
-            self.video_output = None
-
         else:
             self.video_output = None
 
@@ -263,7 +259,7 @@ def tracking_parse_args(args):
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="crabs_track_output",
+        default="tracking_output",
         help="Directory to save the track output",  # is this a csv or a video? (or both)
     )
     parser.add_argument(
