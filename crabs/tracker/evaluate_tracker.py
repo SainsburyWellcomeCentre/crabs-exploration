@@ -170,11 +170,11 @@ class TrackerEvaluate:
         Parameters
         ----------
         gt_boxes : np.ndarray
-            Ground truth bounding boxes of objects.
+            Ground truth bounding boxes of objects with shape of (N, 4) with (x1, y1, x2, y2).
         gt_ids : np.ndarray
-            Ground truth IDs corresponding to the bounding boxes.
+            Ground truth IDs corresponding to the bounding boxes with shape of (N, 1).
         tracked_boxes : np.ndarray
-            Tracked bounding boxes of objects.
+            Tracked bounding boxes of objects with shape of (N, 5) with (x1, y1, x2, y2, id).
         iou_threshold : float
             Intersection over Union (IoU) threshold for considering a match.
         prev_frame_id_map : Optional[Dict[int, int]]

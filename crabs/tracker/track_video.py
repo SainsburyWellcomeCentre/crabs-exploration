@@ -143,7 +143,7 @@ class Tracking:
         """
         pred_sort = prep_sort(prediction, self.config["score_threshold"])
         tracked_boxes = self.sort_tracker.update(pred_sort)
-        self.tracked_list.append(tracked_boxes)
+        self.tracked_bbox_id.append(tracked_boxes)
         return tracked_boxes
 
     def run_tracking(self):
@@ -160,7 +160,7 @@ class Tracking:
         # In any case run inference
         # initialisation
         frame_idx = 0
-        self.tracked_list = []
+        self.tracked_bbox_id = []
 
         # Loop through frames of the video in batches
         while self.video.isOpened():
@@ -199,7 +199,7 @@ class Tracking:
         if self.args.gt_path:
             evaluation = TrackerEvaluate(
                 self.args.gt_path,
-                self.tracked_list,
+                self.tracked_bbox_id,
                 self.config["iou_threshold"],
             )
             evaluation.run_evaluation()
