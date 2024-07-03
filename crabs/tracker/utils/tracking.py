@@ -82,8 +82,7 @@ def write_tracked_bbox_to_csv(
             '{{"name":"rect","x":{},"y":{},"width":{},"height":{}}}'.format(
                 xmin, ymin, width_box, height_box
             ),
-            '{{"track":"{}"}}'.format(int(id)),
-            '{{"score":"{}"}}'.format(pred_score),
+            '{{"track":"{}", "pred_score":"{}"}}'.format(int(id), pred_score),
         )
     )
 
