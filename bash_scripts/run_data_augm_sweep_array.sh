@@ -69,10 +69,14 @@ if [[ $SLURM_ARRAY_TASK_COUNT -ne $n_jobs ]]; then
 fi
 
 # Get params for this job
+# - seed is the inner loop
+# - config is the outer loop
 trial_dummy=${SLURM_ARRAY_TASK_ID}  # initialise variable
-config=${list_config_files[$(( trial_dummy % ${#list_config_files[@]} ))]}
-trial_dummy=$(( trial_dummy / ${#list_config_files[@]} ))
 seed=${list_seeds[$(( trial_dummy % ${#list_seeds[@]} ))]}
+
+trial_dummy=$(( trial_dummy / ${#list_seeds[@]} ))
+config=${list_config_files[$(( trial_dummy % ${#list_config_files[@]} ))]}
+# trial=$(( trial / ${#list_config_files[@]} ))
 
 echo "-----------------"
 echo "Inputs for $SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID "
