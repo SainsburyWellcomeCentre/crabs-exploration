@@ -16,31 +16,60 @@ def test_get_ground_truth_data(evaluation):
     ground_truth_dict = evaluation.get_ground_truth_data()
 
     assert isinstance(ground_truth_dict, dict)
-    assert all(isinstance(frame_data, dict) for frame_data in ground_truth_dict.values())
+    assert all(
+        isinstance(frame_data, dict)
+        for frame_data in ground_truth_dict.values()
+    )
 
     for frame_number, data in ground_truth_dict.items():
         assert isinstance(frame_number, int)
-        assert isinstance(data['bbox'], list)
-        assert isinstance(data['id'], list)
+        assert isinstance(data["bbox"], list)
+        assert isinstance(data["id"], list)
+
 
 def test_ground_truth_data_from_csv(evaluation):
-    
     expected_data = {
-        0: {'bbox': [np.array([2894.8606,  975.8517, 2945.8606, 1016.8517], dtype=np.float32), np.array([940.6089, 1192.637 ,  989.6089, 1230.637], dtype=np.float32)], 'id': [2, 1]},
-        1: {'bbox': [np.array([940.6089, 1192.637 ,  989.6089, 1230.637], dtype=np.float32)], 'id': [2]},
+        0: {
+            "bbox": [
+                np.array(
+                    [2894.8606, 975.8517, 2945.8606, 1016.8517],
+                    dtype=np.float32,
+                ),
+                np.array(
+                    [940.6089, 1192.637, 989.6089, 1230.637], dtype=np.float32
+                ),
+            ],
+            "id": [2, 1],
+        },
+        1: {
+            "bbox": [
+                np.array(
+                    [940.6089, 1192.637, 989.6089, 1230.637], dtype=np.float32
+                )
+            ],
+            "id": [2],
+        },
     }
 
     ground_truth_dict = evaluation.get_ground_truth_data()
 
     for frame_number, expected_frame_data in expected_data.items():
         assert frame_number in ground_truth_dict
-        
-        assert len(ground_truth_dict[frame_number]['bbox']) == len(expected_frame_data['bbox'])
-        for bbox, expected_bbox in zip(ground_truth_dict[frame_number]['bbox'], expected_frame_data['bbox']):
-            assert np.allclose(bbox, expected_bbox), f"Frame {frame_number}, bbox mismatch"
-        
-        assert ground_truth_dict[frame_number]['id'] == expected_frame_data['id'], f"Frame {frame_number}, id mismatch"
 
+        assert len(ground_truth_dict[frame_number]["bbox"]) == len(
+            expected_frame_data["bbox"]
+        )
+        for bbox, expected_bbox in zip(
+            ground_truth_dict[frame_number]["bbox"],
+            expected_frame_data["bbox"],
+        ):
+            assert np.allclose(
+                bbox, expected_bbox
+            ), f"Frame {frame_number}, bbox mismatch"
+
+        assert (
+            ground_truth_dict[frame_number]["id"] == expected_frame_data["id"]
+        ), f"Frame {frame_number}, id mismatch"
 
 
 @pytest.mark.parametrize(
