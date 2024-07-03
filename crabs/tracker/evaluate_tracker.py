@@ -172,7 +172,6 @@ class TrackerEvaluate:
         switch_count = 0
 
         for current_gt_id, current_tracked_id in current_frame_id_map.items():
-            # print(current_gt_id, current_tracked_id)
             prev_tracked_id = prev_frame_id_map.get(current_gt_id)
             # print(prev_tracked_id)
             prev_gt_id = prev_frame_gt_id_map.get(current_tracked_id)
