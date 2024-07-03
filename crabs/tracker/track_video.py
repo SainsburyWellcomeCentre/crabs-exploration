@@ -51,6 +51,8 @@ class Tracking:
         self.video_path = args.video_path
         self.setup()
         self.prep_outputs()
+        self.video_file_root = f"{Path(self.video_path).stem}"
+        self.trained_model_path = self.args.trained_model_path
 
         self.sort_tracker = Sort(
             max_age=self.config["max_age"],
@@ -85,7 +87,7 @@ class Tracking:
             self.tracking_output_dir,
         ) = prep_csv_writer(self.args.output_dir, self.video_file_root)
 
-        if self.config["save_video"]:
+        if self.args.save_video:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap_fps = self.video.get(cv2.CAP_PROP_FPS)
@@ -97,6 +99,8 @@ class Tracking:
                 frame_height,
                 cap_fps,
             )
+        else:
+            self.video_output = None
 
         else:
             self.video_output = None
@@ -184,10 +188,10 @@ class Tracking:
             tracked_boxes = self.update_tracking(prediction)
             save_required_output(
                 self.video_file_root,
-                self.config["save_csv_and_frames"],
+                self.args.save_frames,
                 self.tracking_output_dir,
                 self.csv_writer,
-                self.config["save_video"],
+                self.args.save_video,
                 self.video_output,
                 tracked_boxes,
                 frame,
@@ -208,10 +212,10 @@ class Tracking:
         self.video.release()
 
         # Close outputs
-        if self.config["save_video"]:
+        if self.args.save_video:
             release_video(self.video_output)
 
-        if self.config["save_csv_and_frames"]:
+        if self.args.save_frames:
             close_csv_file(self.csv_file)
 
 
@@ -236,7 +240,7 @@ def main(args) -> None:
 def tracking_parse_args(args):
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--checkpoint_path",
+        "--trained_model_path",
         type=str,
         required=True,
         help="location of checkpoint of the trained model",
@@ -276,6 +280,16 @@ def tracking_parse_args(args):
             "Location of json file containing ground truth annotations (optional)."
             "If passed, evaluation metrics are computed."
         ),
+    )
+    parser.add_argument(
+        "--save_video",
+        action="store_true",
+        help="Save video inference with tracking output",
+    )
+    parser.add_argument(
+        "--save_frames",
+        action="store_true",
+        help="Save frame to be used in correcting track labelling",
     )
     return parser.parse_args(args)
 
