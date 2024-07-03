@@ -68,8 +68,7 @@ def write_tracked_bbox_to_csv(
     xmin, ymin, xmax, ymax, id = bbox
     width_box = int(xmax - xmin)
     height_box = int(ymax - ymin)
-    print(bbox.shape)
-    print(theta)
+
     # Add to csv
     csv_writer.writerow(
         (
@@ -81,8 +80,7 @@ def write_tracked_bbox_to_csv(
             '{{"name":"rect","x":{},"y":{},"width":{},"height":{}}}'.format(
                 xmin, ymin, width_box, height_box
             ),
-            '{{"track":"{}"}}'.format(int(id)),
-            '{{"theta":"{}"}}'.format(theta),
+            '{{"track":"{}", "theta":"{}"}}'.format(int(id), theta),
         )
     )
 
@@ -94,6 +92,7 @@ def save_frame_and_csv(
     frame: np.ndarray,
     frame_number: int,
     csv_writer: Any,
+    theta_list: list[float],
 ) -> None:
     """
     Save tracked bounding boxes as frames and write to a CSV file.
@@ -112,14 +111,16 @@ def save_frame_and_csv(
         The frame number.
     csv_writer : Any
         CSV writer object for writing bounding box data.
+    theta_list: list[float]
+        List of orientation for each bounding box
 
     Returns
     -------
     None
     """
-    for bbox in tracked_boxes:
+    for bbox, theta in zip(tracked_boxes, theta_list):
         # Add bbox to csv
-        write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer)
+        write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer, theta)
 
     # Save frame as PNG - once as per frame
     frame_path = tracking_output_dir / frame_name
@@ -182,48 +183,80 @@ def calculate_velocity(tracked_boxes, previous_positions, frame_time_interval):
     return velocities
 
 
-def visualize_orientation(frame, tracked_boxes, velocities):
-    theta_list = []
+def get_orientation(tracked_boxes, velocities):
+    orientation_data = (
+        {}
+    )  # Dictionary to store theta and arrow endpoints for each track_id
+
     for track_box, (track_id, vx, vy) in zip(tracked_boxes, velocities):
         x_min, y_min, x_max, y_max, _ = track_box
         cx, cy = (x_min + x_max) / 2, (
             y_min + y_max
-        ) / 2  # center of the bounding box
+        ) / 2  # Center of the bounding box
 
         # Calculate orientation angle in radians from velocity components
         if vx != 0 or vy != 0:
             theta = np.arctan2(vy, vx)
         else:
             theta = 0
-        theta_list.append(theta)
 
-        # for visualisation for now
         # Calculate arrow endpoints
         arrow_length = 50  # Length of the arrow in pixels
         end_x = int(cx + arrow_length * np.cos(theta))
         end_y = int(cy + arrow_length * np.sin(theta))
 
-        # Draw arrow on the frame
-        cv2.arrowedLine(
-            frame, (int(cx), int(cy)), (end_x, end_y), (0, 255, 0), 2
-        )
+        # Store theta and arrow endpoints in the dictionary with track_id as key
+        orientation_data[track_id] = {
+            "theta": theta,
+            "end_x": end_x,
+            "end_y": end_y,
+        }
 
-        # Optionally, draw bounding box and object ID
-        cv2.rectangle(
-            frame,
-            (int(x_min), int(y_min)),
-            (int(x_max), int(y_max)),
-            (0, 255, 0),
-            2,
-        )
-        cv2.putText(
-            frame,
-            f"ID: {int(track_box[4])}",
-            (int(x_min), int(y_min) - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 255, 0),
-            2,
-        )
+    return orientation_data
 
-    return frame, theta_list
+
+# def get_orientation(tracked_boxes, velocities):
+#     theta_list = []
+#     for track_box, (track_id, vx, vy) in zip(tracked_boxes, velocities):
+#         x_min, y_min, x_max, y_max, _ = track_box
+#         cx, cy = (x_min + x_max) / 2, (
+#             y_min + y_max
+#         ) / 2  # center of the bounding box
+
+#         # Calculate orientation angle in radians from velocity components
+#         if vx != 0 or vy != 0:
+#             theta = np.arctan2(vy, vx)
+#         else:
+#             theta = 0
+#         theta_list.append(theta)
+
+#         # # for visualisation for now
+#         # # Calculate arrow endpoints
+#         # arrow_length = 50  # Length of the arrow in pixels
+#         # end_x = int(cx + arrow_length * np.cos(theta))
+#         # end_y = int(cy + arrow_length * np.sin(theta))
+
+#         # # Draw arrow on the frame
+#         # cv2.arrowedLine(
+#         #     frame, (int(cx), int(cy)), (end_x, end_y), (0, 255, 0), 2
+#         # )
+
+#         # # Optionally, draw bounding box and object ID
+#         # cv2.rectangle(
+#         #     frame,
+#         #     (int(x_min), int(y_min)),
+#         #     (int(x_max), int(y_max)),
+#         #     (0, 255, 0),
+#         #     2,
+#         # )
+#         # cv2.putText(
+#         #     frame,
+#         #     f"ID: {int(track_box[4])}",
+#         #     (int(x_min), int(y_min) - 10),
+#         #     cv2.FONT_HERSHEY_SIMPLEX,
+#         #     0.5,
+#         #     (0, 255, 0),
+#         #     2,
+#         # )
+
+#     return theta_list

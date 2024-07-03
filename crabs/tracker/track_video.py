@@ -22,8 +22,8 @@ from crabs.tracker.utils.io import (
 )
 from crabs.tracker.utils.tracking import (
     calculate_velocity,
+    get_orientation,
     prep_sort,
-    visualize_orientation,
 )
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -207,16 +207,15 @@ class Tracking:
                 tracked_boxes, previous_positions, self.frame_time_interval
             )
 
-            frame_with_arrows, theta_list = visualize_orientation(
-                frame, tracked_boxes, velocities
-            )
+            orientation_data = get_orientation(tracked_boxes, velocities)
+            # print(orientation_data)
 
-            # Display frame with arrows
-            cv2.imshow("Orientation Visualization", frame_with_arrows)
-            cv2.imwrite(f"frame_{frame_number}.jpg", frame_with_arrows)
+            # # Display frame with arrows
+            # cv2.imshow("Orientation Visualization", frame_with_arrows)
+            # cv2.imwrite(f"frame_{frame_number}.jpg", frame_with_arrows)
 
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                break
+            # if cv2.waitKey(1) & 0xFF == ord("q"):
+            #     break
 
             save_required_output(
                 self.video_file_root,
@@ -228,7 +227,7 @@ class Tracking:
                 tracked_boxes,
                 frame,
                 frame_number,
-                theta_list,
+                orientation_data,
             )
 
             # update frame number

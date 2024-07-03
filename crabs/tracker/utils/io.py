@@ -1,6 +1,7 @@
 import csv
 import os
 from pathlib import Path
+from typing import Union
 
 import cv2
 import numpy as np
@@ -101,13 +102,13 @@ def save_required_output(
     video_file_root: Path,
     save_csv_and_frames: bool,
     tracking_output_dir: Path,
-    csv_writer: cv2.VideoWriter,
+    csv_writer: any,
     save_video: bool,
     video_output: cv2.VideoWriter,
     tracked_boxes: list[list[float]],
     frame: np.ndarray,
     frame_number: int,
-    theta_list: list[float],
+    orientation_data: dict[int, dict[str, Union[float, int]]],
 ) -> None:
     """
     Handle the output based on argument options.
@@ -132,8 +133,13 @@ def save_required_output(
         The current frame.
     frame_number : int
         The frame number.
+    orientation_data : dict[int, dict[str, Union[float, int]]]
+        Dictionary containing theta and arrow endpoints for each track_id.
     """
     frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
+    theta_list = [
+        orientation_data[track_id]["theta"] for track_id in orientation_data
+    ]
     if save_csv_and_frames:
         save_frame_and_csv(
             frame_name,
@@ -142,6 +148,7 @@ def save_required_output(
             frame,
             frame_number,
             csv_writer,
+            theta_list,
         )
     else:
         for bbox, theta in zip(tracked_boxes, theta_list):
@@ -152,14 +159,29 @@ def save_required_output(
     if save_video:
         frame_copy = frame.copy()
         for bbox in tracked_boxes:
-            xmin, ymin, xmax, ymax, id = bbox
-            draw_bbox(
-                frame_copy,
-                (xmin, ymin),
-                (xmax, ymax),
-                (0, 0, 255),
-                f"id : {int(id)}",
-            )
+            track_id = int(bbox[-1])  # Assuming track_id is the last element
+            xmin, ymin, xmax, ymax, _ = bbox
+
+            # Draw bounding box with optional orientation arrow
+            if track_id in orientation_data:
+                end_x = orientation_data[track_id]["end_x"]
+                end_y = orientation_data[track_id]["end_y"]
+                draw_bbox(
+                    frame_copy,
+                    (xmin, ymin),
+                    (xmax, ymax),
+                    (0, 0, 255),
+                    f"id : {track_id}",
+                    (end_x, end_y),
+                )
+            else:
+                draw_bbox(
+                    frame_copy,
+                    (xmin, ymin),
+                    (xmax, ymax),
+                    (0, 0, 255),
+                    f"id : {track_id}",
+                )
         video_output.write(frame_copy)
 
 
