@@ -43,7 +43,6 @@ class TrackerEvaluate:
         """
         ground_truth_data = []
 
-        # Open the CSV file and read its contents line by line
         with open(self.gt_dir, "r") as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)  # Skip the header row
@@ -262,10 +261,7 @@ class TrackerEvaluate:
         for frame_number in sorted(ground_truth_dict.keys()):
             gt_data = ground_truth_dict[frame_number]
             gt_boxes = np.array(
-                [
-                    [x, y, x + width, y + height]
-                    for x, y, width, height in gt_data["bbox"]
-                ],
+                [[x1, y1, x2, y2] for x1, y1, x2, y2 in gt_data["bbox"]],
                 dtype=np.float32,
             )
             gt_ids = np.array(gt_data["id"], dtype=np.float32)
