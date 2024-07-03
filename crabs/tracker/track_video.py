@@ -47,14 +47,10 @@ class Tracking:
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-
         self.config_file = args.config_file
-        self.load_config_yaml()  # TODO: load config from trained model (like in evaluation)?
-
         self.video_path = args.video_path
-        self.video_file_root = f"{Path(self.video_path).stem}"
-
-        self.trained_model = self.load_trained_model()
+        self.setup()
+        self.prep_outputs()
 
         self.sort_tracker = Sort(
             max_age=self.config["max_age"],
@@ -62,42 +58,32 @@ class Tracking:
             iou_threshold=self.config["iou_threshold"],
         )
 
+    def setup(self):
+        """
+        Load related files.
+        """
+        with open(self.config_file, "r") as f:
+            self.config = yaml.safe_load(f)
+
+        # Get trained model
+        self.trained_model = FasterRCNN.load_from_checkpoint(
+            self.args.checkpoint_path
+        )
+        self.trained_model.eval()
+        self.trained_model.to(DEVICE)
+
+        # Load the input video
+        self.video = cv2.VideoCapture(self.video_path)
+        if not self.video.isOpened():
+            raise Exception("Error opening video file")
+        self.video_file_root = f"{Path(self.video_path).stem}"
+
+    def prep_outputs(self):
         (
             self.csv_writer,
             self.csv_file,
             self.tracking_output_dir,
         ) = prep_csv_writer(self.args.output_dir, self.video_file_root)
-
-    def load_config_yaml(self):
-        """
-        Load yaml file that contains config parameters.
-        """
-        with open(self.config_file, "r") as f:
-            self.config = yaml.safe_load(f)
-
-    def load_trained_model(self) -> torch.nn.Module:
-        """
-        Load the trained model.
-
-        Returns
-        -------
-        torch.nn.Module
-        """
-        # Get trained model
-        trained_model = FasterRCNN.load_from_checkpoint(
-            self.args.checkpoint_path
-        )
-        trained_model.eval()
-        trained_model.to(DEVICE)
-        return trained_model
-
-    def load_video(self) -> None:
-        """
-        Load the input video, and prepare the output video if required.
-        """
-        self.video = cv2.VideoCapture(self.video_path)
-        if not self.video.isOpened():
-            raise Exception("Error opening video file")
 
         if self.config["save_video"]:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -111,6 +97,9 @@ class Tracking:
                 frame_height,
                 cap_fps,
             )
+
+        else:
+            self.video_output = None
 
     def get_prediction(self, frame: np.ndarray) -> torch.Tensor:
         """
@@ -170,7 +159,7 @@ class Tracking:
 
         # In any case run inference
         # initialisation
-        frame_number = 1
+        frame_idx = 0
         self.tracked_list = []
 
         # Loop through frames of the video in batches
@@ -178,7 +167,7 @@ class Tracking:
             # Break if beyond end frame (mostly for debugging)
             if (
                 self.args.max_frames_to_read
-                and frame_number > self.args.max_frames_to_read
+                and frame_idx > self.args.max_frames_to_read
             ):
                 break
 
@@ -202,12 +191,11 @@ class Tracking:
                 self.video_output,
                 tracked_boxes,
                 frame,
-                frame_number,
+                frame_idx,
             )
 
             # update frame number
-            frame_number += 1
-
+            frame_idx += 1
         if self.args.gt_path:
             evaluation = TrackerEvaluate(
                 self.args.gt_path,
@@ -242,7 +230,6 @@ def main(args) -> None:
     """
 
     inference = Tracking(args)
-    inference.load_video()
     inference.run_tracking()
 
 

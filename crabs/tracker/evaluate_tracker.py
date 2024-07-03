@@ -8,34 +8,51 @@ from crabs.tracker.utils.tracking import extract_bounding_box_info
 
 
 class TrackerEvaluate:
-    def __init__(self, gt_dir: str, tracked_list: list, iou_threshold: float):
+    def __init__(
+        self, gt_dir: str, tracked_list: list[np.ndarray], iou_threshold: float
+    ):
+        """
+        Initialize the TrackerEvaluate class with ground truth directory, tracked list, and IoU threshold.
+
+        Parameters
+        ----------
+        gt_dir : str
+            Directory path of the ground truth CSV file.
+        tracked_list : List[np.ndarray]
+            A list where each element is a numpy array representing tracked objects in a frame.
+            Each numpy array has shape (N, 5), where N is the number of objects.
+            The columns are [x1, y1, x2, y2, id], where (x1, y1) and (x2, y2)
+            define the bounding box and id is the object ID.
+        iou_threshold : float
+            Intersection over Union (IoU) threshold for evaluating tracking performance.
+        """
         self.gt_dir = gt_dir
         self.tracked_list = tracked_list
         self.iou_threshold = iou_threshold
 
-    def create_gt_list(
-        self,
-        ground_truth_data: list[Dict[str, Any]],
-        gt_boxes_list: list[np.ndarray],
-        gt_ids_list: list[np.ndarray],
-    ) -> Tuple[list[np.ndarray], list[np.ndarray]]:
+    def get_ground_truth_data(self) -> Dict[int, Dict[str, Any]]:
         """
-        Creates a list of ground truth bounding boxes organized by frame number.
-
-        Parameters
-        ----------
-        ground_truth_data : list[Dict[str, Any]]
-            A list containing ground truth bounding box data organized by frame number.
-        gt_boxes_list : list[np.ndarray]
-            A list to store the ground truth bounding boxes for each frame.
+        Extract ground truth bounding box data from a CSV file and organize it by frame number.
 
         Returns
         -------
-        Tuple[List[np.ndarray], List[np.ndarray]]:
-            A tuple containing two lists:
-            - A list of numpy arrays with ground truth bounding box data organized by frame number.
-            - A list of numpy arrays with ground truth IDs organized by frame number.
+        Dict[int, Dict[str, Any]]:
+            A dictionary where the key is the frame number and the value is another dictionary containing:
+            - 'bbox': A list of numpy arrays with coordinates of the bounding box [x, y, x + width, y + height]
+            - 'id': The ground truth ID
         """
+        ground_truth_data = []
+
+        # Open the CSV file and read its contents line by line
+        with open(self.gt_dir, "r") as csvfile:
+            csvreader = csv.reader(csvfile)
+            next(csvreader)  # Skip the header row
+            ground_truth_data = [
+                extract_bounding_box_info(row) for row in csvreader
+            ]
+
+        # Format as a dictionary with key = frame number
+        ground_truth_dict: dict = {}
         for data in ground_truth_data:
             frame_number = data["frame_number"]
             bbox = np.array(
@@ -47,60 +64,15 @@ class TrackerEvaluate:
                 ],
                 dtype=np.float32,
             )
-            track_id = np.array([data["id"]], dtype=np.float32)
+            track_id = int(float(data["id"]))
 
-            if gt_boxes_list[frame_number].size == 0:
-                gt_boxes_list[frame_number] = bbox.reshape(
-                    1, -1
-                )  # Initialize as a 2D array
-                gt_ids_list[frame_number] = track_id
-            else:
-                gt_boxes_list[frame_number] = np.vstack(
-                    [gt_boxes_list[frame_number], bbox]
-                )
-                gt_ids_list[frame_number] = np.hstack(
-                    [gt_ids_list[frame_number], track_id]
-                )
+            if frame_number not in ground_truth_dict:
+                ground_truth_dict[frame_number] = {"bbox": [], "id": []}
 
-        return gt_boxes_list, gt_ids_list
+            ground_truth_dict[frame_number]["bbox"].append(bbox)
+            ground_truth_dict[frame_number]["id"].append(track_id)
 
-    def get_ground_truth_data(
-        self,
-    ) -> Tuple[list[np.ndarray], list[np.ndarray]]:
-        """
-        Extract ground truth bounding box data from a CSV file.
-
-        Returns
-        -------
-        Tuple[List[np.ndarray], List[np.ndarray]]:
-            A tuple containing two lists:
-            - A list of numpy arrays with ground truth bounding box data organized by frame number.
-            Each numpy array represents the coordinates of the bounding boxes in the order:
-            x, y, x + width, y + height
-            - A list of numpy arrays with ground truth IDs organized by frame number.
-        """
-        ground_truth_data = []
-        max_frame_number = 0
-
-        # Open the CSV file and read its contents line by line
-        with open(self.gt_dir, "r") as csvfile:
-            csvreader = csv.reader(csvfile)
-            next(csvreader)  # Skip the header row
-            for row in csvreader:
-                data = extract_bounding_box_info(row)
-                ground_truth_data.append(data)
-                max_frame_number = max(max_frame_number, data["frame_number"])
-
-        # Initialize lists to store the ground truth bounding boxes and IDs for each frame
-        gt_boxes_list = [np.array([]) for _ in range(max_frame_number + 1)]
-        gt_ids_list = [np.array([]) for _ in range(max_frame_number + 1)]
-
-        # Populate the gt_boxes_list and gt_id_list
-        gt_boxes_list, gt_ids_list = self.create_gt_list(
-            ground_truth_data, gt_boxes_list, gt_ids_list
-        )
-
-        return gt_boxes_list, gt_ids_list
+        return ground_truth_dict
 
     def calculate_iou(self, box1: np.ndarray, box2: np.ndarray) -> float:
         """
@@ -173,9 +145,7 @@ class TrackerEvaluate:
 
         for current_gt_id, current_tracked_id in current_frame_id_map.items():
             prev_tracked_id = prev_frame_id_map.get(current_gt_id)
-            # print(prev_tracked_id)
             prev_gt_id = prev_frame_gt_id_map.get(current_tracked_id)
-            # print(prev_gt_id)
             if prev_tracked_id is not None:
                 if prev_tracked_id != current_tracked_id:
                     switch_count += 1
@@ -271,18 +241,15 @@ class TrackerEvaluate:
 
     def evaluate_tracking(
         self,
-        gt_boxes_list: list,
-        gt_ids_list: list,
+        ground_truth_dict: Dict[int, Dict[str, Any]],
     ) -> list[float]:
         """
         Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
 
         Parameters
         ----------
-        gt_boxes_list : list[float]
-            List of ground truth bounding boxes for each frame.
-        gt_id_list : list[float]
-            List of ground truth ID for each frame.
+        ground_truth_dict : dict
+            Dictionary containing ground truth bounding boxes and IDs for each frame, organized by frame number.
 
         Returns
         -------
@@ -291,17 +258,28 @@ class TrackerEvaluate:
         """
         mota_values = []
         prev_frame_id_map: Optional[dict] = None
-        for gt_boxes, gt_ids, tracked_boxes in zip(
-            gt_boxes_list, gt_ids_list, self.tracked_list
-        ):
-            mota, prev_frame_id_map = self.evaluate_mota(
-                gt_boxes,
-                gt_ids,
-                tracked_boxes,
-                self.iou_threshold,
-                prev_frame_id_map,
+
+        for frame_number in sorted(ground_truth_dict.keys()):
+            gt_data = ground_truth_dict[frame_number]
+            gt_boxes = np.array(
+                [
+                    [x, y, x + width, y + height]
+                    for x, y, width, height in gt_data["bbox"]
+                ],
+                dtype=np.float32,
             )
-            mota_values.append(mota)
+            gt_ids = np.array(gt_data["id"], dtype=np.float32)
+
+            if frame_number < len(self.tracked_list):
+                tracked_boxes = self.tracked_list[frame_number]
+                mota, prev_frame_id_map = self.evaluate_mota(
+                    gt_boxes,
+                    gt_ids,
+                    tracked_boxes,
+                    self.iou_threshold,
+                    prev_frame_id_map,
+                )
+                mota_values.append(mota)
 
         return mota_values
 
@@ -309,7 +287,7 @@ class TrackerEvaluate:
         """
         Run evaluation of tracking based on tracking ground truth.
         """
-        gt_boxes_list, gt_id_list = self.get_ground_truth_data()
-        mota_values = self.evaluate_tracking(gt_boxes_list, gt_id_list)
+        ground_truth_dict = self.get_ground_truth_data()
+        mota_values = self.evaluate_tracking(ground_truth_dict)
         overall_mota = np.mean(mota_values)
         logging.info("Overall MOTA: %f" % overall_mota)
