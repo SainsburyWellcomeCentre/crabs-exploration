@@ -52,7 +52,9 @@ def test_write_tracked_bbox_to_csv(csv_writer, csv_output):
     theta = 1.0
     pred_score = 0.900
 
-    write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer, theta, pred_score)
+    write_tracked_bbox_to_csv(
+        bbox, frame, frame_name, csv_writer, theta, pred_score
+    )
 
     expected_row = (
         "frame_0001.png",
