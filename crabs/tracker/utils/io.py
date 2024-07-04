@@ -8,7 +8,7 @@ import numpy as np
 
 from crabs.detector.utils.visualization import draw_bbox
 from crabs.tracker.utils.tracking import (
-    save_frame_and_csv,
+    save_output_frames,
     write_tracked_bbox_to_csv,
 )
 
@@ -108,6 +108,7 @@ def save_required_output(
     tracked_boxes: list[list[float]],
     frame: np.ndarray,
     frame_number: int,
+    pred_scores: np.ndarray,
 ) -> None:
     """
     Handle the output based on argument options.
@@ -132,25 +133,23 @@ def save_required_output(
         The current frame.
     frame_number : int
         The frame number.
+    pred_scores : np.ndarray
+        The prediction score from detector
     """
     frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
 
+    for bbox, pred_score in zip(tracked_boxes, pred_scores):
+        write_tracked_bbox_to_csv(
+            bbox, frame, frame_name, csv_writer, pred_score
+        )
+
     if save_frames:
-        save_frame_and_csv(
+        save_output_frames(
             frame_name,
             tracking_output_dir,
-            tracked_boxes,
             frame,
             frame_number,
-            csv_writer,
         )
-    else:
-        for bbox in tracked_boxes:
-            print(
-                f"Calling write_tracked_bbox_to_csv with {bbox}, {frame_name}"
-            )
-
-            write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer)
 
     if save_video:
         frame_copy = frame.copy()
