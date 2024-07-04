@@ -114,7 +114,6 @@ def save_frame_and_csv(
     -------
     None
     """
-    print("in here save_frame_and_csv_function")
     for bbox in tracked_boxes:
         # Add bbox to csv
         write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer)
