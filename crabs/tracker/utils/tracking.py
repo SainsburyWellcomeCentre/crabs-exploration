@@ -208,6 +208,8 @@ def get_orientation(tracked_boxes, velocities):
             "theta": theta,
             "end_x": end_x,
             "end_y": end_y,
+            "cx": cx,
+            "cy": cy,
         }
 
     return orientation_data

@@ -23,6 +23,7 @@ def draw_bbox(
     colour: tuple,
     label_text: Optional[str] = None,
     end_point: Optional[tuple[float, float]] = None,
+    box_centroid: Optional[tuple[float, float]] = None,
 ) -> None:
     """
     Draw bounding boxes on the image based on detection results and optionally draw orientation arrow.
@@ -41,6 +42,8 @@ def draw_bbox(
         Text to display alongside the bounding box, indicating class and score.
     end_point : tuple[float, float], optional
         Tuple containing (x, y) coordinates of the end point of the orientation arrow.
+    box_centroid : tuple[float, float], optional
+        Tuple containing (x, y) coordinates of the central point of the the bounding box.
 
     Returns
     -------
@@ -69,16 +72,13 @@ def draw_bbox(
         )
 
     # Draw orientation arrow if end_point is provided
-    if end_point:
-        cx = (top_left[0] + bottom_right[0]) / 2
-        cy = (top_left[1] + bottom_right[1]) / 2
+    if end_point and box_centroid:
         cv2.arrowedLine(
             frame,
-            (int(cx), int(cy)),
-            (int(end_point[0]), int(end_point[1])),
+            (int(box_centroid[0]), int(box_centroid[1])),
+            (end_point[0], end_point[1]),
             colour,
             2,
-            # tipLength=0.3
         )
 
 

@@ -165,15 +165,20 @@ def save_required_output(
 
             # Draw bounding box with optional orientation arrow
             if track_id in orientation_data:
-                end_x = orientation_data[track_id]["end_x"]
-                end_y = orientation_data[track_id]["end_y"]
                 draw_bbox(
                     frame_copy,
                     (xmin, ymin),
                     (xmax, ymax),
                     (0, 0, 255),
                     f"id : {track_id}",
-                    (end_x, end_y),
+                    (
+                        orientation_data[track_id]["end_x"],
+                        orientation_data[track_id]["end_y"],
+                    ),
+                    (
+                        orientation_data[track_id]["cx"],
+                        orientation_data[track_id]["cy"],
+                    ),
                 )
             else:
                 draw_bbox(

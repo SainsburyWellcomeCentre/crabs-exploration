@@ -176,7 +176,6 @@ class Tracking:
             )
             return
 
-        # In any case run inference
         # initialisation
         frame_number = 1
         self.tracked_list = []
@@ -209,8 +208,6 @@ class Tracking:
             )
 
             orientation_data = get_orientation(tracked_boxes, velocities)
-            if 68 in orientation_data:
-                print(orientation_data[68])
 
             save_required_output(
                 self.video_file_root,
