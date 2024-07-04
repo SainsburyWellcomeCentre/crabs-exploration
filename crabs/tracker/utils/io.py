@@ -100,7 +100,7 @@ def prep_video_writer(
 
 def save_required_output(
     video_file_root: Path,
-    save_csv_and_frames: bool,
+    save_frames: bool,
     tracking_output_dir: Path,
     csv_writer: cv2.VideoWriter,
     save_video: bool,
@@ -134,12 +134,8 @@ def save_required_output(
         The frame number.
     """
     frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
-    print(
-        f"save_csv_and_frames: {save_csv_and_frames}, save_video: {save_video}"
-    )
 
-    if save_csv_and_frames:
-        print(f"Calling save_frame_and_csv with {frame_name}")
+    if save_frames:
         save_frame_and_csv(
             frame_name,
             tracking_output_dir,
