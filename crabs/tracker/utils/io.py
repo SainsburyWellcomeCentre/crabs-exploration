@@ -1,7 +1,7 @@
 import csv
 import os
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 import cv2
 import numpy as np
@@ -102,7 +102,7 @@ def save_required_output(
     video_file_root: Path,
     save_frames: bool,
     tracking_output_dir: Path,
-    csv_writer: any,
+    csv_writer: Any,
     save_video: bool,
     video_output: cv2.VideoWriter,
     tracked_boxes: list[list[float]],

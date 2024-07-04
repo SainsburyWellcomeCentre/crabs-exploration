@@ -108,7 +108,6 @@ class Tracking:
         self.frame_time_interval = 1 / cap_fps
 
         if self.args.save_video:
-
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
