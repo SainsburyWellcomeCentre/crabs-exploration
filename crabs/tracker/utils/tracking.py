@@ -173,8 +173,8 @@ def calculate_velocity(tracked_boxes, previous_positions, frame_time_interval):
             dx = cx - prev_cx
             dy = cy - prev_cy
             # velocity = distance/time
-            vx = dx / frame_time_interval
-            vy = dy / frame_time_interval
+            vx = dx
+            vy = dy
             velocities.append((track_id, vx, vy))
 
         # Update previous positions
@@ -213,50 +213,3 @@ def get_orientation(tracked_boxes, velocities):
         }
 
     return orientation_data
-
-
-# def get_orientation(tracked_boxes, velocities):
-#     theta_list = []
-#     for track_box, (track_id, vx, vy) in zip(tracked_boxes, velocities):
-#         x_min, y_min, x_max, y_max, _ = track_box
-#         cx, cy = (x_min + x_max) / 2, (
-#             y_min + y_max
-#         ) / 2  # center of the bounding box
-
-#         # Calculate orientation angle in radians from velocity components
-#         if vx != 0 or vy != 0:
-#             theta = np.arctan2(vy, vx)
-#         else:
-#             theta = 0
-#         theta_list.append(theta)
-
-#         # # for visualisation for now
-#         # # Calculate arrow endpoints
-#         # arrow_length = 50  # Length of the arrow in pixels
-#         # end_x = int(cx + arrow_length * np.cos(theta))
-#         # end_y = int(cy + arrow_length * np.sin(theta))
-
-#         # # Draw arrow on the frame
-#         # cv2.arrowedLine(
-#         #     frame, (int(cx), int(cy)), (end_x, end_y), (0, 255, 0), 2
-#         # )
-
-#         # # Optionally, draw bounding box and object ID
-#         # cv2.rectangle(
-#         #     frame,
-#         #     (int(x_min), int(y_min)),
-#         #     (int(x_max), int(y_max)),
-#         #     (0, 255, 0),
-#         #     2,
-#         # )
-#         # cv2.putText(
-#         #     frame,
-#         #     f"ID: {int(track_box[4])}",
-#         #     (int(x_min), int(y_min) - 10),
-#         #     cv2.FONT_HERSHEY_SIMPLEX,
-#         #     0.5,
-#         #     (0, 255, 0),
-#         #     2,
-#         # )
-
-#     return theta_list

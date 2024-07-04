@@ -26,8 +26,6 @@ from crabs.tracker.utils.tracking import (
     prep_sort,
 )
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class Tracking:
     """
@@ -53,11 +51,12 @@ class Tracking:
         self.args = args
 
         self.config_file = args.config_file
-        self.load_config_yaml()  # TODO: load config from trained model (like in evaluation)?
+        self.load_config_yaml()
 
         self.video_path = args.video_path
         self.video_file_root = f"{Path(self.video_path).stem}"
         self.trained_model_path = self.args.trained_model_path
+        self.device = self.args.device
 
         self.trained_model = self.load_trained_model()
 
@@ -93,7 +92,7 @@ class Tracking:
             self.trained_model_path
         )
         trained_model.eval()
-        trained_model.to(DEVICE)  # Should device be a CLI?
+        trained_model.to(self.device)  # Should device be a CLI?
         return trained_model
 
     def load_video(self) -> None:
@@ -141,7 +140,7 @@ class Tracking:
                 transforms.ToDtype(torch.float32, scale=True),
             ]
         )
-        img = transform(frame).to(DEVICE)
+        img = transform(frame).to(self.device)
         img = img.unsqueeze(0)
         with torch.no_grad():
             prediction = self.trained_model(img)
@@ -209,14 +208,6 @@ class Tracking:
             )
 
             orientation_data = get_orientation(tracked_boxes, velocities)
-            # print(orientation_data)
-
-            # # Display frame with arrows
-            # cv2.imshow("Orientation Visualization", frame_with_arrows)
-            # cv2.imwrite(f"frame_{frame_number}.jpg", frame_with_arrows)
-
-            # if cv2.waitKey(1) & 0xFF == ord("q"):
-            #     break
 
             save_required_output(
                 self.video_file_root,
@@ -299,7 +290,7 @@ def tracking_parse_args(args):
         "--output_dir",
         type=str,
         default="crabs_track_output",
-        help="Directory to save the track output",  # is this a csv or a video? (or both)
+        help="Directory to save the track output",
     )
     parser.add_argument(
         "--max_frames_to_read",
@@ -325,6 +316,12 @@ def tracking_parse_args(args):
         "--save_frames",
         action="store_true",
         help="Save frame to be used in correcting track labelling",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda",
+        help="device for pytorch either cpu or cuda",
     )
     return parser.parse_args(args)
 
