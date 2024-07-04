@@ -82,22 +82,19 @@ def write_tracked_bbox_to_csv(
             '{{"name":"rect","x":{},"y":{},"width":{},"height":{}}}'.format(
                 xmin, ymin, width_box, height_box
             ),
-            '{{"track":"{}", "pred_score":"{}"}}'.format(int(id), pred_score),
+            '{{"track":"{}", "confidence":"{}"}}'.format(int(id), pred_score),
         )
     )
 
 
-def save_frame_and_csv(
+def save_output_frames(
     frame_name: str,
     tracking_output_dir: Path,
-    tracked_boxes: list[list[float]],
     frame: np.ndarray,
     frame_number: int,
-    csv_writer: Any,
-    pred_scores: np.ndarray,
 ) -> None:
     """
-    Save tracked bounding boxes as frames and write to a CSV file.
+    Save tracked bounding boxes as frames.
 
     Parameters
     ----------
@@ -120,11 +117,6 @@ def save_frame_and_csv(
     -------
     None
     """
-    for bbox, pred_score in zip(tracked_boxes, pred_scores):
-        # Add bbox to csv
-        write_tracked_bbox_to_csv(
-            bbox, frame, frame_name, csv_writer, pred_score
-        )
 
     # Save frame as PNG - once as per frame
     frame_path = tracking_output_dir / frame_name
