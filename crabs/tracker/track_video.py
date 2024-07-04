@@ -22,8 +22,6 @@ from crabs.tracker.utils.io import (
 )
 from crabs.tracker.utils.tracking import prep_sort
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class Tracking:
     """
@@ -50,6 +48,7 @@ class Tracking:
         self.config_file = args.config_file
         self.video_path = args.video_path
         self.trained_model_path = self.args.trained_model_path
+        self.device = self.args.device
 
         self.setup()
         self.prep_outputs()
@@ -72,7 +71,7 @@ class Tracking:
             self.trained_model_path
         )
         self.trained_model.eval()
-        self.trained_model.to(DEVICE)
+        self.trained_model.to(self.device)
 
         # Load the input video
         self.video = cv2.VideoCapture(self.video_path)
@@ -121,7 +120,7 @@ class Tracking:
                 transforms.ToDtype(torch.float32, scale=True),
             ]
         )
-        img = transform(frame).to(DEVICE)
+        img = transform(frame).to(self.device)
         img = img.unsqueeze(0)
         with torch.no_grad():
             prediction = self.trained_model(img)
@@ -157,7 +156,6 @@ class Tracking:
             )
             return
 
-        # In any case run inference
         # initialisation
         frame_idx = 0
         self.tracked_bbox_id = []
@@ -286,6 +284,12 @@ def tracking_parse_args(args):
         "--save_frames",
         action="store_true",
         help="Save frame to be used in correcting track labelling",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda",
+        help="device for pytorch either cpu or cuda",
     )
     return parser.parse_args(args)
 
