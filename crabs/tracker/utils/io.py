@@ -144,7 +144,7 @@ def save_required_output(
         orientation_data[track_id]["theta"] for track_id in orientation_data
     ]
 
-    for bbox, pred_score in zip(tracked_boxes, pred_scores):
+    for bbox, theta, pred_score in zip(tracked_boxes, theta_list, pred_scores):
         write_tracked_bbox_to_csv(
             bbox, frame, frame_name, csv_writer, theta, pred_score
         )
@@ -155,9 +155,7 @@ def save_required_output(
             tracking_output_dir,
             frame,
             frame_number,
-            csv_writer,
         )
-    
 
     if save_video:
         frame_copy = frame.copy()

@@ -50,11 +50,9 @@ def test_write_tracked_bbox_to_csv(csv_writer, csv_output):
     frame = np.zeros((100, 100, 3), dtype=np.uint8)
     frame_name = "frame_0001.png"
     theta = 1.0
-
-    write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer, theta)
     pred_score = 0.900
 
-    write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer, pred_score)
+    write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer, theta, pred_score)
 
     expected_row = (
         "frame_0001.png",
@@ -63,8 +61,7 @@ def test_write_tracked_bbox_to_csv(csv_writer, csv_output):
         1,
         0,
         '"{""name"":""rect"",""x"":10,""y"":20,""width"":40,""height"":60}"',
-        '"{""track"":""1"", ""theta"":""1.0""}"',
-        '"{""track"":""1"", ""confidence"":""0.9""}"',
+        '"{""track"":""1"", ""confidence"":""0.9"", ""theta"":""1.0""}"',
     )
     expected_row_str = ",".join(map(str, expected_row))
     assert csv_output.getvalue().strip() == expected_row_str

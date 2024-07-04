@@ -83,8 +83,9 @@ def write_tracked_bbox_to_csv(
             '{{"name":"rect","x":{},"y":{},"width":{},"height":{}}}'.format(
                 xmin, ymin, width_box, height_box
             ),
-            '{{"track":"{}", "theta":"{}"}}'.format(int(id), theta),
-            '{{"track":"{}", "confidence":"{}"}}'.format(int(id), pred_score),
+            '{{"track":"{}", "confidence":"{}", "theta":"{}"}}'.format(
+                int(id), pred_score, theta
+            ),
         )
     )
 
@@ -94,7 +95,6 @@ def save_output_frames(
     tracking_output_dir: Path,
     frame: np.ndarray,
     frame_number: int,
-    csv_writer: Any,
 ) -> None:
     """
     Save tracked bounding boxes as frames.
