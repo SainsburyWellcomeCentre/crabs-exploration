@@ -17,6 +17,7 @@ def setup_mocks():
     tracked_boxes = [[10, 20, 30, 40, 1]]
     frame = np.zeros((480, 640, 3), dtype=np.uint8)
     frame_number = 1
+    pred_score = [[0.9]]
 
     return (
         video_file_root,
@@ -26,14 +27,15 @@ def setup_mocks():
         tracked_boxes,
         frame,
         frame_number,
+        pred_score,
     )
 
 
-@patch("crabs.tracker.utils.io.save_frame_and_csv")
+@patch("crabs.tracker.utils.io.save_output_frames")
 @patch("crabs.tracker.utils.io.write_tracked_bbox_to_csv")
 @patch("crabs.tracker.utils.io.draw_bbox")
 @pytest.mark.parametrize(
-    "save_csv_and_frames, save_video",
+    "save_frames, save_video",
     [
         (True, True),
         (True, False),
@@ -44,8 +46,8 @@ def setup_mocks():
 def test_save_required_output(
     mock_draw_bbox,
     mock_write_tracked_bbox_to_csv,
-    mock_save_frame_and_csv,
-    save_csv_and_frames,
+    mock_save_frames,
+    save_frames,
     save_video,
     setup_mocks,
 ):
@@ -57,11 +59,12 @@ def test_save_required_output(
         tracked_boxes,
         frame,
         frame_number,
+        pred_score,
     ) = setup_mocks
 
     save_required_output(
         video_file_root,
-        save_csv_and_frames,
+        save_frames,
         tracking_output_dir,
         csv_writer,
         save_video,
@@ -69,22 +72,21 @@ def test_save_required_output(
         tracked_boxes,
         frame,
         frame_number,
+        pred_score,
     )
 
     frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
 
-    if save_csv_and_frames:
-        mock_save_frame_and_csv.assert_called_once_with(
+    mock_write_tracked_bbox_to_csv.assert_called_once_with(
+        tracked_boxes[0], frame, frame_name, csv_writer, pred_score[0]
+    )
+
+    if save_frames:
+        mock_save_frames.assert_called_once_with(
             frame_name,
             tracking_output_dir,
-            tracked_boxes,
             frame,
             frame_number,
-            csv_writer,
-        )
-    else:
-        mock_write_tracked_bbox_to_csv.assert_called_once_with(
-            tracked_boxes[0], frame, frame_name, csv_writer
         )
 
     if save_video:
