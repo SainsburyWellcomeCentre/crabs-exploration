@@ -8,7 +8,7 @@ import numpy as np
 
 from crabs.detector.utils.visualization import draw_bbox
 from crabs.tracker.utils.tracking import (
-    save_frame_and_csv,
+    save_output_frames,
     write_tracked_bbox_to_csv,
 )
 
@@ -109,6 +109,7 @@ def save_required_output(
     frame: np.ndarray,
     frame_number: int,
     orientation_data: dict[int, dict[str, Union[float, int]]],
+    pred_scores: np.ndarray,
 ) -> None:
     """
     Handle the output based on argument options.
@@ -135,32 +136,33 @@ def save_required_output(
         The frame number.
     orientation_data : dict[int, dict[str, Union[float, int]]]
         Dictionary containing theta and arrow endpoints for each track_id.
+    pred_scores : np.ndarray
+        The prediction score from detector
     """
     frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
     theta_list = [
         orientation_data[track_id]["theta"] for track_id in orientation_data
     ]
 
+    for bbox, pred_score in zip(tracked_boxes, pred_scores):
+        write_tracked_bbox_to_csv(
+            bbox, frame, frame_name, csv_writer, theta, pred_score
+        )
+
     if save_frames:
-        save_frame_and_csv(
+        save_output_frames(
             frame_name,
             tracking_output_dir,
-            tracked_boxes,
             frame,
             frame_number,
             csv_writer,
-            theta_list,
         )
-    else:
-        for bbox, theta in zip(tracked_boxes, theta_list):
-            write_tracked_bbox_to_csv(
-                bbox, frame, frame_name, csv_writer, theta
-            )
+    
 
     if save_video:
         frame_copy = frame.copy()
         for bbox in tracked_boxes:
-            track_id = int(bbox[-1])  # Assuming track_id is the last element
+            track_id = int(bbox[-1])
             xmin, ymin, xmax, ymax, _ = bbox
 
             # Draw bounding box with optional orientation arrow

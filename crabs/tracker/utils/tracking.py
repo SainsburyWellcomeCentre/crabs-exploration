@@ -48,6 +48,7 @@ def write_tracked_bbox_to_csv(
     frame_name: str,
     csv_writer: Any,
     theta: float,
+    pred_score: np.ndarray,
 ) -> None:
     """
     Write bounding box annotation to a CSV file.
@@ -63,6 +64,8 @@ def write_tracked_bbox_to_csv(
         The name of the frame.
     csv_writer : Any
         The CSV writer object to write the annotation.
+    pred_score : np.ndarray
+        The prediction score from detector.
     """
     # Bounding box geometry
     xmin, ymin, xmax, ymax, id = bbox
@@ -81,21 +84,20 @@ def write_tracked_bbox_to_csv(
                 xmin, ymin, width_box, height_box
             ),
             '{{"track":"{}", "theta":"{}"}}'.format(int(id), theta),
+            '{{"track":"{}", "confidence":"{}"}}'.format(int(id), pred_score),
         )
     )
 
 
-def save_frame_and_csv(
+def save_output_frames(
     frame_name: str,
     tracking_output_dir: Path,
-    tracked_boxes: list[list[float]],
     frame: np.ndarray,
     frame_number: int,
     csv_writer: Any,
-    theta_list: list[float],
 ) -> None:
     """
-    Save tracked bounding boxes as frames and write to a CSV file.
+    Save tracked bounding boxes as frames.
 
     Parameters
     ----------
@@ -111,17 +113,13 @@ def save_frame_and_csv(
         The frame number.
     csv_writer : Any
         CSV writer object for writing bounding box data.
-    theta_list: list[float]
-        List of orientation for each bounding box
+    pred_scores : np.ndarray
+        The prediction score from detector
 
     Returns
     -------
     None
     """
-    for bbox, theta in zip(tracked_boxes, theta_list):
-        # Add bbox to csv
-        write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer, theta)
-
     # Save frame as PNG - once as per frame
     frame_path = tracking_output_dir / frame_name
     img_saved = cv2.imwrite(str(frame_path), frame)
