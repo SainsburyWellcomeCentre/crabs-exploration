@@ -100,7 +100,7 @@ def prep_video_writer(
 
 def save_required_output(
     video_file_root: Path,
-    save_csv_and_frames: bool,
+    save_frames: bool,
     tracking_output_dir: Path,
     csv_writer: any,
     save_video: bool,
@@ -140,7 +140,8 @@ def save_required_output(
     theta_list = [
         orientation_data[track_id]["theta"] for track_id in orientation_data
     ]
-    if save_csv_and_frames:
+
+    if save_frames:
         save_frame_and_csv(
             frame_name,
             tracking_output_dir,
