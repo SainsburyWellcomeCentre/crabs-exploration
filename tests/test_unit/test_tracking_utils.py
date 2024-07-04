@@ -60,7 +60,7 @@ def test_write_tracked_bbox_to_csv(csv_writer, csv_output):
         1,
         0,
         '"{""name"":""rect"",""x"":10,""y"":20,""width"":40,""height"":60}"',
-        '"{""track"":""1"", ""pred_score"":""0.9""}"',
+        '"{""track"":""1"", ""confidence"":""0.9""}"',
     )
     expected_row_str = ",".join(map(str, expected_row))
     assert csv_output.getvalue().strip() == expected_row_str
