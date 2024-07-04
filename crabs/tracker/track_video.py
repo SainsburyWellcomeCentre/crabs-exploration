@@ -193,6 +193,7 @@ class Tracking:
 
             # predict bounding boxes
             prediction = self.get_prediction(frame)
+            pred_scores = prediction[0]["scores"].detach().cpu().numpy()
 
             # run tracking
             tracked_boxes = self.update_tracking(prediction)
@@ -206,6 +207,7 @@ class Tracking:
                 tracked_boxes,
                 frame,
                 frame_number,
+                pred_scores,
             )
 
             # update frame number

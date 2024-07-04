@@ -26,9 +26,10 @@ Below we outline the steps on how to add annotations to these extracted frames.
 
 ### 1. Download and launch the VIA annotation tool
 
-- Access the online version of the tool [here](https://www.robots.ox.ac.uk/~vgg/software/via/via.html) or download it locally [via this link](https://www.robots.ox.ac.uk/~vgg/software/via/) (click on `Downloads` > `Image annotator` section and download the zip file).
+- We use the VIA image annotator tool version 2.0.12.
+- We recommend downloading it locally from [this link](https://www.robots.ox.ac.uk/~vgg/software/via/downloads/via-2.0.12.zip) (or from [here](https://www.robots.ox.ac.uk/~vgg/software/via/), under `Downloads` > `Version 2` > `via-2.0.12.zip`).
 - It is very lightweight, browser-based and can be run offline.
-- If you download the tool locally, launch it by selecting the `via.html` file from the expanded zip archive
+- If you download the tool locally, launch it by selecting the `via.html` file from the expanded zip archive.
 
 ### 2. Define the project settings
 
