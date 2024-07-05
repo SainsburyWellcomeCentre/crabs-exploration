@@ -150,17 +150,17 @@ class TrackerEvaluate:
 
     def count_identity_switches(
         self,
-        prev_frame_id_map: Optional[Dict[int, int]],
-        current_frame_id_map: Dict[int, int],
+        gt_to_tracked_id_previous_frame: Optional[Dict[int, int]],
+        gt_to_tracked_id_current_frame: Dict[int, int],
     ) -> int:
         """
         Count the number of identity switches between two sets of object IDs.
 
         Parameters
         ----------
-        prev_frame_id_map : Optional[Dict[int, int]]
+        gt_to_tracked_id_previous_frame : Optional[Dict[int, int]]
             A dictionary mapping ground truth IDs to predicted IDs from the previous frame.
-        gt_to_tracked_map : Dict[int, int]
+        gt_to_tracked_id_current_frame : Dict[int, int]
             A dictionary mapping ground truth IDs to predicted IDs for the current frame.
 
         Returns
@@ -168,21 +168,24 @@ class TrackerEvaluate:
         int
             The number of identity switches between the two sets of object IDs.
         """
-
-        if prev_frame_id_map is None:
+        if gt_to_tracked_id_previous_frame is None:
             return 0
 
-        prev_frame_gt_id_map = {v: k for k, v in prev_frame_id_map.items()}
+        prev_frame_gt_id_map = {
+            v: k for k, v in gt_to_tracked_id_previous_frame.items()
+        }
 
         switch_count = 0
 
         for (
             current_gt_id,
             current_predicted_id,
-        ) in current_frame_id_map.items():
+        ) in gt_to_tracked_id_current_frame.items():
             if np.isnan(current_predicted_id):
                 continue
-            prev_tracked_id = prev_frame_id_map.get(current_gt_id)
+            prev_tracked_id = gt_to_tracked_id_previous_frame.get(
+                current_gt_id
+            )
             prev_gt_id = prev_frame_gt_id_map.get(current_predicted_id)
             if prev_tracked_id is not None:
                 if prev_tracked_id != current_predicted_id:
@@ -198,7 +201,7 @@ class TrackerEvaluate:
         gt_data: Dict[str, np.ndarray],
         pred_data: Dict[str, np.ndarray],
         iou_threshold: float,
-        prev_frame_id_map: Optional[Dict[int, int]],
+        gt_to_tracked_id_previous_frame: Optional[Dict[int, int]],
     ) -> Tuple[float, Dict[int, int]]:
         """
         Evaluate MOTA (Multiple Object Tracking Accuracy).
@@ -215,7 +218,7 @@ class TrackerEvaluate:
             - 'id': Predicted IDs with shape (N,).
         iou_threshold : float
             Intersection over Union (IoU) threshold for considering a match.
-        prev_frame_id_map : Optional[Dict[int, int]]
+        gt_to_tracked_id_previous_frame : Optional[Dict[int, int]]
             A dictionary mapping ground truth IDs to predicted IDs from the previous frame.
 
         Returns
@@ -227,8 +230,8 @@ class TrackerEvaluate:
         """
         total_gt = len(gt_data["bbox"])
         false_positive = 0
-        matched_gt_boxes = set()
-        gt_to_tracked_map = {}
+        indices_of_matched_gt_boxes = set()
+        gt_to_tracked_id_current_frame = {}
 
         pred_boxes = pred_data["bbox"]
         pred_ids = pred_data["id"]
@@ -238,32 +241,41 @@ class TrackerEvaluate:
 
         for i, (pred_box, pred_id) in enumerate(zip(pred_boxes, pred_ids)):
             best_iou = 0.0
-            best_match = None
+            index_gt_best_match = None
+            index_gt_not_match = None
 
             for j, gt_box in enumerate(gt_boxes):
-                if j not in matched_gt_boxes:
+                if j not in indices_of_matched_gt_boxes:
                     iou = self.calculate_iou(gt_box, pred_box)
                     if iou > iou_threshold and iou > best_iou:
                         best_iou = iou
-                        best_match = j
+                        index_gt_best_match = j
+                    else:
+                        index_gt_not_match = j
 
-            if best_match is not None:
+            if index_gt_best_match is not None:
                 # Successfully found a matching ground truth box for the tracked box.
-                matched_gt_boxes.add(best_match)
+                indices_of_matched_gt_boxes.add(index_gt_best_match)
                 # Map ground truth ID to tracked ID
-                gt_to_tracked_map[int(gt_ids[best_match])] = int(pred_id)
+                gt_to_tracked_id_current_frame[
+                    int(gt_ids[index_gt_best_match])
+                ] = int(pred_id)
             else:
                 false_positive += 1
+            if index_gt_not_match is not None:
+                gt_to_tracked_id_current_frame[
+                    int(gt_ids[index_gt_not_match])
+                ] = np.nan
 
-        missed_detections = total_gt - len(matched_gt_boxes)
+        missed_detections = total_gt - len(indices_of_matched_gt_boxes)
         num_switches = self.count_identity_switches(
-            prev_frame_id_map, gt_to_tracked_map
+            gt_to_tracked_id_previous_frame, gt_to_tracked_id_current_frame
         )
 
         mota = (
             1 - (missed_detections + false_positive + num_switches) / total_gt
         )
-        return mota, gt_to_tracked_map
+        return mota, gt_to_tracked_id_current_frame
 
     def evaluate_tracking(
         self,

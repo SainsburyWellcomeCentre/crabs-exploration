@@ -200,7 +200,7 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
                 "id": np.array([11, 12, 14]),
             },
             {1: 11, 2: 12, 3: 13},
-            1.0,
+            2 / 3,
         ),
         # missed detection
         (
@@ -361,7 +361,7 @@ def test_evaluate_mota(
     mota, _ = evaluation.evaluate_mota(
         gt_data,
         pred_data,
-        iou_threshold=0.1,
-        prev_frame_id_map=prev_frame_id_map,
+        0.1,
+        prev_frame_id_map,
     )
     assert mota == pytest.approx(expected_mota)
