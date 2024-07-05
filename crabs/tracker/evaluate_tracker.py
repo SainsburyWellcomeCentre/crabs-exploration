@@ -147,7 +147,7 @@ class TrackerEvaluate:
         iou = intersect_area / float(box1_area + box2_area - intersect_area)
 
         return iou
-    
+
     def count_identity_switches(
         self,
         gt_to_tracked_id_previous_frame: Optional[Dict[int, int]],
@@ -171,110 +171,54 @@ class TrackerEvaluate:
         if gt_to_tracked_id_previous_frame is None:
             return 0
 
-        prev_frame_gt_id_map = {
-            v: k for k, v in gt_to_tracked_id_previous_frame.items()
-        }
+        switch_counter = 0
 
-        switch_count = 0
+        # Compute sets of ground truth IDs for current and previous frames
+        gt_ids_current_frame = set(gt_to_tracked_id_current_frame.keys())
+        gt_ids_prev_frame = set(gt_to_tracked_id_previous_frame.keys())
 
-        for (
-            current_gt_id,
-            current_predicted_id,
-        ) in gt_to_tracked_id_current_frame.items():
-            if np.isnan(current_predicted_id):
-                continue
-            prev_tracked_id = gt_to_tracked_id_previous_frame.get(
-                current_gt_id
-            )
-            prev_gt_id = prev_frame_gt_id_map.get(current_predicted_id)
-            if prev_tracked_id is not None:
-                if prev_tracked_id != current_predicted_id:
-                    switch_count += 1
-            elif prev_gt_id is not None:
-                if current_gt_id != prev_gt_id:
-                    switch_count += 1
+        # Compute lists of ground truth IDs that continue, disappear, and appear
+        gt_ids_cont = list(gt_ids_current_frame & gt_ids_prev_frame)
+        gt_ids_disappear = list(gt_ids_prev_frame - gt_ids_current_frame)
+        gt_ids_appear = list(gt_ids_current_frame - gt_ids_prev_frame)
 
-        return switch_count
+        # Store used predicted IDs to avoid double counting
+        used_pred_ids = set()
 
-    # def count_identity_switches(
-    #     self,
-    #     gt_to_tracked_id_previous_frame: Optional[Dict[int, int]],
-    #     gt_to_tracked_id_current_frame: Dict[int, int],
-    # ) -> int:
-    #     """
-    #     Count the number of identity switches between two sets of object IDs.
+        # Case 1: Objects that continue to exist
+        for gt_id in gt_ids_cont:
+            previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
+            current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
+            if not np.isnan(previous_pred_id) and not np.isnan(
+                current_pred_id
+            ):
+                if current_pred_id != previous_pred_id:
+                    switch_counter += 1
+                    used_pred_ids.add(current_pred_id)
 
-    #     Parameters
-    #     ----------
-    #     gt_to_tracked_id_previous_frame : Optional[Dict[int, int]]
-    #         A dictionary mapping ground truth IDs to predicted IDs from the previous frame.
-    #     gt_to_tracked_id_current_frame : Dict[int, int]
-    #         A dictionary mapping ground truth IDs to predicted IDs for the current frame.
+        # Case 2: Objects that disappear
+        for gt_id in gt_ids_disappear:
+            previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
+            if not np.isnan(
+                previous_pred_id
+            ):  # Exclude if missed detection in previous frame
+                if previous_pred_id in gt_to_tracked_id_current_frame.values():
+                    if previous_pred_id not in used_pred_ids:
+                        switch_counter += 1
+                        used_pred_ids.add(previous_pred_id)
 
-    #     Returns
-    #     -------
-    #     int
-    #         The number of identity switches between the two sets of object IDs.
-    #     """
-    #     print(gt_to_tracked_id_previous_frame, gt_to_tracked_id_current_frame)
-    #     if gt_to_tracked_id_previous_frame is None:
-    #         return 0
+        # Case 3: Objects that appear
+        for gt_id in gt_ids_appear:
+            current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
+            if not np.isnan(
+                current_pred_id
+            ):  # Exclude if missed detection in current frame
+                if current_pred_id in gt_to_tracked_id_previous_frame.values():
+                    if previous_pred_id not in used_pred_ids:
+                        switch_counter += 1
+                        used_pred_ids.add(previous_pred_id)
 
-    #     switch_counter = 0
-    #     # same_value = None
-
-    #     # Compute lists of the ground truth IDs of objects that continue to exist, disappear, and appear
-    #     gt_ids_current_frame = set(gt_to_tracked_id_current_frame.keys())
-    #     gt_ids_prev_frame = set(gt_to_tracked_id_previous_frame.keys())
-
-    #     gt_ids_cont = list(gt_ids_current_frame & gt_ids_prev_frame)
-    #     gt_ids_disappear = list(gt_ids_prev_frame - gt_ids_current_frame)
-    #     gt_ids_appear = list(gt_ids_current_frame - gt_ids_prev_frame)
-
-    #     # 1: Objects that continue to exist
-    #     for gt_id in gt_ids_cont:
-    #         previous_pred_id = gt_to_tracked_id_previous_frame[gt_id]
-    #         current_pred_id = gt_to_tracked_id_current_frame[gt_id]
-
-    #         if not np.isnan(previous_pred_id) and not np.isnan(
-    #             current_pred_id
-    #         ):
-    #             if current_pred_id != previous_pred_id:
-    #                 switch_counter += 1
-
-    #     # # if the value is the same, the disappear id taken by appear id, so we only count switch once
-    #     # for gt_id_disappear in gt_ids_disappear:
-    #     #     for gt_id_appear in gt_ids_appear:
-    #     #         previous_pred_id = gt_to_tracked_id_previous_frame[
-    #     #             gt_id_disappear
-    #     #         ]
-    #     #         current_pred_id = gt_to_tracked_id_current_frame[gt_id_appear]
-    #     #         print(previous_pred_id, current_pred_id)
-
-    #     #         if previous_pred_id == current_pred_id:
-    #     #             switch_counter += 1
-    #     #             same_value = 1
-
-    #     # if same_value is None:
-    #     # 2: crabs that disappear
-    #     for gt_id in gt_ids_disappear:
-    #         previous_predID = gt_to_tracked_id_previous_frame[gt_id]
-    #         if not np.isnan(
-    #             previous_predID
-    #         ):  # exclude ifmissed detection in previous frame
-    #             if previous_predID in gt_to_tracked_id_current_frame.values():
-    #                 switch_counter += 1
-
-    #     # 3: crabs that appear
-    #     for gt_id in gt_ids_appear:
-    #         current_predID = gt_to_tracked_id_current_frame[gt_id]
-    #         if not np.isnan(
-    #             current_predID
-    #         ):  # exclude if missed detection in this frame
-    #             if current_predID in gt_to_tracked_id_previous_frame.values():
-    #                 switch_counter += 1
-
-    #     return switch_counter
+        return switch_counter
 
     def evaluate_mota(
         self,
