@@ -142,11 +142,16 @@ class TrackerEvaluate:
 
         switch_count = 0
 
-        for current_gt_id, current_tracked_id in current_frame_id_map.items():
+        for (
+            current_gt_id,
+            current_predicted_id,
+        ) in current_frame_id_map.items():
+            if np.isnan(current_predicted_id):
+                continue
             prev_tracked_id = prev_frame_id_map.get(current_gt_id)
-            prev_gt_id = prev_frame_gt_id_map.get(current_tracked_id)
+            prev_gt_id = prev_frame_gt_id_map.get(current_predicted_id)
             if prev_tracked_id is not None:
-                if prev_tracked_id != current_tracked_id:
+                if prev_tracked_id != current_predicted_id:
                     switch_count += 1
             elif prev_gt_id is not None:
                 if current_gt_id != prev_gt_id:
@@ -209,13 +214,18 @@ class TrackerEvaluate:
         for i, tracked_box in enumerate(tracked_boxes):
             best_iou = 0.0
             best_match = None
+            miss_track_id = None
 
             for j, gt_box in enumerate(gt_boxes):
                 if j not in matched_gt_boxes:
                     iou = self.calculate_iou(gt_box[:4], tracked_box[:4])
+                    # print(iou)
                     if iou > iou_threshold and iou > best_iou:
                         best_iou = iou
                         best_match = j
+                    else:
+                        miss_track_id = j
+                        print(miss_track_id)
 
             if best_match is not None:
                 # successfully found a matching ground truth box for the tracked box.
@@ -226,9 +236,10 @@ class TrackerEvaluate:
                 )
             else:
                 false_positive += 1
+            if miss_track_id is not None:
+                gt_to_tracked_map[int(gt_ids[miss_track_id])] = np.nan
 
         missed_detections = total_gt - len(matched_gt_boxes)
-
         num_switches = self.count_identity_switches(
             prev_frame_id_map, gt_to_tracked_map
         )
