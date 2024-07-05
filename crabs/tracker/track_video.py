@@ -61,7 +61,7 @@ class Tracking:
 
     def setup(self):
         """
-        Load related files.
+        Load tracking config, trained model and input video path.
         """
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
@@ -80,6 +80,9 @@ class Tracking:
         self.video_file_root = f"{Path(self.video_path).stem}"
 
     def prep_outputs(self):
+        """
+        Prepare csv writer and if required, video writer.
+        """
         (
             self.csv_writer,
             self.csv_file,

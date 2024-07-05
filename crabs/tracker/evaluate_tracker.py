@@ -41,8 +41,6 @@ class TrackerEvaluate:
             - 'bbox': A list of numpy arrays with coordinates of the bounding box [x, y, x + width, y + height]
             - 'id': The ground truth ID
         """
-        ground_truth_data = []
-
         with open(self.gt_dir, "r") as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)  # Skip the header row
