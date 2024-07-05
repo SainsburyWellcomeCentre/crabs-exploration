@@ -216,7 +216,6 @@ class TrackerEvaluate:
                 if current_pred_id in gt_to_tracked_id_previous_frame.values():
                     if previous_pred_id not in used_pred_ids:
                         switch_counter += 1
-                        used_pred_ids.add(previous_pred_id)
 
         return switch_counter
 

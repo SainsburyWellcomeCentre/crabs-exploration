@@ -158,11 +158,11 @@ def test_ground_truth_data_from_csv(evaluation):
             {1: 11, 2: 12, 3: 13, 4: 14},
             2,
         ),  # crab that appears gets ID of a pre-existing crab
-        # (
-        #     {1: 11, 2: 12, 3: 13},
-        #     {1: 11, 2: 12, 4: 13},
-        #     0,
-        # ),  # crab that appears gets ID of a crab that disappears
+        (
+            {1: 11, 2: 12, 3: 13},
+            {1: 11, 2: 12, 4: 13},
+            1,
+        ),  # crab that appears gets ID of a crab that disappears
         (
             {1: 11, 2: 12, 3: 13},
             {1: 11, 2: 12, 3: 13, 4: np.nan},
