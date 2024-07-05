@@ -23,31 +23,28 @@ def test_get_ground_truth_data(evaluation):
 
     for frame_number, data in ground_truth_dict.items():
         assert isinstance(frame_number, int)
-        assert isinstance(data["bbox"], list)
-        assert isinstance(data["id"], list)
+        assert isinstance(data["bbox"], np.ndarray)
+        assert isinstance(data["id"], np.ndarray)
+        assert data["bbox"].shape[1] == 4
 
 
 def test_ground_truth_data_from_csv(evaluation):
     expected_data = {
         0: {
-            "bbox": [
-                np.array(
+            "bbox": np.array(
+                [
                     [2894.8606, 975.8517, 2945.8606, 1016.8517],
-                    dtype=np.float32,
-                ),
-                np.array(
-                    [940.6089, 1192.637, 989.6089, 1230.637], dtype=np.float32
-                ),
-            ],
-            "id": [2, 1],
+                    [940.6089, 1192.637, 989.6089, 1230.637],
+                ],
+                dtype=np.float32,
+            ),
+            "id": np.array([2.0, 1.0], dtype=np.float32),
         },
         1: {
-            "bbox": [
-                np.array(
-                    [940.6089, 1192.637, 989.6089, 1230.637], dtype=np.float32
-                )
-            ],
-            "id": [2],
+            "bbox": np.array(
+                [[940.6089, 1192.637, 989.6089, 1230.637]], dtype=np.float32
+            ),
+            "id": np.array([2.0], dtype=np.float32),
         },
     }
 
@@ -67,8 +64,8 @@ def test_ground_truth_data_from_csv(evaluation):
                 bbox, expected_bbox
             ), f"Frame {frame_number}, bbox mismatch"
 
-        assert (
-            ground_truth_dict[frame_number]["id"] == expected_frame_data["id"]
+        assert np.array_equal(
+            ground_truth_dict[frame_number]["id"], expected_frame_data["id"]
         ), f"Frame {frame_number}, id mismatch"
 
 

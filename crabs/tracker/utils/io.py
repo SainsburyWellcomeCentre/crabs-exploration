@@ -1,5 +1,6 @@
 import csv
 import os
+from datetime import datetime
 from pathlib import Path
 
 import cv2
@@ -29,8 +30,8 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
         A tuple containing the CSV writer, the CSV file object, and the tracking output directory path.
     """
 
-	timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    	tracking_output_dir = Path(output_dir+f'_{timestamp}') / video_file_root
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tracking_output_dir = Path(output_dir + f"_{timestamp}") / video_file_root
     # Create the subdirectory for the specific video file root
     tracking_output_dir.mkdir(parents=True, exist_ok=True)
 

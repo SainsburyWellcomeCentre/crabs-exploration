@@ -172,10 +172,18 @@ class Tracking:
             ):
                 break
 
+            # get total n frames
+            total_frames = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
+
             # read frame
             ret, frame = self.video.read()
-            if not ret:
-                print("No frame read. Exiting...")
+            if not ret and (frame_idx == total_frames):
+                logging.info(f"All {total_frames} frames processed")
+                break
+            elif not ret:
+                logging.info(
+                    f"Cannot read frame {frame_idx+1}/{total_frames}. Exiting..."
+                )
                 break
 
             # predict bounding boxes

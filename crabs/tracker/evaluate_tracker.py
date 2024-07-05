@@ -9,7 +9,10 @@ from crabs.tracker.utils.tracking import extract_bounding_box_info
 
 class TrackerEvaluate:
     def __init__(
-        self, gt_dir: str, tracked_list: list[np.ndarray], iou_threshold: float
+        self,
+        gt_dir: str,
+        tracked_list: list[np.ndarray],
+        iou_threshold: float,
     ):
         """
         Initialize the TrackerEvaluate class with ground truth directory, tracked list, and IoU threshold.
@@ -27,7 +30,7 @@ class TrackerEvaluate:
             Intersection over Union (IoU) threshold for evaluating tracking performance.
         """
         self.gt_dir = gt_dir
-        self.predicted_bbox_ids_per_frame = predicted_bbox_ids_per_frame
+        self.tracked_list = tracked_list
         self.iou_threshold = iou_threshold
 
     def get_ground_truth_data(self) -> Dict[int, Dict[str, Any]]:
@@ -68,6 +71,15 @@ class TrackerEvaluate:
 
             ground_truth_dict[frame_number]["bbox"].append(bbox)
             ground_truth_dict[frame_number]["id"].append(track_id)
+
+            # format as numpy arrays
+        for frame_number in ground_truth_dict:
+            ground_truth_dict[frame_number]["bbox"] = np.array(
+                ground_truth_dict[frame_number]["bbox"], dtype=np.float32
+            )
+            ground_truth_dict[frame_number]["id"] = np.array(
+                ground_truth_dict[frame_number]["id"], dtype=np.float32
+            )
 
         return ground_truth_dict
 
@@ -217,13 +229,11 @@ class TrackerEvaluate:
             for j, gt_box in enumerate(gt_boxes):
                 if j not in matched_gt_boxes:
                     iou = self.calculate_iou(gt_box[:4], tracked_box[:4])
-                    # print(iou)
                     if iou > iou_threshold and iou > best_iou:
                         best_iou = iou
                         best_match = j
                     else:
                         miss_track_id = j
-                        print(miss_track_id)
 
             if best_match is not None:
                 # successfully found a matching ground truth box for the tracked box.
@@ -268,12 +278,8 @@ class TrackerEvaluate:
         prev_frame_id_map: Optional[dict] = None
 
         for frame_number in sorted(ground_truth_dict.keys()):
-            gt_data = ground_truth_dict[frame_number]
-            gt_boxes = np.array(
-                [[x1, y1, x2, y2] for x1, y1, x2, y2 in gt_data["bbox"]],
-                dtype=np.float32,
-            )
-            gt_ids = np.array(gt_data["id"], dtype=np.float32)
+            gt_boxes = ground_truth_dict[frame_number]["bbox"]
+            gt_ids = ground_truth_dict[frame_number]["id"]
 
             if frame_number < len(self.tracked_list):
                 tracked_boxes = self.tracked_list[frame_number]
