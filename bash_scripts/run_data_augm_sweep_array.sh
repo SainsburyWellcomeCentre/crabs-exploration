@@ -17,6 +17,13 @@
 # with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
 # the number of array jobs should match the number of input files
 
+# ---------------------
+# Source bashrc
+# ----------------------
+# Otherwise `which python` points to the miniconda module's Python
+# needs to be before error setting
+source ~/.bashrc
+
 # -----------------------------
 # Error settings for bash
 # -----------------------------
@@ -24,12 +31,6 @@
 set -e  # do not continue after errors
 set -u  # throw error if variable is unset
 set -o pipefail  # make the pipe fail if any part of it fails
-
-# ---------------------
-# Source bashrc
-# ----------------------
-# Otherwise `which python` points to the miniconda module's Python
-# source ~/.bashrc #
 
 
 # ---------------------
