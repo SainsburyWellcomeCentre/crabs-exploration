@@ -27,7 +27,7 @@ class TrackerEvaluate:
             Intersection over Union (IoU) threshold for evaluating tracking performance.
         """
         self.gt_dir = gt_dir
-        self.tracked_list = tracked_list
+        self.predicted_bbox_ids_per_frame = predicted_bbox_ids_per_frame
         self.iou_threshold = iou_threshold
 
     def get_ground_truth_data(self) -> Dict[int, Dict[str, Any]]:
