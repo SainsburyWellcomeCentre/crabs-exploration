@@ -136,6 +136,7 @@ class DectectorTrain:
                 "learning_rate",
                 float(optuna_config["learning_rate"][0]),
                 float(optuna_config["learning_rate"][1]),
+                log=True
             )
 
         if "n_epochs" in optuna_config:
