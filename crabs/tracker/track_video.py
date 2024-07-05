@@ -144,9 +144,9 @@ class Tracking:
             list of tracked bounding boxes after updating the tracking system.
         """
         pred_sort = prep_sort(prediction, self.config["score_threshold"])
-        tracked_boxes = self.sort_tracker.update(pred_sort)
-        self.tracked_bbox_id.append(tracked_boxes)
-        return tracked_boxes
+        tracked_boxes_id_per_frame = self.sort_tracker.update(pred_sort)
+        self.tracked_bbox_id.append(tracked_boxes_id_per_frame)
+        return tracked_boxes_id_per_frame
 
     def run_tracking(self):
         """
@@ -191,7 +191,7 @@ class Tracking:
             pred_scores = prediction[0]["scores"].detach().cpu().numpy()
 
             # run tracking
-            tracked_boxes = self.update_tracking(prediction)
+            tracked_boxes_id_per_frame = self.update_tracking(prediction)
             save_required_output(
                 self.video_file_root,
                 self.args.save_frames,
@@ -199,7 +199,7 @@ class Tracking:
                 self.csv_writer,
                 self.args.save_video,
                 self.video_output,
-                tracked_boxes,
+                tracked_boxes_id_per_frame,
                 frame,
                 frame_idx,
                 pred_scores,
