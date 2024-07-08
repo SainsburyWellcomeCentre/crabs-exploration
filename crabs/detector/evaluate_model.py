@@ -23,6 +23,8 @@ from crabs.detector.utils.evaluate import (
 )
 from crabs.detector.utils.visualization import save_images_with_boxes
 
+logging.getLogger().setLevel(logging.INFO)
+
 
 class DetectorEvaluate:
     """
@@ -121,7 +123,6 @@ class DetectorEvaluate:
             config=self.config,
             no_data_augmentation=True,
         )
-        # breakpoint()
 
         # Get trained model
         trained_model = FasterRCNN.load_from_checkpoint(
