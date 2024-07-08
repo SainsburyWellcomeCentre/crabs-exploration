@@ -258,13 +258,21 @@ def get_mlflow_experiment_name_from_ckpt(
 
 
 def get_mlflow_run_name_from_ckpt(
-    mlflow_run_name_auto: bool, trained_model_run_name: str
+    mlflow_run_name_auto: bool,
+    trained_model_run_name: str,
+    trained_model_path: str,
 ) -> str:  # ---- should be unique
     """Define run name for eval job from the trained model job"""
 
     if mlflow_run_name_auto:
         run_name = set_mlflow_run_name()
     else:
-        run_name = trained_model_run_name + "_eval_" + set_mlflow_run_name()
+        run_name = (
+            trained_model_run_name
+            + "_"
+            + Path(trained_model_path).stem
+            + "_eval"
+            + set_mlflow_run_name().replace("run", "")
+        )
 
     return run_name

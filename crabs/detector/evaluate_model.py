@@ -90,7 +90,9 @@ class DetectorEvaluate:
 
         # Assign run name
         self.run_name = get_mlflow_run_name_from_ckpt(
-            self.args.mlflow_run_name_auto, self.trained_model_run_name
+            mlflow_run_name_auto=self.args.mlflow_run_name_auto,
+            trained_model_run_name=self.trained_model_run_name,
+            trained_model_path=self.trained_model_path,
         )
 
         # Setup logger
