@@ -9,9 +9,7 @@ from crabs.tracker.evaluate_tracker import TrackerEvaluate
 @pytest.fixture
 def evaluation():
     test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
-    return TrackerEvaluate(
-        test_csv_file, iou_threshold=0.1
-    )
+    return TrackerEvaluate(test_csv_file, iou_threshold=0.1)
 
 
 @pytest.mark.parametrize(
