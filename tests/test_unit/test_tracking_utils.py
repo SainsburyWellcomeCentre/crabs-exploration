@@ -8,6 +8,7 @@ import pytest
 from crabs.tracker.utils.tracking import (
     extract_bounding_box_info,
     get_ground_truth_data,
+    get_predicted_data,
     write_tracked_bbox_to_csv,
 )
 
@@ -129,3 +130,43 @@ def test_ground_truth_data_from_csv(gt_path):
         assert np.array_equal(
             ground_truth_dict[frame_number]["id"], expected_frame_data["id"]
         ), f"Frame {frame_number}, id mismatch"
+
+
+def test_get_predicted_data_empty():
+    predicted_boxes_id = []
+    result = get_predicted_data(predicted_boxes_id)
+    assert result == {}
+
+
+def test_get_predicted_data_with_data():
+    predicted_boxes_id = [
+        np.array([[10, 20, 30, 40, 1], [50, 60, 70, 80, 2]]),
+        np.array([[15, 25, 35, 45, 3]]),
+    ]
+    expected_result = {
+        0: {
+            "bbox": np.array([[10, 20, 30, 40], [50, 60, 70, 80]]),
+            "id": np.array([1, 2]),
+        },
+        1: {"bbox": np.array([[15, 25, 35, 45]]), "id": np.array([3])},
+    }
+    result = get_predicted_data(predicted_boxes_id)
+    for frame_idx, data in expected_result.items():
+        np.testing.assert_array_equal(result[frame_idx]["bbox"], data["bbox"])
+        np.testing.assert_array_equal(result[frame_idx]["id"], data["id"])
+
+
+def test_get_predicted_data_with_empty_frame():
+    predicted_boxes_id = [
+        np.array([[10, 20, 30, 40, 1]]),
+        np.array([]),  # Empty frame
+        np.array([[15, 25, 35, 45, 2]]),
+    ]
+    expected_result = {
+        0: {"bbox": np.array([[10, 20, 30, 40]]), "id": np.array([1])},
+        2: {"bbox": np.array([[15, 25, 35, 45]]), "id": np.array([2])},
+    }
+    result = get_predicted_data(predicted_boxes_id)
+    for frame_idx, data in expected_result.items():
+        np.testing.assert_array_equal(result[frame_idx]["bbox"], data["bbox"])
+        np.testing.assert_array_equal(result[frame_idx]["id"], data["id"])
