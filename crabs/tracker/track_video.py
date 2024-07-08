@@ -20,7 +20,7 @@ from crabs.tracker.utils.io import (
     release_video,
     save_required_output,
 )
-from crabs.tracker.utils.tracking import prep_sort
+from crabs.tracker.utils.tracking import get_ground_truth_data, prep_sort
 
 
 class Tracking:
@@ -89,7 +89,7 @@ class Tracking:
             self.tracking_output_dir,
         ) = prep_csv_writer(self.args.output_dir, self.video_file_root)
 
-        if self.args.save_video:
+        if self.args.gt_path or self.args.save_video:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap_fps = self.video.get(cv2.CAP_PROP_FPS)
@@ -153,11 +153,19 @@ class Tracking:
         Run object detection + tracking on the video frames.
         """
         # If we pass ground truth: check the path exist
-        if self.args.gt_path and not os.path.exists(self.args.gt_path):
+        if not os.path.exists(str(self.args.gt_path)):
             logging.info(
                 f"Ground truth file {self.args.gt_path} does not exist. Exiting..."
             )
             return
+        else:
+            evaluation = TrackerEvaluate(
+                self.args.gt_path,
+                self.config["iou_threshold"],
+            )
+            ground_truth_dict = get_ground_truth_data(
+                self.args.gt_path,
+            )
 
         # initialisation
         frame_idx = 0
@@ -203,17 +211,14 @@ class Tracking:
                 frame,
                 frame_idx,
                 pred_scores,
+                ground_truth_dict,
             )
 
             # update frame number
             frame_idx += 1
+
         if self.args.gt_path:
-            evaluation = TrackerEvaluate(
-                self.args.gt_path,
-                self.tracked_bbox_id,
-                self.config["iou_threshold"],
-            )
-            evaluation.run_evaluation()
+            evaluation.run_evaluation(self.tracked_bbox_id, ground_truth_dict)
 
         # Close input video
         self.video.release()

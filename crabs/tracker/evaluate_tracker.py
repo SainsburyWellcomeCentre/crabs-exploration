@@ -1,17 +1,17 @@
-import csv
 import logging
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
-from crabs.tracker.utils.tracking import extract_bounding_box_info
+from crabs.tracker.utils.tracking import (
+    get_predicted_data,
+)
 
 
 class TrackerEvaluate:
     def __init__(
         self,
         gt_dir: str,
-        predicted_boxes_id: list[np.ndarray],
         iou_threshold: float,
     ):
         """
@@ -21,92 +21,11 @@ class TrackerEvaluate:
         ----------
         gt_dir : str
             Directory path of the ground truth CSV file.
-        tracked_list : List[np.ndarray]
-            A list where each element is a numpy array representing tracked objects in a frame.
-            Each numpy array has shape (N, 5), where N is the number of objects.
-            The columns are [x1, y1, x2, y2, id], where (x1, y1) and (x2, y2)
-            define the bounding box and id is the object ID.
         iou_threshold : float
             Intersection over Union (IoU) threshold for evaluating tracking performance.
         """
         self.gt_dir = gt_dir
-        self.predicted_boxes_id = predicted_boxes_id
         self.iou_threshold = iou_threshold
-
-    def get_predicted_data(self) -> Dict[int, Dict[str, Any]]:
-        """
-        Convert predicted bounding box and ID into a dictionary organized by frame number.
-
-        Returns
-        -------
-        Dict[int, Dict[str, Any]]:
-            A dictionary where the key is the frame number and the value is another dictionary containing:
-            - 'bbox': A numpy array with shape (N, 4) containing coordinates of the bounding boxes
-            [x, y, x + width, y + height] for every object in the frame.
-            - 'id': A numpy array containing the IDs of the tracked objects.
-        """
-        predicted_dict: Dict[int, Dict[str, Any]] = {}
-
-        for frame_idx, frame_data in enumerate(self.predicted_boxes_id):
-            if frame_data.size == 0:
-                continue
-
-            bboxes = frame_data[:, :4]
-            ids = frame_data[:, 4]
-
-            predicted_dict[frame_idx] = {"bbox": bboxes, "id": ids}
-
-        return predicted_dict
-
-    def get_ground_truth_data(self) -> Dict[int, Dict[str, Any]]:
-        """
-        Extract ground truth bounding box data from a CSV file and organize it by frame number.
-
-        Returns
-        -------
-        Dict[int, Dict[str, Any]]:
-            A dictionary where the key is the frame number and the value is another dictionary containing:
-            - 'bbox': A numpy arrays with shape of (N, 4) containing coordinates of the bounding box
-                [x, y, x + width, y + height] for every crabs in the frame.
-            - 'id': The ground truth ID
-        """
-        with open(self.gt_dir, "r") as csvfile:
-            csvreader = csv.reader(csvfile)
-            next(csvreader)  # Skip the header row
-            ground_truth_data = [
-                extract_bounding_box_info(row) for row in csvreader
-            ]
-
-        # Format as a dictionary with key = frame number
-        ground_truth_dict: dict = {}
-        for data in ground_truth_data:
-            frame_idx = data["frame_number"]
-            bbox = np.array(
-                [
-                    data["x"],
-                    data["y"],
-                    data["x"] + data["width"],
-                    data["y"] + data["height"],
-                ],
-                dtype=np.float32,
-            )
-            track_id = int(float(data["id"]))
-
-            if frame_idx not in ground_truth_dict:
-                ground_truth_dict[frame_idx] = {"bbox": [], "id": []}
-
-            ground_truth_dict[frame_idx]["bbox"].append(bbox)
-            ground_truth_dict[frame_idx]["id"].append(track_id)
-
-            # format as numpy arrays
-        for frame_idx in ground_truth_dict:
-            ground_truth_dict[frame_idx]["bbox"] = np.array(
-                ground_truth_dict[frame_idx]["bbox"], dtype=np.float32
-            )
-            ground_truth_dict[frame_idx]["id"] = np.array(
-                ground_truth_dict[frame_idx]["id"], dtype=np.float32
-            )
-        return ground_truth_dict
 
     def calculate_iou(self, box1: np.ndarray, box2: np.ndarray) -> float:
         """
@@ -338,12 +257,11 @@ class TrackerEvaluate:
 
         return mota_values
 
-    def run_evaluation(self) -> None:
+    def run_evaluation(self, predicted_boxes_id, ground_truth_dict) -> None:
         """
         Run evaluation of tracking based on tracking ground truth.
         """
-        predicted_dict = self.get_predicted_data()
-        ground_truth_dict = self.get_ground_truth_data()
+        predicted_dict = get_predicted_data(predicted_boxes_id)
         mota_values = self.evaluate_tracking(ground_truth_dict, predicted_dict)
         overall_mota = np.mean(mota_values)
         logging.info("Overall MOTA: %f" % overall_mota)

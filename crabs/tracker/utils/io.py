@@ -2,6 +2,7 @@ import csv
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 import cv2
 import numpy as np
@@ -108,6 +109,7 @@ def save_required_output(
     frame: np.ndarray,
     frame_number: int,
     pred_scores: np.ndarray,
+    ground_truth_dict: Optional[Dict[int, Dict[str, Any]]] = None,
 ) -> None:
     """
     Handle the output based on argument options.
@@ -134,6 +136,8 @@ def save_required_output(
         The frame number.
     pred_scores : np.ndarray
         The prediction score from detector
+    ground_truth_dict : dict
+        Dictionary containing ground truth bounding boxes and IDs for each frame, organized by frame number.
     """
     frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
 
@@ -150,7 +154,34 @@ def save_required_output(
             frame_number,
         )
 
-    if save_video:
+    if ground_truth_dict and frame_number in ground_truth_dict:
+        frame_copy = frame.copy()
+        for bbox, obj_id in zip(
+            ground_truth_dict[frame_number]["bbox"],
+            ground_truth_dict[frame_number]["id"],
+        ):
+            x1, y1, x2, y2 = map(int, bbox)
+            draw_bbox(
+                frame_copy,
+                (x1, y1),
+                (x2, y2),
+                (0, 255, 0),  # Green for ground truth
+                f"GT ID: {int(obj_id)}",
+            )
+
+        # Draw tracked bounding boxes and IDs
+        for bbox in tracked_boxes:
+            xmin, ymin, xmax, ymax, obj_id = bbox
+            draw_bbox(
+                frame_copy,
+                (int(xmin), int(ymin)),
+                (int(xmax), int(ymax)),
+                (0, 0, 255),  # Red for predictions
+                f"Pred ID: {int(obj_id)}",
+            )
+        video_output.write(frame_copy)
+
+    elif save_video:
         frame_copy = frame.copy()
         for bbox in tracked_boxes:
             xmin, ymin, xmax, ymax, id = bbox

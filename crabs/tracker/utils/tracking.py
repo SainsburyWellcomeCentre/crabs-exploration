@@ -1,3 +1,4 @@
+import csv
 import json
 import logging
 from pathlib import Path
@@ -152,3 +153,80 @@ def prep_sort(prediction: dict, score_threshold: float) -> np.ndarray:
             pred_sort.append(bbox)
 
     return np.asarray(pred_sort)
+
+
+def get_predicted_data(predicted_boxes_id) -> Dict[int, Dict[str, Any]]:
+    """
+    Convert predicted bounding box and ID into a dictionary organized by frame number.
+
+    Returns
+    -------
+    Dict[int, Dict[str, Any]]:
+        A dictionary where the key is the frame number and the value is another dictionary containing:
+        - 'bbox': A numpy array with shape (N, 4) containing coordinates of the bounding boxes
+        [x, y, x + width, y + height] for every object in the frame.
+        - 'id': A numpy array containing the IDs of the tracked objects.
+    """
+    predicted_dict: Dict[int, Dict[str, Any]] = {}
+
+    for frame_idx, frame_data in enumerate(predicted_boxes_id):
+        if frame_data.size == 0:
+            continue
+
+        bboxes = frame_data[:, :4]
+        ids = frame_data[:, 4]
+
+        predicted_dict[frame_idx] = {"bbox": bboxes, "id": ids}
+
+    return predicted_dict
+
+
+def get_ground_truth_data(gt_dir) -> Dict[int, Dict[str, Any]]:
+    """
+    Extract ground truth bounding box data from a CSV file and organize it by frame number.
+
+    Returns
+    -------
+    Dict[int, Dict[str, Any]]:
+        A dictionary where the key is the frame number and the value is another dictionary containing:
+        - 'bbox': A numpy arrays with shape of (N, 4) containing coordinates of the bounding box
+            [x, y, x + width, y + height] for every crabs in the frame.
+        - 'id': The ground truth ID
+    """
+    with open(gt_dir, "r") as csvfile:
+        csvreader = csv.reader(csvfile)
+        next(csvreader)  # Skip the header row
+        ground_truth_data = [
+            extract_bounding_box_info(row) for row in csvreader
+        ]
+
+    # Format as a dictionary with key = frame number
+    ground_truth_dict: dict = {}
+    for data in ground_truth_data:
+        frame_idx = data["frame_number"]
+        bbox = np.array(
+            [
+                data["x"],
+                data["y"],
+                data["x"] + data["width"],
+                data["y"] + data["height"],
+            ],
+            dtype=np.float32,
+        )
+        track_id = int(float(data["id"]))
+
+        if frame_idx not in ground_truth_dict:
+            ground_truth_dict[frame_idx] = {"bbox": [], "id": []}
+
+        ground_truth_dict[frame_idx]["bbox"].append(bbox)
+        ground_truth_dict[frame_idx]["id"].append(track_id)
+
+        # format as numpy arrays
+    for frame_idx in ground_truth_dict:
+        ground_truth_dict[frame_idx]["bbox"] = np.array(
+            ground_truth_dict[frame_idx]["bbox"], dtype=np.float32
+        )
+        ground_truth_dict[frame_idx]["id"] = np.array(
+            ground_truth_dict[frame_idx]["id"], dtype=np.float32
+        )
+    return ground_truth_dict

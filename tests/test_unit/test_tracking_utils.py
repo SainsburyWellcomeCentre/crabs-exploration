@@ -1,11 +1,13 @@
 import csv
 import io
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from crabs.tracker.utils.tracking import (
     extract_bounding_box_info,
+    get_ground_truth_data,
     write_tracked_bbox_to_csv,
 )
 
@@ -64,3 +66,66 @@ def test_write_tracked_bbox_to_csv(csv_writer, csv_output):
     )
     expected_row_str = ",".join(map(str, expected_row))
     assert csv_output.getvalue().strip() == expected_row_str
+
+
+@pytest.fixture
+def gt_path():
+    test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
+    return test_csv_file
+
+
+def test_get_ground_truth_data(gt_path):
+    ground_truth_dict = get_ground_truth_data(gt_path)
+
+    assert isinstance(ground_truth_dict, dict)
+    assert all(
+        isinstance(frame_data, dict)
+        for frame_data in ground_truth_dict.values()
+    )
+
+    for frame_number, data in ground_truth_dict.items():
+        assert isinstance(frame_number, int)
+        assert isinstance(data["bbox"], np.ndarray)
+        assert isinstance(data["id"], np.ndarray)
+        assert data["bbox"].shape[1] == 4
+
+
+def test_ground_truth_data_from_csv(gt_path):
+    expected_data = {
+        10: {
+            "bbox": np.array(
+                [
+                    [2894.8606, 975.8517, 2945.8606, 1016.8517],
+                    [940.6089, 1192.637, 989.6089, 1230.637],
+                ],
+                dtype=np.float32,
+            ),
+            "id": np.array([2.0, 1.0], dtype=np.float32),
+        },
+        20: {
+            "bbox": np.array(
+                [[940.6089, 1192.637, 989.6089, 1230.637]], dtype=np.float32
+            ),
+            "id": np.array([2.0], dtype=np.float32),
+        },
+    }
+
+    ground_truth_dict = get_ground_truth_data(gt_path)
+
+    for frame_number, expected_frame_data in expected_data.items():
+        assert frame_number in ground_truth_dict
+
+        assert len(ground_truth_dict[frame_number]["bbox"]) == len(
+            expected_frame_data["bbox"]
+        )
+        for bbox, expected_bbox in zip(
+            ground_truth_dict[frame_number]["bbox"],
+            expected_frame_data["bbox"],
+        ):
+            assert np.allclose(
+                bbox, expected_bbox
+            ), f"Frame {frame_number}, bbox mismatch"
+
+        assert np.array_equal(
+            ground_truth_dict[frame_number]["id"], expected_frame_data["id"]
+        ), f"Frame {frame_number}, id mismatch"
