@@ -11,7 +11,6 @@ import torch
 from crabs.detector.datamodules import CrabsDataModule
 from crabs.detector.models import FasterRCNN
 from crabs.detector.utils.detection import (
-    set_mlflow_run_name,
     setup_mlflow_logger,
     slurm_logs_as_artifacts,
 )
@@ -20,6 +19,9 @@ from crabs.detector.utils.evaluate import (
     get_cli_arg_from_ckpt,
     get_config_from_ckpt,
     get_img_directories_from_ckpt,
+    get_mlflow_experiment_name_from_ckpt,
+    get_mlflow_parameters_from_ckpt,
+    get_mlflow_run_name_from_ckpt,
 )
 from crabs.detector.utils.visualization import save_images_with_boxes
 
@@ -41,6 +43,9 @@ class DetectorEvaluate:
 
         # trained model
         self.trained_model_path = args.trained_model_path
+        self.trained_model_run_name = get_mlflow_parameters_from_ckpt(
+            self.trained_model_path
+        )["run_name"]
 
         # config: retreieve from ckpt if not passed as CLI argument
         self.config_file = args.config_file
@@ -66,7 +71,9 @@ class DetectorEvaluate:
         self.accelerator = args.accelerator
 
         # MLflow
-        self.experiment_name = args.experiment_name
+        self.experiment_name = get_mlflow_experiment_name_from_ckpt(
+            args=self.args, trained_model_path=self.trained_model_path
+        )
         self.mlflow_folder = args.mlflow_folder
 
         # Debugging
@@ -81,12 +88,14 @@ class DetectorEvaluate:
     def setup_trainer(self):
         """Set up trainer object with logging for testing."""
         # Assign run name
-        self.run_name = set_mlflow_run_name()
+        self.run_name = get_mlflow_run_name_from_ckpt(
+            self.args.mlflow_run_name_auto, self.trained_model_run_name
+        )
 
         # Setup logger
         mlf_logger = setup_mlflow_logger(
-            experiment_name=self.experiment_name,
-            run_name=self.run_name,
+            experiment_name=self.experiment_name,  # get from ckpt?
+            run_name=self.run_name,  # -------------->get from ckpt?
             mlflow_folder=self.mlflow_folder,
             cli_args=self.args,
         )
@@ -107,7 +116,9 @@ class DetectorEvaluate:
             list_annotation_files=self.annotation_files,
             split_seed=self.seed_n,
             config=self.config,
+            no_data_augmentation=True,
         )
+        # breakpoint()
 
         # Get trained model
         trained_model = FasterRCNN.load_from_checkpoint(
@@ -220,13 +231,12 @@ def evaluate_parse_args(args):
     parser.add_argument(
         "--experiment_name",
         type=str,
-        default="Sept2023_evaluation",
         help=(
             "Name of the experiment in MLflow, under which the current run "
             "will be logged. "
             "For example, the name of the dataset could be used, to group "
             "runs using the same data. "
-            "Default: Sept2023_evaluation"
+            "By default: <experiment_training_job>_evaluation."
         ),
     )
     parser.add_argument(
@@ -249,6 +259,13 @@ def evaluate_parse_args(args):
         type=str,
         default="./ml-runs",
         help=("Path to MLflow directory. Default: ./ml-runs"),
+    )
+    parser.add_argument(
+        "--mlflow_run_name_auto",
+        action="store_true",
+        help=(
+            "Set the evaluation run name automatically from MLflow, ignoring the training job run name."
+        ),
     )
     parser.add_argument(
         "--save_frames",

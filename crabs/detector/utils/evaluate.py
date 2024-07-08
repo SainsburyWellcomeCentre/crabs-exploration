@@ -2,7 +2,6 @@
 
 import argparse
 import ast
-import logging
 import sys
 from pathlib import Path
 
@@ -12,9 +11,8 @@ import yaml  # type: ignore
 from crabs.detector.utils.detection import (
     prep_annotation_files,
     prep_img_directories,
+    set_mlflow_run_name,
 )
-
-logging.basicConfig(level=logging.INFO)
 
 
 def compute_precision_recall(class_stats: dict) -> tuple[float, float, dict]:
@@ -143,7 +141,8 @@ def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
     # get parameters of the run
     run = mlrun_client.get_run(ckpt_runID)
     params = run.data.params
-
+    params["run_name"] = run.info.run_name
+    
     return params
 
 
@@ -242,3 +241,30 @@ def get_annotation_files_from_ckpt(
         input_annotation_files, dataset_dirs
     )
     return annotation_files
+
+def get_mlflow_experiment_name_from_ckpt(
+    args: argparse.Namespace, trained_model_path: str
+) -> str:
+    """Define experiment name for MLflow from the training job one if not passed as CLI."""
+
+    if getattr(args, "experiment_name"):
+        experiment_name = getattr(args, "experiment_name")
+    else:
+        params = get_mlflow_parameters_from_ckpt(trained_model_path)
+        trained_model_expt_name = params["cli_args/experiment_name"]
+        experiment_name = trained_model_expt_name + "_evaluation"
+
+    return experiment_name
+
+
+def get_mlflow_run_name_from_ckpt(
+    mlflow_run_name_auto: bool, trained_model_run_name: str
+) -> str:  # ---- should be unique
+    """Define run name for eval job from the trained model job"""
+
+    if mlflow_run_name_auto:
+        run_name = set_mlflow_run_name()
+    else:
+        run_name = trained_model_run_name + "_eval_" + set_mlflow_run_name()
+
+    return run_name
