@@ -176,7 +176,7 @@ def test_ground_truth_data_from_csv(evaluation):
         (
             {1: 11, 2: 12, 3: np.nan},
             {1: 11, 2: 12, 3: 13, 4: np.nan},
-            0,  # ----> or should it be 1?
+            0,
         ),  # crab that appears is missed detection in current frame, and a pre-existing crab is missed detection in previous frame
     ],
 )

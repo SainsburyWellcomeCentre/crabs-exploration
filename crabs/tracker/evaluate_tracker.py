@@ -324,8 +324,6 @@ class TrackerEvaluate:
         prev_frame_id_map: Optional[dict] = None
 
         for frame_number in sorted(ground_truth_dict.keys()):
-            # gt_boxes = ground_truth_dict[frame_number]["bbox"]
-            # gt_ids = ground_truth_dict[frame_number]["id"]
             gt_data_frame = ground_truth_dict[frame_number]
 
             if frame_number < len(predicted_dict):
