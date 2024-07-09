@@ -183,6 +183,7 @@ class TrackerEvaluate:
         gt_ids_appear = list(gt_ids_current_frame - gt_ids_prev_frame)
 
         # Store used predicted IDs to avoid double counting
+        # In `used_pred_ids` we log IDs from either the current or the previous frame that have been involved in an already counted ID switch.
         used_pred_ids = set()
 
         # Case 1: Objects that continue to exist
