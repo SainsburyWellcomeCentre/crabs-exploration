@@ -47,7 +47,7 @@ class TrackerEvaluate:
         """
         predicted_dict: Dict[int, Dict[str, Any]] = {}
 
-        for frame_idx, frame_data in enumerate(self.predicted_boxes_id):
+        for frame_number, frame_data in enumerate(self.predicted_boxes_id):
             if frame_data.size == 0:
                 continue
 
