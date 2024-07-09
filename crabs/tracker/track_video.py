@@ -22,8 +22,6 @@ from crabs.tracker.utils.io import (
 )
 from crabs.tracker.utils.tracking import prep_sort
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class Tracking:
     """
@@ -47,15 +45,13 @@ class Tracking:
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-
         self.config_file = args.config_file
-        self.load_config_yaml()  # TODO: load config from trained model (like in evaluation)?
-
         self.video_path = args.video_path
-        self.video_file_root = f"{Path(self.video_path).stem}"
         self.trained_model_path = self.args.trained_model_path
+        self.device = self.args.device
 
-        self.trained_model = self.load_trained_model()
+        self.setup()
+        self.prep_outputs()
 
         self.sort_tracker = Sort(
             max_age=self.config["max_age"],
@@ -63,42 +59,35 @@ class Tracking:
             iou_threshold=self.config["iou_threshold"],
         )
 
+    def setup(self):
+        """
+        Load tracking config, trained model and input video path.
+        """
+        with open(self.config_file, "r") as f:
+            self.config = yaml.safe_load(f)
+
+        # Get trained model
+        self.trained_model = FasterRCNN.load_from_checkpoint(
+            self.trained_model_path
+        )
+        self.trained_model.eval()
+        self.trained_model.to(self.device)
+
+        # Load the input video
+        self.video = cv2.VideoCapture(self.video_path)
+        if not self.video.isOpened():
+            raise Exception("Error opening video file")
+        self.video_file_root = f"{Path(self.video_path).stem}"
+
+    def prep_outputs(self):
+        """
+        Prepare csv writer and if required, video writer.
+        """
         (
             self.csv_writer,
             self.csv_file,
             self.tracking_output_dir,
         ) = prep_csv_writer(self.args.output_dir, self.video_file_root)
-
-    def load_config_yaml(self):
-        """
-        Load yaml file that contains config parameters.
-        """
-        with open(self.config_file, "r") as f:
-            self.config = yaml.safe_load(f)
-
-    def load_trained_model(self) -> torch.nn.Module:
-        """
-        Load the trained model.
-
-        Returns
-        -------
-        torch.nn.Module
-        """
-        # Get trained model
-        trained_model = FasterRCNN.load_from_checkpoint(
-            self.trained_model_path
-        )
-        trained_model.eval()
-        trained_model.to(DEVICE)  # Should device be a CLI?
-        return trained_model
-
-    def load_video(self) -> None:
-        """
-        Load the input video, and prepare the output video if required.
-        """
-        self.video = cv2.VideoCapture(self.video_path)
-        if not self.video.isOpened():
-            raise Exception("Error opening video file")
 
         if self.args.save_video:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -107,7 +96,6 @@ class Tracking:
 
             self.video_output = prep_video_writer(
                 self.tracking_output_dir,
-                self.video_file_root,
                 frame_width,
                 frame_height,
                 cap_fps,
@@ -135,7 +123,7 @@ class Tracking:
                 transforms.ToDtype(torch.float32, scale=True),
             ]
         )
-        img = transform(frame).to(DEVICE)
+        img = transform(frame).to(self.device)
         img = img.unsqueeze(0)
         with torch.no_grad():
             prediction = self.trained_model(img)
@@ -156,9 +144,9 @@ class Tracking:
             list of tracked bounding boxes after updating the tracking system.
         """
         pred_sort = prep_sort(prediction, self.config["score_threshold"])
-        tracked_boxes = self.sort_tracker.update(pred_sort)
-        self.tracked_list.append(tracked_boxes)
-        return tracked_boxes
+        tracked_boxes_id_per_frame = self.sort_tracker.update(pred_sort)
+        self.tracked_bbox_id.append(tracked_boxes_id_per_frame)
+        return tracked_boxes_id_per_frame
 
     def run_tracking(self):
         """
@@ -171,24 +159,31 @@ class Tracking:
             )
             return
 
-        # In any case run inference
         # initialisation
-        frame_number = 1
-        self.tracked_list = []
+        frame_idx = 0
+        self.tracked_bbox_id = []
 
         # Loop through frames of the video in batches
         while self.video.isOpened():
             # Break if beyond end frame (mostly for debugging)
             if (
                 self.args.max_frames_to_read
-                and frame_number > self.args.max_frames_to_read
+                and frame_idx + 1 > self.args.max_frames_to_read
             ):
                 break
 
+            # get total n frames
+            total_frames = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
+
             # read frame
             ret, frame = self.video.read()
-            if not ret:
-                print("No frame read. Exiting...")
+            if not ret and (frame_idx == total_frames):
+                logging.info(f"All {total_frames} frames processed")
+                break
+            elif not ret:
+                logging.info(
+                    f"Cannot read frame {frame_idx+1}/{total_frames}. Exiting..."
+                )
                 break
 
             # predict bounding boxes
@@ -196,7 +191,7 @@ class Tracking:
             pred_scores = prediction[0]["scores"].detach().cpu().numpy()
 
             # run tracking
-            tracked_boxes = self.update_tracking(prediction)
+            tracked_boxes_id_per_frame = self.update_tracking(prediction)
             save_required_output(
                 self.video_file_root,
                 self.args.save_frames,
@@ -204,19 +199,19 @@ class Tracking:
                 self.csv_writer,
                 self.args.save_video,
                 self.video_output,
-                tracked_boxes,
+                tracked_boxes_id_per_frame,
                 frame,
-                frame_number,
+                frame_idx + 1,
                 pred_scores,
             )
 
             # update frame number
-            frame_number += 1
+            frame_idx += 1
 
         if self.args.gt_path:
             evaluation = TrackerEvaluate(
                 self.args.gt_path,
-                self.tracked_list,
+                self.tracked_bbox_id,
                 self.config["iou_threshold"],
             )
             evaluation.run_evaluation()
@@ -247,7 +242,6 @@ def main(args) -> None:
     """
 
     inference = Tracking(args)
-    inference.load_video()
     inference.run_tracking()
 
 
@@ -277,7 +271,7 @@ def tracking_parse_args(args):
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="crabs_track_output",
+        default="tracking_output",
         help="Directory to save the track output",  # is this a csv or a video? (or both)
     )
     parser.add_argument(
@@ -304,6 +298,12 @@ def tracking_parse_args(args):
         "--save_frames",
         action="store_true",
         help="Save frame to be used in correcting track labelling",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda",
+        help="device for pytorch either cpu or cuda",
     )
     return parser.parse_args(args)
 
