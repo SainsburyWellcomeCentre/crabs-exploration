@@ -34,14 +34,15 @@
  # ----------------------
 
  # video and inference config
- VIDEO_PATH=/ceph/zoo/users/sminano/crabs_tracks_label/04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test_video.mp4
- CONFIG_FILE=/ceph/scratch/nikkna/crabs-exploration/crabs/tracker/config/tracking_config.yaml
+ VIDEO_PATH=/ceph/zoo/users/sminano/crabs_tracks_label/04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test.mp4
+ CONFIG_FILE=/ceph/zoo/users/sminano/cluster_tracking_config.yaml
 
  # checkpoint
- TRAINED_MODEL_PATH=/ceph/scratch/nikkna/crabs-exploration/ml_ckpt/595664011639950974/e24234398e4b4d5790a9ea3599570637/checkpoints/last.ckpt
+ TRAINED_MODEL_PATH=/ceph/zoo/users/sminano/ml-runs-all/ml_runs-nikkna-copy/243676951438603508/8dbe61069f17453a87c27b4f61f6e681/checkpoints/last.ckpt
+
 
  # output directory
- OUTPUT_DIR=/ceph/scratch/nikkna/crabs-exploration/crabs_track_output
+ OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_track_output
 
  # ground truth is available
  GT_PATH=/ceph/zoo/users/sminano/crabs_tracks_label/04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test_corrected_ST_csv.csv

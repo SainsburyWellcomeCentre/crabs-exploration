@@ -36,13 +36,13 @@ set -o pipefail  # make the pipe fail if any part of it fails
 # video and inference config
 VIDEO_DIR=/ceph/zoo/raw/CrabField/ramalhete_2023/Escapes
 PATTERN="*.mov"
-CONFIG_FILE=/ceph/scratch/nikkna/crabs-exploration/crabs/tracker/config/tracking_config.yaml
+CONFIG_FILE=/ceph/zoo/users/sminano/cluster_tracking_config.yaml
 
 # checkpoint
-TRAINED_MODEL_PATH=/ceph/scratch/nikkna/crabs-exploration/ml_ckpt/595664011639950974/e24234398e4b4d5790a9ea3599570637/checkpoints/last.ckpt
+TRAINED_MODEL_PATH=/ceph/zoo/users/sminano/ml-runs-all/ml_runs-nikkna-copy/243676951438603508/8dbe61069f17453a87c27b4f61f6e681/checkpoints/last.ckpt
 
 # output directory
-OUTPUT_DIR=/ceph/scratch/nikkna/crabs-exploration/tracking_output
+OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_track_output
 
 # version of the codebase
 GIT_BRANCH=nikkna/inference_cluster
