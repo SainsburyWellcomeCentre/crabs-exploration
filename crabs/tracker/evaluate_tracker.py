@@ -27,6 +27,97 @@ class TrackerEvaluate:
         self.gt_dir = gt_dir
         self.iou_threshold = iou_threshold
 
+        Parameters
+        ----------
+        gt_dir : str
+            Directory path of the ground truth CSV file.
+        tracked_list : List[np.ndarray]
+            A list where each element is a numpy array representing tracked objects in a frame.
+            Each numpy array has shape (N, 5), where N is the number of objects.
+            The columns are [x1, y1, x2, y2, id], where (x1, y1) and (x2, y2)
+            define the bounding box and id is the object ID.
+        iou_threshold : float
+            Intersection over Union (IoU) threshold for evaluating tracking performance.
+        """
+        self.gt_dir = gt_dir
+        self.predicted_boxes_id = predicted_boxes_id
+        self.iou_threshold = iou_threshold
+
+    def get_predicted_data(self) -> Dict[int, Dict[str, Any]]:
+        """
+        Convert predicted bounding box and ID into a dictionary organized by frame number.
+
+        Returns
+        -------
+        Dict[int, Dict[str, Any]]:
+            A dictionary where the key is the frame number and the value is another dictionary containing:
+            - 'bbox': A numpy array with shape (N, 4) containing coordinates of the bounding boxes
+            [x, y, x + width, y + height] for every object in the frame.
+            - 'id': A numpy array containing the IDs of the tracked objects.
+        """
+        predicted_dict: Dict[int, Dict[str, Any]] = {}
+
+        for frame_number, frame_data in enumerate(self.predicted_boxes_id):
+            if frame_data.size == 0:
+                continue
+
+            bboxes = frame_data[:, :4]
+            ids = frame_data[:, 4]
+
+            predicted_dict[frame_number] = {"bbox": bboxes, "id": ids}
+
+        return predicted_dict
+
+    def get_ground_truth_data(self) -> Dict[int, Dict[str, Any]]:
+        """
+        Extract ground truth bounding box data from a CSV file and organize it by frame number.
+
+        Returns
+        -------
+        Dict[int, Dict[str, Any]]:
+            A dictionary where the key is the frame number and the value is another dictionary containing:
+            - 'bbox': A numpy arrays with shape of (N, 4) containing coordinates of the bounding box
+                [x, y, x + width, y + height] for every crabs in the frame.
+            - 'id': The ground truth ID
+        """
+        with open(self.gt_dir, "r") as csvfile:
+            csvreader = csv.reader(csvfile)
+            next(csvreader)  # Skip the header row
+            ground_truth_data = [
+                extract_bounding_box_info(row) for row in csvreader
+            ]
+
+        # Format as a dictionary with key = frame number
+        ground_truth_dict: dict = {}
+        for data in ground_truth_data:
+            frame_number = data["frame_number"]
+            bbox = np.array(
+                [
+                    data["x"],
+                    data["y"],
+                    data["x"] + data["width"],
+                    data["y"] + data["height"],
+                ],
+                dtype=np.float32,
+            )
+            track_id = int(float(data["id"]))
+
+            if frame_number not in ground_truth_dict:
+                ground_truth_dict[frame_number] = {"bbox": [], "id": []}
+
+            ground_truth_dict[frame_number]["bbox"].append(bbox)
+            ground_truth_dict[frame_number]["id"].append(track_id)
+
+        # format as numpy arrays
+        for frame_number in ground_truth_dict:
+            ground_truth_dict[frame_number]["bbox"] = np.array(
+                ground_truth_dict[frame_number]["bbox"], dtype=np.float32
+            )
+            ground_truth_dict[frame_number]["id"] = np.array(
+                ground_truth_dict[frame_number]["id"], dtype=np.float32
+            )
+        return ground_truth_dict
+
     def calculate_iou(self, box1: np.ndarray, box2: np.ndarray) -> float:
         """
         Calculate IoU (Intersection over Union) of two bounding boxes.
@@ -102,6 +193,7 @@ class TrackerEvaluate:
         gt_ids_appear = list(gt_ids_current_frame - gt_ids_prev_frame)
 
         # Store used predicted IDs to avoid double counting
+        # In `used_pred_ids` we log IDs from either the current or the previous frame that have been involved in an already counted ID switch.
         used_pred_ids = set()
 
         # Case 1: Objects that continue to exist
