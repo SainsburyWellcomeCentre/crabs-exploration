@@ -80,7 +80,7 @@ class TrackerEvaluate:
         # Format as a dictionary with key = frame number
         ground_truth_dict: dict = {}
         for data in ground_truth_data:
-            frame_idx = data["frame_number"]
+            frame_number = data["frame_number"]
             bbox = np.array(
                 [
                     data["x"],
