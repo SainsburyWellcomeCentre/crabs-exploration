@@ -201,13 +201,13 @@ class Tracking:
                 self.video_output,
                 tracked_boxes_id_per_frame,
                 frame,
-                frame_number,
+                frame_idx + 1,
                 pred_scores,
             )
 
             # update frame number
             frame_idx += 1
-            
+
         if self.args.gt_path:
             evaluation = TrackerEvaluate(
                 self.args.gt_path,

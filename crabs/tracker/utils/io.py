@@ -36,7 +36,7 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
     tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
     csv_file = open(
-        f"{str(tracking_output_dir)}/track_labels.csv",
+        f"{str(tracking_output_dir)}/predicted_tracks.csv",
         "w",
     )
     csv_writer = csv.writer(csv_file)

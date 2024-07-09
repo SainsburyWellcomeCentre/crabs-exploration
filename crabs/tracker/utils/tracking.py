@@ -31,9 +31,9 @@ def extract_bounding_box_info(row: list[str]) -> Dict[str, Any]:
     height = region_shape_attributes["height"]
     track_id = region_attributes["track"]
 
-    frame_idx = int(filename.split("_")[-1].split(".")[0]) - 1
+    frame_number = int(filename.split("_")[-1].split(".")[0])
     return {
-        "frame_number": frame_idx,
+        "frame_number": frame_number,
         "x": x,
         "y": y,
         "width": width,

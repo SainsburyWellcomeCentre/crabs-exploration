@@ -32,7 +32,7 @@ def test_get_ground_truth_data(evaluation):
 
 def test_ground_truth_data_from_csv(evaluation):
     expected_data = {
-        10: {
+        11: {
             "bbox": np.array(
                 [
                     [2894.8606, 975.8517, 2945.8606, 1016.8517],
@@ -42,7 +42,7 @@ def test_ground_truth_data_from_csv(evaluation):
             ),
             "id": np.array([2.0, 1.0], dtype=np.float32),
         },
-        20: {
+        21: {
             "bbox": np.array(
                 [[940.6089, 1192.637, 989.6089, 1230.637]], dtype=np.float32
             ),

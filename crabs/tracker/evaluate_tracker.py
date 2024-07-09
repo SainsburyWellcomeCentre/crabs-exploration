@@ -54,7 +54,7 @@ class TrackerEvaluate:
             bboxes = frame_data[:, :4]
             ids = frame_data[:, 4]
 
-            predicted_dict[frame_idx] = {"bbox": bboxes, "id": ids}
+            predicted_dict[frame_number] = {"bbox": bboxes, "id": ids}
 
         return predicted_dict
 
@@ -92,19 +92,19 @@ class TrackerEvaluate:
             )
             track_id = int(float(data["id"]))
 
-            if frame_idx not in ground_truth_dict:
-                ground_truth_dict[frame_idx] = {"bbox": [], "id": []}
+            if frame_number not in ground_truth_dict:
+                ground_truth_dict[frame_number] = {"bbox": [], "id": []}
 
-            ground_truth_dict[frame_idx]["bbox"].append(bbox)
-            ground_truth_dict[frame_idx]["id"].append(track_id)
+            ground_truth_dict[frame_number]["bbox"].append(bbox)
+            ground_truth_dict[frame_number]["id"].append(track_id)
 
         # format as numpy arrays
-        for frame_idx in ground_truth_dict:
-            ground_truth_dict[frame_idx]["bbox"] = np.array(
-                ground_truth_dict[frame_idx]["bbox"], dtype=np.float32
+        for frame_number in ground_truth_dict:
+            ground_truth_dict[frame_number]["bbox"] = np.array(
+                ground_truth_dict[frame_number]["bbox"], dtype=np.float32
             )
-            ground_truth_dict[frame_idx]["id"] = np.array(
-                ground_truth_dict[frame_idx]["id"], dtype=np.float32
+            ground_truth_dict[frame_number]["id"] = np.array(
+                ground_truth_dict[frame_number]["id"], dtype=np.float32
             )
         return ground_truth_dict
 
