@@ -34,7 +34,7 @@
  # ----------------------
 
  # video and inference config
- VIDEO_PATH=/ceph/zoo/users/sminano/crabs_tracks_label/04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test_output_video.mp4
+ VIDEO_PATH=/ceph/zoo/users/sminano/crabs_tracks_label/04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test_video.mp4
  CONFIG_FILE=/ceph/scratch/nikkna/crabs-exploration/crabs/tracker/config/tracking_config.yaml
 
  # checkpoint
