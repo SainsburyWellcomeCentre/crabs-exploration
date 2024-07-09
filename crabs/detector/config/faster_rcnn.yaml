@@ -12,7 +12,7 @@ num_classes: 2
 # -------------------------------
 # Training & validation parameters
 # -------------------------------
-n_epochs: 250
+n_epochs: 1
 learning_rate: 0.00005
 wdecay: 0.00005
 batch_size_train: 4

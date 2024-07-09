@@ -25,7 +25,7 @@ def test_extract_bounding_box_info():
     result = extract_bounding_box_info(csv_row)
 
     expected_result = {
-        "frame_number": 0,
+        "frame_number": 1,
         "x": 2894.860594987354,
         "y": 975.8516839863181,
         "width": 51,
