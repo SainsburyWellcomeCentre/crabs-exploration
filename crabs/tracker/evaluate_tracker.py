@@ -3,7 +3,6 @@ import logging
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
-import pandas as pd
 
 from crabs.tracker.utils.tracking import extract_bounding_box_info
 
