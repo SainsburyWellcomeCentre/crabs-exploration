@@ -9,7 +9,7 @@
 #SBATCH -o slurm.%A.%N.out
 #SBATCH -e slurm.%A.%N.err
 #SBATCH --mail-type=ALL
-#SBATCH --mail-user=n.aznan@ucl.ac.uk
+#SBATCH --mail-user=s.minano@ucl.ac.uk
 
 # ---------------------
 # Source bashrc
@@ -45,7 +45,7 @@ TRAINED_MODEL_PATH=/ceph/zoo/users/sminano/ml-runs-all/ml_runs-nikkna-copy/24367
 OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_track_output
 
 # version of the codebase
-GIT_BRANCH=nikkna/inference_cluster
+GIT_BRANCH=main
 
 # Check if the target is not a directory
 if [ ! -d "$VIDEO_DIR" ]; then
