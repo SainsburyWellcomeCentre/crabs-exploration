@@ -207,6 +207,7 @@ class Tracking:
 
             # update frame number
             frame_idx += 1
+            
         if self.args.gt_path:
             evaluation = TrackerEvaluate(
                 self.args.gt_path,
