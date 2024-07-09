@@ -3,9 +3,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
-from crabs.tracker.utils.tracking import (
-    get_predicted_data,
-)
+from crabs.tracker.utils.tracking import get_predicted_data
 
 
 class TrackerEvaluate:
