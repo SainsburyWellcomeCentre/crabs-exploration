@@ -34,7 +34,7 @@ def extract_bounding_box_info(row: list[str]) -> Dict[str, Any]:
 
     frame_number = int(filename.split("_")[-1].split(".")[0])
     return {
-        "frame_number": frame_idx,
+        "frame_number": frame_number,
         "x": x,
         "y": y,
         "width": width,
