@@ -15,32 +15,38 @@
 
 1.  **Download the training script from the 🦀 repository**
 
-    To do so, run any of the following commands. They will download a bash script for training (`run_evaluate_single.sh` or `run_evaluate_array.sh`) to the current working directory.
+    To do so, run any of the following commands. They will download a bash script for tracking (`run_tracking.sh` or `run_tracking_all_escape_events.sh`) to the current working directory.
 
     The download the version of these files in the `main` branch of the [🦀 repository](https://github.com/SainsburyWellcomeCentre/crabs-exploration), run one of the following commands.
 
-    - To train a single job: download the `run_inference.sh` file
+    - To run video tracking on a specific video: download the `run_tracking.sh` file
 
       ```
-      curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/run_inference.sh > run_inference.sh
+      curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/run_tracking.sh > run_tracking.sh
+      ```
+
+    - To run video tracking on all escape events (or on a directory): download the `run_tracking_all_escape_events.sh` file
+
+      ```
+      curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/run_tracking_all_escape_events.sh > run_tracking_all_escape_events.sh
       ```
 
     These bash scripts will launch a SLURM job that:
 
     - gets the 🦀 package from git,
     - installs it in the compute node,
-    - and runs a training job.
+    - and runs a video tracking on a specific video.
 
 > [!TIP]
 > To retrieve a version of these files that is different from the files at the tip of `main`, edit the remote file path in the curl command:
 >
 > - For example, to download the version of the file at the tip of a branch called `<BRANCH-NAME>`, edit the path above to replace `main` with `<BRANCH-NAME>`:
 >   ```
->   https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/<BRANCH-NAME>/bash_scripts/run_training_single.sh
+>   https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/<BRANCH-NAME>/bash_scripts/run_tracking.sh
 >   ```
 > - To download the version of the file of a specific commit, replace `main` with `blob/<COMMIT-HASH>`:
 >   ```
->   https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/blob/<COMMIT-HASH>/bash_scripts/run_training_single.sh
+>   https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/blob/<COMMIT-HASH>/bash_scripts/run_tracking.sh
 >   ```
 
 4.  **Edit the bash script!**
@@ -49,27 +55,29 @@
 
     We can see the perfomance of each training session by inspecting the `metrics` tab in `mlflow UI` where the `training loss`, `validation precision` and `validation recall` are plotted. The trained model (`checkpoint path`) are logged in `parameters` section under `overview` tab.
 
-    When launching an inference job, we may want to edit in the bash script:
+    When launching a tacking job, we may want to edit in the bash script:
 
-    - The `CKPT_PATH`
-    - The `VIDEO_PATH`
+    - The `TRAINED_MODEL_PATH`
     - The `OUTPUT_DIR`
+    - The `VIDEO_PATH` (for `run_tracking.sh`) or `VIDEO_DIR` (for `run_tracking_all_escape_events.sh`)
 
     Less frequently, one may need to edit:
 
-    - the `CONFIG_FILE`: usually we point to the same file we used to train the model at `/ceph/zoo/users/sminano/cluster_train_config.yaml` which we can edit. Note that all config parameters are logged in MLflow, so we don't need to keep track of that file;
+    - the `CONFIG_FILE`: usually we point to the same file we used to train the model at `/ceph/zoo/users/sminano/cluster_tracking_config.yaml` which we can edit.
     - the `GIT_BRANCH`, if we want to use a specific version of the 🦀 package. Usually we will run the version of the 🦀 package in `main`.
 
 5.  **Other Inference options**
 
-    By default the inference will save the tracking output into csv. There are other options that we can enable in the config file
+    By default, the inference will save the tracking output into a CSV file. There are other options that we can enable in CLI arguments:
 
-    - `save_video`
-    - `save_csv_and_frames`
+    - `save_video` : This will save the tracking bounding boxes for every frame into a video output.
+    - `save_frames` : This will save the corresponding frames to the CSV output. This is needed if we want to correct the tracking labels.
 
-    Additionally if we have ground truth of the video we used, we may want to add that to get the tracking evaluation:
+    Additionally, if we have ground truth for the video we used, we may want to add that to get the tracking evaluation:
 
     - `GT_PATH`
+
+    We can add all these arguments in the bash script, for example:
 
     ```
     detect-and-track-video  \
@@ -77,7 +85,9 @@
     --video_path $VIDEO_PATH \
     --config_file $CONFIG_FILE \
     --gt_PATH $GT_PATH
-
+    --device $DEVICE
+    --save_video
+    --save_frames
     ```
 
 6.  **Run the inference job using the SLURM scheduler**

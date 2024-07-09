@@ -96,7 +96,7 @@
  # Run evaluation script
  # -------------------
  detect-and-track-video  \
-  --trained_model_path $CKPT_PATH \
+  --trained_model_path $TRAINED_MODEL_PATH \
   --video_path $VIDEO_PATH \
   --config_file $CONFIG_FILE \
   --output_dir $OUTPUT_DIR \

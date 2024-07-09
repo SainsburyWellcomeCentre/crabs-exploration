@@ -47,6 +47,7 @@ OUTPUT_DIR=/ceph/scratch/nikkna/crabs-exploration/tracking_output
 # version of the codebase
 GIT_BRANCH=nikkna/inference_cluster
 
+# device either cuda or cpu
 DEVICE="cuda"
 
 # Check if the target is not a directory
