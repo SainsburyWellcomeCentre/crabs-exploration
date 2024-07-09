@@ -170,6 +170,7 @@ class Tracking:
         frame_idx = 0
         self.tracked_bbox_id = []
         previous_positions = {}
+        orientation_data = {}
 
         # Loop through frames of the video in batches
         while self.video.isOpened():
@@ -201,10 +202,15 @@ class Tracking:
             # run tracking
             tracked_boxes_id_per_frame = self.update_tracking(prediction)
 
-            velocities = calculate_velocity(
-                tracked_boxes_id_per_frame, previous_positions, self.frame_time_interval
-            )
-            orientation_data = get_orientation(tracked_boxes_id_per_frame, velocities)
+            if self.args.save_orientation:
+                velocities = calculate_velocity(
+                    tracked_boxes_id_per_frame,
+                    previous_positions,
+                    self.frame_time_interval,
+                )
+                orientation_data = get_orientation(
+                    tracked_boxes_id_per_frame, velocities
+                )
 
             save_required_output(
                 self.video_file_root,
@@ -311,6 +317,11 @@ def tracking_parse_args(args):
     )
     parser.add_argument(
         "--save_frames",
+        action="store_true",
+        help="Save frame to be used in correcting track labelling",
+    )
+    parser.add_argument(
+        "--save_orientation",
         action="store_true",
         help="Save frame to be used in correcting track labelling",
     )
