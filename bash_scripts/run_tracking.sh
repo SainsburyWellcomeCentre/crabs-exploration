@@ -38,7 +38,7 @@
  CONFIG_FILE=/ceph/scratch/nikkna/crabs-exploration/crabs/tracker/config/tracking_config.yaml
 
  # checkpoint
- CKPT_PATH=/ceph/scratch/nikkna/crabs-exploration/ml_ckpt/595664011639950974/e24234398e4b4d5790a9ea3599570637/checkpoints/last.ckpt
+ TRAINED_MODEL_PATH=/ceph/scratch/nikkna/crabs-exploration/ml_ckpt/595664011639950974/e24234398e4b4d5790a9ea3599570637/checkpoints/last.ckpt
 
  # output directory
  OUTPUT_DIR=/ceph/scratch/nikkna/crabs-exploration/crabs_track_output
@@ -48,6 +48,9 @@
 
  # version of the codebase
  GIT_BRANCH=nikkna/inference_cluster
+
+ # device either cuda or cpu
+ DEVICE="cuda"
 
  # -----------------------------
  # Create virtual environment
@@ -93,8 +96,9 @@
  # Run evaluation script
  # -------------------
  detect-and-track-video  \
-  --checkpoint_path $CKPT_PATH \
+  --trained_model_path $CKPT_PATH \
   --video_path $VIDEO_PATH \
   --config_file $CONFIG_FILE \
   --output_dir $OUTPUT_DIR \
-  --gt_path $GT_PATH
+  --gt_path $GT_PATH \
+  --device $DEVICE
