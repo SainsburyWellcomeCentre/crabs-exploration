@@ -168,7 +168,7 @@ class Tracking:
             # Break if beyond end frame (mostly for debugging)
             if (
                 self.args.max_frames_to_read
-                and frame_idx > self.args.max_frames_to_read
+                and frame_idx + 1 > self.args.max_frames_to_read
             ):
                 break
 
