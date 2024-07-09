@@ -1,5 +1,6 @@
 import csv
 import os
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Union
 
@@ -30,13 +31,13 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
         A tuple containing the CSV writer, the CSV file object, and the tracking output directory path.
     """
 
-    crabs_tracks_label_dir = Path(output_dir) / "crabs_tracks_label"
-    tracking_output_dir = crabs_tracks_label_dir / video_file_root
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tracking_output_dir = Path(output_dir + f"_{timestamp}") / video_file_root
     # Create the subdirectory for the specific video file root
     tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
     csv_file = open(
-        f"{str(tracking_output_dir / video_file_root)}.csv",
+        f"{str(tracking_output_dir)}/predicted_tracks.csv",
         "w",
     )
     csv_writer = csv.writer(csv_file)
@@ -60,7 +61,6 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
 
 def prep_video_writer(
     output_dir: str,
-    video_file_root: str,
     frame_width: int,
     frame_height: int,
     cap_fps: float,
@@ -88,7 +88,7 @@ def prep_video_writer(
     """
     output_file = os.path.join(
         output_dir,
-        f"{os.path.basename(video_file_root)}_output_video.mp4",
+        "tracked_video.mp4",
     )
     output_codec = cv2.VideoWriter_fourcc("m", "p", "4", "v")
     video_output = cv2.VideoWriter(

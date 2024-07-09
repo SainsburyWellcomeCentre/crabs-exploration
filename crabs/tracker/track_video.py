@@ -49,16 +49,14 @@ class Tracking:
 
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
-
         self.config_file = args.config_file
-        self.load_config_yaml()
 
         self.video_path = args.video_path
-        self.video_file_root = f"{Path(self.video_path).stem}"
         self.trained_model_path = self.args.trained_model_path
         self.device = self.args.device
 
-        self.trained_model = self.load_trained_model()
+        self.setup()
+        self.prep_outputs()
 
         self.sort_tracker = Sort(
             max_age=self.config["max_age"],
@@ -66,42 +64,35 @@ class Tracking:
             iou_threshold=self.config["iou_threshold"],
         )
 
+    def setup(self):
+        """
+        Load tracking config, trained model and input video path.
+        """
+        with open(self.config_file, "r") as f:
+            self.config = yaml.safe_load(f)
+
+        # Get trained model
+        self.trained_model = FasterRCNN.load_from_checkpoint(
+            self.trained_model_path
+        )
+        self.trained_model.eval()
+        self.trained_model.to(self.device)
+
+        # Load the input video
+        self.video = cv2.VideoCapture(self.video_path)
+        if not self.video.isOpened():
+            raise Exception("Error opening video file")
+        self.video_file_root = f"{Path(self.video_path).stem}"
+
+    def prep_outputs(self):
+        """
+        Prepare csv writer and if required, video writer.
+        """
         (
             self.csv_writer,
             self.csv_file,
             self.tracking_output_dir,
         ) = prep_csv_writer(self.args.output_dir, self.video_file_root)
-
-    def load_config_yaml(self):
-        """
-        Load yaml file that contains config parameters.
-        """
-        with open(self.config_file, "r") as f:
-            self.config = yaml.safe_load(f)
-
-    def load_trained_model(self) -> torch.nn.Module:
-        """
-        Load the trained model.
-
-        Returns
-        -------
-        torch.nn.Module
-        """
-        # Get trained model
-        trained_model = FasterRCNN.load_from_checkpoint(
-            self.trained_model_path
-        )
-        trained_model.eval()
-        trained_model.to(self.device)  # Should device be a CLI?
-        return trained_model
-
-    def load_video(self) -> None:
-        """
-        Load the input video, and prepare the output video if required.
-        """
-        self.video = cv2.VideoCapture(self.video_path)
-        if not self.video.isOpened():
-            raise Exception("Error opening video file")
 
         cap_fps = self.video.get(cv2.CAP_PROP_FPS)
         self.frame_time_interval = 1 / cap_fps
@@ -112,7 +103,6 @@ class Tracking:
 
             self.video_output = prep_video_writer(
                 self.tracking_output_dir,
-                self.video_file_root,
                 frame_width,
                 frame_height,
                 cap_fps,
@@ -161,9 +151,9 @@ class Tracking:
             list of tracked bounding boxes after updating the tracking system.
         """
         pred_sort = prep_sort(prediction, self.config["score_threshold"])
-        tracked_boxes = self.sort_tracker.update(pred_sort)
-        self.tracked_list.append(tracked_boxes)
-        return tracked_boxes
+        tracked_boxes_id_per_frame = self.sort_tracker.update(pred_sort)
+        self.tracked_bbox_id.append(tracked_boxes_id_per_frame)
+        return tracked_boxes_id_per_frame
 
     def run_tracking(self):
         """
@@ -177,8 +167,8 @@ class Tracking:
             return
 
         # initialisation
-        frame_number = 1
-        self.tracked_list = []
+        frame_idx = 0
+        self.tracked_bbox_id = []
         previous_positions = {}
 
         # Loop through frames of the video in batches
@@ -186,14 +176,22 @@ class Tracking:
             # Break if beyond end frame (mostly for debugging)
             if (
                 self.args.max_frames_to_read
-                and frame_number > self.args.max_frames_to_read
+                and frame_idx + 1 > self.args.max_frames_to_read
             ):
                 break
 
+            # get total n frames
+            total_frames = int(self.video.get(cv2.CAP_PROP_FRAME_COUNT))
+
             # read frame
             ret, frame = self.video.read()
-            if not ret:
-                print("No frame read. Exiting...")
+            if not ret and (frame_idx == total_frames):
+                logging.info(f"All {total_frames} frames processed")
+                break
+            elif not ret:
+                logging.info(
+                    f"Cannot read frame {frame_idx+1}/{total_frames}. Exiting..."
+                )
                 break
 
             # predict bounding boxes
@@ -201,13 +199,12 @@ class Tracking:
             pred_scores = prediction[0]["scores"].detach().cpu().numpy()
 
             # run tracking
-            tracked_boxes = self.update_tracking(prediction)
+            tracked_boxes_id_per_frame = self.update_tracking(prediction)
 
             velocities = calculate_velocity(
-                tracked_boxes, previous_positions, self.frame_time_interval
+                tracked_boxes_id_per_frame, previous_positions, self.frame_time_interval
             )
-
-            orientation_data = get_orientation(tracked_boxes, velocities)
+            orientation_data = get_orientation(tracked_boxes_id_per_frame, velocities)
 
             save_required_output(
                 self.video_file_root,
@@ -216,20 +213,20 @@ class Tracking:
                 self.csv_writer,
                 self.args.save_video,
                 self.video_output,
-                tracked_boxes,
+                tracked_boxes_id_per_frame,
                 frame,
-                frame_number,
+                frame_idx + 1,
                 orientation_data,
                 pred_scores,
             )
 
             # update frame number
-            frame_number += 1
+            frame_idx += 1
 
         if self.args.gt_path:
             evaluation = TrackerEvaluate(
                 self.args.gt_path,
-                self.tracked_list,
+                self.tracked_bbox_id,
                 self.config["iou_threshold"],
             )
             evaluation.run_evaluation()
@@ -260,7 +257,6 @@ def main(args) -> None:
     """
 
     inference = Tracking(args)
-    inference.load_video()
     inference.run_tracking()
 
 
@@ -290,7 +286,7 @@ def tracking_parse_args(args):
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="crabs_track_output",
+        default="tracking_output",
         help="Directory to save the track output",
     )
     parser.add_argument(
