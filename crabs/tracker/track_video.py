@@ -63,6 +63,11 @@ class Tracking:
         """
         Load tracking config, trained model and input video path.
         """
+        # Check for CUDA availability
+        if self.device == "cuda" and not torch.cuda.is_available():
+            print("CUDA is not available. Falling back to CPU.")
+            self.device = "cpu"
+
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 

@@ -1,15 +1,15 @@
 #!/bin/bash
 
- #SBATCH -p gpu # a100 # partition
- #SBATCH --gres=gpu:1
- #SBATCH -N 1   # number of nodes
- #SBATCH --ntasks-per-node 8 # 2 # max number of tasks per node
- #SBATCH --mem 64G # memory pool for all cores
- #SBATCH -t 3-00:00 # time (D-HH:MM)
- #SBATCH -o slurm.%A.%N.out
- #SBATCH -e slurm.%A.%N.err
- #SBATCH --mail-type=ALL
- #SBATCH --mail-user=n.aznan@ucl.ac.uk
+#SBATCH -p gpu # a100 # partition
+#SBATCH --gres=gpu:1
+#SBATCH -N 1   # number of nodes
+#SBATCH --ntasks-per-node 8 # 2 # max number of tasks per node
+#SBATCH --mem 64G # memory pool for all cores
+#SBATCH -t 3-00:00 # time (D-HH:MM)
+#SBATCH -o slurm.%A.%N.out
+#SBATCH -e slurm.%A.%N.err
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=n.aznan@ucl.ac.uk
 
  # ---------------------
  # Source bashrc
