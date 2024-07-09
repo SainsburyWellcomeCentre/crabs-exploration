@@ -49,9 +49,6 @@
  # version of the codebase
  GIT_BRANCH=nikkna/inference_cluster
 
- # device either cuda or cpu
- DEVICE="cuda"
-
  # -----------------------------
  # Create virtual environment
  # -----------------------------
@@ -100,5 +97,4 @@
   --video_path $VIDEO_PATH \
   --config_file $CONFIG_FILE \
   --output_dir $OUTPUT_DIR \
-  --gt_path $GT_PATH \
-  --device $DEVICE
+  --gt_path $GT_PATH

@@ -47,9 +47,6 @@ OUTPUT_DIR=/ceph/scratch/nikkna/crabs-exploration/tracking_output
 # version of the codebase
 GIT_BRANCH=nikkna/inference_cluster
 
-# device either cuda or cpu
-DEVICE="cuda"
-
 # Check if the target is not a directory
 if [ ! -d "$VIDEO_DIR" ]; then
   exit 1
@@ -103,6 +100,5 @@ for VIDEO_PATH in "$VIDEO_DIR"/*.mov; do
     --trained_model_path $TRAINED_MODEL_PATH \
     --video_path $VIDEO_PATH \
     --config_file $CONFIG_FILE \
-    --output_dir $OUTPUT_DIR \
-    --device $DEVICE
+    --output_dir $OUTPUT_DIR
 done
