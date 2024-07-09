@@ -201,7 +201,7 @@ class Tracking:
                 self.video_output,
                 tracked_boxes_id_per_frame,
                 frame,
-                frame_idx,
+                frame_number,
                 pred_scores,
             )
 
