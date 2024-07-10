@@ -94,29 +94,19 @@ echo "-----"
 # Run evaluation script for each .mov file in VIDEO_DIR
 # -------------------
 
-# Create a timestamp
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-
-# Define the parent output directory with the timestamp
 PARENT_OUTPUT_DIR="${OUTPUT_DIR}_${TIMESTAMP}"
-
-# Create the parent output directory
 mkdir -p "$PARENT_OUTPUT_DIR"
 
-# Loop through each video file in the VIDEO_DIR
 for VIDEO_PATH in "$VIDEO_DIR"/*.mov; do
-  # Get the base name of the video file (without path and extension)
   VIDEO_BASENAME=$(basename "$VIDEO_PATH" .mov)
 
   echo "Processing video: $VIDEO_PATH"
 
-  # Define the subfolder for the current video within the parent output directory
   VIDEO_OUTPUT_DIR="$PARENT_OUTPUT_DIR/$VIDEO_BASENAME"
 
-  # Create the subfolder for the current video
   mkdir -p "$VIDEO_OUTPUT_DIR"
 
-  # Run the detect-and-track-video command with the appropriate output directory
   detect-and-track-video  \
     --trained_model_path "$TRAINED_MODEL_PATH" \
     --video_path "$VIDEO_PATH" \
