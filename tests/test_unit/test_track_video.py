@@ -20,6 +20,7 @@ def mock_args():
         device="cuda",
         gt_path=None,
         save_video=None,
+        run_on_video_dir =None
     )
 
 

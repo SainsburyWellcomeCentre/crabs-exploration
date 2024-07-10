@@ -13,7 +13,9 @@ from crabs.tracker.utils.tracking import (
 )
 
 
-def prep_csv_writer(output_dir: str, video_file_root: str):
+def prep_csv_writer(
+    output_dir: str, video_file_root: str, run_on_video_dir: bool
+):
     """
     Prepare csv writer to output tracking results.
 
@@ -29,11 +31,15 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
     Tuple
         A tuple containing the CSV writer, the CSV file object, and the tracking output directory path.
     """
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    tracking_output_dir = Path(output_dir + f"_{timestamp}") / video_file_root
-    # Create the subdirectory for the specific video file root
-    tracking_output_dir.mkdir(parents=True, exist_ok=True)
+    if run_on_video_dir:
+        tracking_output_dir = Path(output_dir)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        tracking_output_dir = (
+            Path(output_dir + f"_{timestamp}") / video_file_root
+        )
+        # Create the subdirectory for the specific video file root
+        tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
     csv_file = open(
         f"{str(tracking_output_dir)}/predicted_tracks.csv",
