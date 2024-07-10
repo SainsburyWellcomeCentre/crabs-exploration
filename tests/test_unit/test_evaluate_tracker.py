@@ -10,7 +10,10 @@ from crabs.tracker.evaluate_tracker import TrackerEvaluate
 def evaluation():
     test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
     return TrackerEvaluate(
-        test_csv_file, predicted_boxes_id=[], iou_threshold=0.1
+        test_csv_file,
+        predicted_boxes_id=[],
+        iou_threshold=0.1,
+        tracking_output_dir="/path/output",
     )
 
 
@@ -211,7 +214,7 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
 
 
 @pytest.mark.parametrize(
-    "gt_data, pred_data, prev_frame_id_map, expected_mota",
+    "gt_data, pred_data, prev_frame_id_map, expected_output",
     [
         # perfect tracking
         (
@@ -236,7 +239,7 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
                 "id": np.array([11, 12, 13]),
             },
             {1: 11, 2: 12, 3: 13},
-            1.0,
+            [1.0, 3, 0, 0, 0],
         ),
         (
             {
@@ -260,7 +263,7 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
                 "id": np.array([11, 12, 13]),
             },
             {1: 11, 12: 2, 3: np.nan},
-            1.0,
+            [1.0, 3, 0, 0, 0],
         ),
         # ID switch
         (
@@ -285,7 +288,7 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
                 "id": np.array([11, 12, 14]),
             },
             {1: 11, 2: 12, 3: 13},
-            2 / 3,
+            [2 / 3, 3, 0, 0, 1],
         ),
         # missed detection
         (
@@ -306,7 +309,7 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
                 "id": np.array([11, 12]),
             },
             {1: 11, 2: 12, 3: 13},
-            2 / 3,
+            [2 / 3, 2, 1, 0, 0],
         ),
         # false positive
         (
@@ -332,7 +335,7 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
                 "id": np.array([11, 12, 13, 14]),
             },
             {1: 11, 2: 12, 3: 13},
-            2 / 3,
+            [2 / 3, 3, 0, 1, 0],
         ),
         # low IOU and ID switch
         (
@@ -357,7 +360,7 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
                 "id": np.array([11, 12, 14]),
             },
             {1: 11, 2: 12, 3: 13},
-            0,
+            [0, 2, 1, 1, 1],
         ),
         # low IOU and ID switch on same box
         (
@@ -382,7 +385,7 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
                 "id": np.array([11, 14, 13]),
             },
             {1: 11, 2: 12, 3: 13},
-            1 / 3,
+            [1 / 3, 2, 1, 1, 0],
         ),
         # current tracked id = prev tracked id, but prev_gt_id != current gt id
         (
@@ -407,7 +410,7 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
                 "id": np.array([11, 12, 13]),
             },
             {1: 11, 2: 12, 3: 13},
-            2 / 3,
+            [2 / 3, 3, 0, 0, 1],
         ),
         # ID swapped
         (
@@ -432,7 +435,7 @@ def test_calculate_iou(box1, box2, expected_iou, evaluation):
                 "id": np.array([11, 13, 12]),
             },
             {1: 11, 2: 12, 3: 13},
-            1 / 3,
+            [1 / 3, 3, 0, 0, 2],
         ),
     ],
 )
@@ -440,13 +443,25 @@ def test_evaluate_mota(
     gt_data,
     pred_data,
     prev_frame_id_map,
-    expected_mota,
+    expected_output,
     evaluation,
 ):
-    mota, _ = evaluation.evaluate_mota(
+    (
+        mota,
+        true_positives,
+        missed_detections,
+        false_positives,
+        num_switches,
+        _,
+        _,
+    ) = evaluation.evaluate_mota(
         gt_data,
         pred_data,
         0.1,
         prev_frame_id_map,
     )
-    assert mota == pytest.approx(expected_mota)
+    assert mota == pytest.approx(expected_output[0])
+    assert true_positives == expected_output[1]
+    assert missed_detections == expected_output[2]
+    assert false_positives == expected_output[3]
+    assert num_switches == expected_output[4]
