@@ -111,6 +111,6 @@ for VIDEO_PATH in "$VIDEO_DIR"/*.mov; do
     --trained_model_path "$TRAINED_MODEL_PATH" \
     --video_path "$VIDEO_PATH" \
     --config_file "$CONFIG_FILE" \
-    --output_dir "$VIDEO_OUTPUT_DIR"
-
+    --output_dir "$VIDEO_OUTPUT_DIR" \
+    --run_on_video_dir
 done
