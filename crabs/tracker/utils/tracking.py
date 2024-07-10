@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 import cv2
 import numpy as np
+import pandas as pd
 
 
 def extract_bounding_box_info(row: list[str]) -> Dict[str, Any]:
@@ -152,3 +153,12 @@ def prep_sort(prediction: dict, score_threshold: float) -> np.ndarray:
             pred_sort.append(bbox)
 
     return np.asarray(pred_sort)
+
+
+def save_tracking_mota_metrics(
+    tracking_output_dir: Path,
+    track_results: dict[str, Any],
+) -> None:
+    track_df = pd.DataFrame(track_results)
+    output_filename = f"{tracking_output_dir}/tracking_metrics_output.csv"
+    track_df.to_csv(output_filename, index=False)
