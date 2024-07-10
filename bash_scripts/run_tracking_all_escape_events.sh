@@ -35,7 +35,6 @@ set -o pipefail  # make the pipe fail if any part of it fails
 
 # video and inference config
 VIDEO_DIR=/ceph/zoo/raw/CrabField/ramalhete_2023/Escapes
-PATTERN="*.mov"
 CONFIG_FILE=/ceph/zoo/users/sminano/cluster_tracking_config.yaml
 
 # checkpoint
