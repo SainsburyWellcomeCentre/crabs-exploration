@@ -1,3 +1,4 @@
+import argparse
 import csv
 import os
 from datetime import datetime
@@ -315,3 +316,14 @@ def plot_output_histogram(filename):
     plt.legend()
     plt.savefig(f"{plot_name}.pdf")
     plt.show()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Plot output histogram.")
+    parser.add_argument(
+        "filename",
+        type=str,
+        help="Path to the CSV file containing the metrics",
+    )
+    args = parser.parse_args()
+    plot_output_histogram(args.filename)
