@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from crabs.tracker.utils.tracking import (
+    calculate_iou,
     extract_bounding_box_info,
     get_ground_truth_data,
     get_predicted_data,
@@ -170,3 +171,22 @@ def test_get_predicted_data_with_empty_frame():
     for frame_idx, data in expected_result.items():
         np.testing.assert_array_equal(result[frame_idx]["bbox"], data["bbox"])
         np.testing.assert_array_equal(result[frame_idx]["id"], data["id"])
+
+
+@pytest.mark.parametrize(
+    "box1, box2, expected_iou",
+    [
+        ([0, 0, 10, 10], [5, 5, 12, 12], 0.25),
+        ([0, 0, 10, 10], [0, 0, 10, 10], 1.0),
+        ([0, 0, 10, 10], [20, 20, 30, 30], 0.0),
+        ([0, 0, 10, 10], [5, 15, 15, 25], 0.0),
+    ],
+)
+def test_calculate_iou(box1, box2, expected_iou):
+    box1 = np.array(box1)
+    box2 = np.array(box2)
+
+    iou = calculate_iou(box1, box2)
+
+    # Check if IoU matches expected value
+    assert iou == pytest.approx(expected_iou, abs=1e-2)

@@ -133,25 +133,6 @@ def test_count_identity_switches(
 
 
 @pytest.mark.parametrize(
-    "box1, box2, expected_iou",
-    [
-        ([0, 0, 10, 10], [5, 5, 12, 12], 0.25),
-        ([0, 0, 10, 10], [0, 0, 10, 10], 1.0),
-        ([0, 0, 10, 10], [20, 20, 30, 30], 0.0),
-        ([0, 0, 10, 10], [5, 15, 15, 25], 0.0),
-    ],
-)
-def test_calculate_iou(box1, box2, expected_iou, evaluation):
-    box1 = np.array(box1)
-    box2 = np.array(box2)
-
-    iou = evaluation.calculate_iou(box1, box2)
-
-    # Check if IoU matches expected value
-    assert iou == pytest.approx(expected_iou, abs=1e-2)
-
-
-@pytest.mark.parametrize(
     "gt_data, pred_data, prev_frame_id_map, expected_mota",
     [
         # perfect tracking
