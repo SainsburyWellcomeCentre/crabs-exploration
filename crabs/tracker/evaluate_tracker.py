@@ -3,8 +3,6 @@ from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
-from crabs.tracker.utils.tracking import get_predicted_data
-
 
 class TrackerEvaluate:
     def __init__(
@@ -256,11 +254,10 @@ class TrackerEvaluate:
 
         return mota_values
 
-    def run_evaluation(self, predicted_boxes_id, ground_truth_dict) -> None:
+    def run_evaluation(self, predicted_dict, ground_truth_dict) -> None:
         """
         Run evaluation of tracking based on tracking ground truth.
         """
-        predicted_dict = get_predicted_data(predicted_boxes_id)
         mota_values = self.evaluate_tracking(ground_truth_dict, predicted_dict)
         overall_mota = np.mean(mota_values)
         logging.info("Overall MOTA: %f" % overall_mota)

@@ -20,7 +20,7 @@ from crabs.tracker.utils.io import save_required_output
                 }
             },
         ),
-        (True, False, None),
+        (True, False, {}),
         (
             False,
             True,
@@ -31,7 +31,7 @@ from crabs.tracker.utils.io import save_required_output
                 }
             },
         ),
-        (False, False, None),
+        (False, False, {}),
     ],
 )
 def test_save_required_output(save_frames, save_video, ground_truth_dict):
@@ -84,7 +84,7 @@ def test_save_required_output(save_frames, save_video, ground_truth_dict):
 
         if ground_truth_dict:
             assert video_output_mock.write.call_count == 1
-        elif save_video:
+        if save_video:
             assert video_output_mock.write.call_count == 1
         else:
             assert video_output_mock.write.call_count == 0
