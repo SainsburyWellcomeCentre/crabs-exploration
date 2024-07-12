@@ -231,8 +231,8 @@ def plot_output_histogram(filename):
     Plot metrics along with the total ground truth for each frame.
 
     Example usage:
-    > filename = <video_name>_<model_name>_tracking_output.csv
-    > plot_output_histogram(filename)
+    > filename = <video_name>/tracking_metrics_output.csv
+    > python crabs/tracker/utils/io.py filename
 
     Parameters
     ----------
