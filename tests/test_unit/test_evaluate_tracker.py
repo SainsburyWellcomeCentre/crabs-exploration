@@ -452,7 +452,7 @@ def test_evaluate_mota(
         missed_detections,
         false_positives,
         num_switches,
-        _,
+        total_gt,
         _,
     ) = evaluation.evaluate_mota(
         gt_data,
@@ -465,3 +465,4 @@ def test_evaluate_mota(
     assert missed_detections == expected_output[2]
     assert false_positives == expected_output[3]
     assert num_switches == expected_output[4]
+    assert total_gt == (true_positives + missed_detections)
