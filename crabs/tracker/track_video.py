@@ -213,6 +213,7 @@ class Tracking:
                 self.args.gt_path,
                 self.tracked_bbox_id,
                 self.config["iou_threshold"],
+                self.tracking_output_dir,
             )
             evaluation.run_evaluation()
 

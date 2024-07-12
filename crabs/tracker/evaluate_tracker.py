@@ -1,10 +1,14 @@
 import csv
 import logging
+from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
-from crabs.tracker.utils.tracking import extract_bounding_box_info
+from crabs.tracker.utils.tracking import (
+    extract_bounding_box_info,
+    save_tracking_mota_metrics,
+)
 
 
 class TrackerEvaluate:
@@ -13,6 +17,7 @@ class TrackerEvaluate:
         gt_dir: str,
         predicted_boxes_id: list[np.ndarray],
         iou_threshold: float,
+        tracking_output_dir: Path,
     ):
         """
         Initialize the TrackerEvaluate class with ground truth directory, tracked list, and IoU threshold.
@@ -32,6 +37,7 @@ class TrackerEvaluate:
         self.gt_dir = gt_dir
         self.predicted_boxes_id = predicted_boxes_id
         self.iou_threshold = iou_threshold
+        self.tracking_output_dir = tracking_output_dir
 
     def get_predicted_data(self) -> Dict[int, Dict[str, Any]]:
         """
@@ -226,7 +232,7 @@ class TrackerEvaluate:
         pred_data: Dict[str, np.ndarray],
         iou_threshold: float,
         gt_to_tracked_id_previous_frame: Optional[Dict[int, int]],
-    ) -> Tuple[float, Dict[int, int]]:
+    ) -> Tuple[float, int, int, int, int, int, Dict[int, int]]:
         """
         Evaluate MOTA (Multiple Object Tracking Accuracy).
 
@@ -254,6 +260,7 @@ class TrackerEvaluate:
         """
         total_gt = len(gt_data["bbox"])
         false_positive = 0
+        true_positive = 0
         indices_of_matched_gt_boxes = set()
         gt_to_tracked_id_current_frame = {}
 
@@ -278,6 +285,7 @@ class TrackerEvaluate:
                         index_gt_not_match = j
 
             if index_gt_best_match is not None:
+                true_positive += 1
                 # Successfully found a matching ground truth box for the tracked box.
                 indices_of_matched_gt_boxes.add(index_gt_best_match)
                 # Map ground truth ID to tracked ID
@@ -299,7 +307,15 @@ class TrackerEvaluate:
         mota = (
             1 - (missed_detections + false_positive + num_switches) / total_gt
         )
-        return mota, gt_to_tracked_id_current_frame
+        return (
+            mota,
+            true_positive,
+            missed_detections,
+            false_positive,
+            num_switches,
+            total_gt,
+            gt_to_tracked_id_current_frame,
+        )
 
     def evaluate_tracking(
         self,
@@ -323,19 +339,46 @@ class TrackerEvaluate:
         """
         mota_values = []
         prev_frame_id_map: Optional[dict] = None
+        results: dict[str, Any] = {
+            "Frame Number": [],
+            "Total Ground Truth": [],
+            "True Positives": [],
+            "Missed Detections": [],
+            "False Positives": [],
+            "Number of Switches": [],
+            "Mota": [],
+        }
 
         for frame_number in sorted(ground_truth_dict.keys()):
             gt_data_frame = ground_truth_dict[frame_number]
 
             if frame_number < len(predicted_dict):
                 pred_data_frame = predicted_dict[frame_number]
-                mota, prev_frame_id_map = self.evaluate_mota(
+
+                (
+                    mota,
+                    true_positives,
+                    missed_detections,
+                    false_positives,
+                    num_switches,
+                    total_gt,
+                    prev_frame_id_map,
+                ) = self.evaluate_mota(
                     gt_data_frame,
                     pred_data_frame,
                     self.iou_threshold,
                     prev_frame_id_map,
                 )
                 mota_values.append(mota)
+                results["Frame Number"].append(frame_number)
+                results["Total Ground Truth"].append(total_gt)
+                results["True Positives"].append(true_positives)
+                results["Missed Detections"].append(missed_detections)
+                results["False Positives"].append(false_positives)
+                results["Number of Switches"].append(num_switches)
+                results["Mota"].append(mota)
+
+        save_tracking_mota_metrics(self.tracking_output_dir, results)
 
         return mota_values
 
