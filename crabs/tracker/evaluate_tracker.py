@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 
 from crabs.tracker.utils.tracking import extract_bounding_box_info
+from crabs.detector.utils.evaluate import compute_confusion_matrix_elements
 
 
 class TrackerEvaluate:
@@ -348,3 +349,5 @@ class TrackerEvaluate:
         mota_values = self.evaluate_tracking(ground_truth_dict, predicted_dict)
         overall_mota = np.mean(mota_values)
         logging.info("Overall MOTA: %f" % overall_mota)
+        compute_confusion_matrix_elements(targets_list, detections_list, ious_threshold)
+
