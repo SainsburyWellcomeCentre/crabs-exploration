@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional, Tuple
 import numpy as np
 
 from crabs.tracker.utils.tracking import extract_bounding_box_info
-from crabs.detector.utils.evaluate import compute_confusion_matrix_elements
 
 
 class TrackerEvaluate:
@@ -33,6 +32,8 @@ class TrackerEvaluate:
         self.gt_dir = gt_dir
         self.predicted_boxes_id = predicted_boxes_id
         self.iou_threshold = iou_threshold
+        self.last_known_ids = {}
+        self.total_num_switches = 0
 
     def get_predicted_data(self) -> Dict[int, Dict[str, Any]]:
         """
@@ -169,11 +170,15 @@ class TrackerEvaluate:
         int
             The number of identity switches between the two sets of object IDs.
         """
+
         if gt_to_tracked_id_previous_frame is None:
+            for gt_id, pred_id in gt_to_tracked_id_current_frame.items():
+                if not np.isnan(pred_id):
+                    self.last_known_ids[gt_id] = pred_id
             return 0
 
         switch_counter = 0
-
+        # print(self.last_known_ids)
         # Compute sets of ground truth IDs for current and previous frames
         gt_ids_current_frame = set(gt_to_tracked_id_current_frame.keys())
         gt_ids_prev_frame = set(gt_to_tracked_id_previous_frame.keys())
@@ -197,6 +202,7 @@ class TrackerEvaluate:
                 if current_pred_id != previous_pred_id:
                     switch_counter += 1
                     used_pred_ids.add(current_pred_id)
+                self.last_known_ids[gt_id] = current_pred_id
 
         # Case 2: Objects that disappear
         for gt_id in gt_ids_disappear:
@@ -212,12 +218,15 @@ class TrackerEvaluate:
         # Case 3: Objects that appear
         for gt_id in gt_ids_appear:
             current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
-            if not np.isnan(
-                current_pred_id
-            ):  # Exclude if missed detection in current frame
+            if not np.isnan(current_pred_id):
                 if current_pred_id in gt_to_tracked_id_previous_frame.values():
                     if previous_pred_id not in used_pred_ids:
                         switch_counter += 1
+                elif gt_id in self.last_known_ids:
+                    last_known_id = self.last_known_ids[gt_id]
+                    if current_pred_id != last_known_id:
+                        switch_counter += 1
+                self.last_known_ids[gt_id] = current_pred_id
 
         return switch_counter
 
@@ -300,6 +309,7 @@ class TrackerEvaluate:
         mota = (
             1 - (missed_detections + false_positive + num_switches) / total_gt
         )
+        self.total_num_switches += num_switches
         return mota, gt_to_tracked_id_current_frame
 
     def evaluate_tracking(
@@ -347,7 +357,6 @@ class TrackerEvaluate:
         predicted_dict = self.get_predicted_data()
         ground_truth_dict = self.get_ground_truth_data()
         mota_values = self.evaluate_tracking(ground_truth_dict, predicted_dict)
+        print(self.total_num_switches)
         overall_mota = np.mean(mota_values)
         logging.info("Overall MOTA: %f" % overall_mota)
-        compute_confusion_matrix_elements(targets_list, detections_list, ious_threshold)
-
