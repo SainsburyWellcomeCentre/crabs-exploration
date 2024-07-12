@@ -32,7 +32,7 @@ class TrackerEvaluate:
         self.gt_dir = gt_dir
         self.predicted_boxes_id = predicted_boxes_id
         self.iou_threshold = iou_threshold
-        self.last_known_ids = {}
+        self.last_known_ids: Dict = {}
         self.total_num_switches = 0
 
     def get_predicted_data(self) -> Dict[int, Dict[str, Any]]:
@@ -178,7 +178,6 @@ class TrackerEvaluate:
             return 0
 
         switch_counter = 0
-        # print(self.last_known_ids)
         # Compute sets of ground truth IDs for current and previous frames
         gt_ids_current_frame = set(gt_to_tracked_id_current_frame.keys())
         gt_ids_prev_frame = set(gt_to_tracked_id_previous_frame.keys())
