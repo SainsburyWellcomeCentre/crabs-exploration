@@ -170,7 +170,7 @@ class TrackerEvaluate:
         int
             The number of identity switches between the two sets of object IDs.
         """
-
+        print(self.last_known_predicted_ids)
         if gt_to_tracked_id_previous_frame is None:
             for gt_id, pred_id in gt_to_tracked_id_current_frame.items():
                 if not np.isnan(pred_id):
@@ -178,14 +178,23 @@ class TrackerEvaluate:
             return 0
 
         switch_counter = 0
-        # Compute sets of ground truth IDs for current and previous frames
-        gt_ids_current_frame = set(gt_to_tracked_id_current_frame.keys())
-        gt_ids_prev_frame = set(gt_to_tracked_id_previous_frame.keys())
+        # Filter sets of ground truth IDs for current and previous frames to exclude NaN predicted IDs
+        gt_ids_current_frame = {
+            gt_id
+            for gt_id, pred_id in gt_to_tracked_id_current_frame.items()
+            if not np.isnan(pred_id)
+        }
+        gt_ids_prev_frame = {
+            gt_id
+            for gt_id, pred_id in gt_to_tracked_id_previous_frame.items()
+            if not np.isnan(pred_id)
+        }
 
         # Compute lists of ground truth IDs that continue, disappear, and appear
         gt_ids_cont = list(gt_ids_current_frame & gt_ids_prev_frame)
         gt_ids_disappear = list(gt_ids_prev_frame - gt_ids_current_frame)
         gt_ids_appear = list(gt_ids_current_frame - gt_ids_prev_frame)
+        print(gt_ids_appear)
 
         # Store used predicted IDs to avoid double counting
         # In `used_pred_ids` we log IDs from either the current or the previous frame that have been involved in an already counted ID switch.
@@ -217,6 +226,7 @@ class TrackerEvaluate:
 
         # Case 3: Objects that appear
         for gt_id in gt_ids_appear:
+            print(gt_id)
             current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
             if not np.isnan(current_pred_id):
                 if current_pred_id in gt_to_tracked_id_previous_frame.values():

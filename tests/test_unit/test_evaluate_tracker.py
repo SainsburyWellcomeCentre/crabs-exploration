@@ -178,11 +178,22 @@ def test_ground_truth_data_from_csv(evaluation):
             {1: 11, 2: 12, 3: 13, 4: np.nan},
             0,
         ),  # crab that appears is missed detection in current frame, and a pre-existing crab is missed detection in previous frame
+        (
+            {1: 11, 2: 12, 3: np.nan},
+            {1: 11, 2: 12, 3: 13},
+            0,
+        ),  # crab that appear, where the current predicted ID is consistent with last_known_predicted_ids
+        (
+            {1: 11, 2: 12, 3: np.nan},
+            {1: 11, 2: 12, 3: 14},
+            1,
+        ),  # crab that appear, where the current predicted ID is different to the last_known_predicted_ids
     ],
 )
 def test_count_identity_switches(
     evaluation, prev_frame_id_map, current_frame_id_map, expected_output
 ):
+    evaluation.last_known_predicted_ids = {1: 11, 2: 12, 3: 13, 4: 14}
     assert (
         evaluation.count_identity_switches(
             prev_frame_id_map, current_frame_id_map
