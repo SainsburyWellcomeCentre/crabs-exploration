@@ -222,7 +222,7 @@ class TrackerEvaluate:
                 if current_pred_id in gt_to_tracked_id_previous_frame.values():
                     if previous_pred_id not in used_pred_ids:
                         switch_counter += 1
-                elif gt_id in self.last_known_ids:
+                elif gt_id in self.last_known_ids.keys():
                     last_known_id = self.last_known_ids[gt_id]
                     if current_pred_id != last_known_id:
                         switch_counter += 1
