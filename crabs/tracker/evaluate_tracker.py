@@ -170,7 +170,6 @@ class TrackerEvaluate:
         int
             The number of identity switches between the two sets of object IDs.
         """
-        print(self.last_known_predicted_ids)
         if gt_to_tracked_id_previous_frame is None:
             for gt_id, pred_id in gt_to_tracked_id_current_frame.items():
                 if not np.isnan(pred_id):
@@ -179,41 +178,37 @@ class TrackerEvaluate:
 
         switch_counter = 0
         # Filter sets of ground truth IDs for current and previous frames to exclude NaN predicted IDs
-        gt_ids_current_frame = {
-            gt_id
-            for gt_id, pred_id in gt_to_tracked_id_current_frame.items()
-            if not np.isnan(pred_id)
-        }
-        gt_ids_prev_frame = {
-            gt_id
-            for gt_id, pred_id in gt_to_tracked_id_previous_frame.items()
-            if not np.isnan(pred_id)
-        }
+        gt_ids_current_frame = set(gt_to_tracked_id_current_frame.keys())
+        gt_ids_prev_frame = set(gt_to_tracked_id_previous_frame.keys())
 
         # Compute lists of ground truth IDs that continue, disappear, and appear
         gt_ids_cont = list(gt_ids_current_frame & gt_ids_prev_frame)
         gt_ids_disappear = list(gt_ids_prev_frame - gt_ids_current_frame)
         gt_ids_appear = list(gt_ids_current_frame - gt_ids_prev_frame)
-        print(gt_ids_appear)
 
         # Store used predicted IDs to avoid double counting
         # In `used_pred_ids` we log IDs from either the current or the previous frame that have been involved in an already counted ID switch.
         used_pred_ids = set()
 
-        # Case 1: Objects that continue to exist
+        # Case 1: Objects that continue to exist according to GT
         for gt_id in gt_ids_cont:
             previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
             current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
-            if not np.isnan(previous_pred_id) and not np.isnan(
-                current_pred_id
-            ):
+            if all(
+                not np.isnan(x) for x in [previous_pred_id, current_pred_id]
+            ):  # Exclude if missed detection in previous AND current frame
                 if current_pred_id != previous_pred_id:
                     switch_counter += 1
                     used_pred_ids.add(current_pred_id)
-                # save most recent predicted ID associated to this groundtruth ID
-                self.last_known_predicted_ids[gt_id] = current_pred_id
+            # if the object was a missed detection in the previous frame: check if current prediction matches historical
+            elif np.isnan(previous_pred_id) and not np.isnan(current_pred_id):
+                last_known_predicted_id = self.last_known_predicted_ids[gt_id]
+                if current_pred_id != last_known_predicted_id:
+                    switch_counter += 1
+            # save most recent predicted ID associated to this groundtruth ID
+            self.last_known_predicted_ids[gt_id] = current_pred_id
 
-        # Case 2: Objects that disappear
+        # Case 2: Objects that disappear according to GT
         for gt_id in gt_ids_disappear:
             previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
             if not np.isnan(
@@ -224,14 +219,18 @@ class TrackerEvaluate:
                         switch_counter += 1
                         used_pred_ids.add(previous_pred_id)
 
-        # Case 3: Objects that appear
+        # Case 3: Objects that appear according to GT
         for gt_id in gt_ids_appear:
-            print(gt_id)
             current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
-            if not np.isnan(current_pred_id):
+            if not np.isnan(
+                current_pred_id
+            ):  # Exclude if missed detection in current frame
+                # check if there was and ID switch wrt previous frame
                 if current_pred_id in gt_to_tracked_id_previous_frame.values():
                     if previous_pred_id not in used_pred_ids:
                         switch_counter += 1
+                # if ID not immediately swapped from previous frame:
+                # check if predicted ID matches the last known one
                 elif gt_id in self.last_known_predicted_ids.keys():
                     last_known_predicted_id = self.last_known_predicted_ids[
                         gt_id
