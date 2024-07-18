@@ -174,7 +174,7 @@ class TrackerEvaluate:
         if gt_to_tracked_id_previous_frame is None:
             for gt_id, pred_id in gt_to_tracked_id_current_frame.items():
                 if not np.isnan(pred_id):
-                    self.last_known_ids[gt_id] = pred_id
+                    self.last_known_predicted_ids[gt_id] = pred_id
             return 0
 
         switch_counter = 0
@@ -201,8 +201,8 @@ class TrackerEvaluate:
                 if current_pred_id != previous_pred_id:
                     switch_counter += 1
                     used_pred_ids.add(current_pred_id)
-		# save most recent predicted ID associated to this groundtruth ID
-                self.last_known_ids[gt_id] = current_pred_id
+                # save most recent predicted ID associated to this groundtruth ID
+                self.last_known_predicted_ids[gt_id] = current_pred_id
 
         # Case 2: Objects that disappear
         for gt_id in gt_ids_disappear:
@@ -222,11 +222,13 @@ class TrackerEvaluate:
                 if current_pred_id in gt_to_tracked_id_previous_frame.values():
                     if previous_pred_id not in used_pred_ids:
                         switch_counter += 1
-                elif gt_id in self.last_known_ids.keys():
-                    last_known_predicted_id = self.last_known_ids[gt_id]
-                    if current_pred_id != last_known_id:
+                elif gt_id in self.last_known_predicted_ids.keys():
+                    last_known_predicted_id = self.last_known_predicted_ids[
+                        gt_id
+                    ]
+                    if current_pred_id != last_known_predicted_id:
                         switch_counter += 1
-                self.last_known_ids[gt_id] = current_pred_id
+                self.last_known_predicted_ids[gt_id] = current_pred_id
 
         return switch_counter
 
