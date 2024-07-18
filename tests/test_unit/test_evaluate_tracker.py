@@ -469,7 +469,7 @@ def test_evaluate_mota(
     mota, _ = evaluation.evaluate_mota(
         gt_data,
         pred_data,
-        0.1,
+        0.1,  # iou_threshold
         prev_frame_id_map,
     )
     assert mota == pytest.approx(expected_mota)
