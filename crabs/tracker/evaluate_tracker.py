@@ -201,6 +201,7 @@ class TrackerEvaluate:
                 if current_pred_id != previous_pred_id:
                     switch_counter += 1
                     used_pred_ids.add(current_pred_id)
+		# save most recent predicted ID associated to this groundtruth ID
                 self.last_known_ids[gt_id] = current_pred_id
 
         # Case 2: Objects that disappear
