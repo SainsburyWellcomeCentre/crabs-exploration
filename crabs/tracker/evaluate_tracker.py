@@ -32,7 +32,7 @@ class TrackerEvaluate:
         self.gt_dir = gt_dir
         self.predicted_boxes_id = predicted_boxes_id
         self.iou_threshold = iou_threshold
-        self.last_known_ids: Dict = {}
+        self.last_known_predicted_ids: Dict = {}
         self.total_num_switches = 0
 
     def get_predicted_data(self) -> Dict[int, Dict[str, Any]]:
