@@ -202,9 +202,12 @@ class TrackerEvaluate:
                     used_pred_ids.add(current_pred_id)
             # if the object was a missed detection in the previous frame: check if current prediction matches historical
             elif np.isnan(previous_pred_id) and not np.isnan(current_pred_id):
-                last_known_predicted_id = self.last_known_predicted_ids[gt_id]
-                if current_pred_id != last_known_predicted_id:
-                    switch_counter += 1
+                if gt_id in self.last_known_predicted_ids:
+                    last_known_predicted_id = self.last_known_predicted_ids[
+                        gt_id
+                    ]
+                    if current_pred_id != last_known_predicted_id:
+                        switch_counter += 1
             # save most recent predicted ID associated to this groundtruth ID
             self.last_known_predicted_ids[gt_id] = current_pred_id
 
@@ -231,7 +234,7 @@ class TrackerEvaluate:
                         switch_counter += 1
                 # if ID not immediately swapped from previous frame:
                 # check if predicted ID matches the last known one
-                elif gt_id in self.last_known_predicted_ids.keys():
+                elif gt_id in self.last_known_predicted_ids:
                     last_known_predicted_id = self.last_known_predicted_ids[
                         gt_id
                     ]
