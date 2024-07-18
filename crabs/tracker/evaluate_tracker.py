@@ -368,6 +368,6 @@ class TrackerEvaluate:
         predicted_dict = self.get_predicted_data()
         ground_truth_dict = self.get_ground_truth_data()
         mota_values = self.evaluate_tracking(ground_truth_dict, predicted_dict)
-        print(self.total_num_switches)
+
         overall_mota = np.mean(mota_values)
         logging.info("Overall MOTA: %f" % overall_mota)
