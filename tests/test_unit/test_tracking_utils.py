@@ -1,11 +1,15 @@
 import csv
 import io
+from pathlib import Path
 
 import numpy as np
 import pytest
 
 from crabs.tracker.utils.tracking import (
+    calculate_iou,
     extract_bounding_box_info,
+    get_ground_truth_data,
+    get_predicted_data,
     write_tracked_bbox_to_csv,
 )
 
@@ -64,3 +68,125 @@ def test_write_tracked_bbox_to_csv(csv_writer, csv_output):
     )
     expected_row_str = ",".join(map(str, expected_row))
     assert csv_output.getvalue().strip() == expected_row_str
+
+
+@pytest.fixture
+def gt_path():
+    test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
+    return test_csv_file
+
+
+def test_get_ground_truth_data(gt_path):
+    ground_truth_dict = get_ground_truth_data(gt_path)
+
+    assert isinstance(ground_truth_dict, dict)
+    assert all(
+        isinstance(frame_data, dict)
+        for frame_data in ground_truth_dict.values()
+    )
+
+    for frame_number, data in ground_truth_dict.items():
+        assert isinstance(frame_number, int)
+        assert isinstance(data["bbox"], np.ndarray)
+        assert isinstance(data["id"], np.ndarray)
+        assert data["bbox"].shape[1] == 4
+
+
+def test_ground_truth_data_from_csv(gt_path):
+    expected_data = {
+        11: {
+            "bbox": np.array(
+                [
+                    [2894.8606, 975.8517, 2945.8606, 1016.8517],
+                    [940.6089, 1192.637, 989.6089, 1230.637],
+                ],
+                dtype=np.float32,
+            ),
+            "id": np.array([2.0, 1.0], dtype=np.float32),
+        },
+        21: {
+            "bbox": np.array(
+                [[940.6089, 1192.637, 989.6089, 1230.637]], dtype=np.float32
+            ),
+            "id": np.array([2.0], dtype=np.float32),
+        },
+    }
+
+    ground_truth_dict = get_ground_truth_data(gt_path)
+
+    for frame_number, expected_frame_data in expected_data.items():
+        assert frame_number in ground_truth_dict
+
+        assert len(ground_truth_dict[frame_number]["bbox"]) == len(
+            expected_frame_data["bbox"]
+        )
+        for bbox, expected_bbox in zip(
+            ground_truth_dict[frame_number]["bbox"],
+            expected_frame_data["bbox"],
+        ):
+            assert np.allclose(
+                bbox, expected_bbox
+            ), f"Frame {frame_number}, bbox mismatch"
+
+        assert np.array_equal(
+            ground_truth_dict[frame_number]["id"], expected_frame_data["id"]
+        ), f"Frame {frame_number}, id mismatch"
+
+
+def test_get_predicted_data_empty():
+    predicted_boxes_id = []
+    result = get_predicted_data(predicted_boxes_id)
+    assert result == {}
+
+
+def test_get_predicted_data_with_data():
+    predicted_boxes_id = [
+        np.array([[10, 20, 30, 40, 1], [50, 60, 70, 80, 2]]),
+        np.array([[15, 25, 35, 45, 3]]),
+    ]
+    expected_result = {
+        0: {
+            "bbox": np.array([[10, 20, 30, 40], [50, 60, 70, 80]]),
+            "id": np.array([1, 2]),
+        },
+        1: {"bbox": np.array([[15, 25, 35, 45]]), "id": np.array([3])},
+    }
+    result = get_predicted_data(predicted_boxes_id)
+    for frame_idx, data in expected_result.items():
+        np.testing.assert_array_equal(result[frame_idx]["bbox"], data["bbox"])
+        np.testing.assert_array_equal(result[frame_idx]["id"], data["id"])
+
+
+def test_get_predicted_data_with_empty_frame():
+    predicted_boxes_id = [
+        np.array([[10, 20, 30, 40, 1]]),
+        np.array([]),  # Empty frame
+        np.array([[15, 25, 35, 45, 2]]),
+    ]
+    expected_result = {
+        0: {"bbox": np.array([[10, 20, 30, 40]]), "id": np.array([1])},
+        2: {"bbox": np.array([[15, 25, 35, 45]]), "id": np.array([2])},
+    }
+    result = get_predicted_data(predicted_boxes_id)
+    for frame_idx, data in expected_result.items():
+        np.testing.assert_array_equal(result[frame_idx]["bbox"], data["bbox"])
+        np.testing.assert_array_equal(result[frame_idx]["id"], data["id"])
+
+
+@pytest.mark.parametrize(
+    "box1, box2, expected_iou",
+    [
+        ([0, 0, 10, 10], [5, 5, 12, 12], 0.25),
+        ([0, 0, 10, 10], [0, 0, 10, 10], 1.0),
+        ([0, 0, 10, 10], [20, 20, 30, 30], 0.0),
+        ([0, 0, 10, 10], [5, 15, 15, 25], 0.0),
+    ],
+)
+def test_calculate_iou(box1, box2, expected_iou):
+    box1 = np.array(box1)
+    box2 = np.array(box2)
+
+    iou = calculate_iou(box1, box2)
+
+    # Check if IoU matches expected value
+    assert iou == pytest.approx(expected_iou, abs=1e-2)

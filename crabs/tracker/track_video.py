@@ -20,7 +20,11 @@ from crabs.tracker.utils.io import (
     release_video,
     save_required_output,
 )
-from crabs.tracker.utils.tracking import prep_sort
+from crabs.tracker.utils.tracking import (
+    get_ground_truth_data,
+    get_predicted_data,
+    prep_sort,
+)
 
 
 class Tracking:
@@ -153,11 +157,20 @@ class Tracking:
         Run object detection + tracking on the video frames.
         """
         # If we pass ground truth: check the path exist
-        if self.args.gt_path and not os.path.exists(self.args.gt_path):
+        if (self.args.gt_path is not None) and (
+            not os.path.exists(str(self.args.gt_path))
+        ):
             logging.info(
                 f"Ground truth file {self.args.gt_path} does not exist. Exiting..."
             )
             return
+        # if the path exist, we get the ground_truth_dict
+        elif self.args.gt_path is not None:
+            ground_truth_dict = get_ground_truth_data(
+                self.args.gt_path,
+            )
+        elif self.args.gt_path is None:
+            ground_truth_dict = {}
 
         # initialisation
         frame_idx = 0
@@ -203,6 +216,7 @@ class Tracking:
                 frame,
                 frame_idx + 1,
                 pred_scores,
+                ground_truth_dict,
             )
 
             # update frame number
@@ -211,10 +225,10 @@ class Tracking:
         if self.args.gt_path:
             evaluation = TrackerEvaluate(
                 self.args.gt_path,
-                self.tracked_bbox_id,
                 self.config["iou_threshold"],
             )
-            evaluation.run_evaluation()
+            predicted_dict = get_predicted_data(self.tracked_bbox_id)
+            evaluation.run_evaluation(predicted_dict, ground_truth_dict)
 
         # Close input video
         self.video.release()

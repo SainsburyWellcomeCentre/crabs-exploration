@@ -9,66 +9,7 @@ from crabs.tracker.evaluate_tracker import TrackerEvaluate
 @pytest.fixture
 def evaluation():
     test_csv_file = Path(__file__).parents[1] / "data" / "gt_test.csv"
-    return TrackerEvaluate(
-        test_csv_file, predicted_boxes_id=[], iou_threshold=0.1
-    )
-
-
-def test_get_ground_truth_data(evaluation):
-    ground_truth_dict = evaluation.get_ground_truth_data()
-
-    assert isinstance(ground_truth_dict, dict)
-    assert all(
-        isinstance(frame_data, dict)
-        for frame_data in ground_truth_dict.values()
-    )
-
-    for frame_number, data in ground_truth_dict.items():
-        assert isinstance(frame_number, int)
-        assert isinstance(data["bbox"], np.ndarray)
-        assert isinstance(data["id"], np.ndarray)
-        assert data["bbox"].shape[1] == 4
-
-
-def test_ground_truth_data_from_csv(evaluation):
-    expected_data = {
-        11: {
-            "bbox": np.array(
-                [
-                    [2894.8606, 975.8517, 2945.8606, 1016.8517],
-                    [940.6089, 1192.637, 989.6089, 1230.637],
-                ],
-                dtype=np.float32,
-            ),
-            "id": np.array([2.0, 1.0], dtype=np.float32),
-        },
-        21: {
-            "bbox": np.array(
-                [[940.6089, 1192.637, 989.6089, 1230.637]], dtype=np.float32
-            ),
-            "id": np.array([2.0], dtype=np.float32),
-        },
-    }
-
-    ground_truth_dict = evaluation.get_ground_truth_data()
-
-    for frame_number, expected_frame_data in expected_data.items():
-        assert frame_number in ground_truth_dict
-
-        assert len(ground_truth_dict[frame_number]["bbox"]) == len(
-            expected_frame_data["bbox"]
-        )
-        for bbox, expected_bbox in zip(
-            ground_truth_dict[frame_number]["bbox"],
-            expected_frame_data["bbox"],
-        ):
-            assert np.allclose(
-                bbox, expected_bbox
-            ), f"Frame {frame_number}, bbox mismatch"
-
-        assert np.array_equal(
-            ground_truth_dict[frame_number]["id"], expected_frame_data["id"]
-        ), f"Frame {frame_number}, id mismatch"
+    return TrackerEvaluate(test_csv_file, iou_threshold=0.1)
 
 
 @pytest.mark.parametrize(
@@ -212,25 +153,6 @@ def test_count_identity_switches(
         )
         == expected_output
     )
-
-
-@pytest.mark.parametrize(
-    "box1, box2, expected_iou",
-    [
-        ([0, 0, 10, 10], [5, 5, 12, 12], 0.25),
-        ([0, 0, 10, 10], [0, 0, 10, 10], 1.0),
-        ([0, 0, 10, 10], [20, 20, 30, 30], 0.0),
-        ([0, 0, 10, 10], [5, 15, 15, 25], 0.0),
-    ],
-)
-def test_calculate_iou(box1, box2, expected_iou, evaluation):
-    box1 = np.array(box1)
-    box2 = np.array(box2)
-
-    iou = evaluation.calculate_iou(box1, box2)
-
-    # Check if IoU matches expected value
-    assert iou == pytest.approx(expected_iou, abs=1e-2)
 
 
 @pytest.mark.parametrize(
