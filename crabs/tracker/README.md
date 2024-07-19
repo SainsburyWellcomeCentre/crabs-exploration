@@ -11,7 +11,7 @@ The configurable parameters of the tracker are defined in `crabs-exploration/cra
 
 ## Evaluation
 
-We evaluate the performance of the tracker against manually labelled ground-truth. We use MOTA (Multiple Object Tracking Accuracy) as a metric to evaluate performance. For each frame in the manually labelled clip, we can compute MOTA as:
+We evaluate the performance of the tracker against manually labelled ground-truth. This ground-truth consists of manually annotated bounding boxes and IDs. We use MOTA (Multiple Object Tracking Accuracy) as a metric to evaluate performance. For each frame in the manually labelled clip, we can compute MOTA as:
 
 ```
 MOTA = 1 - ((FN + FP + IDs) / GT)
@@ -23,7 +23,9 @@ To compute the total number of false negatives (or missed detections, `FN`) at a
 
 To compute the total number of false positives (`FP`) at a given frame `f`, we count the number of detections that do not match with any of the ground-truth object defined at frame `f`.
 
-A true positive (`TP`) is defined as a detection that sufficiently overlaps with a ground-truth box (with overlap measured with the `IOU` metric). To compute the number of identity switches (`IDs`) at a given frame `f` we inspect the set of true positives at that frame. We count for how many of them the predicted ID at frame `f` does not match the predicted ID at the most recent frame where the object was detected. This is slightly different to some MOTA definitions, which only account for identity switches between consecutive frames. It is also different from other implementations, which define an expected predicted ID for each ground-truth ID as the predicted ID that is most frequently associated to a ground truth ID.
+A true positive (`TP`) is defined as a detection that sufficiently overlaps with a ground-truth box (with overlap measured with the `IOU` metric). To compute the number of identity switches (`IDs`) at a given frame `f` we inspect the set of true positives, and check if for each of their ground-truth IDs, the predicted ID at frame `f` matches the predicted ID at the last frame the object was detected. If the predicted IDs do not match for the same ground-truth ID, we count that as one identity switch.
+
+This is slightly different to some MOTA definitions, which only account for identity switches between consecutive frames. It is also different from other implementations, which define an "expected" predicted ID for each ground-truth ID. This "expected" predicted ID is the predicted ID that is most often (in terms of number of frames) associated to a ground-truth ID.
 
 ## References and useful resources
 
