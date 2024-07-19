@@ -33,7 +33,6 @@ class TrackerEvaluate:
         self.predicted_boxes_id = predicted_boxes_id
         self.iou_threshold = iou_threshold
         self.last_known_predicted_ids: Dict = {}
-        self.total_num_switches = 0
 
     def get_predicted_data(self) -> Dict[int, Dict[str, Any]]:
         """
@@ -323,7 +322,7 @@ class TrackerEvaluate:
         mota = (
             1 - (missed_detections + false_positive + num_switches) / total_gt
         )
-        self.total_num_switches += num_switches
+
         return mota, gt_to_tracked_id_current_frame
 
     def evaluate_tracking(
