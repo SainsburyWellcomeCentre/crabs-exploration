@@ -8,33 +8,15 @@ from crabs.tracker.utils.io import save_required_output
 
 
 @pytest.mark.parametrize(
-    "save_frames, save_video, ground_truth_dict",
+    "save_frames, save_video",
     [
-        (
-            True,
-            True,
-            {
-                1: {
-                    "bbox": [[15, 25, 35, 45], [55, 65, 75, 85]],
-                    "id": [101, 102],
-                }
-            },
-        ),
-        (True, False, {}),
-        (
-            False,
-            True,
-            {
-                1: {
-                    "bbox": [[15, 25, 35, 45], [55, 65, 75, 85]],
-                    "id": [101, 102],
-                }
-            },
-        ),
-        (False, False, {}),
+        (True, True),
+        (True, False),
+        (False, True),
+        (False, False),
     ],
 )
-def test_save_required_output(save_frames, save_video, ground_truth_dict):
+def test_save_required_output(save_frames, save_video):
     with patch(
         "crabs.tracker.utils.io.write_tracked_bbox_to_csv"
     ) as mock_write_tracked_bbox_to_csv, patch(
@@ -61,7 +43,6 @@ def test_save_required_output(save_frames, save_video, ground_truth_dict):
             frame,
             frame_number,
             pred_scores,
-            ground_truth_dict,
         )
 
         for bbox, pred_score in zip(tracked_boxes, pred_scores):
@@ -82,8 +63,6 @@ def test_save_required_output(save_frames, save_video, ground_truth_dict):
         else:
             mock_save_output_frames.assert_not_called()
 
-        if ground_truth_dict:
-            assert video_output_mock.write.call_count == 1
         if save_video:
             assert video_output_mock.write.call_count == 1
         else:

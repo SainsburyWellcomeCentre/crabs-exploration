@@ -154,44 +154,45 @@ def save_required_output(
             frame_number,
         )
 
-    if ground_truth_dict and frame_number in ground_truth_dict:
+    if save_video:
         frame_copy = frame.copy()
-        for bbox, obj_id in zip(
-            ground_truth_dict[frame_number]["bbox"],
-            ground_truth_dict[frame_number]["id"],
-        ):
-            x1, y1, x2, y2 = map(int, bbox)
-            draw_bbox(
-                frame_copy,
-                (x1, y1),
-                (x2, y2),
-                (0, 255, 0),  # Green for ground truth
-                f"GT ID: {int(obj_id)}",
-            )
 
-        # Draw tracked bounding boxes and IDs
-        for bbox in tracked_boxes:
-            xmin, ymin, xmax, ymax, obj_id = bbox
-            draw_bbox(
-                frame_copy,
-                (int(xmin), int(ymin)),
-                (int(xmax), int(ymax)),
-                (0, 0, 255),  # Red for predictions
-                f"Pred ID: {int(obj_id)}",
-            )
-        video_output.write(frame_copy)
+        if ground_truth_dict and frame_number in ground_truth_dict:
+            for bbox, obj_id in zip(
+                ground_truth_dict[frame_number]["bbox"],
+                ground_truth_dict[frame_number]["id"],
+            ):
+                x1, y1, x2, y2 = map(int, bbox)
+                draw_bbox(
+                    frame_copy,
+                    (x1, y1),
+                    (x2, y2),
+                    (0, 255, 0),  # Green for ground truth
+                    f"GT ID: {int(obj_id)}",
+                )
 
-    elif save_video:
-        frame_copy = frame.copy()
-        for bbox in tracked_boxes:
-            xmin, ymin, xmax, ymax, id = bbox
-            draw_bbox(
-                frame_copy,
-                (xmin, ymin),
-                (xmax, ymax),
-                (0, 0, 255),
-                f"id : {int(id)}",
-            )
+            # Draw tracked bounding boxes and IDs
+            for bbox in tracked_boxes:
+                xmin, ymin, xmax, ymax, obj_id = bbox
+                draw_bbox(
+                    frame_copy,
+                    (int(xmin), int(ymin)),
+                    (int(xmax), int(ymax)),
+                    (0, 0, 255),  # Red for predictions
+                    f"Pred ID: {int(obj_id)}",
+                )
+
+        else:
+            for bbox in tracked_boxes:
+                xmin, ymin, xmax, ymax, id = bbox
+                draw_bbox(
+                    frame_copy,
+                    (xmin, ymin),
+                    (xmax, ymax),
+                    (0, 0, 255),
+                    f"id : {int(id)}",
+                )
+
         video_output.write(frame_copy)
 
 

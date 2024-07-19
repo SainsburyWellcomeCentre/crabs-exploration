@@ -93,7 +93,7 @@ class Tracking:
             self.tracking_output_dir,
         ) = prep_csv_writer(self.args.output_dir, self.video_file_root)
 
-        if self.args.gt_path or self.args.save_video:
+        if self.args.save_video:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
             frame_height = int(self.video.get(cv2.CAP_PROP_FRAME_HEIGHT))
             cap_fps = self.video.get(cv2.CAP_PROP_FPS)
