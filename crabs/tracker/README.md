@@ -5,7 +5,7 @@ We currently use [SORT](https://github.com/abewley/sort), an algorithm based on 
 The configurable parameters of the tracker are defined in `crabs-exploration/crabs/tracker/config/tracking_config.yaml`:
 
 - `iou_threshold`: defines the minimum IOU value between a ground truth box and a detection, to consider a detection a true positive. By default, 0.1.
-- `score_threshold`: defines the minimum confidence score for a detection to be considered for tracking. By default, 0.1. #---- check
+- `score_threshold`: defines the minimum confidence score for a detection to be considered for tracking. By default, 0.1.
 - `max_age`: maximum number of frames to keep a track "alive" without associated detections. By default, 10.
 - `min_hits`: minimum number of detections required to initialise a track. By default, 1.
 
@@ -17,15 +17,13 @@ We evaluate the performance of the tracker against manually labelled ground-trut
 MOTA = 1 - ((FN + FP + IDs) / GT)
 ```
 
-where `FN` is the number of false negatives (missed detections), `FP` is the number of false positives, `IDs` is the number of identity switches, and `GT` is the total number of ground-truth objects. The higher the MOTA value, the better the tracking performance. Note that the MOTA metric is upper-bounded by 1, and lower-bounded by -Inf.
+where `FN` is the number of false negatives (missed detections), `FP` is the number of false positives, `IDs` is the number of identity switches, and `GT` is the total number of ground-truth objects. The higher the MOTA value, the better the tracking performance. Note that the MOTA metric is upper-bounded by 1, and lower-bounded by -Inf. For a full video clip, we report the average MOTA across frames.
 
 To compute the total number of false negatives (or missed detections, `FN`) at a given frame `f`, we count the number of ground-truth objects that do not match with any detection at frame `f`. A ground-truth object and a detection are considered to match if their associated boxes sufficiently overlap, that is, if their intersection-over-union (IOU) is greater than a given threshold.
 
 To compute the total number of false positives (`FP`) at a given frame `f`, we count the number of detections that do not match with any of the ground-truth object defined at frame `f`.
 
-A true positive (`TP`) is defined as a detection that sufficiently overlaps with a ground-truth box (with overlap measured with the `IOU` metric). To compute the number of identity switches (`IDs`) at a given frame `f` we inspect the set of true positives at that frame. We count for how many of them the predicted ID at frame `f` does not match the predicted ID at the most recent frame where the object was detected. This is slightly different to the MOTA definition in the HOTA paper, which only accounts for identity switches between consecutive frames.
-
-For a full clip, we report the average MOTA across frames.
+A true positive (`TP`) is defined as a detection that sufficiently overlaps with a ground-truth box (with overlap measured with the `IOU` metric). To compute the number of identity switches (`IDs`) at a given frame `f` we inspect the set of true positives at that frame. We count for how many of them the predicted ID at frame `f` does not match the predicted ID at the most recent frame where the object was detected. This is slightly different to some MOTA definitions, which only account for identity switches between consecutive frames. It is also different from other implementations, which define an expected predicted ID for each ground-truth ID as the predicted ID that is most frequently associated to a ground truth ID.
 
 ## References and useful resources
 
