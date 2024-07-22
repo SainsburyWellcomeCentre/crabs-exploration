@@ -95,7 +95,7 @@ class Tracking:
         ) = prep_csv_writer(
             self.args.output_dir,
             self.video_file_root,
-            self.args.run_on_video_dir,
+            # self.args.run_on_video_dir,
         )
 
         if self.args.save_video:
@@ -308,11 +308,11 @@ def tracking_parse_args(args):
         action="store_true",
         help="Save frame to be used in correcting track labelling",
     )
-    parser.add_argument(
-        "--run_on_video_dir",
-        action="store_true",
-        help="option to run track video on directory instead of a video.",
-    )
+    # parser.add_argument(
+    #     "--run_on_video_dir",
+    #     action="store_true",
+    #     help="option to run track video on directory instead of a video.",
+    # )
     parser.add_argument(
         "--device",
         type=str,

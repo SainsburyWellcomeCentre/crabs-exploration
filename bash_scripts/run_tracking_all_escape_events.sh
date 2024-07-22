@@ -35,6 +35,7 @@ set -o pipefail  # make the pipe fail if any part of it fails
 
 # video and inference config
 VIDEO_DIR=/ceph/zoo/raw/CrabField/ramalhete_2023/Escapes
+VIDEO_EXT=mov
 CONFIG_FILE=/ceph/zoo/users/sminano/cluster_tracking_config.yaml
 
 # checkpoint
@@ -98,8 +99,8 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 PARENT_OUTPUT_DIR="${OUTPUT_DIR}_${TIMESTAMP}"
 mkdir -p "$PARENT_OUTPUT_DIR"
 
-for VIDEO_PATH in "$VIDEO_DIR"/*.mov; do
-  VIDEO_BASENAME=$(basename "$VIDEO_PATH" .mov)
+for VIDEO_PATH in "$VIDEO_DIR"/*"$VIDEO_EXT"; do
+  VIDEO_BASENAME=$(basename "$VIDEO_PATH" ."$VIDEO_EXT")
 
   echo "Processing video: $VIDEO_PATH"
 
