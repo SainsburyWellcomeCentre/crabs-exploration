@@ -1,4 +1,4 @@
-# Evaluate a trained detector model in the cluster
+# Evaluate a detector+tracking model in the cluster
 
 1.  **Preparatory steps**
 
