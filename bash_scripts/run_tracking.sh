@@ -44,7 +44,7 @@ TRAINED_MODEL_PATH=/ceph/zoo/users/sminano/ml-runs-all/ml_runs-nikkna-copy/24367
 # output directory
 OUTPUT_DIR=/ceph/zoo/users/sminano/crabs_track_output
 
-# ground truth is available
+# ground truth if available
 GT_PATH=/ceph/zoo/users/sminano/crabs_tracks_label/04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test_corrected_ST_csv.csv
 
 # version of the codebase
