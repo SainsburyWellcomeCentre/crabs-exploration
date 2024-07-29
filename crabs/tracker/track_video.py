@@ -65,7 +65,7 @@ class Tracking:
         """
         # Check for CUDA availability
         if self.device == "cuda" and not torch.cuda.is_available():
-            print("CUDA is not available. Falling back to CPU.")
+            logging.info("CUDA is not available. Falling back to CPU.")
             self.device = "cpu"
 
         with open(self.config_file, "r") as f:
@@ -88,6 +88,7 @@ class Tracking:
         """
         Prepare csv writer and if required, video writer.
         """
+        logging.info(self.video_file_root)
         (
             self.csv_writer,
             self.csv_file,
