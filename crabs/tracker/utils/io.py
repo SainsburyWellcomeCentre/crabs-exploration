@@ -30,7 +30,9 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
         A tuple containing the CSV writer, the CSV file object, and the tracking output directory path.
     """
     if os.path.isdir(video_file_root):
+        print("here")
         tracking_output_dir = Path(output_dir)
+        print(tracking_output_dir)
     else:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         tracking_output_dir = (

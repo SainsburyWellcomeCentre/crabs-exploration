@@ -95,7 +95,6 @@ class Tracking:
         ) = prep_csv_writer(
             self.args.output_dir,
             self.video_file_root,
-            # self.args.run_on_video_dir,
         )
 
         if self.args.save_video:
