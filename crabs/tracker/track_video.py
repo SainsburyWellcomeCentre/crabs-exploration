@@ -63,6 +63,11 @@ class Tracking:
         """
         Load tracking config, trained model and input video path.
         """
+        # Check for CUDA availability
+        if self.device == "cuda" and not torch.cuda.is_available():
+            logging.info("CUDA is not available. Falling back to CPU.")
+            self.device = "cpu"
+
         with open(self.config_file, "r") as f:
             self.config = yaml.safe_load(f)
 
@@ -83,11 +88,15 @@ class Tracking:
         """
         Prepare csv writer and if required, video writer.
         """
+        logging.info(self.video_file_root)
         (
             self.csv_writer,
             self.csv_file,
             self.tracking_output_dir,
-        ) = prep_csv_writer(self.args.output_dir, self.video_file_root)
+        ) = prep_csv_writer(
+            self.args.output_dir,
+            self.video_file_root,
+        )
 
         if self.args.save_video:
             frame_width = int(self.video.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -299,6 +308,11 @@ def tracking_parse_args(args):
         action="store_true",
         help="Save frame to be used in correcting track labelling",
     )
+    # parser.add_argument(
+    #     "--run_on_video_dir",
+    #     action="store_true",
+    #     help="option to run track video on directory instead of a video.",
+    # )
     parser.add_argument(
         "--device",
         type=str,

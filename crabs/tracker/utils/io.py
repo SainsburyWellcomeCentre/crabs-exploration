@@ -1,4 +1,5 @@
 import csv
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -29,11 +30,18 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
     Tuple
         A tuple containing the CSV writer, the CSV file object, and the tracking output directory path.
     """
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    tracking_output_dir = Path(output_dir + f"_{timestamp}") / video_file_root
-    # Create the subdirectory for the specific video file root
-    tracking_output_dir.mkdir(parents=True, exist_ok=True)
+    logging.info(video_file_root)
+    if os.path.isdir(Path(video_file_root)):
+        logging.info("here")
+        tracking_output_dir = Path(output_dir)
+        logging.info(tracking_output_dir)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        tracking_output_dir = (
+            Path(output_dir + f"_{timestamp}") / video_file_root
+        )
+        # Create the subdirectory for the specific video file root
+        tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
     csv_file = open(
         f"{str(tracking_output_dir)}/predicted_tracks.csv",
