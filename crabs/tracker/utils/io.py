@@ -31,7 +31,7 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
         A tuple containing the CSV writer, the CSV file object, and the tracking output directory path.
     """
     logging.info(video_file_root)
-    if os.path.isdir(video_file_root):
+    if os.path.isdir(Path(video_file_root)):
         logging.info("here")
         tracking_output_dir = Path(output_dir)
         logging.info(tracking_output_dir)
