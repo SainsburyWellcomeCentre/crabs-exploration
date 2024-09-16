@@ -23,7 +23,7 @@ To compute the total number of false negatives (or missed detections, `FN`) at a
 
 To compute the total number of false positives (`FP`) at a given frame `f`, we count the number of detections that do not match with any of the ground-truth object defined at frame `f`.
 
-A true positive (`TP`) is defined as a detection that sufficiently overlaps with a ground-truth box (with overlap measured with the `IOU` metric). 
+A true positive (`TP`) is defined as a detection that sufficiently overlaps with a ground-truth box (with overlap measured with the `IOU` metric).
 
 To compute the number of identity switches (`IDs`) at a given frame `f` we inspect the set of true positives, and check if for each of their ground-truth IDs, the predicted ID at frame `f` matches the predicted ID at the last frame `f-1` the object was detected. If the predicted IDs do not match for the same ground-truth ID, we count that as one identity switch.
 
