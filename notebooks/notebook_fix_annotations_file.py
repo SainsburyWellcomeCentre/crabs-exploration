@@ -1,9 +1,11 @@
 """A notebook to remove duplicates in groundtruth file and save the output"""
 
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%
 import ast
 from pathlib import Path
 
 import pandas as pd
+from movement.io import load_bboxes
 
 # %%%%%%%%%%
 # Enable interactive plots
@@ -16,6 +18,17 @@ groundtruth_csv = (
     "04.09.2023-04-Right_RE_test_corrected_ST_csv_SM.csv"
 )
 
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Try
+try:
+    ds = load_bboxes.from_via_tracks_file(
+        groundtruth_csv, fps=None, use_frame_numbers_from_file=False
+    )
+    print(ds)
+except Exception as e:
+    print("Error loading file")
+    print(e)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%
 # Fix ground truth file and save
@@ -45,7 +58,7 @@ for file in list_unique_filenames:
             list_track_ids_one_filename.remove(k)
 
         # the track IDs that remain are the repeated ones
-        filenames_to_rep_ID[file] = list_track_ids_one_filename
+        filenames_to_rep_ID[file] = list(set(list_track_ids_one_filename))
 
 # delete duplicate rows
 for file, list_rep_ID in filenames_to_rep_ID.items():
@@ -58,13 +71,28 @@ for file, list_rep_ID in filenames_to_rep_ID.items():
 
         # Identify the index of the first matching row
         if not matching_rows.empty:
-            indices_to_drop = matching_rows.index[1:]
-
             # Drop all but the first matching row
+            indices_to_drop = matching_rows.index[1:]
             df = df.drop(indices_to_drop)
 
 # save to csv
+timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
 groundtruth_csv_corrected = Path(groundtruth_csv).parent / Path(
-    Path(groundtruth_csv).stem + "_corrected.csv"
+    Path(groundtruth_csv).stem + f"_corrected_{timestamp}.csv"
 )
 df.to_csv(groundtruth_csv_corrected, index=False)
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%
+# Check new file can be read correctly into movement
+
+ds_gt = load_bboxes.from_via_tracks_file(
+    groundtruth_csv_corrected, fps=None, use_frame_numbers_from_file=False
+)
+print(ds_gt)
+
+# Print summary
+print(f"{ds_gt.source_file}")
+print(f"Number of frames: {ds_gt.sizes['time']}")
+print(f"Number of individuals: {ds_gt.sizes['individuals']}")
+
+# %%
