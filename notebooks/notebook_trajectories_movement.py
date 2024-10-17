@@ -215,7 +215,7 @@ for vmin in [0.0, 0.8]:
     cbar.set_label("Confidence")  # Optional: label for the colorbar
 
     plt.show()
-# %%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # plot first 10 individuals in confidence
 fig, ax = plt.subplots(1, 1)
 
@@ -223,7 +223,7 @@ ax.scatter(x=ds_pred.position[:, :10, 0], y=ds_pred.position[:, :10, 1], s=1)
 ax.set_aspect("equal")
 ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
-# %%
+# %%%%%%%%%%%%%%%%
 # groupby
 # It generates a break or new group every time the value of the key function
 # changes
