@@ -169,7 +169,7 @@ if __name__ == "__main__":
     #     )
 
     # Create prediction video
-    list_individuals_idcs = [3, 103, 110, 118, 125, 131, 140, 144, 149]
+    list_individuals_idcs = [22]
     output_video_path = str(
         Path(__file__).parent
         / f"pred_id_{'_'.join([str(el) for el in list_individuals_idcs])}.mp4"
