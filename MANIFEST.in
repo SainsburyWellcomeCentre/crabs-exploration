@@ -3,6 +3,7 @@ include README.md
 
 
 recursive-include guides *.md
+recursive-include crabs/tracker *.md
 recursive-include bash_scripts *.sh
 recursive-include notebooks *.py
 recursive-include crabs *.yaml
