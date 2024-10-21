@@ -2,6 +2,7 @@ import json
 import random
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
 import torchvision.transforms.v2 as transforms
@@ -319,8 +320,10 @@ def test_get_test_val_transform(
         "crabs_data_module_without_data_augm",
     ],
 )
-def test_collate_fn(crabs_data_module, dummy_dataset, request):
+def test_collate_fn(crabs_data_module, create_dummy_dataset, request):
     crabs_data_module = request.getfixturevalue(crabs_data_module)
+
+    dummy_dataset = create_dummy_dataset(n_images=5)
     collated_data = crabs_data_module._collate_fn(dummy_dataset)
 
     assert len(collated_data) == len(dummy_dataset[0])  # images
@@ -339,8 +342,8 @@ def test_collate_fn(crabs_data_module, dummy_dataset, request):
 @pytest.mark.parametrize(
     "seed, expected_indices",
     [
-        (123, {"train": [1, 2, 3], "test": [1, 2, 3], "val": [1, 2, 3]}),
-        (42, {"train": [1, 2, 3], "test": [1, 2, 3], "val": [1, 2, 3]}),
+        (123, {"train": [32, 30, 0], "test": [4, 6, 2], "val": [7, 1, 8]}),
+        (42, {"train": [42, 17, 30], "test": [6, 4, 0], "val": [8, 3, 2]}),
     ],
 )
 def test_compute_splits(
@@ -354,6 +357,8 @@ def test_compute_splits(
 
     # Edit config to change fraction according to parametrisation?
     # ...
+    # TODO: test different dataset sizes
+    # TODO: test different fractions
 
     # Create datamodule
     dm = CrabsDataModule(
@@ -372,15 +377,18 @@ def test_compute_splits(
     train_dataset, _, _ = dm._compute_splits(train_transform)
     _, test_dataset, val_dataset = dm._compute_splits(test_and_val_transform)
 
-    # Check split sizes are as expected
+    # Check total size of dataset
     total_dataset_size = (
         len(train_dataset) + len(test_dataset) + len(val_dataset)
     )
-    assert total_dataset_size == 50
-    # TODO: change to np.isclose
-    assert len(train_dataset) / total_dataset_size == 0.8
-    assert len(test_dataset) / total_dataset_size == 0.1
-    assert len(val_dataset) / total_dataset_size == 0.1
+    n_frame_files = len(list(dummy_dataset_dirs["frames"].glob("*.png")))
+
+    assert total_dataset_size == n_frame_files
+
+    # Check split sizes are as expected
+    assert np.isclose(len(train_dataset) / total_dataset_size, 0.8, atol=0.05)
+    assert np.isclose(len(test_dataset) / total_dataset_size, 0.1, atol=0.05)
+    assert np.isclose(len(val_dataset) / total_dataset_size, 0.1, atol=0.05)
 
     # Check splits are non-overlapping in image IDs
     # Compute lists of image IDs per dataset
@@ -392,7 +400,6 @@ def test_compute_splits(
             sample[1]["image_id"] for sample in dataset
         ]
 
-    # Check splits are non-overlapping in image IDs
     # TODO: Can I improve this? it is v slow!
     # maybe use indices, all referred to original dataset?
     assert (
@@ -417,9 +424,10 @@ def test_compute_splits(
         == 0
     )
 
-    # Check splits are reproducible
-    # we check we always get the same indices from the dataset
-    # that we input to `random_split`, given the same seed
+    # Check splits are reproducible.
+    # We check that given the same seed, we always get the
+    # same indices. The indices refer to the input dataset to
+    # `random_split`.
     # Note that the indices are not the same as the image IDs!
     assert train_dataset.indices[:3] == expected_indices["train"]
     assert test_dataset.indices[:3] == expected_indices["test"]
