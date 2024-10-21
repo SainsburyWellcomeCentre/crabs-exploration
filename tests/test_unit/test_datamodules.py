@@ -101,68 +101,74 @@ def compare_transforms_attrs_excluding(transform1, transform2, keys_to_skip):
 
 
 @pytest.fixture(scope="module")
-def dummy_dataset():
-    """Create dummy images and annotations for testing.
+def create_dummy_dataset():
+    """Return a factory of dummy images and annotations for testing.
 
-    The dataset consists of 5 images, with a random number of bounding boxes
+    The dataset consists of N images, with a random number of bounding boxes
     per image. The bounding boxes have fixed width and height, but their location
     is randomized. Both images and annotations are torch tensors.
     """
-    n_images = 5
-    img_size = 256
-    fixed_width_height = 10
 
-    images = [torch.randn(3, img_size, img_size) for _ in range(n_images)]
-    annotations = []
-    for _ in range(n_images):
-        # Generate random number of bounding boxes for each image
-        n_bboxes = random.randint(1, 5)
-        boxes = []
-        for _ in range(n_bboxes):
-            # Randomise the location of the top left corner of the bounding box
-            x_min = random.randint(0, img_size - fixed_width_height)
-            y_min = random.randint(0, img_size - fixed_width_height)
+    def _create_dummy_dataset(n_images):
+        # n_images = 10  # needs to be > 5 to avoid floating point errors in dataset split
+        img_size = 256
+        fixed_width_height = 10
 
-            # Add fixed width and height to get the bottom right corner
-            x_max = x_min + fixed_width_height
-            y_max = y_min + fixed_width_height
-            boxes.append([x_min, y_min, x_max, y_max])
-        annotations.append(torch.tensor(boxes))
-    return images, annotations
+        images = [torch.randn(3, img_size, img_size) for _ in range(n_images)]
+        annotations = []
+        for _ in range(n_images):
+            # Generate random number of bounding boxes for each image
+            n_bboxes = random.randint(1, 5)
+            boxes = []
+            for _ in range(n_bboxes):
+                # Randomise the location of the top left corner of the bounding box
+                x_min = random.randint(0, img_size - fixed_width_height)
+                y_min = random.randint(0, img_size - fixed_width_height)
+
+                # Add fixed width and height to get the bottom right corner
+                x_max = x_min + fixed_width_height
+                y_max = y_min + fixed_width_height
+                boxes.append([x_min, y_min, x_max, y_max])
+            annotations.append(torch.tensor(boxes))
+        return images, annotations
+
+    return _create_dummy_dataset  # return function handle!
 
 
 @pytest.fixture(scope="module")
-def dummy_dataset_dirs(dummy_dataset, tmp_path_factory):
-    """Save dummy dataset to temporary directories and return their paths."""
+def dummy_dataset_dirs(create_dummy_dataset, tmp_path_factory):
+    """Return a dictionary with dataset paths for testing.
+
+    The dataset corresponds to a 50-image dataset with dummy annotations
+    in COCO format.
+    """
 
     # Get dummy data
-    images, annotations = dummy_dataset
+    images, annotations = create_dummy_dataset(n_images=50)
 
     # Create temporary directories
-    frames_path = tmp_path_factory.mktemp("frames", numbered=False)
-    annotations_path = tmp_path_factory.mktemp("annotations", numbered=False)
+    frames_dir = tmp_path_factory.mktemp("frames", numbered=False)
+    annotations_dir = tmp_path_factory.mktemp("annotations", numbered=False)
+    annotations_file_path = annotations_dir / "sample.json"
 
     # Save images to temporary directory
-    list_img_filenames = []
     for idx, img in enumerate(images):
-        out_path = frames_path / f"frame_{idx:04d}.png"
+        out_path = frames_dir / f"frame_{idx:04d}.png"
         save_image(img, out_path)
-        list_img_filenames.append(out_path.name)
 
-    # Save annotations with expected format to temporary directory
-    annotations_dict = bbox_tensors_to_COCO_dict(
-        annotations, list_img_filenames
-    )
-    with open(annotations_path / "sample.json", "w") as f:
-        json.dump(annotations_dict, f)
+    # Save annotations file with expected format to temporary directory
+    annotations_dict = bbox_tensors_to_COCO_dict(annotations)
 
-    # return as dict
-    dataset_dict = {
-        "frames": frames_path,
-        "annotations": annotations_path,
+    with open(annotations_file_path, "w") as f:
+        json.dump(annotations_dict, f, indent=4)  # pretty print
+
+    # Return paths as dict
+    dataset_paths = {
+        "frames": frames_dir,
+        "annotations": annotations_file_path,
     }
 
-    return dataset_dict
+    return dataset_paths
 
 
 def bbox_tensors_to_COCO_dict(bbox_tensors, list_img_filenames=None):
@@ -177,12 +183,22 @@ def bbox_tensors_to_COCO_dict(bbox_tensors, list_img_filenames=None):
         the list contains the bounding boxes for that image. Each tensor is of
         size (n, 4) where n is the number of bounding boxes in the image.
         The 4 values in the second dimension are x_min, y_min, x_max, y_max.
+    list_img_filenames : list[str], optional
+        List of image filenames. If not provided, filenames are generated
+        as "frame_{i:04d}.png" where i is the 0-based index of the image in the
+        list of bounding boxes.
 
     Returns
     -------
     dict
         COCO format dictionary with bounding boxes.
     """
+    # Create list of image filenames if not provided
+    if list_img_filenames is None:
+        list_img_filenames = [
+            f"frame_{i:04d}.png" for i in range(len(bbox_tensors))
+        ]
+
     # Create list of dictionaries for images
     list_images = []
     for img_id, img_name in enumerate(list_img_filenames):
@@ -205,8 +221,10 @@ def bbox_tensors_to_COCO_dict(bbox_tensors, list_img_filenames=None):
             annotation = {
                 "id": len(list_annotations) + 1,  # 1-based
                 "image_id": img_id,
-                "bbox": [x_min, y_min, x_max - x_min, y_max - y_min],
                 "category_id": 1,
+                "bbox": [x_min, y_min, x_max - x_min, y_max - y_min],
+                "area": (x_max - x_min) * (y_max - y_min),
+                "iscrowd": 0,
             }
 
             list_annotations.append(annotation)
