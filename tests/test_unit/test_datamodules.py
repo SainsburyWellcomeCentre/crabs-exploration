@@ -1,3 +1,4 @@
+import json
 import random
 from pathlib import Path
 
@@ -99,13 +100,13 @@ def compare_transforms_attrs_excluding(transform1, transform2, keys_to_skip):
     return transform1_attrs_without_fns == transform2_attrs_without_fns
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def dummy_dataset():
     """Create dummy images and annotations for testing.
 
     The dataset consists of 5 images, with a random number of bounding boxes
     per image. The bounding boxes have fixed width and height, but their location
-    is randomised.
+    is randomized. Both images and annotations are torch tensors.
     """
     n_images = 5
     img_size = 256
@@ -130,7 +131,7 @@ def dummy_dataset():
     return images, annotations
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def dummy_dataset_dirs(dummy_dataset, tmp_path_factory):
     """Save dummy dataset to temporary directories and return their paths."""
 
@@ -138,15 +139,22 @@ def dummy_dataset_dirs(dummy_dataset, tmp_path_factory):
     images, annotations = dummy_dataset
 
     # Create temporary directories
-    frames_path = tmp_path_factory.mktemp("frames")
-    annotations_path = tmp_path_factory.mktemp("annotations")
+    frames_path = tmp_path_factory.mktemp("frames", numbered=False)
+    annotations_path = tmp_path_factory.mktemp("annotations", numbered=False)
 
     # Save images to temporary directory
+    list_img_filenames = []
     for idx, img in enumerate(images):
         out_path = frames_path / f"frame_{idx:04d}.png"
         save_image(img, out_path)
+        list_img_filenames.append(out_path.name)
 
     # Save annotations with expected format to temporary directory
+    annotations_dict = bbox_tensors_to_COCO_dict(
+        annotations, list_img_filenames
+    )
+    with open(annotations_path / "sample.json", "w") as f:
+        json.dump(annotations_dict, f)
 
     # return as dict
     dataset_dict = {
@@ -155,6 +163,64 @@ def dummy_dataset_dirs(dummy_dataset, tmp_path_factory):
     }
 
     return dataset_dict
+
+
+def bbox_tensors_to_COCO_dict(bbox_tensors, list_img_filenames=None):
+    """Convert list of tensors with bounding boxes to COCO format
+    for a crab dataset.
+
+    Parameters
+    ----------
+    bbox_tensors : list[torch.Tensor]
+        List of tensors with bounding boxes for each image.
+        Each element of the list corresponds to an image, and each tensor in
+        the list contains the bounding boxes for that image. Each tensor is of
+        size (n, 4) where n is the number of bounding boxes in the image.
+        The 4 values in the second dimension are x_min, y_min, x_max, y_max.
+
+    Returns
+    -------
+    dict
+        COCO format dictionary with bounding boxes.
+    """
+    # Create list of dictionaries for images
+    list_images = []
+    for img_id, img_name in enumerate(list_img_filenames):
+        image_entry = {
+            "id": img_id + 1,  # 1-based
+            "width": 0,
+            "height": 0,
+            "file_name": img_name,
+        }
+        list_images.append(image_entry)
+
+    # Create list of dictionaries for annotations
+    list_annotations = []
+    for img_id, img_bboxes in enumerate(bbox_tensors):
+        # loop thru bboxes in image
+        for bbox_row in img_bboxes:
+            x_min, y_min, x_max, y_max = bbox_row.numpy().tolist()
+            # we convert the array to list to make it JSON serializable
+
+            annotation = {
+                "id": len(list_annotations) + 1,  # 1-based
+                "image_id": img_id,
+                "bbox": [x_min, y_min, x_max - x_min, y_max - y_min],
+                "category_id": 1,
+            }
+
+            list_annotations.append(annotation)
+
+    # Create COCO dictionary
+    coco_dict = {
+        "info": {},
+        "licenses": [],
+        "categories": [{"id": 1, "name": "crab", "supercategory": "animal"}],
+        "images": list_images,
+        "annotations": list_annotations,
+    }
+
+    return coco_dict
 
 
 @pytest.mark.parametrize(
@@ -263,9 +329,13 @@ def test_compute_splits(
     seed,
     expected_indices,
     dummy_dataset_dirs,
-    default_train_config,  # ---- edit config too?
+    default_train_config,
 ):
-    """Test dataset splits are reproducible and according to the requested fraction"""
+    """Test dataset splits are reproducible and according to the requested
+    fraction"""
+
+    # Edit config to change fraction according to parametrisation?
+    # ...
 
     # Create datamodule
     dm = CrabsDataModule(
@@ -295,12 +365,6 @@ def test_compute_splits(
     assert len(val_dataset) / total_dataset_size == 0.1
 
     # Check splits are non-overlapping in image IDs
-    # --- I cannot do this because samples are tuple(image, annotation)
-    # assert len(set(train_dataset) & set(test_dataset)) == 0
-    # assert len(set(train_dataset) & set(val_dataset)) == 0
-    # assert len(set(test_dataset) & set(val_dataset)) == 0
-    # assert len(set(train_dataset) & set(test_dataset)) == 0
-
     # Compute lists of image IDs per dataset
     image_ids_per_dataset = {}
     for dataset, dataset_str in zip(
@@ -312,6 +376,7 @@ def test_compute_splits(
 
     # Check splits are non-overlapping in image IDs
     # TODO: Can I improve this? it is v slow!
+    # maybe use indices, all referred to original dataset?
     assert (
         len(
             set(image_ids_per_dataset["train"])
@@ -336,7 +401,7 @@ def test_compute_splits(
 
     # Check splits are reproducible
     # we check we always get the same indices from the dataset
-    # we input to `random_split` given the same seed
+    # that we input to `random_split`, given the same seed
     # Note that the indices are not the same as the image IDs!
     assert train_dataset.indices[:3] == expected_indices["train"]
     assert test_dataset.indices[:3] == expected_indices["test"]
