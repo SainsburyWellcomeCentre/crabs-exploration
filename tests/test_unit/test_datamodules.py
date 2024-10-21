@@ -101,7 +101,7 @@ def compare_transforms_attrs_excluding(transform1, transform2, keys_to_skip):
     return transform1_attrs_without_fns == transform2_attrs_without_fns
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def create_dummy_dataset():
     """Return a factory of dummy images and annotations for testing.
 
@@ -343,40 +343,66 @@ def test_collate_fn(crabs_data_module, create_dummy_dataset, request):
 
 
 @pytest.mark.parametrize(
-    "seed, expected_indices",
+    "dataset_size, seed, train_fraction, val_over_test_fraction, expected_img_ids_per_split",
     [
-        (123, {"train": [32, 30, 0], "test": [4, 6, 2], "val": [7, 1, 8]}),
-        (42, {"train": [42, 17, 30], "test": [6, 4, 0], "val": [8, 3, 2]}),
+        (
+            50,
+            123,
+            0.8,
+            0.5,
+            {"train": [33, 31, 1], "test": [21, 44, 41], "val": [36, 40, 27]},
+        ),
+        (
+            100,
+            42,
+            0.6,
+            0.5,
+            {"train": [43, 97, 63], "test": [9, 66, 1], "val": [73, 91, 86]},
+        ),
+        (
+            250,
+            37,
+            0.6,
+            0.25,
+            {
+                "train": [32, 50, 119],
+                "test": [107, 9, 68],
+                "val": [199, 180, 168],
+            },
+        ),
     ],
 )
 def test_compute_splits(
+    dataset_size,
     seed,
-    expected_indices,
-    dummy_dataset_dirs,
+    train_fraction,
+    val_over_test_fraction,
+    expected_img_ids_per_split,
+    create_dummy_dataset_dirs,
     default_train_config,
 ):
     """Test dataset splits are reproducible and according to the requested
     fraction"""
 
-    # Edit config to change fraction according to parametrisation?
-    # ...
-    # TODO: test different dataset sizes
-    # TODO: test different fractions
+    # Create a dummy dataset and get directories
+    dataset_dirs = create_dummy_dataset_dirs(n_images=dataset_size)
+
+    # Edit config to change splits' fractions
+    default_train_config["train_fraction"] = train_fraction
+    default_train_config["val_over_test_fraction"] = val_over_test_fraction
 
     # Create datamodule
     dm = CrabsDataModule(
-        list_img_dirs=[dummy_dataset_dirs["frames"]],
-        list_annotation_files=[dummy_dataset_dirs["annotations"]],
+        list_img_dirs=[dataset_dirs["frames"]],
+        list_annotation_files=[dataset_dirs["annotations"]],
         config=default_train_config,
         split_seed=seed,
         no_data_augmentation=False,
     )
 
-    # Add transforms
+    # Compute splits
     train_transform = dm._get_test_val_transform()
     test_and_val_transform = dm._get_test_val_transform()
-
-    # Compute splits
     train_dataset, _, _ = dm._compute_splits(train_transform)
     _, test_dataset, val_dataset = dm._compute_splits(test_and_val_transform)
 
@@ -384,14 +410,23 @@ def test_compute_splits(
     total_dataset_size = (
         len(train_dataset) + len(test_dataset) + len(val_dataset)
     )
-    n_frame_files = len(list(dummy_dataset_dirs["frames"].glob("*.png")))
-
+    n_frame_files = len(list(dataset_dirs["frames"].glob("*.png")))
     assert total_dataset_size == n_frame_files
 
-    # Check split sizes are as expected
-    assert np.isclose(len(train_dataset) / total_dataset_size, 0.8, atol=0.05)
-    assert np.isclose(len(test_dataset) / total_dataset_size, 0.1, atol=0.05)
-    assert np.isclose(len(val_dataset) / total_dataset_size, 0.1, atol=0.05)
+    # Check split sizes match requested fractions
+    assert np.isclose(
+        len(train_dataset) / total_dataset_size, train_fraction, atol=0.05
+    )
+    assert np.isclose(
+        len(test_dataset) / total_dataset_size,
+        (1.0 - train_fraction) * (1.0 - val_over_test_fraction),
+        atol=0.05,
+    )
+    assert np.isclose(
+        len(val_dataset) / total_dataset_size,
+        (1.0 - train_fraction) * val_over_test_fraction,
+        atol=0.05,
+    )
 
     # Check splits are non-overlapping in image IDs
     # Compute lists of image IDs per dataset
@@ -403,8 +438,6 @@ def test_compute_splits(
             sample[1]["image_id"] for sample in dataset
         ]
 
-    # TODO: Can I improve this? it is v slow!
-    # maybe use indices, all referred to original dataset?
     assert (
         len(
             set(image_ids_per_dataset["train"])
@@ -427,11 +460,15 @@ def test_compute_splits(
         == 0
     )
 
-    # Check splits are reproducible.
-    # We check that given the same seed, we always get the
-    # same indices. The indices refer to the input dataset to
-    # `random_split`.
-    # Note that the indices are not the same as the image IDs!
-    assert train_dataset.indices[:3] == expected_indices["train"]
-    assert test_dataset.indices[:3] == expected_indices["test"]
-    assert val_dataset.indices[:3] == expected_indices["val"]
+    # Check dataset creation is reproducible by checking
+    # the first 3 image IDs are as expected
+    assert (
+        image_ids_per_dataset["train"][:3]
+        == expected_img_ids_per_split["train"]
+    )
+    assert (
+        image_ids_per_dataset["test"][:3] == expected_img_ids_per_split["test"]
+    )
+    assert (
+        image_ids_per_dataset["val"][:3] == expected_img_ids_per_split["val"]
+    )
