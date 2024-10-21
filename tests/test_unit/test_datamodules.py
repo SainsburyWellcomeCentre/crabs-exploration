@@ -5,6 +5,7 @@ import pytest
 import torch
 import torchvision.transforms.v2 as transforms
 import yaml  # type: ignore
+from torchvision.utils import save_image
 
 from crabs.detector.datamodules import CrabsDataModule
 
@@ -22,17 +23,6 @@ def default_train_config():
     config_file = DEFAULT_CONFIG
     with open(config_file, "r") as f:
         return yaml.safe_load(f)
-
-
-@pytest.fixture
-def crabs_data_module_realistic(default_train_config):
-    return CrabsDataModule(
-        list_img_dirs=["dir1"],
-        list_annotation_files=["anno1"],
-        config=default_train_config,
-        split_seed=123,
-        no_data_augmentation=False,
-    )
 
 
 @pytest.fixture
@@ -140,6 +130,33 @@ def dummy_dataset():
     return images, annotations
 
 
+@pytest.fixture(scope="session")
+def dummy_dataset_dirs(dummy_dataset, tmp_path_factory):
+    """Save dummy dataset to temporary directories and return their paths."""
+
+    # Get dummy data
+    images, annotations = dummy_dataset
+
+    # Create temporary directories
+    frames_path = tmp_path_factory.mktemp("frames")
+    annotations_path = tmp_path_factory.mktemp("annotations")
+
+    # Save images to temporary directory
+    for idx, img in enumerate(images):
+        out_path = frames_path / f"frame_{idx:04d}.png"
+        save_image(img, out_path)
+
+    # Save annotations with expected format to temporary directory
+
+    # return as dict
+    dataset_dict = {
+        "frames": frames_path,
+        "annotations": annotations_path,
+    }
+
+    return dataset_dict
+
+
 @pytest.mark.parametrize(
     "crabs_data_module, expected_train_transforms",
     [
@@ -245,12 +262,21 @@ def test_collate_fn(crabs_data_module, dummy_dataset, request):
 def test_compute_splits(
     seed,
     expected_indices,
-    crabs_data_module_realistic,
+    dummy_dataset_dirs,
+    default_train_config,  # ---- edit config too?
 ):
     """Test dataset splits are reproducible and according to the requested fraction"""
 
-    # Get transforms
-    dm = crabs_data_module_realistic
+    # Create datamodule
+    dm = CrabsDataModule(
+        list_img_dirs=[dummy_dataset_dirs["frames"]],
+        list_annotation_files=[dummy_dataset_dirs["annotations"]],
+        config=default_train_config,
+        split_seed=seed,
+        no_data_augmentation=False,
+    )
+
+    # Add transforms
     train_transform = dm._get_test_val_transform()
     test_and_val_transform = dm._get_test_val_transform()
 
@@ -285,7 +311,7 @@ def test_compute_splits(
         ]
 
     # Check splits are non-overlapping in image IDs
-    # TODO: Can I improve this? it is v slow
+    # TODO: Can I improve this? it is v slow!
     assert (
         len(
             set(image_ids_per_dataset["train"])
