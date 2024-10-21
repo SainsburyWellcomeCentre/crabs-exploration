@@ -138,7 +138,7 @@ def create_dummy_dataset():
 
 @pytest.fixture()
 def create_dummy_dataset_dirs(create_dummy_dataset, tmp_path_factory):
-    """Return a dictionary with dataset paths for testing.
+    """Return a factory of dictionaries with dataset paths for testing.
 
     The dataset points to an N-image dataset with dummy annotations
     in COCO format.
@@ -324,22 +324,23 @@ def test_get_test_val_transform(
     ],
 )
 def test_collate_fn(crabs_data_module, create_dummy_dataset, request):
+    """Test collate function formats the dataset as expected."""
     crabs_data_module = request.getfixturevalue(crabs_data_module)
 
-    dummy_dataset = create_dummy_dataset(n_images=5)
-    collated_data = crabs_data_module._collate_fn(dummy_dataset)
+    dataset = create_dummy_dataset(n_images=5)
+    collated_data = crabs_data_module._collate_fn(dataset)
 
-    assert len(collated_data) == len(dummy_dataset[0])  # images
-    assert len(collated_data) == len(dummy_dataset[1])  # annotations
+    assert len(collated_data) == len(dataset[0])  # images
+    assert len(collated_data) == len(dataset[1])  # annotations
 
     for i, sample in enumerate(collated_data):
-        # check length
+        # check length is 2 -> (image, annotation)
         assert len(sample) == 2
 
-        # check same content as in dummy dataset
+        # check content is the same as in input dataset
         image, annotation = sample
-        assert torch.equal(image, dummy_dataset[0][i])
-        assert torch.equal(annotation, dummy_dataset[1][i])
+        assert torch.equal(image, dataset[0][i])
+        assert torch.equal(annotation, dataset[1][i])
 
 
 @pytest.mark.parametrize(
