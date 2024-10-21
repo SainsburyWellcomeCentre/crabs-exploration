@@ -136,40 +136,43 @@ def create_dummy_dataset():
     return _create_dummy_dataset  # return function handle!
 
 
-@pytest.fixture(scope="module")
-def dummy_dataset_dirs(create_dummy_dataset, tmp_path_factory):
+@pytest.fixture()
+def create_dummy_dataset_dirs(create_dummy_dataset, tmp_path_factory):
     """Return a dictionary with dataset paths for testing.
 
-    The dataset corresponds to a 50-image dataset with dummy annotations
+    The dataset points to an N-image dataset with dummy annotations
     in COCO format.
     """
 
-    # Get dummy data
-    images, annotations = create_dummy_dataset(n_images=50)
+    def _create_dummy_dataset_dirs(n_images):
+        # Get dummy data
+        images, annotations = create_dummy_dataset(n_images)
 
-    # Create temporary directories
-    frames_dir = tmp_path_factory.mktemp("frames", numbered=False)
-    annotations_dir = tmp_path_factory.mktemp("annotations", numbered=False)
-    annotations_file_path = annotations_dir / "sample.json"
+        # Create temporary directories
+        frames_dir = tmp_path_factory.mktemp("frames")
+        annotations_dir = tmp_path_factory.mktemp("annotations")
+        annotations_file_path = annotations_dir / "sample.json"
 
-    # Save images to temporary directory
-    for idx, img in enumerate(images):
-        out_path = frames_dir / f"frame_{idx:04d}.png"
-        save_image(img, out_path)
+        # Save images to temporary directory
+        for idx, img in enumerate(images):
+            out_path = frames_dir / f"frame_{idx:04d}.png"
+            save_image(img, out_path)
 
-    # Save annotations file with expected format to temporary directory
-    annotations_dict = bbox_tensors_to_COCO_dict(annotations)
+        # Save annotations file with expected format to temporary directory
+        annotations_dict = bbox_tensors_to_COCO_dict(annotations)
 
-    with open(annotations_file_path, "w") as f:
-        json.dump(annotations_dict, f, indent=4)  # pretty print
+        with open(annotations_file_path, "w") as f:
+            json.dump(annotations_dict, f, indent=4)  # pretty print
 
-    # Return paths as dict
-    dataset_paths = {
-        "frames": frames_dir,
-        "annotations": annotations_file_path,
-    }
+        # Return paths as dict
+        dataset_paths = {
+            "frames": frames_dir,
+            "annotations": annotations_file_path,
+        }
 
-    return dataset_paths
+        return dataset_paths
+
+    return _create_dummy_dataset_dirs  # return function handle!
 
 
 def bbox_tensors_to_COCO_dict(bbox_tensors, list_img_filenames=None):
