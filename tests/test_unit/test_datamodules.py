@@ -111,20 +111,30 @@ def compare_transforms_attrs_excluding(transform1, transform2, keys_to_skip):
 
 @pytest.fixture
 def dummy_dataset():
-    """Create dummy images and annotations for testing."""
-    num_samples = 5
-    images = [torch.randn(3, 256, 256) for _ in range(num_samples)]
+    """Create dummy images and annotations for testing.
+
+    The dataset consists of 5 images, with a random number of bounding boxes
+    per image. The bounding boxes have fixed width and height, but their location
+    is randomised.
+    """
+    n_images = 5
+    img_size = 256
+    fixed_width_height = 10
+
+    images = [torch.randn(3, img_size, img_size) for _ in range(n_images)]
     annotations = []
-    for _ in range(num_samples):
+    for _ in range(n_images):
         # Generate random number of bounding boxes for each image
-        num_boxes = random.randint(1, 5)
+        n_bboxes = random.randint(1, 5)
         boxes = []
-        for _ in range(num_boxes):
-            # Generate random bounding box coordinates within image size
-            x_min = random.randint(0, 200)
-            y_min = random.randint(0, 200)
-            x_max = random.randint(x_min + 10, 256)
-            y_max = random.randint(y_min + 10, 256)
+        for _ in range(n_bboxes):
+            # Randomise the location of the top left corner of the bounding box
+            x_min = random.randint(0, img_size - fixed_width_height)
+            y_min = random.randint(0, img_size - fixed_width_height)
+
+            # Add fixed width and height to get the bottom right corner
+            x_max = x_min + fixed_width_height
+            y_max = y_min + fixed_width_height
             boxes.append([x_min, y_min, x_max, y_max])
         annotations.append(torch.tensor(boxes))
     return images, annotations
