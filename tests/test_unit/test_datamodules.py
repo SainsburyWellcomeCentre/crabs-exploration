@@ -316,7 +316,7 @@ def test_compute_splits(
     """Test dataset splits are reproducible and according to the requested
     fraction"""
 
-    # Create a dummy dataset and get directories
+    # Create a dummy dataset and get paths to its directories
     dataset_dirs = create_dummy_dataset_dirs(n_images=dataset_size)
 
     # Edit config to change splits' fractions
