@@ -10,6 +10,7 @@ import yaml  # type: ignore
 from torchvision.utils import save_image
 
 from crabs.detector.datamodules import CrabsDataModule
+from crabs.detector.utils.detection import bbox_tensors_to_COCO_dict
 
 DEFAULT_CONFIG = (
     Path(__file__).parents[2]
@@ -105,7 +106,7 @@ def compare_transforms_attrs_excluding(transform1, transform2, keys_to_skip):
 def create_dummy_dataset():
     """Return a factory of dummy images and annotations for testing.
 
-    The dataset consists of N images, with a random number of bounding boxes
+    The created datasets consist of N images, with a random number of bounding boxes
     per image. The bounding boxes have fixed width and height, but their location
     is randomized. Both images and annotations are torch tensors.
     """
@@ -133,14 +134,14 @@ def create_dummy_dataset():
             annotations.append(torch.tensor(boxes))
         return images, annotations
 
-    return _create_dummy_dataset  # return function handle!
+    return _create_dummy_dataset
 
 
 @pytest.fixture()
 def create_dummy_dataset_dirs(create_dummy_dataset, tmp_path_factory):
     """Return a factory of dictionaries with dataset paths for testing.
 
-    The dataset points to an N-image dataset with dummy annotations
+    The linked datasets are N-images datasets with dummy annotations
     in COCO format.
     """
 
@@ -172,77 +173,7 @@ def create_dummy_dataset_dirs(create_dummy_dataset, tmp_path_factory):
 
         return dataset_paths
 
-    return _create_dummy_dataset_dirs  # return function handle!
-
-
-def bbox_tensors_to_COCO_dict(bbox_tensors, list_img_filenames=None):
-    """Convert list of tensors with bounding boxes to COCO format
-    for a crab dataset.
-
-    Parameters
-    ----------
-    bbox_tensors : list[torch.Tensor]
-        List of tensors with bounding boxes for each image.
-        Each element of the list corresponds to an image, and each tensor in
-        the list contains the bounding boxes for that image. Each tensor is of
-        size (n, 4) where n is the number of bounding boxes in the image.
-        The 4 values in the second dimension are x_min, y_min, x_max, y_max.
-    list_img_filenames : list[str], optional
-        List of image filenames. If not provided, filenames are generated
-        as "frame_{i:04d}.png" where i is the 0-based index of the image in the
-        list of bounding boxes.
-
-    Returns
-    -------
-    dict
-        COCO format dictionary with bounding boxes.
-    """
-    # Create list of image filenames if not provided
-    if list_img_filenames is None:
-        list_img_filenames = [
-            f"frame_{i:04d}.png" for i in range(len(bbox_tensors))
-        ]
-
-    # Create list of dictionaries for images
-    list_images = []
-    for img_id, img_name in enumerate(list_img_filenames):
-        image_entry = {
-            "id": img_id + 1,  # 1-based
-            "width": 0,
-            "height": 0,
-            "file_name": img_name,
-        }
-        list_images.append(image_entry)
-
-    # Create list of dictionaries for annotations
-    list_annotations = []
-    for img_id, img_bboxes in enumerate(bbox_tensors):
-        # loop thru bboxes in image
-        for bbox_row in img_bboxes:
-            x_min, y_min, x_max, y_max = bbox_row.numpy().tolist()
-            # we convert the array to list to make it JSON serializable
-
-            annotation = {
-                "id": len(list_annotations) + 1,  # 1-based
-                "image_id": img_id,
-                "category_id": 1,
-                "bbox": [x_min, y_min, x_max - x_min, y_max - y_min],
-                "area": (x_max - x_min) * (y_max - y_min),
-                "iscrowd": 0,
-            }
-
-            list_annotations.append(annotation)
-
-    # Create COCO dictionary
-    coco_dict = {
-        "info": {},
-        "licenses": [],
-        "categories": [{"id": 1, "name": "crab", "supercategory": "animal"}],
-        "images": list_images,
-        "annotations": list_annotations,
-    }
-
-    return coco_dict
+    return _create_dummy_dataset_dirs
 
 
 @pytest.mark.parametrize(
