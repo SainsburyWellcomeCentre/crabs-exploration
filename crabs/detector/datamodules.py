@@ -169,11 +169,12 @@ class CrabsDataModule(LightningDataModule):
             A tuple with the train, test and validation datasets
         """
 
-        # Optionally fix the generator for a reproducible split of data
-        generator_1, generator_2 = None, None
+        # Optionally fix the random number generators for reproducible
+        # splits of data
+        rng_train_split, rng_val_split = None, None
         if self.split_seed:
-            generator_1 = torch.Generator().manual_seed(self.split_seed)
-            generator_2 = torch.Generator().manual_seed(self.split_seed)
+            rng_train_split = torch.Generator().manual_seed(self.split_seed)
+            rng_val_split = torch.Generator().manual_seed(self.split_seed)
 
         # Create dataset (combining all datasets passed)
         full_dataset = CrabsCocoDetection(
@@ -190,7 +191,7 @@ class CrabsDataModule(LightningDataModule):
         train_dataset, test_val_dataset = random_split(
             full_dataset,
             [self.config["train_fraction"], 1 - self.config["train_fraction"]],
-            generator=generator_1,
+            generator=rng_train_split,
         )
 
         # Split test/val sets from the remainder
@@ -200,7 +201,7 @@ class CrabsDataModule(LightningDataModule):
                 1 - self.config["val_over_test_fraction"],
                 self.config["val_over_test_fraction"],
             ],
-            generator=generator_2,
+            generator=rng_val_split,
         )
 
         return train_dataset, test_dataset, val_dataset
