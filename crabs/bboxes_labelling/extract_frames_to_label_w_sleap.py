@@ -1,4 +1,4 @@
-r"""A script to extract frames for labelling using SLEAP's algorith,.
+r"""A script to extract frames for labelling using SLEAP's algorithm.
 
 Example usage:
     python bboxes\ labelling/extract_frames_to_label_w_sleap.py
