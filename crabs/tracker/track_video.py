@@ -1,3 +1,5 @@
+"""Track crabs in a video using a trained detector."""
+
 import argparse
 import logging
 import os
@@ -24,9 +26,7 @@ from crabs.tracker.utils.tracking import prep_sort
 
 
 class Tracking:
-    """
-    A class for performing crabs tracking on a video
-    using a trained model.
+    """Interface for tracking crabs on a video using a trained detector.
 
     Parameters
     ----------
@@ -41,9 +41,11 @@ class Tracking:
         The path to the input video.
     sort_tracker : Sort
         An instance of the sorting algorithm used for tracking.
+
     """
 
     def __init__(self, args: argparse.Namespace) -> None:
+        """Initialise the tracking interface with the given arguments."""
         self.args = args
         self.config_file = args.config_file
         self.video_path = args.video_path
@@ -60,10 +62,8 @@ class Tracking:
         )
 
     def setup(self):
-        """
-        Load tracking config, trained model and input video path.
-        """
-        with open(self.config_file, "r") as f:
+        """Load tracking config, trained model and input video path."""
+        with open(self.config_file) as f:
             self.config = yaml.safe_load(f)
 
         # Get trained model
@@ -80,9 +80,7 @@ class Tracking:
         self.video_file_root = f"{Path(self.video_path).stem}"
 
     def prep_outputs(self):
-        """
-        Prepare csv writer and if required, video writer.
-        """
+        """Prepare csv writer and if required, video writer."""
         (
             self.csv_writer,
             self.csv_file,
@@ -104,8 +102,7 @@ class Tracking:
             self.video_output = None
 
     def get_prediction(self, frame: np.ndarray) -> torch.Tensor:
-        """
-        Get prediction from the trained model for a given frame.
+        """Get prediction from the trained model for a given frame.
 
         Parameters
         ----------
@@ -116,6 +113,7 @@ class Tracking:
         -------
         torch.Tensor:
             The prediction tensor from the trained model.
+
         """
         transform = transforms.Compose(
             [
@@ -130,8 +128,7 @@ class Tracking:
         return prediction
 
     def update_tracking(self, prediction: dict) -> list[list[float]]:
-        """
-        Update the tracking system with the latest prediction.
+        """Update the tracking system with the latest prediction.
 
         Parameters
         ----------
@@ -142,6 +139,7 @@ class Tracking:
         -------
         list[list[float]]:
             list of tracked bounding boxes after updating the tracking system.
+
         """
         pred_sort = prep_sort(prediction, self.config["score_threshold"])
         tracked_boxes_id_per_frame = self.sort_tracker.update(pred_sort)
@@ -149,13 +147,12 @@ class Tracking:
         return tracked_boxes_id_per_frame
 
     def run_tracking(self):
-        """
-        Run object detection + tracking on the video frames.
-        """
+        """Run object detection + tracking on the video frames."""
         # If we pass ground truth: check the path exist
         if self.args.gt_path and not os.path.exists(self.args.gt_path):
             logging.info(
-                f"Ground truth file {self.args.gt_path} does not exist. Exiting..."
+                f"Ground truth file {self.args.gt_path} does not exist. "
+                "Exiting..."
             )
             return
 
@@ -182,7 +179,8 @@ class Tracking:
                 break
             elif not ret:
                 logging.info(
-                    f"Cannot read frame {frame_idx+1}/{total_frames}. Exiting..."
+                    f"Cannot read frame {frame_idx+1}/{total_frames}. "
+                    "Exiting..."
                 )
                 break
 
@@ -228,8 +226,7 @@ class Tracking:
 
 
 def main(args) -> None:
-    """
-    Main function to run the inference on video based on the trained model.
+    """Run detection+tracking inference on video.
 
     Parameters
     ----------
@@ -239,13 +236,14 @@ def main(args) -> None:
     Returns
     -------
         None
-    """
 
+    """
     inference = Tracking(args)
     inference.run_tracking()
 
 
 def tracking_parse_args(args):
+    """Parse command-line arguments for tracking."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--trained_model_path",
@@ -265,14 +263,16 @@ def tracking_parse_args(args):
         default=str(Path(__file__).parent / "config" / "tracking_config.yaml"),
         help=(
             "Location of YAML config to control tracking. "
-            "Default: crabs-exploration/crabs/tracking/config/tracking_config.yaml"
+            "Default: "
+            "crabs-exploration/crabs/tracking/config/tracking_config.yaml"
         ),
     )
     parser.add_argument(
         "--output_dir",
         type=str,
         default="tracking_output",
-        help="Directory to save the track output",  # is this a csv or a video? (or both)
+        help="Directory to save the track output",
+        # is this a csv or a video? (or both)
     )
     parser.add_argument(
         "--max_frames_to_read",
@@ -285,7 +285,8 @@ def tracking_parse_args(args):
         type=str,
         default=None,
         help=(
-            "Location of json file containing ground truth annotations (optional)."
+            "Location of json file containing ground truth annotations "
+            "(optional)."
             "If passed, evaluation metrics are computed."
         ),
     )
@@ -309,6 +310,7 @@ def tracking_parse_args(args):
 
 
 def app_wrapper():
+    """Wrap function to run the tracking application."""
     torch.set_float32_matmul_precision("medium")
 
     tracking_args = tracking_parse_args(sys.argv[1:])

@@ -1,15 +1,16 @@
+"""Script to extract pairs of frames for stereo calibration."""
+
 import logging
 from pathlib import Path
 
 import cv2
-import ffmpeg
+import ffmpeg  # type: ignore
 import typer
 from timecode import Timecode
 
 
 def compute_timecode_params_per_video(list_paths: list[Path]) -> dict:
-    """
-    Compute timecode parameters per video
+    """Compute timecode parameters per video.
 
     We assume the timecode data is logged in the timecode stream ("tmcd"),
     since we are expecting MOV files (see Notes for further details).
@@ -116,9 +117,7 @@ def compute_timecode_params_per_video(list_paths: list[Path]) -> dict:
 
         # compute end timecode
         end_timecode_tuple = start_timecode.frames_to_tc(
-            start_timecode.frames
-            + n_frames
-            - 1
+            start_timecode.frames + n_frames - 1
             # do not count the first frame twice!
         )
         end_timecode_str = start_timecode.tc_to_string(*end_timecode_tuple)
@@ -138,9 +137,7 @@ def compute_timecode_params_per_video(list_paths: list[Path]) -> dict:
 def compute_synching_timecodes(
     timecodes_dict: dict,
 ) -> tuple[Timecode, Timecode]:
-    """
-    Determine the timecodes for the first and last frame
-    in common across all videos
+    """Determine timecodes for first and last common frames across all videos.
 
     We assume all videos in timecodes_dict were timecode-synched
     (i.e., their timecode streams will overlap from the common start frame
@@ -189,8 +186,9 @@ def compute_opencv_start_idx(
     timecodes_dict: dict,
     max_min_timecode: tuple[Timecode, Timecode],
 ) -> dict:
-    """
-    Compute the start and end indices of a set of videos
+    """Compute start and end indices of a set of videos.
+
+    Compute start and end indices of a set of videos
     for opencv tools, based on their common starting frame
     (max_start_timecode) and their common end frame
     (min_end_timecode).
@@ -233,6 +231,7 @@ def compute_opencv_start_idx(
         an extension to the timecodes_dict, with the openCV start and
         end indices per video. Both are 0-based indices relative to the
         start of the video.
+
     """
     (max_start_timecode, min_end_timecode) = max_min_timecode
 
@@ -265,9 +264,7 @@ def extract_chessboard_frames_from_video(
     chessboard_config: dict,
     output_parent_dir: str = "./calibration_pairs",
 ):
-    """
-    Extract frames with a chessboard pattern between the selected indices
-    and save them to an output directory
+    """Extract frames with a chessboard pattern between the selected indices.
 
     TODO: detecting the checkerboard is very slow with open-cv if no board is
     present. See issue here:
@@ -283,11 +280,14 @@ def extract_chessboard_frames_from_video(
         - n_frames: number of frames from ffmpeg
         - opencv_start_idx: start index for synced period
         - opencv_end_idx: end index for synced period
+    chessboard_config : dict
+        A dictionary specifying the number of rows and columns of the
+        chessboard pattern.
     output_parent_dir : str, optional
         directory to which save the extracted synced frames,
         by default "./calibration_pairs"
-    """
 
+    """
     # initialise capture
     cap = cv2.VideoCapture(video_path_str)
     if cap.get(cv2.CAP_PROP_FRAME_COUNT) != video_dict["n_frames"]:
@@ -316,7 +316,8 @@ def extract_chessboard_frames_from_video(
         if success:
             # ---------------
             # Find the chessboard corners
-            # If desired number of corners are found in the image then ret = true
+            # If desired number of corners are found in the image then
+            # ret = true
             # TODO: append 2d coords of corners?
             frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
@@ -325,7 +326,9 @@ def extract_chessboard_frames_from_video(
                 frame_gray,
                 (chessboard_config["rows"], chessboard_config["cols"]),
                 None,
-            )  # cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FAST_CHECK + cv2.CALIB_CB_NORMALIZE_IMAGE)
+            )
+            # cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_FAST_CHECK +
+            # cv2.CALIB_CB_NORMALIZE_IMAGE
             # -------------
             if ret:
                 # filepath
@@ -363,7 +366,7 @@ def main(
     video_extensions: list,
     output_calibration_dir: str = "./calibration_pairs",
 ):
-    """_summary_
+    """Extract pairs of frames for stereo calibration.
 
     Parameters
     ----------
@@ -376,7 +379,6 @@ def main(
         by default "./calibration_pairs"
 
     """
-
     # Transform extensions to file_types regular expressions
     file_types = tuple(f"**/*.{ext}" for ext in video_extensions)
 
@@ -421,8 +423,5 @@ def main(
         )
 
 
-# ----------
-# Main
-# ------------
 if __name__ == "__main__":
     typer.run(main)

@@ -20,6 +20,7 @@ def via_json_1() -> str:
     -------
     str
         path to a sample VIA JSON file 1.
+
     """
     # Return path to sample VIA (Visual Image Annotator) JSON file 1
     return str(
@@ -37,6 +38,7 @@ def via_json_2() -> str:
     -------
     str
         path to a sample VIA JSON file 2.
+
     """
     # Return path to sample VIA JSON file 2
     return str(
@@ -64,6 +66,7 @@ def test_via_json_combine(
         path to a sample VIA JSON file 2.
     tmp_path : Path
         Pytest fixture providing a temporary directory path
+
     """
     # Check if the combination of 2 VIA JSON files has the same data
     # as the separate JSONS
@@ -148,6 +151,7 @@ def test_via_json_combine_default_dir(
         path to a sample VIA JSON file 2.
     tmp_path : Path
         Pytest fixture providing a temporary directory path
+
     """
     # Set default directory
     via_default_dir = "/sample/VIA/project/directory"
@@ -193,6 +197,7 @@ def test_via_json_combine_non_full_default_dir(
         path to a sample VIA JSON file 2.
     tmp_path : Path
         Pytest fixture providing a temporary directory path
+
     """
     # Set default directory as a non-full path
     via_default_dir = tmp_path.stem
@@ -228,6 +233,7 @@ def test_via_json_combine_project_name(
         path to a sample VIA JSON file 2.
     tmp_path : Path
         Pytest fixture providing a temporary directory path
+
     """
     # Set project name
     via_project_name = "TEST"
@@ -274,6 +280,7 @@ def test_coco_generated_from_via_json(
         Pytest fixture providing a temporary directory path
     request: pytest.FixtureRequest
         to request a parametrized fixture
+
     """
     # Define category attributes of the annotations
     coco_category_ID = 1
@@ -388,6 +395,7 @@ def test_exclude_pattern(via_json_1: str, via_json_2: str, tmp_path: Path):
         path to second VIA JSON file
     tmp_path : Path
         Pytest fixture with a path to a temporary directory
+
     """
     # combine input json files, excluding those that end with _2.json
     json_out_fullpath = combine_multiple_via_jsons(

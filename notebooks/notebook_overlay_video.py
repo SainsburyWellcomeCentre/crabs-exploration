@@ -70,7 +70,6 @@ def plot_trajectories(
     Frame trajectory is the frame up to which plot the trajectory of the individuals.
     If none is specified, all frames are plotted.
     """
-
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
 
     # add color cycler to axes

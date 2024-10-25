@@ -9,7 +9,6 @@ INPUT_DATA_DIR = str(Path(__file__).parents[1] / "data" / "clips")
 
 def list_files_in_dir(input_dir: str) -> list:
     """Lists files in input directory"""
-
     return [
         f
         for f in Path(input_dir).glob("*")
@@ -63,9 +62,10 @@ def cli_inputs_list(cli_inputs_dict: dict) -> list:
         -------
         list
             a list of command line arguments to pass to `subprocess.run()`.
+
         """
         list_kys_modified = []
-        for k in input_params.keys():
+        for k in input_params:
             if input_params[k] is False:
                 list_kys_modified.append("--no-" + k)
             else:
