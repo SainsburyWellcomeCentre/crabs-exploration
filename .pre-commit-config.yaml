@@ -61,5 +61,6 @@ repos:
     #     - tomli
 exclude: |
   (?x)(
-      ^notebooks/
+      ^notebooks/|
+      ^tests/data/
   )

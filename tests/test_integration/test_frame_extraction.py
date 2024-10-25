@@ -31,13 +31,9 @@ def assert_output_files(list_input_videos: list, cli_dict: dict) -> None:
     ]
     extracted_frames_dir = Path(list_subfolders[0])
     assert len(list_subfolders) == 1
-    assert (
-        type(
-            datetime.datetime.strptime(
-                extracted_frames_dir.name, "%Y%m%d_%H%M%S"
-            )
-        )
-        == datetime.datetime
+    assert isinstance(
+        datetime.datetime.strptime(extracted_frames_dir.name, "%Y%m%d_%H%M%S"),
+        datetime.datetime,
     )
 
     # check there is an extracted_frames.json file

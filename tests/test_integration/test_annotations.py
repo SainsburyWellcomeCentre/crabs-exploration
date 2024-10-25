@@ -385,7 +385,7 @@ def test_coco_generated_from_via_json(
 
 
 def test_exclude_pattern(via_json_1: str, via_json_2: str, tmp_path: Path):
-    """Tests if exclude pattern works when combining annotation files
+    """Test exclude pattern when combining annotation files.
 
     Parameters
     ----------

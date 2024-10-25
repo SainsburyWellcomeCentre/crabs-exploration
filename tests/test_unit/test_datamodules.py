@@ -125,7 +125,8 @@ def test_get_train_transform(
         expected_train_transforms.transforms,
     ):
         # we skip the attribute `_labels_getter` of `SanitizeBoundingBoxes`
-        # because it points to a lambda function, which does not have a comparison defined.
+        # because it points to a lambda function, which does not have a
+        # comparison defined.
         assert compare_transforms_attrs_excluding(
             transform1=train_tr,
             transform2=expected_train_tr,

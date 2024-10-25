@@ -44,7 +44,9 @@ def test_prep_img_directories(dataset_dirs: list):
     ],
 )
 def test_prep_annotation_files_single_dataset(annotation_files, expected):
-    """Test parsing of annotation files when training a model on a single dataset."""
+    """Test parsing of annotation files when training a model on a single
+    dataset.
+    """
     from crabs.detector.train_model import DectectorTrain
 
     # prepare CLI arguments
@@ -84,7 +86,9 @@ def test_prep_annotation_files_single_dataset(annotation_files, expected):
     ],
 )
 def test_prep_annotation_files_multiple_datasets(annotation_files, expected):
-    """Test parsing of annotation files when training a model on two datasets."""
+    """Test parsing of annotation files when training
+    a model on two datasets.
+    """
     from crabs.detector.train_model import DectectorTrain
 
     # prepare CLI arguments considering multiple dataset
