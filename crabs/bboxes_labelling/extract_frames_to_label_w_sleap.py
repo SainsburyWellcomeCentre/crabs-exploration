@@ -1,13 +1,4 @@
-r"""A script to extract frames for labelling using SLEAP's algorithm.
-
-Example usage:
-    python bboxes\ labelling/extract_frames_to_label_w_sleap.py
-    'crab_sample_data/sample_clips/'
-    --initial_samples 5
-    --n_components 2
-    --n_clusters 2
-    --per_cluster 1
-    --compute_features_per_video
+"""A script to extract frames for labelling using SLEAP's algorithm.
 
 TODO: can I make it deterministic?
 TODO: check https://github.com/talmolab/sleap-io/tree/main/sleap_io
@@ -348,7 +339,7 @@ def compute_and_extract_frames_to_label(
     list_video_locations: list[str],
     output_path: str = ".",
     output_subdir: Optional[str] = None,
-    video_extensions: tuple[str, ...] = tuple("mp4"),
+    video_extensions: tuple[str] = ("mp4",),
     initial_samples: int = 200,
     sample_method: str = "stride",  # choices=["random", "stride"],
     scale: float = 1.0,
