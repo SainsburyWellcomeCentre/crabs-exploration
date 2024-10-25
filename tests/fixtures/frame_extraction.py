@@ -8,7 +8,7 @@ INPUT_DATA_DIR = str(Path(__file__).parents[1] / "data" / "clips")
 
 
 def list_files_in_dir(input_dir: str) -> list:
-    """Lists files in input directory"""
+    """List files in input directory."""
     return [
         f
         for f in Path(input_dir).glob("*")
@@ -18,7 +18,7 @@ def list_files_in_dir(input_dir: str) -> list:
 
 @pytest.fixture()
 def cli_inputs_dict(tmp_path: Path) -> dict:
-    """Returns the command line input arguments as a dictionary.
+    """Return the command line input arguments as a dictionary.
 
     These command line arguments are passed to the
     extract frames CLI command. The output path is
@@ -39,10 +39,10 @@ def cli_inputs_dict(tmp_path: Path) -> dict:
 
 @pytest.fixture()
 def cli_inputs_list(cli_inputs_dict: dict) -> list:
-    """Returns the command line input arguments as a list."""
+    """Return the command line input arguments as a list."""
 
     def cli_inputs_dict_to_list(input_params: dict) -> list:
-        """Transforms a dictionary of parameters into a list of CLI arguments.
+        """Transform a dictionary of parameters into a list of CLI arguments.
 
         If for an item in the dictionary its value is True,
         the key is taken as a CLI boolean argument (i.e., a flag).
@@ -96,7 +96,7 @@ def cli_inputs_list_empty():
 def mock_extract_frames_app(
     cli_inputs_dict: dict,
 ) -> typer.main.Typer:
-    """Monkeypatches the extract-frames app to modify its default values.
+    """Monkeypatch the extract-frames app to modify its default values.
 
     We modify the defaults with values that are more convenient for testing.
     """
@@ -144,7 +144,7 @@ def mock_extract_frames_app(
 
 @pytest.fixture()
 def video_extensions_flipped() -> list:
-    """Extracts the extensions of video files in INPUT_DATA_DIR
+    """Extract the extensions of video files in INPUT_DATA_DIR
     and flips their case (uppercase -> lowercase and viceversa).
 
     The file extensions would be provided by the user in the

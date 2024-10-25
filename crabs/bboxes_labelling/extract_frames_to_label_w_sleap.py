@@ -348,7 +348,7 @@ def compute_and_extract_frames_to_label(
     list_video_locations: list[str],
     output_path: str = ".",
     output_subdir: Optional[str] = None,
-    video_extensions: tuple[str] = ("mp4"),
+    video_extensions: tuple[str, ...] = tuple("mp4"),
     initial_samples: int = 200,
     sample_method: str = "stride",  # choices=["random", "stride"],
     scale: float = 1.0,
