@@ -11,15 +11,15 @@ from PIL import Image
 
 
 def apply_grayscale_and_blur(
-    frame: np.array,
+    frame: np.ndarray,
     kernel_size: list,
     sigmax: int,
-) -> np.array:
+) -> tuple:
     """Convert the frame to grayscale and apply Gaussian blurring.
 
     Parameters
     ----------
-    frame : np.array
+    frame : np.ndarray
         frame array read from the video capture
     kernel_size : list
         kernel size for GaussianBlur
@@ -28,9 +28,9 @@ def apply_grayscale_and_blur(
 
     Returns
     -------
-    gray_frame : np.array
+    gray_frame
         grayscaled input frame
-    blurred_frame : np.array
+    blurred_frame
         Gaussian-blurred grayscaled input frame
 
     """

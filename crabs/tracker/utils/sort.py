@@ -206,7 +206,7 @@ def associate_detections_to_trackers(  # noqa: C901
         else:
             matched_indices = linear_assignment(-iou_matrix)
     else:
-        matched_indices = np.empty(shape=(0, 2))
+        matched_indices = np.empty(shape=(0, 2), dtype=int)
 
     unmatched_detections = []
     for d, _det in enumerate(detections):
@@ -218,17 +218,17 @@ def associate_detections_to_trackers(  # noqa: C901
             unmatched_trackers.append(t)
 
     # filter out matched with low IOU
-    matches = []
+    list_matches = []  # before: matches
     for m in matched_indices:
         if iou_matrix[m[0], m[1]] < iou_threshold:
             unmatched_detections.append(m[0])
             unmatched_trackers.append(m[1])
         else:
-            matches.append(m.reshape(1, 2))
-    if len(matches) == 0:
+            list_matches.append(m.reshape(1, 2))
+    if len(list_matches) == 0:
         matches = np.empty((0, 2), dtype=int)
     else:
-        matches = np.concatenate(matches, axis=0)
+        matches = np.concatenate(list_matches, axis=0)
 
     return (
         matches,

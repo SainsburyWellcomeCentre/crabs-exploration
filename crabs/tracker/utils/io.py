@@ -141,7 +141,7 @@ def save_required_output(
 
     for bbox, pred_score in zip(tracked_boxes, pred_scores):
         write_tracked_bbox_to_csv(
-            bbox, frame, frame_name, csv_writer, pred_score
+            np.array(bbox), frame, frame_name, csv_writer, pred_score
         )
 
     if save_frames:

@@ -127,7 +127,7 @@ class Tracking:
             prediction = self.trained_model(img)
         return prediction
 
-    def update_tracking(self, prediction: dict) -> list[list[float]]:
+    def update_tracking(self, prediction: dict) -> np.ndarray:
         """Update the tracking system with the latest prediction.
 
         Parameters
@@ -137,13 +137,14 @@ class Tracking:
 
         Returns
         -------
-        list[list[float]]:
-            list of tracked bounding boxes after updating the tracking system.
+        np.ndarray:
+            tracked bounding boxes after updating the tracking system.
 
         """
         pred_sort = prep_sort(prediction, self.config["score_threshold"])
         tracked_boxes_id_per_frame = self.sort_tracker.update(pred_sort)
         self.tracked_bbox_id.append(tracked_boxes_id_per_frame)
+
         return tracked_boxes_id_per_frame
 
     def run_tracking(self):

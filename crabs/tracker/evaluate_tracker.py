@@ -213,14 +213,15 @@ class TrackerEvaluate:
             previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
             current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
             if all(
-                not np.isnan(x) for x in [previous_pred_id, current_pred_id]
+                not np.isnan(x)  # type: ignore
+                for x in [previous_pred_id, current_pred_id]
             ):  # Exclude if missed detection in previous AND current frame
                 if current_pred_id != previous_pred_id:
                     switch_counter += 1
                     used_pred_ids.add(current_pred_id)
             # if the object was a missed detection in the previous frame:
             # check if current prediction matches historical
-            elif np.isnan(previous_pred_id) and not np.isnan(current_pred_id):  # noqa: SIM102
+            elif np.isnan(previous_pred_id) and not np.isnan(current_pred_id):  # type: ignore  # noqa: SIM102
                 if gt_id in self.last_known_predicted_ids:
                     last_known_predicted_id = self.last_known_predicted_ids[
                         gt_id
@@ -234,7 +235,7 @@ class TrackerEvaluate:
         for gt_id in gt_ids_disappear:
             previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
             if not np.isnan(  # noqa: SIM102
-                previous_pred_id
+                previous_pred_id  # type: ignore
             ):  # Exclude if missed detection in previous frame
                 if previous_pred_id in gt_to_tracked_id_current_frame.values():  # noqa: SIM102
                     if previous_pred_id not in used_pred_ids:
@@ -245,7 +246,7 @@ class TrackerEvaluate:
         for gt_id in gt_ids_appear:
             current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
             if not np.isnan(
-                current_pred_id
+                current_pred_id  # type: ignore
             ):  # Exclude if missed detection in current frame
                 # check if there was and ID switch wrt previous frame
                 if current_pred_id in gt_to_tracked_id_previous_frame.values():
@@ -336,7 +337,7 @@ class TrackerEvaluate:
             if index_gt_not_match is not None:
                 gt_to_tracked_id_current_frame[
                     int(gt_ids[index_gt_not_match])
-                ] = np.nan
+                ] = np.nan  # type: ignore
 
         missed_detections = total_gt - len(indices_of_matched_gt_boxes)
         num_switches = self.count_identity_switches(

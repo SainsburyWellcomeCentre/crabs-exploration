@@ -96,7 +96,6 @@ def draw_detection(
 
     """
     coco_list = COCO_INSTANCE_CATEGORY_NAMES
-    image_with_boxes = None
 
     for image, label, prediction in zip(
         imgs, annotations, detections or [None] * len(imgs)
