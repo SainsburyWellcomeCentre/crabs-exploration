@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "opencv-python",
-    "sleap[pypi]==1.3.3", #--- install from conda?
+    "sleap[pypi]==1.3.3",
     "typer",
     "timecode",
     "torch",
