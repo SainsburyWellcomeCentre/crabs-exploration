@@ -20,7 +20,7 @@ DEFAULT_CONFIG = (
 @pytest.fixture
 def default_train_config():
     config_file = DEFAULT_CONFIG
-    with open(config_file, "r") as f:
+    with open(config_file) as f:
         return yaml.safe_load(f)
 
 
@@ -82,7 +82,6 @@ def crabs_data_module_without_data_augm(default_train_config):
 
 def compare_transforms_attrs_excluding(transform1, transform2, keys_to_skip):
     """Compare the attributes of two transforms excluding those in list."""
-
     transform1_attrs_without_fns = {
         key: val
         for key, val in transform1.__dict__.items()

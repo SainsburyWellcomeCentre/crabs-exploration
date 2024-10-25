@@ -58,3 +58,7 @@ repos:
     #     additional_dependencies:
     #     # tomli dependency can be removed when we drop support for Python 3.10
     #     - tomli
+exclude: |
+  (?x)(
+      ^notebooks/
+  )

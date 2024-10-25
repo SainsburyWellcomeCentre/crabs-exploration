@@ -1,4 +1,4 @@
-"""Utils used in training"""
+"""Utils used in training."""
 
 import logging
 from typing import Optional

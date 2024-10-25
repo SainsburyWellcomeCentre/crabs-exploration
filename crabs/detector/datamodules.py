@@ -1,3 +1,5 @@
+"""DataModule for the crabs data."""
+
 from typing import Optional
 
 import torch
@@ -26,6 +28,7 @@ class CrabsDataModule(LightningDataModule):
         split_seed: Optional[int] = None,
         no_data_augmentation: bool = False,
     ):
+        """Initialise the CrabsDataModule."""
         super().__init__()
         self.list_img_dirs = list_img_dirs
         self.list_annotation_files = list_annotation_files
@@ -34,7 +37,7 @@ class CrabsDataModule(LightningDataModule):
         self.no_data_augmentation = no_data_augmentation
 
     def _transform_str_to_operator(self, transform_str):
-        """Get transform operator from its name in snake case"""
+        """Get transform operator from its name in snake case."""
 
         def snake_to_camel_case(snake_str):
             return "".join(
@@ -48,8 +51,7 @@ class CrabsDataModule(LightningDataModule):
         return transform_callable(**self.config[transform_str])
 
     def _compute_list_of_transforms(self) -> list[torchvision.transforms.v2]:
-        """Read transforms from config and add to list"""
-
+        """Read transforms from config and add to list."""
         # Initialise list
         train_data_augm: list[torchvision.transforms.v2] = []
 
@@ -142,6 +144,7 @@ class CrabsDataModule(LightningDataModule):
         tuple
             a tuple of length = batch size, made up of (image, annotations)
             tuples.
+
         """
         return tuple(zip(*batch))
 
@@ -167,8 +170,8 @@ class CrabsDataModule(LightningDataModule):
         -------
         tuple
             A tuple with the train, test and validation datasets
-        """
 
+        """
         # Optionally fix the generator for a reproducible split of data
         generator = None
         if self.split_seed:
@@ -204,14 +207,17 @@ class CrabsDataModule(LightningDataModule):
         return train_dataset, test_dataset, val_dataset
 
     def prepare_data(self):
-        """
+        """Prepare dataset.
+
+        Unused for now.
+
         To download data, IO, etc. Useful with shared filesystems,
         only called on 1 GPU/TPU in distributed.
         """
         pass
 
     def setup(self, stage: str):
-        """Setup the data for training, testing and validation.
+        """Set up the data for training, testing and validation.
 
         Define the transforms for each split of the data and compute them.
         """
@@ -229,16 +235,14 @@ class CrabsDataModule(LightningDataModule):
         )
 
     def train_dataloader(self) -> DataLoader:
-        """Define dataloader for the training set"""
+        """Define dataloader for the training set."""
         return DataLoader(
             self.train_dataset,
             batch_size=self.config["batch_size_train"],
             shuffle=True,  # a shuffled sampler will be constructed
             num_workers=self.config["num_workers"],
             collate_fn=self._collate_fn,
-            persistent_workers=True
-            if self.config["num_workers"] > 0
-            else False,
+            persistent_workers=bool(self.config["num_workers"] > 0),
             multiprocessing_context="fork"
             if self.config["num_workers"] > 0
             and torch.backends.mps.is_available()
@@ -246,16 +250,14 @@ class CrabsDataModule(LightningDataModule):
         )
 
     def val_dataloader(self) -> DataLoader:
-        """Define dataloader for the validation set"""
+        """Define dataloader for the validation set."""
         return DataLoader(
             self.val_dataset,
             batch_size=self.config["batch_size_val"],
             shuffle=False,
             num_workers=self.config["num_workers"],
             collate_fn=self._collate_fn,
-            persistent_workers=True
-            if self.config["num_workers"] > 0
-            else False,
+            persistent_workers=bool(self.config["num_workers"] > 0),
             multiprocessing_context="fork"
             if self.config["num_workers"] > 0
             and torch.backends.mps.is_available()
@@ -263,7 +265,7 @@ class CrabsDataModule(LightningDataModule):
         )
 
     def test_dataloader(self) -> DataLoader:
-        """Define dataloader for the test set"""
+        """Define dataloader for the test set."""
         return DataLoader(
             self.test_dataset,
             batch_size=self.config["batch_size_test"],

@@ -12,19 +12,20 @@ DEFAULT_ANNOTATIONS_FILENAME = "VIA_JSON_combined_coco_gen.json"
 
 
 def prep_img_directories(dataset_dirs: list[str]) -> list[str]:
-    """
-    Derive list of input image directories from a list of dataset directories.
+    """Get list of input image directories from a list of dataset directories.
+
     We assume a specific structure for the dataset directories.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     dataset_dirs : List[str]
         List of directories containing dataset folders.
 
-    Returns:
-    --------
+    Returns
+    -------
     List[str]:
         List of directories containing image frames.
+
     """
     images_dirs = []
     for dataset in dataset_dirs:
@@ -35,20 +36,20 @@ def prep_img_directories(dataset_dirs: list[str]) -> list[str]:
 def prep_annotation_files(
     input_annotation_files: list[str], dataset_dirs: list[str]
 ) -> list[str]:
-    """
-    Prepares annotation files for processing.
+    """Prepare annotation files for processing.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     input_annotation_files : List[str]
         List of annotation files or filenames.
     dataset_dirs : List[str]
         List of directories containing dataset folders.
 
-    Returns:
-    --------
+    Returns
+    -------
     List[str]:
         List of annotation file paths.
+
     """
     # prepare list of annotation files
     annotation_files = []
@@ -85,9 +86,9 @@ def log_metadata_to_logger(
     mlf_logger: MLFlowLogger,
     cli_args: argparse.Namespace,
 ) -> MLFlowLogger:
-    """
-    Log metadata to MLflow logger.
-    Add CLI arguments and, if available, SLURM job information.
+    """Log metadata to MLflow logger.
+
+    Adds CLI arguments to logger and, if available, SLURM job information.
 
     Parameters
     ----------
@@ -100,8 +101,8 @@ def log_metadata_to_logger(
     -------
     MLFlowLogger
         An MLflow logger instance with metadata logged.
-    """
 
+    """
     # Log CLI arguments
     mlf_logger.log_hyperparams({"cli_args": cli_args})
 
@@ -125,8 +126,7 @@ def log_metadata_to_logger(
 
 
 def set_mlflow_run_name() -> str:
-    """
-    Set MLflow run name.
+    """Set MLflow run name.
 
     Use the slurm job ID if it is a SLURM job, else use a timestamp.
     For SLURM jobs:
@@ -157,10 +157,9 @@ def setup_mlflow_logger(
     run_name: str,
     mlflow_folder: str,
     cli_args: argparse.Namespace,
-    ckpt_config: dict[str, Any] = {},
+    ckpt_config: dict[str, Any] = {},  # noqa: B006
 ) -> MLFlowLogger:
-    """
-    Setup MLflow logger and log job metadata, with optional checkpointing.
+    """Set up MLflow logger and log job metadata.
 
     Setup MLflow logger for a given experiment and run name. If a
     checkpointing config is passed, it will setup the logger with a
@@ -185,8 +184,8 @@ def setup_mlflow_logger(
     -------
     MLFlowLogger
         A logger to record data for MLflow
-    """
 
+    """
     # Setup MLflow logger for a given experiment and run name
     # (with checkpointing if required)
     mlf_logger = MLFlowLogger(
@@ -216,11 +215,11 @@ def setup_mlflow_logger(
 
 
 def slurm_logs_as_artifacts(logger: MLFlowLogger, slurm_job_id: str):
-    """
-    Add slurm logs as an MLflow artifacts of the current run.
-    The filenaming convention from the training scripts at crabs-exploration/bash_scripts/ is assumed.
-    """
+    """Add slurm logs as an MLflow artifacts of the current run.
 
+    The filenaming convention from the training scripts at
+    crabs-exploration/bash_scripts/ is assumed.
+    """
     # Get slurm env variables: slurm and array job ID
     slurm_node = os.environ.get("SLURMD_NODENAME")
     slurm_array_job_id = os.environ.get("SLURM_ARRAY_JOB_ID")

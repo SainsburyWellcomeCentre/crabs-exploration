@@ -1,5 +1,5 @@
-"""
-SORT: A Simple, Online and Realtime Tracker
+"""SORT: A Simple, Online and Realtime Tracker.
+
 Copyright (C) 2016-2020 Alex Bewley alex@bewley.ai
 
 This program is free software: you can redistribute it and/or modify
@@ -16,24 +16,29 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 
 
 def linear_assignment(cost_matrix: np.ndarray) -> np.ndarray:
-    """
-    Perform linear assignment using LAPJV algorithm if available, otherwise fallback to scipy's linear_sum_assignment.
+    """Perform linear assignment.
+
+    Uses LAPJV algorithm if available, otherwise falls back to scipy's
+    linear_sum_assignment.
 
     Parameters
     ----------
     cost_matrix : np.ndarray
-        The cost matrix representing the assignment costs between tracks and detections.
+        The cost matrix representing the assignment costs between
+        tracks and detections.
 
     Returns
     -------
     np.ndarray
-        An array containing the assignment indices. Each row corresponds to a pair (track index, detection index).
+        An array containing the assignment indices. Each row corresponds to a
+        pair (track index, detection index).
+
     """
     try:
         import lap
@@ -48,22 +53,26 @@ def linear_assignment(cost_matrix: np.ndarray) -> np.ndarray:
 
 
 def iou_batch(bb_test: np.ndarray, bb_gt: np.ndarray) -> np.ndarray:
-    """
-    From SORT: Computes IOU between two bboxes in the form [x1,y1,x2,y2]
-    Calculate Intersection over Union (IoU) between two batches of bounding boxes.
+    """Compute IOU between two bboxes in the form [x1,y1,x2,y2].
+
+    Calculate Intersection over Union (IoU) between two batches of
+    bounding boxes.
 
     Parameters
     ----------
     bb_test : np.ndarray
-        Bounding boxes of shape (N, 4) representing N test boxes in format [x1, y1, x2, y2].
+        Bounding boxes of shape (N, 4) representing N test boxes
+        in format [x1, y1, x2, y2].
     bb_gt : np.ndarray
-        Bounding boxes of shape (M, 4) representing M ground truth boxes in format [x1, y1, x2, y2].
+        Bounding boxes of shape (M, 4) representing M ground truth
+        boxes in format [x1, y1, x2, y2].
 
     Returns
     -------
     np.ndarray
         IoU values between each pair of bounding boxes in bb_test and bb_gt.
         The shape of the returned array is (N, M).
+
     """
     bb_gt = np.expand_dims(bb_gt, 0)
     bb_test = np.expand_dims(bb_test, 1)
@@ -85,8 +94,9 @@ def iou_batch(bb_test: np.ndarray, bb_gt: np.ndarray) -> np.ndarray:
 
 
 def convert_bbox_to_z(bbox: np.ndarray) -> np.ndarray:
-    """
-    Convert a bounding box from [x1, y1, x2, y2] to a representation [x, y, s, r].
+    """Convert a bounding box from corner form to center form.
+
+    Corner form is [x1, y1, x2, y2] and center form is [x, y, s, r].
 
     Parameters
     ----------
@@ -98,6 +108,7 @@ def convert_bbox_to_z(bbox: np.ndarray) -> np.ndarray:
     np.ndarray
         Converted representation of the bounding box as [x, y, s, r].
         T
+
     """
     w = bbox[2] - bbox[0]
     h = bbox[3] - bbox[1]
@@ -111,8 +122,9 @@ def convert_bbox_to_z(bbox: np.ndarray) -> np.ndarray:
 def convert_x_to_bbox(
     x: np.ndarray, score: Optional[float] = None
 ) -> np.ndarray:
-    """
-    Convert a bounding box from center form [x, y, s, r] to corner form [x1, y1, x2, y2].
+    """Convert a bounding box from center form to corner form.
+
+    Center form is [x, y, s, r] and corner form is [x1, y1, x2, y2].
 
     Parameters
     ----------
@@ -124,8 +136,11 @@ def convert_x_to_bbox(
     Returns
     -------
     np.ndarray
-        Converted representation of the bounding box as [x1, y1, x2, y2] (and score, if provided).
-        The shape of the returned array is (1, 4) or (1, 5) if score is provided.
+        Converted representation of the bounding box as [x1, y1, x2, y2]
+        (and score, if provided).
+        The shape of the returned array is (1, 4) or (1, 5)
+        if score is provided.
+
     """
     w = np.sqrt(x[2] * x[3])
     h = x[2] / w
@@ -145,28 +160,35 @@ def convert_x_to_bbox(
         ).reshape((1, 5))
 
 
-def associate_detections_to_trackers(
+def associate_detections_to_trackers(  # noqa: C901
     detections: np.ndarray, trackers: np.ndarray, iou_threshold: float = 0.3
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Assigns detections to tracked objects (both represented as bounding boxes).
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Assign detections to tracked objects.
+
+    Both detections and tracked objects are represented as bounding boxes.
 
     Parameters
     ----------
     detections : np.ndarray
-        Array of shape (N, 4) representing N detection bounding boxes in format [x1, y1, x2, y2].
+        Array of shape (N, 4) representing N detection bounding boxes in
+        format [x1, y1, x2, y2].
     trackers : np.ndarray
-        Array of shape (M, 4) representing M tracker bounding boxes in format [x1, y1, x2, y2].
+        Array of shape (M, 4) representing M tracker bounding boxes in
+        format [x1, y1, x2, y2].
     iou_threshold : float, optional
         IOU threshold for associating detections with trackers. Default is 0.3.
 
     Returns
     -------
-    Tuple[np.ndarray, np.ndarray, np.ndarray]
+    tuple[np.ndarray, np.ndarray, np.ndarray]
         Three arrays:
-        - matches: Array of shape (K, 2) containing indices of matched detections and trackers.
-        - unmatched_detections: Array of indices of detections that were not matched.
-        - unmatched_trackers: Array of indices of trackers that were not matched.
+        - matches: Array of shape (K, 2) containing indices of matched
+        detections and trackers.
+        - unmatched_detections: Array of indices of detections that were not
+        matched.
+        - unmatched_trackers: Array of indices of trackers that were not
+        matched.
+
     """
     if len(trackers) == 0:
         return (
@@ -187,11 +209,11 @@ def associate_detections_to_trackers(
         matched_indices = np.empty(shape=(0, 2))
 
     unmatched_detections = []
-    for d, det in enumerate(detections):
+    for d, _det in enumerate(detections):
         if d not in matched_indices[:, 0]:
             unmatched_detections.append(d)
     unmatched_trackers = []
-    for t, trk in enumerate(trackers):
+    for t, _trk in enumerate(trackers):
         if t not in matched_indices[:, 1]:
             unmatched_trackers.append(t)
 

@@ -1,12 +1,12 @@
-"""Utils for hyperparameter optimisation"""
+"""Utils for hyperparameter optimisation with Optuna."""
 
-from typing import Callable, Dict
+from typing import Callable
 
 import optuna
 
 
 def compute_optimal_hyperparameters(
-    objective_fn: Callable, config_optuna: Dict, direction: str = "maximize"
+    objective_fn: Callable, config_optuna: dict, direction: str = "maximize"
 ) -> dict:
     """Compute hyperparameters that optimize the objective function.
 
@@ -28,6 +28,7 @@ def compute_optimal_hyperparameters(
     -------
     dict
         The optimal parameters computed by Optuna.
+
     """
     # Create an study
     study = optuna.create_study(direction=direction)
