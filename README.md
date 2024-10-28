@@ -14,9 +14,9 @@ A toolkit for detecting and tracking crabs in the field.
 
 `crabs` uses neural networks to detect and track multiple crabs in the field. The detection model is based on the [Faster R-CNN](https://arxiv.org/abs/1506.01497) architecture. The tracking model is based on the [SORT](https://github.com/abewley/sort) tracking algorithm.
 
-The package supports Python 3.9 or 3.10, on Linux and MacOS.
+The package supports Python 3.9 or 3.10, and is tested on Linux and MacOS.
 
-Running `crabs` on a machine with a dedicated graphics device is highly recommended. This usually means an NVIDIA GPU or Apple M1 chip.
+We highly recommend running `crabs` on a machine with a dedicated graphics device, such as an NVIDIA GPU or an Apple M1+ chip.
 
 
 ### Installation
@@ -58,15 +58,15 @@ The dataset is currently private. If you have access to the [GIN](https://gin.g-
    $ gin --version
    ```
 
-Then to download the dataset, run:
+Then to download the dataset, run the following command from the directory you want the data to be in:
 ```
 gin get SainsburyWellcomeCentre/CrabsField
 ```
-This command will clone the data repository to the current working directory, and download the large files in the dataset as lightweight placeholders. To download the content of these placeholder files, run:
+This command will clone the data repository to the current working directory, and download the large files in the dataset as lightweight placeholder files. To download the content of these placeholder files, run:
 ```
 gin download --content
 ```
-Because the large files in the dataset are **locked**, this command will download the content to the git annex subdirectory, and turn the placeholder files in the working directory into symlinks that point to the content. For more information on how to work with a GIN repository, see the [NIU HowTo guide](https://howto.neuroinformatics.dev/open_science/GIN-repositories.html).
+Because the large files in the dataset are **locked**, this command will download the content to the git annex subdirectory, and turn the placeholder files in the working directory into symlinks that point to that content. For more information on how to work with a GIN repository, see the corresponding [NIU HowTo guide](https://howto.neuroinformatics.dev/open_science/GIN-repositories.html).
 
 ## Basic commands
 
@@ -75,10 +75,10 @@ Because the large files in the dataset are **locked**, this command will downloa
 To train a detector on an existing dataset, run the following command:
 
 ```
-train-detector --dataset_dirs {parent_directory_of_frames_and_annotation}
+train-detector --dataset_dirs <list-of-dataset-directories>
 ```
 
-This command assumes the following structure for the dataset directory:
+This command assumes each dataset directory has the following structure:
 
 ```
 dataset
@@ -87,7 +87,12 @@ dataset
     |_ VIA_JSON_combined_coco_gen.json
 ```
 
-The default name assumed for the annotations file is `VIA_JSON_combined_coco_gen.json`. Other filenames (or full paths to files) can be passed with the `--annotation_files` command-line argument. See the [Training Models Locally](crabs/guides/TrainingModelsLocally.md) for more details.
+The default name assumed for the annotations file is `VIA_JSON_combined_coco_gen.json`. Other filenames (or full paths to annotation files) can be passed with the `--annotation_files` command-line argument.
+
+To see the full list of possible arguments to the `train-detector` command run:
+```
+train-detector --help
+```
 
 ### Monitor a training job
 
@@ -99,17 +104,27 @@ To run MLflow, execute the following command from your `crabs-env` conda environ
 mlflow ui --backend-store-uri file:///<path-to-ml-runs>
 ```
 
-Replace `<path-to-ml-runs>` with the path to the directory where the MLflow output is. By default, the output is in an `ml-runs` directory under the current working directory.
+Replace `<path-to-ml-runs>` with the path to the directory where the MLflow output is. By default, the output is placed in an `ml-runs` folder under the directory from which the `train-detector` is launched.
+
+In the MLflow browser-based user-interface, you can find the path to the checkpoints directory for any run, under the `path_to_checkpoints` parameter. This will be useful to evaluate the trained model. The model saved at the end of the training job is saved as `last.ckpt` in the `path_to_checkpoints` directory.
 
 ### Evaluate a detector
 
 To evaluate a trained detector on the test split of the dataset, run the following command:
 
 ```
-evaluate-detector --trained_model_path {path_to_trained_model}
+evaluate-detector --trained_model_path <path-to-ckpt-file>
 ```
 
-This command assumes the trained model is under an MLflow database structure. That is, the checkpoint is assumed to be under a `checkpoints` directory, which in turn should be under a `experiment_hash/run_hash` directory. It will output the main evaluation metrics for the detector.
+This command assumes the trained detector model (a `.ckpt` checkpoint file) is saved in an MLflow database structure. That is, the checkpoint is assumed to be under a `checkpoints` directory, which in turn should be under a `<mlflow-experiment-hash>/<mlflow-run-hash>` directory. This will be the case if the model has been trained using the `train-detector` command.
+
+The `evaluate-detector` command will print to screen the average precision and average recall of the detector on the test set. It will also log those metrics to the MLflow database, along with the hyperparameters of the evaluation job. To visualise the MLflow summary of the evaluation job, run:
+```
+mlflow ui --backend-store-uri file:///<path-to-ml-runs>
+```
+where `<path-to-ml-runs>` is the path to the directory where the MLflow output is.
+
+To see the full list of possible arguments to the `evaluate-detector` command, run it with the `--help` flag.
 
 ### Run detector+tracking on a video
 

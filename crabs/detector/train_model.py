@@ -288,7 +288,7 @@ def train_parse_args(args):
         default="gpu",
         help=(
             "Accelerator for Pytorch Lightning. "
-            "Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. Default: gpu"
+            "Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. Default: gpu. "
             "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "  # noqa: E501
             "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"  # noqa: E501
         ),
@@ -322,8 +322,8 @@ def train_parse_args(args):
         default=1.0,
         help=(
             "Debugging option to run training on a fraction of the "
-            "training set."
-            "Default: 1.0 (all the training set)"
+            "training set. "
+            "Default: 1.0 (the full training set)"
         ),
     )
     parser.add_argument(
@@ -349,15 +349,15 @@ def train_parse_args(args):
     parser.add_argument(
         "--no_data_augmentation",
         action="store_true",
-        help="Ignore the data augmentation transforms defined in config file",
+        help=(
+            "Ignore the data augmentation transforms "
+            "defined in the config file"
+        ),
     )
     parser.add_argument(
         "--log_data_augmentation",
         action="store_true",
-        help=(
-            "Log data augmentation transforms linked to "
-            "datamodule as MLflow artifacts"
-        ),
+        help=("Log data augmentation transforms to " "MLflow as artifacts"),
     )
     return parser.parse_args(args)
 

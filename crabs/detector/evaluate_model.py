@@ -169,7 +169,7 @@ def evaluate_parse_args(args):
         default="",
         help=(
             "Location of YAML config to control evaluation. "
-            " If None is povided, the config used to train "
+            "If none is povided, the config used to train "
             "the model is used (recommended)."
         ),
     )
