@@ -106,10 +106,10 @@ Replace `<path-to-ml-runs>` with the path to the directory where the MLflow outp
 To evaluate a trained detector on the test split of the dataset, run the following command:
 
 ```
-evaluate-detector --model_dir {directory_to_trained_model} --dataset_dirs {parent_directory_of_frames_and_annotation}
+evaluate-detector --trained_model_path {path_to_trained_model}
 ```
 
-This command assumes the dataset structure described on the previous section. It will output the main evaluation metrics for the detector.
+This command assumes the trained model is under an MLflow database structure. That is, the checkpoint is assumed to be under a `checkpoints` directory, which in turn should be under a `experiment_hash/run_hash` directory. It will output the main evaluation metrics for the detector.
 
 ### Run detector+tracking on a video
 
