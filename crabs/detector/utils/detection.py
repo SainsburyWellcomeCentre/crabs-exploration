@@ -294,8 +294,9 @@ def bbox_tensors_to_COCO_dict(
             # we convert the array to list to make it JSON serializable
 
             annotation = {
-                "id": len(list_annotations) + 1,  # 1-based
-                "image_id": img_id,
+                "id": len(list_annotations)
+                + 1,  # 1-based by default in VIA tool
+                "image_id": img_id + 1,  # 1-based by default in VIA tool
                 "category_id": 1,
                 "bbox": [x_min, y_min, x_max - x_min, y_max - y_min],
                 "area": (x_max - x_min) * (y_max - y_min),
