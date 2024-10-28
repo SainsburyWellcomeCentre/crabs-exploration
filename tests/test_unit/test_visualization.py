@@ -7,7 +7,7 @@ import torch
 
 from crabs.detector.utils.visualization import (
     draw_bbox,
-    draw_detection,
+    draw_bboxes_on_images,
     save_images_with_boxes,
 )
 
@@ -146,7 +146,7 @@ def test_draw_bbox_green(sample_image, top_left, bottom_right, color):
 )
 def test_draw_detection(annotations, detections):
     imgs = [torch.rand(3, 100, 100)]
-    image_with_boxes = draw_detection(imgs, annotations, detections)
+    image_with_boxes = draw_bboxes_on_images(imgs, annotations, detections)
     assert image_with_boxes is not None
 
 
