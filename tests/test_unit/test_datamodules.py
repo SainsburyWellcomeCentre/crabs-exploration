@@ -112,7 +112,11 @@ def create_dummy_dataset():
     """
 
     def _create_dummy_dataset(n_images):
-        # n_images = 10  # needs to be > 5 to avoid floating point errors in dataset split
+        """Create a dataset with N images and random bounding boxes per image.
+
+        The number of images in the dataset needs to be > 5 to avoid floating point errors
+        in the dataset split.
+        """
         img_size = 256
         fixed_width_height = 10
 
