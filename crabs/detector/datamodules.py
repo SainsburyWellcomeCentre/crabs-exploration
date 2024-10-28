@@ -172,10 +172,12 @@ class CrabsDataModule(LightningDataModule):
             A tuple with the train, test and validation datasets
 
         """
-        # Optionally fix the generator for a reproducible split of data
-        generator = None
+        # Optionally fix the random number generators for reproducible
+        # splits of data
+        rng_train_split, rng_val_split = None, None
         if self.split_seed:
-            generator = torch.Generator().manual_seed(self.split_seed)
+            rng_train_split = torch.Generator().manual_seed(self.split_seed)
+            rng_val_split = torch.Generator().manual_seed(self.split_seed)
 
         # Create dataset (combining all datasets passed)
         full_dataset = CrabsCocoDetection(
@@ -192,7 +194,7 @@ class CrabsDataModule(LightningDataModule):
         train_dataset, test_val_dataset = random_split(
             full_dataset,
             [self.config["train_fraction"], 1 - self.config["train_fraction"]],
-            generator=generator,
+            generator=rng_train_split,
         )
 
         # Split test/val sets from the remainder
@@ -202,6 +204,7 @@ class CrabsDataModule(LightningDataModule):
                 1 - self.config["val_over_test_fraction"],
                 self.config["val_over_test_fraction"],
             ],
+            generator=rng_val_split,
         )
 
         return train_dataset, test_dataset, val_dataset
@@ -222,9 +225,9 @@ class CrabsDataModule(LightningDataModule):
         Define the transforms for each split of the data and compute them.
         """
         # Assign transforms
+        self.train_transform = self._get_train_transform()
         # right now assuming validation and test get the same transforms
         test_and_val_transform = self._get_test_val_transform()
-        self.train_transform = self._get_train_transform()
         self.test_transform = test_and_val_transform
         self.val_transform = test_and_val_transform
 
