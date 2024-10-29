@@ -43,13 +43,17 @@ class DetectorEvaluate:
         # CLI inputs
         self.args = args
 
-        # trained model
+        # trained model data
         self.trained_model_path = args.trained_model_path
-        self.trained_model_run_name = get_mlflow_parameters_from_ckpt(
+        trained_model_params = get_mlflow_parameters_from_ckpt(
             self.trained_model_path
-        )["run_name"]
+        )
+        self.trained_model_run_name = trained_model_params["run_name"]
+        self.trained_model_experiment_name = trained_model_params[
+            "cli_args/experiment_name"
+        ]
 
-        # config: retreieve from ckpt if not passed as CLI argument
+        # config: retrieve from ckpt if not passed as CLI argument
         self.config_file = args.config_file
         self.config = get_config_from_ckpt(
             config_file=self.config_file,
@@ -90,6 +94,7 @@ class DetectorEvaluate:
     def setup_trainer(self):
         """Set up trainer object with logging for testing."""
         # Assign run name
+        # TODO: mlflow_run_name_auto should be default I think
         self.run_name = get_mlflow_run_name_from_ckpt(
             mlflow_run_name_auto=self.args.mlflow_run_name_auto,
             trained_model_run_name=self.trained_model_run_name,
@@ -98,10 +103,27 @@ class DetectorEvaluate:
 
         # Setup logger
         mlf_logger = setup_mlflow_logger(
-            experiment_name=self.experiment_name,  # get from ckpt?
-            run_name=self.run_name,  # -------------->get from ckpt?
+            experiment_name=self.experiment_name,
+            run_name=self.run_name,
             mlflow_folder=self.mlflow_folder,
             cli_args=self.args,
+        )
+
+        # Add trained model section
+        mlf_logger.log_hyperparams(
+            {
+                "trained_model/run_name": self.trained_model_run_name,
+                "trained_model/experiment_name": self.trained_model_experiment_name,
+            }
+        )
+
+        # Add dataset section
+        mlf_logger.log_hyperparams(
+            {
+                "dataset/images_dir": self.images_dirs,
+                "dataset/annotation_files": self.annotation_files,
+                "dataset/seed": self.seed_n,
+            }
         )
 
         # Return trainer linked to logger
