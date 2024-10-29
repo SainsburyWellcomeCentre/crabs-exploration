@@ -1,3 +1,5 @@
+"""Script to evaluate a trained object detector."""
+
 import argparse
 import logging
 import os
@@ -23,8 +25,7 @@ from crabs.detector.utils.visualization import save_images_with_boxes
 
 
 class DetectorEvaluate:
-    """
-    A class for evaluating an object detector.
+    """Interface for evaluating an object detector.
 
     Parameters
     ----------
@@ -34,6 +35,7 @@ class DetectorEvaluate:
     """
 
     def __init__(self, args: argparse.Namespace) -> None:
+        """Initialise the evaluation interface with the given arguments."""
         # CLI inputs
         self.args = args
 
@@ -77,10 +79,7 @@ class DetectorEvaluate:
         logging.info(f"Seed: {self.seed_n}")
 
     def setup_trainer(self):
-        """
-        Setup trainer object with logging for testing.
-        """
-
+        """Set up trainer object with logging for testing."""
         # Assign run name
         self.run_name = set_mlflow_run_name()
 
@@ -101,9 +100,7 @@ class DetectorEvaluate:
         )
 
     def evaluate_model(self) -> None:
-        """
-        Evaluate the trained model on the test dataset.
-        """
+        """Evaluate the trained model on the test dataset."""
         # Create datamodule
         data_module = CrabsDataModule(
             list_img_dirs=self.images_dirs,
@@ -141,8 +138,7 @@ class DetectorEvaluate:
 
 
 def main(args) -> None:
-    """
-    Main function to orchestrate the testing process.
+    """Run detector testing.
 
     Parameters
     ----------
@@ -152,12 +148,14 @@ def main(args) -> None:
     Returns
     -------
         None
+
     """
     evaluator = DetectorEvaluate(args)
     evaluator.evaluate_model()
 
 
 def evaluate_parse_args(args):
+    """Parse command-line arguments for evaluation."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--trained_model_path",
@@ -171,7 +169,8 @@ def evaluate_parse_args(args):
         default="",
         help=(
             "Location of YAML config to control evaluation. "
-            " If None is povided, the config used to train the model is used (recommended)."
+            "If none is povided, the config used to train "
+            "the model is used (recommended)."
         ),
     )
     parser.add_argument(
@@ -190,9 +189,11 @@ def evaluate_parse_args(args):
         default=[],
         help=(
             "List of paths to annotation files. "
-            "If none are provided (recommended), the annotations from the dataset of the trained model are used."
+            "If none are provided (recommended), the annotations "
+            "from the dataset of the trained model are used."
             "The full path or the filename can be provided. "
-            "If only filename is provided, it is assumed to be under dataset/annotations."
+            "If only filename is provided, it is assumed to be "
+            "under dataset/annotations."
         ),
     )
     parser.add_argument(
@@ -210,9 +211,10 @@ def evaluate_parse_args(args):
         type=str,
         default="gpu",
         help=(
-            "Accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. Default: gpu."
-            "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "
-            "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"
+            "Accelerator for Pytorch Lightning. "
+            "Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. Default: gpu."
+            "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "  # noqa: E501
+            "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"  # noqa: E501
         ),
     )
     parser.add_argument(
@@ -220,8 +222,10 @@ def evaluate_parse_args(args):
         type=str,
         default="Sept2023_evaluation",
         help=(
-            "Name of the experiment in MLflow, under which the current run will be logged. "
-            "For example, the name of the dataset could be used, to group runs using the same data. "
+            "Name of the experiment in MLflow, under which the current run "
+            "will be logged. "
+            "For example, the name of the dataset could be used, to group "
+            "runs using the same data. "
             "Default: Sept2023_evaluation"
         ),
     )
@@ -235,7 +239,8 @@ def evaluate_parse_args(args):
         type=float,
         default=1.0,
         help=(
-            "Debugging option to run training on a fraction of the training set."
+            "Debugging option to run training on a fraction of "
+            "the training set."
             "Default: 1.0 (all the training set)"
         ),
     )
@@ -255,7 +260,8 @@ def evaluate_parse_args(args):
         type=float,
         default=0.5,
         help=(
-            "Score threshold for visualising detections on output frames. Default: 0.5"
+            "Score threshold for visualising detections on output frames. "
+            "Default: 0.5"
         ),
     )
     parser.add_argument(
@@ -264,7 +270,8 @@ def evaluate_parse_args(args):
         default="",
         help=(
             "Output directory for the exported frames. "
-            "By default, the frames are saved in a `results_<timestamp> folder "
+            "By default, the frames are saved in a "
+            "`results_<timestamp> folder "
             "under the current working directory."
         ),
     )
@@ -272,6 +279,7 @@ def evaluate_parse_args(args):
 
 
 def app_wrapper():
+    """Wrap function to run the evaluation."""
     torch.set_float32_matmul_precision("medium")
 
     eval_args = evaluate_parse_args(sys.argv[1:])

@@ -1,3 +1,5 @@
+"""Dataset classes for the crabs COCO dataset."""
+
 import json
 import os
 import tempfile
@@ -9,6 +11,12 @@ from torchvision.datasets import CocoDetection, wrap_dataset_for_transforms_v2
 
 
 class CrabsCocoDetection(torch.utils.data.ConcatDataset):
+    """Class for crabs' COCO dataset.
+
+    The dataset is built by concatenating CocoDetection datasets, each wrapped
+    for use with `transforms_v2`.
+    """
+
     def __init__(
         self,
         list_img_dirs: list[str],
@@ -16,9 +24,7 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         transforms: Optional[Callable] = None,
         list_exclude_files: Optional[list[str]] = None,
     ):
-        """
-        A class for concatenated CocoDetection datasets wrapped for
-        transforms_v2.
+        """Construct a concatenated dataset of CocoDetection datasets.
 
         If a list of files to exclude from the dataset is passed,
         a new annotation file is generated without the data to exclude.
@@ -36,9 +42,10 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
 
         Each individual dataset in the concatenated set should be equivalent
         to one obtained with:
-        > dataset = wrap_dataset_for_transforms_v2(CocoDetection([IMAGES_PATH], [ANNOTATIONS_PATH]))
+        > dataset = wrap_dataset_for_transforms_v2(
+        >   CocoDetection([IMAGES_PATH], [ANNOTATIONS_PATH])
+        > )
         """
-
         # Create list of transformed-COCO datasets
         list_datasets = []
         for img_dir, annotation_file in zip(
@@ -103,7 +110,7 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         self,
         annotation_file: str,
         list_files_to_exclude: list[str],
-        out_filename,
+        out_filename: str,
     ) -> str:
         """Remove selected images from annotation file and save new file.
 
@@ -116,14 +123,17 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
             path to file with annotations
         list_files_to_exclude : list[str]
             list of filenames to exclude from the dataset
+        out_filename : str
+            path to save new annotation file
 
         Returns
         -------
         str
             path to new annotation file
+
         """
         # Read annotation file as a dataset dict
-        with open(annotation_file, "r") as f:
+        with open(annotation_file) as f:
             dataset = json.load(f)
 
         # Determine images to exclude

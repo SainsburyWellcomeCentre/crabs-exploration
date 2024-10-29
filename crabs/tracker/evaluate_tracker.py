@@ -1,6 +1,8 @@
+"""Evaluate tracker using the Multi-Object Tracking Accuracy (MOTA) metric."""
+
 import csv
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 import numpy as np
 
@@ -8,45 +10,52 @@ from crabs.tracker.utils.tracking import extract_bounding_box_info
 
 
 class TrackerEvaluate:
+    """Interface to evaluate tracker."""
+
     def __init__(
         self,
         gt_dir: str,
         predicted_boxes_id: list[np.ndarray],
         iou_threshold: float,
     ):
-        """
-        Initialize the TrackerEvaluate class with ground truth directory, tracked list, and IoU threshold.
+        """Initialize the TrackerEvaluate class.
+
+        Initialised with ground truth directory, tracked list, and IoU
+        threshold.
 
         Parameters
         ----------
         gt_dir : str
             Directory path of the ground truth CSV file.
-        tracked_list : List[np.ndarray]
-            A list where each element is a numpy array representing tracked objects in a frame.
-            Each numpy array has shape (N, 5), where N is the number of objects.
-            The columns are [x1, y1, x2, y2, id], where (x1, y1) and (x2, y2)
-            define the bounding box and id is the object ID.
+        predicted_boxes_id : list[np.ndarray]
+            List of numpy arrays containing predicted bounding boxes and IDs.
         iou_threshold : float
-            Intersection over Union (IoU) threshold for evaluating tracking performance.
+            Intersection over Union (IoU) threshold for evaluating
+            tracking performance.
+
         """
         self.gt_dir = gt_dir
         self.predicted_boxes_id = predicted_boxes_id
         self.iou_threshold = iou_threshold
-        self.last_known_predicted_ids: Dict = {}
+        self.last_known_predicted_ids: dict = {}
 
-    def get_predicted_data(self) -> Dict[int, Dict[str, Any]]:
-        """
-        Convert predicted bounding box and ID into a dictionary organized by frame number.
+    def get_predicted_data(self) -> dict[int, dict[str, Any]]:
+        """Format predicted bounding box and ID as dictionary.
+
+        Dictionary keys are frame numbers.
 
         Returns
         -------
-        Dict[int, Dict[str, Any]]:
-            A dictionary where the key is the frame number and the value is another dictionary containing:
-            - 'bbox': A numpy array with shape (N, 4) containing coordinates of the bounding boxes
-            [x, y, x + width, y + height] for every object in the frame.
+        dict[int, dict[str, Any]]:
+            A dictionary where the key is the frame number and the value is
+            another dictionary containing:
+            - 'bbox': A numpy array with shape (N, 4) containing coordinates
+            of the bounding boxes [x, y, x + width, y + height] for every
+            object in the frame.
             - 'id': A numpy array containing the IDs of the tracked objects.
+
         """
-        predicted_dict: Dict[int, Dict[str, Any]] = {}
+        predicted_dict: dict[int, dict[str, Any]] = {}
 
         for frame_number, frame_data in enumerate(self.predicted_boxes_id):
             if frame_data.size == 0:
@@ -59,19 +68,21 @@ class TrackerEvaluate:
 
         return predicted_dict
 
-    def get_ground_truth_data(self) -> Dict[int, Dict[str, Any]]:
-        """
-        Extract ground truth bounding box data from a CSV file and organize it by frame number.
+    def get_ground_truth_data(self) -> dict[int, dict[str, Any]]:
+        """Fromat ground truth bounding box data as dict with key frame number.
 
         Returns
         -------
-        Dict[int, Dict[str, Any]]:
-            A dictionary where the key is the frame number and the value is another dictionary containing:
-            - 'bbox': A numpy arrays with shape of (N, 4) containing coordinates of the bounding box
-                [x, y, x + width, y + height] for every crabs in the frame.
+        dict[int, dict[str, Any]]:
+            A dictionary where the key is the frame number and the value is
+            another dictionary containing:
+            - 'bbox': A numpy arrays with shape of (N, 4) containing
+                coordinates of the bounding box [x, y, x + width, y + height]
+                for every crabs in the frame.
             - 'id': The ground truth ID
+
         """
-        with open(self.gt_dir, "r") as csvfile:
+        with open(self.gt_dir) as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)  # Skip the header row
             ground_truth_data = [
@@ -110,22 +121,24 @@ class TrackerEvaluate:
         return ground_truth_dict
 
     def calculate_iou(self, box1: np.ndarray, box2: np.ndarray) -> float:
-        """
-        Calculate IoU (Intersection over Union) of two bounding boxes.
+        """Calculate IoU (Intersection over Union) of two bounding boxes.
 
         Parameters
         ----------
-        box1 (np.ndarray):
+        box1 : np.ndarray
             Coordinates [x1, y1, x2, y2] of the first bounding box.
-            Here, (x1, y1) represents the top-left corner, and (x2, y2) represents the bottom-right corner.
-        box2 (np.ndarray):
+            Here, (x1, y1) represents the top-left corner, and (x2, y2)
+            represents the bottom-right corner.
+        box2 : np.ndarray
             Coordinates [x1, y1, x2, y2] of the second bounding box.
-            Here, (x1, y1) represents the top-left corner, and (x2, y2) represents the bottom-right corner.
+            Here, (x1, y1) represents the top-left corner, and (x2, y2)
+            represents the bottom-right corner.
 
         Returns
         -------
-        float:
+        float
             IoU value.
+
         """
         x1_box1, y1_box1, x2_box1, y2_box1 = box1
         x1_box2, y1_box2, x2_box2, y2_box2 = box2
@@ -149,25 +162,27 @@ class TrackerEvaluate:
 
         return iou
 
-    def count_identity_switches(
+    def count_identity_switches(  # noqa: C901
         self,
-        gt_to_tracked_id_previous_frame: Optional[Dict[int, int]],
-        gt_to_tracked_id_current_frame: Dict[int, int],
+        gt_to_tracked_id_previous_frame: Optional[dict[int, int]],
+        gt_to_tracked_id_current_frame: dict[int, int],
     ) -> int:
-        """
-        Count the number of identity switches between two sets of object IDs.
+        """Count the number of identity switches between two sets of IDs.
 
         Parameters
         ----------
-        gt_to_tracked_id_previous_frame : Optional[Dict[int, int]]
-            A dictionary mapping ground truth IDs to predicted IDs from the previous frame.
-        gt_to_tracked_id_current_frame : Dict[int, int]
-            A dictionary mapping ground truth IDs to predicted IDs for the current frame.
+        gt_to_tracked_id_previous_frame : Optional[dict[int, int]]
+            A dictionary mapping ground truth IDs to predicted IDs from the
+            previous frame.
+        gt_to_tracked_id_current_frame : dict[int, int]
+            A dictionary mapping ground truth IDs to predicted IDs for the
+            current frame.
 
         Returns
         -------
         int
             The number of identity switches between the two sets of object IDs.
+
         """
         if gt_to_tracked_id_previous_frame is None:
             for gt_id, pred_id in gt_to_tracked_id_current_frame.items():
@@ -176,17 +191,21 @@ class TrackerEvaluate:
             return 0
 
         switch_counter = 0
-        # Filter sets of ground truth IDs for current and previous frames to exclude NaN predicted IDs
+        # Filter sets of ground truth IDs for current and previous frames
+        # to exclude NaN predicted IDs
         gt_ids_current_frame = set(gt_to_tracked_id_current_frame.keys())
         gt_ids_prev_frame = set(gt_to_tracked_id_previous_frame.keys())
 
-        # Compute lists of ground truth IDs that continue, disappear, and appear
+        # Compute lists of ground truth IDs that continue, disappear,
+        # and appear
         gt_ids_cont = list(gt_ids_current_frame & gt_ids_prev_frame)
         gt_ids_disappear = list(gt_ids_prev_frame - gt_ids_current_frame)
         gt_ids_appear = list(gt_ids_current_frame - gt_ids_prev_frame)
 
         # Store used predicted IDs to avoid double counting
-        # In `used_pred_ids` we log IDs from either the current or the previous frame that have been involved in an already counted ID switch.
+        # In `used_pred_ids` we log IDs from either the current or the
+        # previous frame that have been involved in an already
+        # counted ID switch.
         used_pred_ids = set()
 
         # Case 1: Objects that continue to exist according to GT
@@ -194,13 +213,15 @@ class TrackerEvaluate:
             previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
             current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
             if all(
-                not np.isnan(x) for x in [previous_pred_id, current_pred_id]
+                not np.isnan(x)  # type: ignore
+                for x in [previous_pred_id, current_pred_id]
             ):  # Exclude if missed detection in previous AND current frame
                 if current_pred_id != previous_pred_id:
                     switch_counter += 1
                     used_pred_ids.add(current_pred_id)
-            # if the object was a missed detection in the previous frame: check if current prediction matches historical
-            elif np.isnan(previous_pred_id) and not np.isnan(current_pred_id):
+            # if the object was a missed detection in the previous frame:
+            # check if current prediction matches historical
+            elif np.isnan(previous_pred_id) and not np.isnan(current_pred_id):  # type: ignore  # noqa: SIM102
                 if gt_id in self.last_known_predicted_ids:
                     last_known_predicted_id = self.last_known_predicted_ids[
                         gt_id
@@ -213,10 +234,10 @@ class TrackerEvaluate:
         # Case 2: Objects that disappear according to GT
         for gt_id in gt_ids_disappear:
             previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
-            if not np.isnan(
-                previous_pred_id
+            if not np.isnan(  # noqa: SIM102
+                previous_pred_id  # type: ignore
             ):  # Exclude if missed detection in previous frame
-                if previous_pred_id in gt_to_tracked_id_current_frame.values():
+                if previous_pred_id in gt_to_tracked_id_current_frame.values():  # noqa: SIM102
                     if previous_pred_id not in used_pred_ids:
                         switch_counter += 1
                         used_pred_ids.add(previous_pred_id)
@@ -225,7 +246,7 @@ class TrackerEvaluate:
         for gt_id in gt_ids_appear:
             current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
             if not np.isnan(
-                current_pred_id
+                current_pred_id  # type: ignore
             ):  # Exclude if missed detection in current frame
                 # check if there was and ID switch wrt previous frame
                 if current_pred_id in gt_to_tracked_id_previous_frame.values():
@@ -245,35 +266,38 @@ class TrackerEvaluate:
 
     def evaluate_mota(
         self,
-        gt_data: Dict[str, np.ndarray],
-        pred_data: Dict[str, np.ndarray],
+        gt_data: dict[str, np.ndarray],
+        pred_data: dict[str, np.ndarray],
         iou_threshold: float,
-        gt_to_tracked_id_previous_frame: Optional[Dict[int, int]],
-    ) -> Tuple[float, Dict[int, int]]:
-        """
-        Evaluate MOTA (Multiple Object Tracking Accuracy).
+        gt_to_tracked_id_previous_frame: Optional[dict[int, int]],
+    ) -> tuple[float, dict[int, int]]:
+        """Evaluate MOTA (Multiple Object Tracking Accuracy).
 
         Parameters
         ----------
-        gt_data : Dict[str, np.ndarray]
+        gt_data : dict[str, np.ndarray]
             Dictionary containing ground truth bounding boxes and IDs.
             - 'bbox': Bounding boxes with shape (N, 4).
             - 'id': Ground truth IDs with shape (N,).
-        pred_data : Dict[str, np.ndarray]
+        pred_data : dict[str, np.ndarray]
             Dictionary containing predicted bounding boxes and IDs.
             - 'bbox': Bounding boxes with shape (N, 4).
             - 'id': Predicted IDs with shape (N,).
         iou_threshold : float
             Intersection over Union (IoU) threshold for considering a match.
-        gt_to_tracked_id_previous_frame : Optional[Dict[int, int]]
-            A dictionary mapping ground truth IDs to predicted IDs from the previous frame.
+        gt_to_tracked_id_previous_frame : Optional[dict[int, int]]
+            A dictionary mapping ground truth IDs to predicted IDs from the
+            previous frame.
 
         Returns
         -------
         float
-            The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
-        Dict[int, int]
-            A dictionary mapping ground truth IDs to predicted IDs for the current frame.
+            The computed MOTA (Multi-Object Tracking Accuracy) score for the
+            tracking performance.
+        dict[int, int]
+            A dictionary mapping ground truth IDs to predicted IDs for the
+            current frame.
+
         """
         total_gt = len(gt_data["bbox"])
         false_positive = 0
@@ -286,7 +310,7 @@ class TrackerEvaluate:
         gt_boxes = gt_data["bbox"]
         gt_ids = gt_data["id"]
 
-        for i, (pred_box, pred_id) in enumerate(zip(pred_boxes, pred_ids)):
+        for _i, (pred_box, pred_id) in enumerate(zip(pred_boxes, pred_ids)):
             best_iou = 0.0
             index_gt_best_match = None
             index_gt_not_match = None
@@ -301,7 +325,8 @@ class TrackerEvaluate:
                         index_gt_not_match = j
 
             if index_gt_best_match is not None:
-                # Successfully found a matching ground truth box for the tracked box.
+                # Successfully found a matching ground truth box for the
+                # tracked box.
                 indices_of_matched_gt_boxes.add(index_gt_best_match)
                 # Map ground truth ID to tracked ID
                 gt_to_tracked_id_current_frame[
@@ -312,7 +337,7 @@ class TrackerEvaluate:
             if index_gt_not_match is not None:
                 gt_to_tracked_id_current_frame[
                     int(gt_ids[index_gt_not_match])
-                ] = np.nan
+                ] = np.nan  # type: ignore
 
         missed_detections = total_gt - len(indices_of_matched_gt_boxes)
         num_switches = self.count_identity_switches(
@@ -327,23 +352,26 @@ class TrackerEvaluate:
 
     def evaluate_tracking(
         self,
-        ground_truth_dict: Dict[int, Dict[str, Any]],
-        predicted_dict: Dict[int, Dict[str, Any]],
+        ground_truth_dict: dict[int, dict[str, Any]],
+        predicted_dict: dict[int, dict[str, Any]],
     ) -> list[float]:
-        """
-        Evaluate tracking performance using the Multi-Object Tracking Accuracy (MOTA) metric.
+        """Evaluate tracking with the Multi-Object Tracking Accuracy metric.
 
         Parameters
         ----------
         ground_truth_dict : dict
-            Dictionary containing ground truth bounding boxes and IDs for each frame, organized by frame number.
+            Dictionary containing ground truth bounding boxes and IDs for each
+            frame, organized by frame number.
         predicted_dict : dict
-            Dictionary containing predicted bounding boxes and IDs for each frame, organized by frame number.
+            Dictionary containing predicted bounding boxes and IDs for each
+            frame, organized by frame number.
 
         Returns
         -------
         list[float]:
-            The computed MOTA (Multi-Object Tracking Accuracy) score for the tracking performance.
+            The computed MOTA (Multi-Object Tracking Accuracy) score for the
+            tracking performance.
+
         """
         mota_values = []
         prev_frame_id_map: Optional[dict] = None
@@ -364,12 +392,10 @@ class TrackerEvaluate:
         return mota_values
 
     def run_evaluation(self) -> None:
-        """
-        Run evaluation of tracking based on tracking ground truth.
-        """
+        """Run evaluation of tracking based on tracking ground truth."""
         predicted_dict = self.get_predicted_data()
         ground_truth_dict = self.get_ground_truth_data()
         mota_values = self.evaluate_tracking(ground_truth_dict, predicted_dict)
 
         overall_mota = np.mean(mota_values)
-        logging.info("Overall MOTA: %f" % overall_mota)
+        logging.info("Overall MOTA: %f" % overall_mota)  # noqa: UP031

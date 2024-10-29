@@ -17,8 +17,8 @@ def mock_args():
         video_path="/path/to/video.mp4",
         trained_model_path="/path/to/model.ckpt",
         output_dir=temp_dir,
-        device="cuda",
-        gt_path=None,
+        accelerator="gpu",
+        annotations_file=None,
         save_video=None,
     )
 

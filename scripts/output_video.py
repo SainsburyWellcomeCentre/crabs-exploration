@@ -1,3 +1,5 @@
+"""Script to create a video with tracked bounding boxes."""
+
 from pathlib import Path
 
 import cv2
@@ -10,6 +12,7 @@ def create_opencv_video(
     list_individuals_idcs=None,
     list_frame_idcs=None,
 ):
+    """Create a video with bounding boxes around the selected individuals."""
     # Open the video file
     cap = cv2.VideoCapture(input_video)
 
@@ -138,11 +141,11 @@ if __name__ == "__main__":
 
     pred_csv = (
         "/Users/sofia/arc/project_Zoo_crabs/escape_clips/"
-        "crabs_track_output_selected_clips/04.09.2023-04-Right_RE_test/predicted_tracks.csv"
+        "crabs_track_output_selected_clips/04.09.2023-04-Right_RE_test/predicted_tracks.csv"  # noqa
     )
 
     input_video = (
-        "/Users/sofia/arc/project_Zoo_crabs/escape_clips/crabs_track_output_selected_clips/"
+        "/Users/sofia/arc/project_Zoo_crabs/escape_clips/crabs_track_output_selected_clips/"  # noqa
         "04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test.mp4"
     )
 

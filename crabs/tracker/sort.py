@@ -1,5 +1,5 @@
-"""
-SORT: A Simple, Online and Realtime Tracker
+"""SORT: A Simple, Online and Realtime Tracker.
+
 Copyright (C) 2016-2020 Alex Bewley alex@bewley.ai
 
 This program is free software: you can redistribute it and/or modify
@@ -26,10 +26,8 @@ from crabs.tracker.utils.sort import (
 )
 
 
-class KalmanBoxTracker(object):
-    """
-    This class represents the internal state of individual tracked objects
-    observed as bbox.
+class KalmanBoxTracker:
+    """Class for the internal state of individual tracked objects.
 
     Parameters
     ----------
@@ -41,9 +39,7 @@ class KalmanBoxTracker(object):
     count = 0
 
     def __init__(self, bbox):
-        """
-        Initialises a tracker using initial bounding box.
-        """
+        """Initialise a tracker using initial bounding box."""
         # define constant velocity model
         self.kf = KalmanFilter(dim_x=7, dim_z=4)
         self.kf.F = np.array(
@@ -67,9 +63,10 @@ class KalmanBoxTracker(object):
         )
 
         self.kf.R[2:, 2:] *= 10.0
-        self.kf.P[
-            4:, 4:
-        ] *= 1000.0  # give high uncertainty to the unobservable initial velocities
+        self.kf.P[4:, 4:] *= (
+            1000.0
+            # give high uncertainty to the unobservable initial velocities
+        )
         self.kf.P *= 10.0
         self.kf.Q[-1, -1] *= 0.01
         self.kf.Q[4:, 4:] *= 0.01
@@ -84,13 +81,13 @@ class KalmanBoxTracker(object):
         self.age = 0
 
     def update(self, bbox: np.ndarray) -> None:
-        """
-        Updates the state vector with an observed bounding box.
+        """Update the state vector with an observed bounding box.
 
         Parameters
         ----------
         bbox : np.ndarray
             Observed bounding box coordinates in the format [x1, y1, x2, y2].
+
         """
         self.time_since_update = 0
         self.history = []
@@ -99,13 +96,13 @@ class KalmanBoxTracker(object):
         self.kf.update(convert_bbox_to_z(bbox))
 
     def predict(self) -> np.ndarray:
-        """
-        Advances the state vector and returns the predicted bounding box estimate.
+        """Advance the state vector and return predicted bounding box estimate.
 
         Returns
         -------
         np.ndarray
             Predicted bounding box coordinates in the format [x1, y1, x2, y2].
+
         """
         if (self.kf.x[6] + self.kf.x[2]) <= 0:
             self.kf.x[6] *= 0.0
@@ -118,32 +115,35 @@ class KalmanBoxTracker(object):
         return self.history[-1]
 
     def get_state(self) -> np.ndarray:
-        """
-        Returns the current bounding box estimate.
+        """Return the current bounding box estimate.
 
         Returns
         -------
         np.ndarray
             Current bounding box coordinates in the format [x1, y1, x2, y2].
+
         """
         return convert_x_to_bbox(self.kf.x)
 
 
-class Sort(object):
+class Sort:  # noqa: D101
     def __init__(
         self, max_age: int = 1, min_hits: int = 3, iou_threshold: float = 0.3
     ):
-        """
-        Sets key parameters for SORT.
+        """Set key parameters for SORT.
 
         Parameters
         ----------
         max_age : int, optional
-            Maximum number of frames to keep a tracker alive without an update. Default is 1.
+            Maximum number of frames to keep a tracker alive without an update.
+            Default is 1.
         min_hits : int, optional
-            Minimum number of consecutive hits to consider a tracker valid. Default is 3.
+            Minimum number of consecutive hits to consider a tracker valid.
+            Default is 3.
         iou_threshold : float, optional
-            IOU threshold for associating detections with trackers. Default is 0.3.
+            IOU threshold for associating detections with trackers.
+            Default is 0.3.
+
         """
         self.max_age = max_age
         self.min_hits = min_hits
@@ -151,23 +151,27 @@ class Sort(object):
         self.trackers: list = []
         self.frame_count = 0
 
-    def update(self, dets: np.ndarray = np.empty((0, 5))) -> np.ndarray:
-        """
-        Updates the SORT tracker with new detections.
+    def update(
+        self,
+        dets: np.ndarray = np.empty((0, 5)),  # noqa: B008
+    ) -> np.ndarray:
+        """Update the SORT tracker with new detections.
 
         Parameters
         ----------
         dets : np.ndarray, optional
-            Array of shape (N, 5) representing N detection bounding boxes in format [x1, y1, x2, y2, score].
-            Use np.empty((0, 5)) for frames without detections.
+            Array of shape (N, 5) representing N detection bounding boxes in
+            format [x1, y1, x2, y2, score]. Use np.empty((0, 5)) for frames
+            without detections.
 
         Returns
         -------
         np.ndarray
             Array of tracked objects with object IDs added as the last column.
-            The shape of the array is (M, 5), where M is the number of tracked objects.
-        """
+            The shape of the array is (M, 5), where M is the number of tracked
+            objects.
 
+        """
         self.frame_count += 1
         # get predicted locations from existing trackers.
         trks = np.zeros((len(self.trackers), 5))

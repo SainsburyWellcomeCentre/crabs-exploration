@@ -24,7 +24,7 @@ DEFAULT_CONFIG = (
 @pytest.fixture
 def default_train_config():
     config_file = DEFAULT_CONFIG
-    with open(config_file, "r") as f:
+    with open(config_file) as f:
         return yaml.safe_load(f)
 
 
@@ -86,7 +86,6 @@ def expected_no_data_augm_transforms():
 
 def compare_transforms_attrs_excluding(transform1, transform2, keys_to_skip):
     """Compare the attributes of two transforms excluding those in list."""
-
     transform1_attrs_without_fns = {
         key: val
         for key, val in transform1.__dict__.items()
@@ -106,16 +105,16 @@ def compare_transforms_attrs_excluding(transform1, transform2, keys_to_skip):
 def create_dummy_dataset():
     """Return a factory of dummy images and annotations for testing.
 
-    The created datasets consist of N images, with a random number of bounding boxes
-    per image. The bounding boxes have fixed width and height, but their location
-    is randomized. Both images and annotations are torch tensors.
+    The created datasets consist of N images, with a random number of bounding
+    boxes per image. The bounding boxes have fixed width and height, but their
+    location is randomized. Both images and annotations are torch tensors.
     """
 
     def _create_dummy_dataset(n_images):
         """Create a dataset with N images and random bounding boxes per image.
 
-        The number of images in the dataset needs to be > 5 to avoid floating point errors
-        in the dataset split.
+        The number of images in the dataset needs to be > 5 to avoid floating
+        point errors in the dataset split.
         """
         img_size = 256
         fixed_width_height = 10
@@ -127,7 +126,8 @@ def create_dummy_dataset():
             n_bboxes = random.randint(1, 5)
             boxes = []
             for _ in range(n_bboxes):
-                # Randomise the location of the top left corner of the bounding box
+                # Randomise the location of the top left corner of the
+                # bounding box
                 x_min = random.randint(0, img_size - fixed_width_height)
                 y_min = random.randint(0, img_size - fixed_width_height)
 
@@ -193,7 +193,7 @@ def create_dummy_dataset_dirs(create_dummy_dataset, tmp_path_factory):
 def test_get_train_transform(
     crabs_data_module, expected_train_transforms, request
 ):
-    """Test transforms linked to training set are as expected"""
+    """Test transforms linked to training set are as expected."""
     crabs_data_module = request.getfixturevalue(crabs_data_module)
     expected_train_transforms = request.getfixturevalue(
         expected_train_transforms
@@ -209,7 +209,8 @@ def test_get_train_transform(
         expected_train_transforms.transforms,
     ):
         # we skip the attribute `_labels_getter` of `SanitizeBoundingBoxes`
-        # because it points to a lambda function, which does not have a comparison defined.
+        # because it points to a lambda function, which does not have a
+        # comparison defined.
         assert compare_transforms_attrs_excluding(
             transform1=train_tr,
             transform2=expected_train_tr,
@@ -233,7 +234,7 @@ def test_get_train_transform(
 def test_get_test_val_transform(
     crabs_data_module, expected_test_val_transforms, request
 ):
-    """Test transforms linked to test and validation sets are as expected"""
+    """Test transforms linked to test and validation sets are as expected."""
     crabs_data_module = request.getfixturevalue(crabs_data_module)
     expected_test_val_transforms = request.getfixturevalue(
         expected_test_val_transforms
@@ -279,7 +280,10 @@ def test_collate_fn(crabs_data_module, create_dummy_dataset, request):
 
 
 @pytest.mark.parametrize(
-    "dataset_size, seed, train_fraction, val_over_test_fraction, expected_img_ids_per_split",
+    (
+        "dataset_size, seed, train_fraction, "
+        "val_over_test_fraction, expected_img_ids_per_split"
+    ),
     [
         (
             50,
@@ -317,9 +321,9 @@ def test_compute_splits(
     create_dummy_dataset_dirs,
     default_train_config,
 ):
-    """Test dataset splits are reproducible and according to the requested
-    fraction"""
-
+    """Test dataset splits are reproducible and match
+    the requested fraction.
+    """
     # Create a dummy dataset and get paths to its directories
     dataset_dirs = create_dummy_dataset_dirs(n_images=dataset_size)
 
