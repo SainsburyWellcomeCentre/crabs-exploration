@@ -1,14 +1,15 @@
 from pathlib import Path
 
 import cv2
+import numpy as np
 
 
-def create_opencv_video(
+def create_opencv_video(  # noqa: C901
     ds,
     input_video,
     output_video_path,
-    list_individuals_idcs=None,
-    list_frame_idcs=None,
+    list_individuals=None,  # IDs of individuals to plot
+    list_frame_idcs=None,  # list of frame **indices** to plot
 ):
     # Open the video file
     cap = cv2.VideoCapture(input_video)
@@ -23,6 +24,16 @@ def create_opencv_video(
     # Define the codec and create VideoWriter object to save the output video
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # Codec for mp4
     out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
+
+    # Prepare list of indices of individuals to plot
+    if list_individuals:
+        list_individuals_idcs = [
+            np.argwhere(ds_pred.individuals.data == f"id_{str(ind)}").item()
+            for ind in list_individuals
+        ]
+
+    else:
+        list_individuals_idcs = None
 
     # bboxes format
     rectangle_color = (0, 255, 0)  # Green color in BGR format
@@ -71,10 +82,10 @@ def create_opencv_video(
                         3,  # rectangle_thickness
                     )
 
-                    # add ID
+                    # add bbox ID
                     cv2.putText(
                         frame,
-                        str(ind_idx),
+                        str(ind_idx),  # index in position array
                         tuple(
                             int(x) for x in bottom_right
                         ),  # location of text bottom left
@@ -169,14 +180,14 @@ if __name__ == "__main__":
     #     )
 
     # Create prediction video
-    list_individuals_idcs = [22]
+    list_individuals = [27, 110, 129, 150, 162, 165]
     output_video_path = str(
         Path(__file__).parent
-        / f"pred_id_{'_'.join([str(el) for el in list_individuals_idcs])}.mp4"
+        / f"pred_id_{'_'.join([str(el) for el in list_individuals])}_VIA.mp4"
     )
     create_opencv_video(
         ds=ds_pred,
         input_video=input_video,
         output_video_path=output_video_path,
-        list_individuals_idcs=list_individuals_idcs,
+        list_individuals=list_individuals,
     )
