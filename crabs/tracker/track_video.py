@@ -50,7 +50,7 @@ class Tracking:
         self.config_file = args.config_file
         self.video_path = args.video_path
         self.trained_model_path = self.args.trained_model_path
-        self.device = self.args.device
+        self.device = "cuda" if self.args.accelerator == "gpu" else "cpu"
 
         self.setup()
         self.prep_outputs()
@@ -94,6 +94,7 @@ class Tracking:
 
             self.video_output = prep_video_writer(
                 self.tracking_output_dir,
+                self.video_file_root,
                 frame_width,
                 frame_height,
                 cap_fps,
@@ -150,9 +151,12 @@ class Tracking:
     def run_tracking(self):
         """Run object detection + tracking on the video frames."""
         # If we pass ground truth: check the path exist
-        if self.args.gt_path and not os.path.exists(self.args.gt_path):
+        if self.args.annotations_file and not os.path.exists(
+            self.args.annotations_file
+        ):
             logging.info(
-                f"Ground truth file {self.args.gt_path} does not exist. "
+                f"Ground truth file {self.args.annotations_file} "
+                "does not exist."
                 "Exiting..."
             )
             return
@@ -207,9 +211,9 @@ class Tracking:
             # update frame number
             frame_idx += 1
 
-        if self.args.gt_path:
+        if self.args.annotations_file:
             evaluation = TrackerEvaluate(
-                self.args.gt_path,
+                self.args.annotations_file,
                 self.tracked_bbox_id,
                 self.config["iou_threshold"],
             )
@@ -250,13 +254,33 @@ def tracking_parse_args(args):
         "--trained_model_path",
         type=str,
         required=True,
-        help="location of checkpoint of the trained model",
+        help="Location of trained model (a .ckpt file). ",
     )
     parser.add_argument(
         "--video_path",
         type=str,
         required=True,
-        help="location of video to be tracked",
+        help="Location of the video to be tracked.",
+    )
+    parser.add_argument(
+        "--annotations_file",
+        type=str,
+        default=None,
+        help=(
+            "Location of JSON file containing ground truth annotations "
+            "(optional). "
+            "If passed, the evaluation metrics for the tracker are computed."
+        ),
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="tracking_output",
+        help=(
+            "Root name of the directory to save the tracking output. "
+            "The name of the output directory is appended with a timestamp. "
+            "Default: ./tracking_output_<timestamp>. "
+        ),
     )
     parser.add_argument(
         "--config_file",
@@ -265,47 +289,47 @@ def tracking_parse_args(args):
         help=(
             "Location of YAML config to control tracking. "
             "Default: "
-            "crabs-exploration/crabs/tracking/config/tracking_config.yaml"
-        ),
-    )
-    parser.add_argument(
-        "--output_dir",
-        type=str,
-        default="tracking_output",
-        help="Directory to save the track output",
-        # is this a csv or a video? (or both)
-    )
-    parser.add_argument(
-        "--max_frames_to_read",
-        type=int,
-        default=None,
-        help="Maximum number of frames to read (mostly for debugging).",
-    )
-    parser.add_argument(
-        "--gt_path",
-        type=str,
-        default=None,
-        help=(
-            "Location of json file containing ground truth annotations "
-            "(optional)."
-            "If passed, evaluation metrics are computed."
+            "crabs-exploration/crabs/tracking/config/tracking_config.yaml. "
         ),
     )
     parser.add_argument(
         "--save_video",
         action="store_true",
-        help="Save video inference with tracking output",
+        help=(
+            "Add a video with tracked bounding boxes "
+            "to the tracking output directory. "
+            "The tracked video is called <input-video-name>_tracks.mp4. "
+        ),
     )
     parser.add_argument(
         "--save_frames",
         action="store_true",
-        help="Save frame to be used in correcting track labelling",
+        help=(
+            "Add all frames to the tracking output. "
+            "The frames are saved as-is, without bounding boxes, to "
+            "support their visualisation and correction using the VIA tool. "
+        ),
     )
     parser.add_argument(
-        "--device",
+        "--accelerator",
         type=str,
-        default="cuda",
-        help="device for pytorch either cpu or cuda",
+        default="gpu",
+        help=(
+            "Accelerator for Pytorch. "
+            "Valid inputs are: cpu or gpu. Default: gpu."
+        ),
+    )
+    parser.add_argument(
+        "--max_frames_to_read",
+        type=int,
+        default=None,
+        help=(
+            "Debugging option to limit "
+            "the maximum number of frames to read in the video. "
+            "It affects all the tracking outputs (csv, frames and video) "
+            "and the MOTA computation, which will be restricted to just "
+            "the first N frames. "
+        ),
     )
     return parser.parse_args(args)
 

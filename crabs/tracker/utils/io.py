@@ -32,13 +32,14 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
         tracking output directory path.
 
     """
+    # Create a timestamped directory for the tracking output
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    tracking_output_dir = Path(output_dir + f"_{timestamp}") / video_file_root
-    # Create the subdirectory for the specific video file root
+    tracking_output_dir = Path(output_dir + f"_{timestamp}")
     tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Initialise csv file
     csv_file = open(  # noqa: SIM115
-        f"{str(tracking_output_dir)}/predicted_tracks.csv",
+        f"{str(tracking_output_dir)}/{video_file_root}_tracks.csv",
         "w",
     )
     csv_writer = csv.writer(csv_file)
@@ -62,6 +63,7 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
 
 def prep_video_writer(
     output_dir: str,
+    video_file_root: str,
     frame_width: int,
     frame_height: int,
     cap_fps: float,
@@ -89,7 +91,7 @@ def prep_video_writer(
     """
     output_file = os.path.join(
         output_dir,
-        "tracked_video.mp4",
+        f"{video_file_root}_tracks.mp4",
     )
     output_codec = cv2.VideoWriter_fourcc("m", "p", "4", "v")
     video_output = cv2.VideoWriter(
@@ -137,7 +139,7 @@ def save_required_output(
         The prediction score from detector
 
     """
-    frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
+    frame_name = f"frame_{frame_number:08d}.png"
 
     for bbox, pred_score in zip(tracked_boxes, pred_scores):
         write_tracked_bbox_to_csv(
@@ -145,9 +147,14 @@ def save_required_output(
         )
 
     if save_frames:
+        # create subdirectory of frames
+        frames_subdir = tracking_output_dir / f"{video_file_root}_frames"
+        frames_subdir.mkdir(parents=True, exist_ok=True)
+
+        # save frame (without bounding boxes)
         save_output_frame(
             frame_name,
-            tracking_output_dir,
+            frames_subdir,
             frame,
             frame_number,
         )
