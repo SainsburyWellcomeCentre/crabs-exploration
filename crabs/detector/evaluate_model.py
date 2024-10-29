@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import sys
+from pathlib import Path
 
 import lightning
 import torch
@@ -49,7 +50,7 @@ class DetectorEvaluate:
             self.trained_model_path
         )
         self.trained_model_run_name = trained_model_params["run_name"]
-        self.trained_model_experiment_name = trained_model_params[
+        self.trained_model_expt_name = trained_model_params[
             "cli_args/experiment_name"
         ]
 
@@ -90,6 +91,7 @@ class DetectorEvaluate:
         logging.info(f"Images directories: {self.images_dirs}")
         logging.info(f"Annotation files: {self.annotation_files}")
         logging.info(f"Seed: {self.seed_n}")
+        logging.info("---------------------------------")
 
     def setup_trainer(self):
         """Set up trainer object with logging for testing."""
@@ -100,6 +102,12 @@ class DetectorEvaluate:
             trained_model_run_name=self.trained_model_run_name,
             trained_model_path=self.trained_model_path,
         )
+        # TODO: add these logs to training too
+        logging.info("MLflow logs for current job")
+        logging.info(f"Experiment name: {self.experiment_name}")
+        logging.info(f"Run name: {self.run_name}")
+        logging.info(f"Folder: {Path(self.mlflow_folder).resolve()}")
+        logging.info("---------------------------------")
 
         # Setup logger
         mlf_logger = setup_mlflow_logger(
@@ -113,7 +121,7 @@ class DetectorEvaluate:
         mlf_logger.log_hyperparams(
             {
                 "trained_model/run_name": self.trained_model_run_name,
-                "trained_model/experiment_name": self.trained_model_experiment_name,
+                "trained_model/experiment_name": self.trained_model_expt_name,
             }
         )
 
@@ -261,29 +269,17 @@ def evaluate_parse_args(args):
             "will be logged. "
             "For example, the name of the dataset could be used, to group "
             "runs using the same data. "
-            "By default: <experiment_training_job>_evaluation."
-        ),
-    )
-    parser.add_argument(
-        "--fast_dev_run",
-        action="store_true",
-        help="Debugging option to run training for one batch and one epoch",
-    )
-    parser.add_argument(
-        "--limit_test_batches",
-        type=float,
-        default=1.0,
-        help=(
-            "Debugging option to run training on a fraction of "
-            "the training set."
-            "Default: 1.0 (all the training set)"
+            "By default: <trained_model_mlflow_experiment_name>_evaluation."
         ),
     )
     parser.add_argument(
         "--mlflow_folder",
         type=str,
         default="./ml-runs",
-        help=("Path to MLflow directory. Default: ./ml-runs"),
+        help=(
+            "Path to MLflow directory where to log the evaluation data. "
+            "Default: ./ml-runs"
+        ),
     )
     parser.add_argument(
         "--mlflow_run_name_auto",
@@ -316,6 +312,21 @@ def evaluate_parse_args(args):
             "By default, the frames are saved in a "
             "`results_<timestamp> folder "
             "under the current working directory."
+        ),
+    )
+    parser.add_argument(
+        "--fast_dev_run",
+        action="store_true",
+        help="Debugging option to run training for one batch and one epoch",
+    )
+    parser.add_argument(
+        "--limit_test_batches",
+        type=float,
+        default=1.0,
+        help=(
+            "Debugging option to run training on a fraction of "
+            "the training set."
+            "Default: 1.0 (all the training set)"
         ),
     )
     return parser.parse_args(args)
