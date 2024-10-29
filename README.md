@@ -128,13 +128,30 @@ To see the full list of possible arguments to the `evaluate-detector` command, r
 
 ### Run detector+tracking on a video
 
-To track crabs in a new video, using a trained detector + tracker, run the following command:
+To track crabs in a new video, using a trained detector and a tracker, run the following command:
 
 ```
-track-video --model_dir {path_to_trained_model} --vid_path {path_to_input_video}
+detect-and-track-video --trained_model_path <path-to-ckpt-file> --video_path <path-to-input-video>
 ```
 
-This will produce a .csv file with the tracking results, that can be imported in [movement](https://github.com/neuroinformatics-unit/movement) for further analysis. See the [movement documentation](https://movement.neuroinformatics.dev/getting_started/input_output.html#loading-bounding-boxes-tracks) for more details.
+This will produce a `tracking_output_<timestamp>` directory with the output from tracking.
+
+The tracking output consists of:
+- a .csv file named `<video-name>_tracks.csv`, with the tracked bounding boxes data;
+- if the flag `--save_video` is added to the command: a video file named `<video-name>_tracks.mp4`, with the tracked bounding boxes;
+- if the flag `--save_frames` is added to the command: a subdirectory named `<video_name>_frames` is created, and the video frames are saved in it.
+
+The .csv file with tracked bounding boxes can be imported in [movement](https://github.com/neuroinformatics-unit/movement) for further analysis. See the [movement documentation](https://movement.neuroinformatics.dev/getting_started/input_output.html#loading-bounding-boxes-tracks) for more details.
+
+Note that when using `--save_frames`, the frames of the video are saved as-is, without added bounding boxes. The aim is to support the visualisation and correction of the predictions using the [VGG Image Annotator (VIA)](https://www.robots.ox.ac.uk/~vgg/software/via/) tool. To do so, follow the instructions of the [VIA Face track annotation tutorial](https://www.robots.ox.ac.uk/~vgg/software/via/docs/face_track_annotation.html).
+
+If a file with ground-truth annotations is passed to the command (with the `--annotations_file` flag), the MOTA metric for evaluating tracking is computed and printed to screen.
+
+<!-- When used in combination with the `--save_video` flag, the tracked video will contain predicted bounding boxes in red, and ground-truth bounding boxes in green. -- PR 216-->
+
+To see the full list of possible arguments to the `evaluate-detector` command, run it with the `--help` flag.
+
+
 
 <!-- ### Evaluate the tracking performance
 
