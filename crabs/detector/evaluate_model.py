@@ -267,7 +267,8 @@ def evaluate_parse_args(args):
         "--mlflow_run_name_auto",
         action="store_true",
         help=(
-            "Set the evaluation run name automatically from MLflow, ignoring the training job run name."
+            "Set the evaluation run name automatically from MLflow, "
+            "ignoring the training job run name."
         ),
     )
     parser.add_argument(

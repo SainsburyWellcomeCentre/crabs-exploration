@@ -142,7 +142,7 @@ def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
     run = mlrun_client.get_run(ckpt_runID)
     params = run.data.params
     params["run_name"] = run.info.run_name
-    
+
     return params
 
 
@@ -242,13 +242,16 @@ def get_annotation_files_from_ckpt(
     )
     return annotation_files
 
+
 def get_mlflow_experiment_name_from_ckpt(
     args: argparse.Namespace, trained_model_path: str
 ) -> str:
-    """Define experiment name for MLflow from the training job one if not passed as CLI."""
+    """Define MLflow experiment name from the training job.
 
-    if getattr(args, "experiment_name"):
-        experiment_name = getattr(args, "experiment_name")
+    Only used if the experiment name is not passed via CLI.
+    """
+    if args.experiment_name:
+        experiment_name = args.experiment_name
     else:
         params = get_mlflow_parameters_from_ckpt(trained_model_path)
         trained_model_expt_name = params["cli_args/experiment_name"]
@@ -262,8 +265,7 @@ def get_mlflow_run_name_from_ckpt(
     trained_model_run_name: str,
     trained_model_path: str,
 ) -> str:  # ---- should be unique
-    """Define run name for eval job from the trained model job"""
-
+    """Define run name for eval job from the trained model job."""
     if mlflow_run_name_auto:
         run_name = set_mlflow_run_name()
     else:
