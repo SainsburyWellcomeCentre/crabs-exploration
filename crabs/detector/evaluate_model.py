@@ -102,7 +102,7 @@ class DetectorEvaluate:
             trained_model_run_name=self.trained_model_run_name,
             trained_model_path=self.trained_model_path,
         )
-        # TODO: add these logs to training too
+        # TODO: add these logs to training job too
         logging.info("MLflow logs for current job")
         logging.info(f"Experiment name: {self.experiment_name}")
         logging.info(f"Run name: {self.run_name}")
@@ -159,13 +159,18 @@ class DetectorEvaluate:
         )
 
         # Run testing
+        # TODO: Optionally on validation set?
+        # trainer.validate(
+        # trained_model,
+        # data_module,
+        # )
         trainer = self.setup_trainer()
         trainer.test(
             trained_model,
             data_module,
         )
 
-        # Save images if required
+        # Save images with bounding boxes if required
         if self.args.save_frames:
             save_images_with_boxes(
                 test_dataloader=data_module.test_dataloader(),
