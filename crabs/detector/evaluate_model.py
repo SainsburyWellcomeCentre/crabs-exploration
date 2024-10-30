@@ -313,9 +313,11 @@ def evaluate_parse_args(args):
         type=str,
         default="",
         help=(
-            "Output directory for the exported frames. "
+            "Output directory for the evaluated frames, with bounding boxes. "
+            "Predicted boxes are plotted in red, and ground-truth boxes in "
+            "green. "
             "By default, the frames are saved in a "
-            "`results_<timestamp> folder "
+            "`evaluation_output_<timestamp> folder "
             "under the current working directory."
         ),
     )

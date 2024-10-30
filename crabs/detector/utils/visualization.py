@@ -188,7 +188,7 @@ def save_images_with_boxes(
 
     if not output_dir:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = f"results_{timestamp}"
+        output_dir = f"evaluation_output_{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
 
     with torch.no_grad():
