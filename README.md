@@ -118,7 +118,7 @@ evaluate-detector --trained_model_path <path-to-ckpt-file>
 
 This command assumes the trained detector model (a `.ckpt` checkpoint file) is saved in an MLflow database structure. That is, the checkpoint is assumed to be under a `checkpoints` directory, which in turn should be under a `<mlflow-experiment-hash>/<mlflow-run-hash>` directory. This will be the case if the model has been trained using the `train-detector` command.
 
-The `evaluate-detector` command will print to screen the average precision and average recall of the detector on the test set. It will also log those metrics to the MLflow database, along with the hyperparameters of the evaluation job. To visualise the MLflow summary of the evaluation job, run:
+The `evaluate-detector` command will print to screen the average precision and average recall of the detector on the validation set by default. To evaluate the model on the test set instead, use the `--use_test_set` flag. The command will also log those performance metrics to the MLflow database, along with the hyperparameters of the evaluation job. To visualise the MLflow summary of the evaluation job, run:
 ```
 mlflow ui --backend-store-uri file:///<path-to-ml-runs>
 ```

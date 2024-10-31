@@ -73,6 +73,7 @@ class DetectorEvaluate:
             cli_arg_str="seed_n",
             trained_model_path=self.trained_model_path,
         )
+        self.evaluation_split = "test" if self.args.use_test_set else "val"
 
         # Hardware
         self.accelerator = args.accelerator
@@ -127,6 +128,7 @@ class DetectorEvaluate:
                 "dataset/images_dir": self.images_dirs,
                 "dataset/annotation_files": self.annotation_files,
                 "dataset/seed": self.seed_n,
+                "dataset/evaluation_split": self.evaluation_split,
             }
         )
 
@@ -154,25 +156,33 @@ class DetectorEvaluate:
             self.trained_model_path, config=self.config
         )
 
-        # Run testing
-        # TODO: Optionally on validation set?
-        # trainer.validate(
-        # trained_model,
-        # data_module,
-        # )
+        # Evaluate model on either the validation or the test split
         trainer = self.setup_trainer()
-        trainer.test(
-            trained_model,
-            data_module,
-        )
+        if self.args.use_test_set:
+            trainer.test(
+                trained_model,
+                data_module,
+            )
+        else:
+            trainer.validate(
+                trained_model,
+                data_module,
+            )
 
         # Save images with bounding boxes if required
         if self.args.save_frames:
+            # get relevant dataloader
+            if self.args.use_test_set:
+                eval_dataloader = data_module.test_dataloader()
+            else:
+                eval_dataloader = data_module.val_dataloader()
+
             save_images_with_boxes(
-                dataloader=data_module.test_dataloader(),
+                dataloader=eval_dataloader,
                 trained_model=trained_model,
                 output_dir=str(
-                    Path(self.args.frames_output_dir) / "evaluate_output"
+                    Path(self.args.frames_output_dir)
+                    / f"evaluation_output_{self.evaluation_split}"
                 ),
                 score_threshold=self.args.frames_score_threshold,
             )
@@ -252,7 +262,14 @@ def evaluate_parse_args(args):
             "the trained model is used."
         ),
     )
-
+    parser.add_argument(
+        "--use_test_set",
+        action="store_true",
+        help=(
+            "Evaluate the model on the test split, rather than on the default "
+            "validation split."
+        ),
+    )
     parser.add_argument(
         "--accelerator",
         type=str,
