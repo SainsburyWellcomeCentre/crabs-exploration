@@ -12,6 +12,7 @@ import torch
 from crabs.detector.datamodules import CrabsDataModule
 from crabs.detector.models import FasterRCNN
 from crabs.detector.utils.detection import (
+    set_mlflow_run_name,
     setup_mlflow_logger,
     slurm_logs_as_artifacts,
 )
@@ -22,7 +23,6 @@ from crabs.detector.utils.evaluate import (
     get_img_directories_from_ckpt,
     get_mlflow_experiment_name_from_ckpt,
     get_mlflow_parameters_from_ckpt,
-    get_mlflow_run_name_from_ckpt,
 )
 from crabs.detector.utils.visualization import save_images_with_boxes
 
@@ -77,38 +77,33 @@ class DetectorEvaluate:
         # Hardware
         self.accelerator = args.accelerator
 
-        # MLflow
+        # MLflow experiment name and run name
         self.experiment_name = get_mlflow_experiment_name_from_ckpt(
             args=self.args, trained_model_path=self.trained_model_path
         )
+        self.run_name = set_mlflow_run_name()
         self.mlflow_folder = args.mlflow_folder
 
-        # Debugging
+        # Debugging settings
         self.fast_dev_run = args.fast_dev_run
         self.limit_test_batches = args.limit_test_batches
 
+        # Log dataset information to screen
         logging.info("Dataset")
         logging.info(f"Images directories: {self.images_dirs}")
         logging.info(f"Annotation files: {self.annotation_files}")
         logging.info(f"Seed: {self.seed_n}")
         logging.info("---------------------------------")
 
-    def setup_trainer(self):
-        """Set up trainer object with logging for testing."""
-        # Assign run name
-        # TODO: mlflow_run_name_auto should be default I think
-        self.run_name = get_mlflow_run_name_from_ckpt(
-            mlflow_run_name_auto=self.args.mlflow_run_name_auto,
-            trained_model_run_name=self.trained_model_run_name,
-            trained_model_path=self.trained_model_path,
-        )
-        # TODO: add these logs to training job too
+        # Log MLflow information to screen
         logging.info("MLflow logs for current job")
         logging.info(f"Experiment name: {self.experiment_name}")
         logging.info(f"Run name: {self.run_name}")
         logging.info(f"Folder: {Path(self.mlflow_folder).resolve()}")
         logging.info("---------------------------------")
 
+    def setup_trainer(self):
+        """Set up trainer object with logging for testing."""
         # Setup logger
         mlf_logger = setup_mlflow_logger(
             experiment_name=self.experiment_name,
@@ -117,15 +112,15 @@ class DetectorEvaluate:
             cli_args=self.args,
         )
 
-        # Add trained model section
+        # Add trained model section to MLflow hyperparameters
         mlf_logger.log_hyperparams(
             {
-                "trained_model/run_name": self.trained_model_run_name,
                 "trained_model/experiment_name": self.trained_model_expt_name,
+                "trained_model/run_name": self.trained_model_run_name,
             }
         )
 
-        # Add dataset section
+        # Add dataset section to MLflow hyperparameters
         mlf_logger.log_hyperparams(
             {
                 "dataset/images_dir": self.images_dirs,
@@ -284,14 +279,6 @@ def evaluate_parse_args(args):
         help=(
             "Path to MLflow directory where to log the evaluation data. "
             "Default: ./ml-runs"
-        ),
-    )
-    parser.add_argument(
-        "--mlflow_run_name_auto",
-        action="store_true",
-        help=(
-            "Set the evaluation run name automatically from MLflow, "
-            "ignoring the training job run name."
         ),
     )
     parser.add_argument(
