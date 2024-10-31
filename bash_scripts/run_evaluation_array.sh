@@ -43,9 +43,23 @@ set -o pipefail  # make the pipe fail if any part of it fails
 # mlflow
 MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
 
+# ------------------
 # List of models to evaluate
-MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/7a6d5551ca974d578a293928d6385d5a/checkpoints
-LIST_CKPT_FILES=("$MLFLOW_CKPTS_FOLDER"/*.ckpt)
+# Option 1: to evaluate all epoch-checkpoints of an MLflow run,
+# uncomment the following two lines:
+# MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/7a6d5551ca974d578a293928d6385d5a/checkpoints
+# LIST_CKPT_FILES=("$MLFLOW_CKPTS_FOLDER"/*.ckpt)
+
+# Option 2: to evaluate all 'last' checkpoints of an MLflow experiment,
+# uncomment the following two lines:
+MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/*/checkpoints
+mapfile -t LIST_CKPT_FILES < <(find $MLFLOW_CKPTS_FOLDER -type f -name "last.ckpt")
+
+# Can I use one option only?
+# MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/*/checkpoints
+# CKPT_FILENAME=*.ckpt # or last.ckpt
+# mapfile -t LIST_CKPT_FILES < <(find "$MLFLOW_CKPTS_FOLDER" -type f -name "$CKPT_FILENAME")
+#-------------------
 
 # selected model
 CKPT_PATH=${LIST_CKPT_FILES[${SLURM_ARRAY_TASK_ID}]}
