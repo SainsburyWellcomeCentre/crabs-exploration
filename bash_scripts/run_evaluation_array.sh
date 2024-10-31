@@ -10,7 +10,7 @@
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-5%3
+#SBATCH --array=0-4%3
 
 
 # NOTE on SBATCH command for array jobs
@@ -53,11 +53,12 @@ MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
 # MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/*/checkpoints
 # CKPT_FILENAME=last.ckpt
 
-# NOTE: if the paths have spaces, but quotes around the string, but stopping and re-starting at the wildcard.
+# NOTE: if the paths have spaces, put quotes around the string but stopping and re-starting at the wildcard.
 # e.g.: "/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/"*"/checkpoints"
+# e.g.: "checkpoint-epoch="*".ckpt"
 
-MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/7a6d5551ca974d578a293928d6385d5a/checkpoints
-CKPT_FILENAME=*.ckpt
+MLFLOW_CKPTS_FOLDER="/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/7a6d5551ca974d578a293928d6385d5a/checkpoints"
+CKPT_FILENAME="checkpoint-epoch="*".ckpt"
 mapfile -t LIST_CKPT_FILES < <(find $MLFLOW_CKPTS_FOLDER -type f -name $CKPT_FILENAME)
 #-------------------
 
