@@ -11,7 +11,6 @@ import yaml  # type: ignore
 from crabs.detector.utils.detection import (
     prep_annotation_files,
     prep_img_directories,
-    set_mlflow_run_name,
 )
 
 
@@ -191,7 +190,7 @@ def get_config_from_ckpt(config_file: str, trained_model_path: str) -> dict:
 def get_cli_arg_from_ckpt(
     args: argparse.Namespace, cli_arg_str: str, trained_model_path: str
 ):
-    """Get CLI argument from checkpoint if not in args."""
+    """Get CLI argument from checkpoint if not passed as CLI argument."""
     if getattr(args, cli_arg_str):
         cli_arg = getattr(args, cli_arg_str)
     else:
@@ -258,23 +257,3 @@ def get_mlflow_experiment_name_from_ckpt(
         experiment_name = trained_model_expt_name + "_evaluation"
 
     return experiment_name
-
-
-def get_mlflow_run_name_from_ckpt(
-    mlflow_run_name_auto: bool,
-    trained_model_run_name: str,
-    trained_model_path: str,
-) -> str:  # ---- should be unique
-    """Define run name for eval job from the trained model job."""
-    if mlflow_run_name_auto:
-        run_name = set_mlflow_run_name()
-    else:
-        run_name = (
-            trained_model_run_name
-            + "_"
-            + Path(trained_model_path).stem
-            + "_eval"
-            + set_mlflow_run_name().replace("run", "")
-        )
-
-    return run_name
