@@ -56,6 +56,7 @@ class DectectorTrain:
 
         # MLflow
         self.experiment_name = args.experiment_name
+        self.run_name = set_mlflow_run_name()
         self.mlflow_folder = args.mlflow_folder
 
         # Debugging
@@ -72,7 +73,6 @@ class DectectorTrain:
 
     def setup_trainer(self):
         """Set up trainer with logging and checkpointing."""
-        self.run_name = set_mlflow_run_name()
 
         # Setup logger with checkpointing
         mlf_logger = setup_mlflow_logger(
