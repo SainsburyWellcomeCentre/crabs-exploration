@@ -117,6 +117,7 @@ class DetectorEvaluate:
             {
                 "trained_model/experiment_name": self.trained_model_expt_name,
                 "trained_model/run_name": self.trained_model_run_name,
+                "trained_model/ckpt_file": Path(self.trained_model_path).name,
             }
         )
 
