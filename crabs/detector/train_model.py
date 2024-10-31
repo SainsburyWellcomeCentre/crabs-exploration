@@ -1,6 +1,7 @@
 """Train FasterRCNN model for object detection."""
 
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -65,6 +66,21 @@ class DectectorTrain:
 
         # Restart from checkpoint
         self.checkpoint_path = args.checkpoint_path
+
+        # Log dataset and MLflow details to screen
+        # log_job_metadata_to_screen(self)
+        logging.info("Dataset")
+        logging.info(f"Images directories: {self.images_dirs}")
+        logging.info(f"Annotation files: {self.annotation_files}")
+        logging.info(f"Seed: {self.seed_n}")
+        logging.info("---------------------------------")
+
+        # Log MLflow information to screen
+        logging.info("MLflow logs for current job")
+        logging.info(f"Experiment name: {self.experiment_name}")
+        logging.info(f"Run name: {self.run_name}")
+        logging.info(f"Folder: {Path(self.mlflow_folder).resolve()}")
+        logging.info("---------------------------------")
 
     def load_config_yaml(self):
         """Load yaml file that contains config parameters."""
