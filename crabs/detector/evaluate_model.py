@@ -287,8 +287,6 @@ def evaluate_parse_args(args):
         help=(
             "Name of the experiment in MLflow, under which the current run "
             "will be logged. "
-            "For example, the name of the dataset could be used, to group "
-            "runs using the same data. "
             "By default: <trained_model_mlflow_experiment_name>_evaluation."
         ),
     )
