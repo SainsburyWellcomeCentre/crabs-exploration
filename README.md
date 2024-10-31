@@ -118,11 +118,15 @@ evaluate-detector --trained_model_path <path-to-ckpt-file>
 
 This command assumes the trained detector model (a `.ckpt` checkpoint file) is saved in an MLflow database structure. That is, the checkpoint is assumed to be under a `checkpoints` directory, which in turn should be under a `<mlflow-experiment-hash>/<mlflow-run-hash>` directory. This will be the case if the model has been trained using the `train-detector` command.
 
-The `evaluate-detector` command will print to screen the average precision and average recall of the detector on the validation set by default. To evaluate the model on the test set instead, use the `--use_test_set` flag. The command will also log those performance metrics to the MLflow database, along with the hyperparameters of the evaluation job. To visualise the MLflow summary of the evaluation job, run:
+The `evaluate-detector` command will print to screen the average precision and average recall of the detector on the validation set by default. To evaluate the model on the test set instead, use the `--use_test_set` flag.
+
+The command will also log those performance metrics to the MLflow database, along with the hyperparameters of the evaluation job. To visualise the MLflow summary of the evaluation job, run:
 ```
 mlflow ui --backend-store-uri file:///<path-to-ml-runs>
 ```
 where `<path-to-ml-runs>` is the path to the directory where the MLflow output is.
+
+The evaluated samples can be inspected visually by exporting them using the `--save__frames` flag. In this case, the frames with the predicted and ground-truth bounding boxes are saved in a directory called `evaluation_output_<timestamp>` under the current working directory.
 
 To see the full list of possible arguments to the `evaluate-detector` command, run it with the `--help` flag.
 
@@ -134,7 +138,7 @@ To track crabs in a new video, using a trained detector and a tracker, run the f
 detect-and-track-video --trained_model_path <path-to-ckpt-file> --video_path <path-to-input-video>
 ```
 
-This will produce a `tracking_output_<timestamp>` directory with the output from tracking.
+This will produce a `tracking_output_<timestamp>` directory with the output from tracking under the current working directory.
 
 The tracking output consists of:
 - a .csv file named `<video-name>_tracks.csv`, with the tracked bounding boxes data;
