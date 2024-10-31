@@ -169,9 +169,11 @@ class DetectorEvaluate:
         # Save images with bounding boxes if required
         if self.args.save_frames:
             save_images_with_boxes(
-                test_dataloader=data_module.test_dataloader(),
+                dataloader=data_module.test_dataloader(),
                 trained_model=trained_model,
-                output_dir=self.args.frames_output_dir,
+                output_dir=str(
+                    Path(self.args.frames_output_dir) / "evaluate_output"
+                ),
                 score_threshold=self.args.frames_score_threshold,
             )
 

@@ -154,7 +154,7 @@ def draw_detection(
 
 
 def save_images_with_boxes(
-    test_dataloader: torch.utils.data.DataLoader,
+    dataloader: torch.utils.data.DataLoader,
     trained_model: torch.nn.Module,
     output_dir: str,
     score_threshold: float,
@@ -163,12 +163,13 @@ def save_images_with_boxes(
 
     Parameters
     ----------
-    test_dataloader : DataLoader
-        DataLoader for the test dataset.
+    dataloader : DataLoader
+        DataLoader with the images to save.
     trained_model : torch.nn.Module
         The trained object detection model.
     output_dir : str
-        Directory to save the images with bounding boxes.
+        Path to directory to save the images with bounding boxes.
+        The directory name will be added a timestamp.
     score_threshold : float
         Threshold for object detection.
 
@@ -186,14 +187,14 @@ def save_images_with_boxes(
     trained_model.to(device)
     trained_model.eval()
 
-    if not output_dir:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = f"evaluation_output_{timestamp}"
+    # set output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = f"{output_dir}_{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
 
     with torch.no_grad():
         imgs_id = 0
-        for imgs, annotations in test_dataloader:
+        for imgs, annotations in dataloader:
             imgs_id += 1  # noqa: SIM113
             imgs = list(img.to(device) for img in imgs)
 
