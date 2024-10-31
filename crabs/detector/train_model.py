@@ -28,7 +28,7 @@ from crabs.detector.utils.train import (
 )
 
 
-class DectectorTrain:
+class DetectorTrain:
     """Training class for detector algorithm.
 
     Parameters
@@ -89,7 +89,6 @@ class DectectorTrain:
 
     def setup_trainer(self):
         """Set up trainer with logging and checkpointing."""
-
         # Setup logger with checkpointing
         mlf_logger = setup_mlflow_logger(
             experiment_name=self.experiment_name,
@@ -264,7 +263,7 @@ def main(args) -> None:
     None
 
     """
-    trainer = DectectorTrain(args)
+    trainer = DetectorTrain(args)
     trainer.train_model()
 
 
