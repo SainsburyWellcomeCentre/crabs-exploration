@@ -195,12 +195,12 @@ class DetectorEvaluate:
 
 
 def main(args) -> None:
-    """Run detector testing.
+    """Run detector evaluation.
 
     Parameters
     ----------
-    args : argparse
-        Arguments or configuration settings for testing.
+    args : argparse.Namespace
+        An object containing the parsed command-line arguments.
 
     Returns
     -------
