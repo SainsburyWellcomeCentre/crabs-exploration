@@ -296,7 +296,7 @@ def evaluate_parse_args(args):
         default="./ml-runs",
         help=(
             "Path to MLflow directory where to log the evaluation data. "
-            "Default: ./ml-runs"
+            "Default: 'ml-runs' directory under the current working directory."
         ),
     )
     parser.add_argument(
