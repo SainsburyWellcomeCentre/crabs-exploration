@@ -40,12 +40,13 @@ set -o pipefail  # make the pipe fail if any part of it fails
 # Define variables
 # ----------------------
 
-# List of models to evaluate
-# Example 1: to evaluate all epoch-checkpoints of an MLflow run,
+# List of models to evaluate: define MLFLOW_CKPTS_FOLDER and CKPT_FILENAME
+
+# Example 1: to evaluate all epoch-checkpoints of an MLflow
 # MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/7a6d5551ca974d578a293928d6385d5a/checkpoints
 # CKPT_FILENAME=*.ckpt
 
-# Example 2: to evaluate all 'last' checkpoints of an MLflow experiment,
+# Example 2: to evaluate all 'last' checkpoints of an MLflow experiment
 # MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/*/checkpoints
 # CKPT_FILENAME=last.ckpt
 
@@ -61,14 +62,14 @@ MLFLOW_CKPTS_FOLDER="/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044
 CKPT_FILENAME="checkpoint-epoch="*".ckpt"
 mapfile -t LIST_CKPT_FILES < <(find $MLFLOW_CKPTS_FOLDER -type f -name $CKPT_FILENAME)
 
-# model for this job
+# model to evaluate in this job
 CKPT_PATH=${LIST_CKPT_FILES[${SLURM_ARRAY_TASK_ID}]}
 
 # whether to evaluate on the validation set or
 # on the test set
 EVALUATION_SPLIT=validation
 
-# mlflow
+# output for mlflow logs
 MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
 
 # version of the codebase
@@ -106,7 +107,6 @@ source activate $ENV_PREFIX
 # install crabs package in virtual env
 python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
-
 # log pip and python locations
 echo $ENV_PREFIX
 which python
@@ -130,13 +130,14 @@ echo "-----"
 # -------------------------
 echo "Evaluating trained model at $CKPT_PATH on $EVALUATION_SPLIT set: "
 
-# conditionally append flag to command
+# append relevant flag to command if the test set is to be used
 if [ "$EVALUATION_SPLIT" = "validation" ]; then
     USE_TEST_SET_FLAG=""
 elif [ "$EVALUATION_SPLIT" = "test" ]; then
     USE_TEST_SET_FLAG="--use_test_set"
 fi
 
+# run evaluation command
 evaluate-detector  \
  --trained_model_path $CKPT_PATH \
  --accelerator gpu \
