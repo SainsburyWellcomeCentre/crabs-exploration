@@ -12,6 +12,8 @@ import torch
 from crabs.detector.datamodules import CrabsDataModule
 from crabs.detector.models import FasterRCNN
 from crabs.detector.utils.detection import (
+    log_dataset_metadata_as_info,
+    log_mlflow_metadata_as_info,
     set_mlflow_run_name,
     setup_mlflow_logger,
     slurm_logs_as_artifacts,
@@ -25,8 +27,6 @@ from crabs.detector.utils.evaluate import (
     get_mlflow_parameters_from_ckpt,
 )
 from crabs.detector.utils.visualization import save_images_with_boxes
-
-logging.getLogger().setLevel(logging.INFO)
 
 
 class DetectorEvaluate:
@@ -90,18 +90,10 @@ class DetectorEvaluate:
         self.limit_test_batches = args.limit_test_batches
 
         # Log dataset information to screen
-        logging.info("Dataset")
-        logging.info(f"Images directories: {self.images_dirs}")
-        logging.info(f"Annotation files: {self.annotation_files}")
-        logging.info(f"Seed: {self.seed_n}")
-        logging.info("---------------------------------")
+        log_dataset_metadata_as_info(self)
 
         # Log MLflow information to screen
-        logging.info("MLflow logs for current job")
-        logging.info(f"Experiment name: {self.experiment_name}")
-        logging.info(f"Run name: {self.run_name}")
-        logging.info(f"Folder: {Path(self.mlflow_folder).resolve()}")
-        logging.info("---------------------------------")
+        log_mlflow_metadata_as_info(self)
 
     def setup_trainer(self):
         """Set up trainer object with logging for testing."""
@@ -346,6 +338,8 @@ def evaluate_parse_args(args):
 
 def app_wrapper():
     """Wrap function to run the evaluation."""
+    logging.getLogger().setLevel(logging.INFO)
+
     torch.set_float32_matmul_precision("medium")
 
     eval_args = evaluate_parse_args(sys.argv[1:])

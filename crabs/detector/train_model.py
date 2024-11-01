@@ -15,6 +15,8 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from crabs.detector.datamodules import CrabsDataModule
 from crabs.detector.models import FasterRCNN
 from crabs.detector.utils.detection import (
+    log_dataset_metadata_as_info,
+    log_mlflow_metadata_as_info,
     prep_annotation_files,
     prep_img_directories,
     set_mlflow_run_name,
@@ -67,20 +69,11 @@ class DetectorTrain:
         # Restart from checkpoint
         self.checkpoint_path = args.checkpoint_path
 
-        # Log dataset and MLflow details to screen
-        # log_job_metadata_to_screen(self)--------- can be refactored
-        logging.info("Dataset")
-        logging.info(f"Images directories: {self.images_dirs}")
-        logging.info(f"Annotation files: {self.annotation_files}")
-        logging.info(f"Seed: {self.seed_n}")
-        logging.info("---------------------------------")
+        # Log dataset information to screen
+        log_dataset_metadata_as_info(self)
 
         # Log MLflow information to screen
-        logging.info("MLflow logs for current job")
-        logging.info(f"Experiment name: {self.experiment_name}")
-        logging.info(f"Run name: {self.run_name}")
-        logging.info(f"Folder: {Path(self.mlflow_folder).resolve()}")
-        logging.info("---------------------------------")
+        log_mlflow_metadata_as_info(self)
 
     def load_config_yaml(self):
         """Load yaml file that contains config parameters."""
@@ -393,6 +386,8 @@ def train_parse_args(args):
 
 def app_wrapper():
     """Wrap function to run the training."""
+    logging.getLogger().setLevel(logging.INFO)
+
     torch.set_float32_matmul_precision("medium")
 
     train_args = train_parse_args(sys.argv[1:])
