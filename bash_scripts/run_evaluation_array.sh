@@ -40,10 +40,6 @@ set -o pipefail  # make the pipe fail if any part of it fails
 # Define variables
 # ----------------------
 
-# mlflow
-MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
-
-# ------------------
 # List of models to evaluate
 # Example 1: to evaluate all epoch-checkpoints of an MLflow run,
 # MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/7a6d5551ca974d578a293928d6385d5a/checkpoints
@@ -53,25 +49,30 @@ MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
 # MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/*/checkpoints
 # CKPT_FILENAME=last.ckpt
 
-# NOTE: if the paths have spaces, put quotes around the string but stopping and re-starting at the wildcard.
+# Example 3: to evaluate all 'checkpoint-epoch=' checkpoints of an MLflow experiment,
+# MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/*/checkpoints
+# CKPT_FILENAME=checkpoint-epoch=*.ckpt
+
+# NOTE: if any of the paths have spaces, put the path in quotes, but stopping and re-starting at the wildcard.
 # e.g.: "/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/"*"/checkpoints"
 # e.g.: "checkpoint-epoch="*".ckpt"
 
 MLFLOW_CKPTS_FOLDER="/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/7a6d5551ca974d578a293928d6385d5a/checkpoints"
 CKPT_FILENAME="checkpoint-epoch="*".ckpt"
 mapfile -t LIST_CKPT_FILES < <(find $MLFLOW_CKPTS_FOLDER -type f -name $CKPT_FILENAME)
-#-------------------
 
-# selected model
+# model for this job
 CKPT_PATH=${LIST_CKPT_FILES[${SLURM_ARRAY_TASK_ID}]}
 
-# select whether to evaluate on the validation set or on the
-# test set
+# whether to evaluate on the validation set or
+# on the test set
 EVALUATION_SPLIT=validation
 
+# mlflow
+MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
+
 # version of the codebase
-# GIT_BRANCH=main-------------------------------------------
-GIT_BRANCH=smg/eval-bash-script-cluster
+GIT_BRANCH=main
 
 # --------------------
 # Check inputs
