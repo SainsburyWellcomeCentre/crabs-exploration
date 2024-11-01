@@ -92,7 +92,7 @@ class DetectorTrain:
             # pass the checkpointing config if defined
         )
 
-        # Add dataset section to MLflow hyperparameters ---- can be refactored
+        # Add dataset section to MLflow hyperparameters
         mlf_logger.log_hyperparams(
             {
                 "dataset/images_dir": self.images_dirs,
@@ -247,7 +247,7 @@ class DetectorTrain:
         # Run training
         trainer = self.core_training()
 
-        # if this is a slurm job: add slurm logs as artifacts --- refactor
+        # if this is a slurm job: add slurm logs as artifacts
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
         slurm_job_name = os.environ.get("SLURM_JOB_NAME")
         if slurm_job_id and (slurm_job_name != "bash"):
