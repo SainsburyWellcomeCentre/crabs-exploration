@@ -4,7 +4,7 @@
 
     - If you are not connected to the SWC network: connect to the SWC VPN.
 
-1.  **Connect to the SWC HPC cluster**
+2.  **Connect to the SWC HPC cluster**
 
     ```
     ssh <SWC-USERNAME>@ssh.swc.ucl.ac.uk
@@ -13,7 +13,7 @@
 
     It may ask for your password twice. To set up SSH keys for the SWC cluster, see [this guide](https://howto.neuroinformatics.dev/programming/SSH-SWC-cluster.html#ssh-keys).
 
-1.  **Download the evaluation script from the 🦀 repository**
+3.  **Download the evaluation script from the 🦀 repository**
 
     To do so, run the following command, which will download a bash script called `run_evaluation_array.sh` to the current working directory.
     ```
@@ -35,7 +35,7 @@
 >   https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/blob/<COMMIT-HASH>/bash_scripts/run_evaluation_array.sh
 >   ```
 
-1.  **Edit the evaluation bash script if required**
+4.  **Edit the evaluation bash script if required**
 
     Ideally, we won't make major edits to the bash scripts. If we find we do, then we may want to consider moving the relevant parameters to the config file, or making them a CLI argument.
 
@@ -58,7 +58,7 @@
 > If we launch a job and then modify the config file _before_ the job has been able to read it, we may be using an undesired version of the config in our job! To avoid this, it is best to wait until you can verify in MLflow that the job has the expected config parameters (and then edit the file to launch a new job if needed).
 
 
-1. **Run the evaluation array job using the SLURM scheduler**
+5. **Run the evaluation array job using the SLURM scheduler**
 
    To launch the evaluation array job, use the `sbatch` command and pass the path to the script:
 
@@ -66,7 +66,7 @@
    sbatch <path-to-run-evaluation-array-script>
    ```
 
-9. **Check the status of the evaluation job**
+6. **Check the status of the evaluation job**
 
    To do this, we can:
 
