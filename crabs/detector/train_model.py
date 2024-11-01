@@ -68,7 +68,7 @@ class DetectorTrain:
         self.checkpoint_path = args.checkpoint_path
 
         # Log dataset and MLflow details to screen
-        # log_job_metadata_to_screen(self)
+        # log_job_metadata_to_screen(self)--------- can be refactored
         logging.info("Dataset")
         logging.info(f"Images directories: {self.images_dirs}")
         logging.info(f"Annotation files: {self.annotation_files}")
@@ -97,6 +97,15 @@ class DetectorTrain:
             cli_args=self.args,
             ckpt_config=self.config.get("checkpoint_saving", {}),
             # pass the checkpointing config if defined
+        )
+
+        # Add dataset section to MLflow hyperparameters ---- can be refactored
+        mlf_logger.log_hyperparams(
+            {
+                "dataset/images_dir": self.images_dirs,
+                "dataset/annotation_files": self.annotation_files,
+                "dataset/seed": self.seed_n,
+            }
         )
 
         # Define checkpointing callback for trainer
@@ -132,7 +141,7 @@ class DetectorTrain:
     def optuna_objective_fn(self, trial: optuna.Trial) -> float:
         """Objective function for Optuna.
 
-        When used with Optuna, it wil maximise precision and recall on the
+        When used with Optuna, it will maximise precision and recall on the
         validation set.
 
         Parameters
@@ -191,6 +200,7 @@ class DetectorTrain:
         )
 
         # Get model
+        # (from a previous checkpoint if required)
         if not self.checkpoint_path:
             lightning_model = FasterRCNN(
                 self.config, optuna_log=self.args.optuna
@@ -244,14 +254,15 @@ class DetectorTrain:
         # Run training
         trainer = self.core_training()
 
-        # if this is a slurm job: add slurm logs as artifacts
+        # if this is a slurm job: add slurm logs as artifacts --- refactor
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        if slurm_job_id:
+        slurm_job_name = os.environ.get("SLURM_JOB_NAME")
+        if slurm_job_id and (slurm_job_name != "bash"):
             slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
 
 
 def main(args) -> None:
-    """Run training process.
+    """Run detector training.
 
     Parameters
     ----------
@@ -288,6 +299,12 @@ def train_parse_args(args):
         ),
     )
     parser.add_argument(
+        "--seed_n",
+        type=int,
+        default=42,
+        help="Seed for dataset splits. Default: 42",
+    )
+    parser.add_argument(
         "--config_file",
         type=str,
         default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
@@ -296,6 +313,12 @@ def train_parse_args(args):
             "Default: "
             "crabs-exploration/crabs/detection_tracking/config/faster_rcnn.yaml"
         ),
+    )
+    parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        default=None,
+        help=("Path to checkpoint to resume training. " "Default: None."),
     )
     parser.add_argument(
         "--accelerator",
@@ -321,12 +344,6 @@ def train_parse_args(args):
         ),
     )
     parser.add_argument(
-        "--seed_n",
-        type=int,
-        default=42,
-        help="Seed for dataset splits. Default: 42",
-    )
-    parser.add_argument(
         "--mlflow_folder",
         type=str,
         default="./ml-runs",
@@ -334,12 +351,6 @@ def train_parse_args(args):
             "Path to MLflow directory where to log the training data. "
             "Default: 'ml-runs' directory under the current working directory."
         ),
-    )
-    parser.add_argument(
-        "--checkpoint_path",
-        type=str,
-        default=None,
-        help=("Path to checkpoint for resume training"),
     )
     parser.add_argument(
         "--no_data_augmentation",
@@ -381,7 +392,7 @@ def train_parse_args(args):
 
 
 def app_wrapper():
-    """Wrap function to run the training application."""
+    """Wrap function to run the training."""
     torch.set_float32_matmul_precision("medium")
 
     train_args = train_parse_args(sys.argv[1:])
