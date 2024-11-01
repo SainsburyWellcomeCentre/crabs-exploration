@@ -2,7 +2,6 @@
 
 import argparse
 import ast
-import logging
 import sys
 from pathlib import Path
 
@@ -13,8 +12,6 @@ from crabs.detector.utils.detection import (
     prep_annotation_files,
     prep_img_directories,
 )
-
-logging.basicConfig(level=logging.INFO)
 
 
 def compute_precision_recall(class_stats: dict) -> tuple[float, float, dict]:
@@ -143,6 +140,7 @@ def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
     # get parameters of the run
     run = mlrun_client.get_run(ckpt_runID)
     params = run.data.params
+    params["run_name"] = run.info.run_name
 
     return params
 
@@ -192,7 +190,7 @@ def get_config_from_ckpt(config_file: str, trained_model_path: str) -> dict:
 def get_cli_arg_from_ckpt(
     args: argparse.Namespace, cli_arg_str: str, trained_model_path: str
 ):
-    """Get CLI argument from checkpoint if not in args."""
+    """Get CLI argument from checkpoint if not passed as CLI argument."""
     if getattr(args, cli_arg_str):
         cli_arg = getattr(args, cli_arg_str)
     else:
@@ -242,3 +240,20 @@ def get_annotation_files_from_ckpt(
         input_annotation_files, dataset_dirs
     )
     return annotation_files
+
+
+def get_mlflow_experiment_name_from_ckpt(
+    args: argparse.Namespace, trained_model_path: str
+) -> str:
+    """Define MLflow experiment name from the training job.
+
+    Only used if the experiment name is not passed via CLI.
+    """
+    if args.experiment_name:
+        experiment_name = args.experiment_name
+    else:
+        params = get_mlflow_parameters_from_ckpt(trained_model_path)
+        trained_model_expt_name = params["cli_args/experiment_name"]
+        experiment_name = trained_model_expt_name + "_evaluation"
+
+    return experiment_name

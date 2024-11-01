@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import sys
+from pathlib import Path
 
 import lightning
 import torch
@@ -20,8 +21,12 @@ from crabs.detector.utils.evaluate import (
     get_cli_arg_from_ckpt,
     get_config_from_ckpt,
     get_img_directories_from_ckpt,
+    get_mlflow_experiment_name_from_ckpt,
+    get_mlflow_parameters_from_ckpt,
 )
 from crabs.detector.utils.visualization import save_images_with_boxes
+
+logging.getLogger().setLevel(logging.INFO)
 
 
 class DetectorEvaluate:
@@ -39,10 +44,17 @@ class DetectorEvaluate:
         # CLI inputs
         self.args = args
 
-        # trained model
+        # trained model data
         self.trained_model_path = args.trained_model_path
+        trained_model_params = get_mlflow_parameters_from_ckpt(
+            self.trained_model_path
+        )
+        self.trained_model_run_name = trained_model_params["run_name"]
+        self.trained_model_expt_name = trained_model_params[
+            "cli_args/experiment_name"
+        ]
 
-        # config: retreieve from ckpt if not passed as CLI argument
+        # config: retrieve from ckpt if not passed as CLI argument
         self.config_file = args.config_file
         self.config = get_config_from_ckpt(
             config_file=self.config_file,
@@ -61,34 +73,63 @@ class DetectorEvaluate:
             cli_arg_str="seed_n",
             trained_model_path=self.trained_model_path,
         )
+        self.evaluation_split = "test" if self.args.use_test_set else "val"
 
         # Hardware
         self.accelerator = args.accelerator
 
-        # MLflow
-        self.experiment_name = args.experiment_name
+        # MLflow experiment name and run name
+        self.experiment_name = get_mlflow_experiment_name_from_ckpt(
+            args=self.args, trained_model_path=self.trained_model_path
+        )
+        self.run_name = set_mlflow_run_name()
         self.mlflow_folder = args.mlflow_folder
 
-        # Debugging
+        # Debugging settings
         self.fast_dev_run = args.fast_dev_run
         self.limit_test_batches = args.limit_test_batches
 
+        # Log dataset information to screen
         logging.info("Dataset")
         logging.info(f"Images directories: {self.images_dirs}")
         logging.info(f"Annotation files: {self.annotation_files}")
         logging.info(f"Seed: {self.seed_n}")
+        logging.info("---------------------------------")
+
+        # Log MLflow information to screen
+        logging.info("MLflow logs for current job")
+        logging.info(f"Experiment name: {self.experiment_name}")
+        logging.info(f"Run name: {self.run_name}")
+        logging.info(f"Folder: {Path(self.mlflow_folder).resolve()}")
+        logging.info("---------------------------------")
 
     def setup_trainer(self):
         """Set up trainer object with logging for testing."""
-        # Assign run name
-        self.run_name = set_mlflow_run_name()
-
         # Setup logger
         mlf_logger = setup_mlflow_logger(
             experiment_name=self.experiment_name,
             run_name=self.run_name,
             mlflow_folder=self.mlflow_folder,
             cli_args=self.args,
+        )
+
+        # Add trained model section to MLflow hyperparameters
+        mlf_logger.log_hyperparams(
+            {
+                "trained_model/experiment_name": self.trained_model_expt_name,
+                "trained_model/run_name": self.trained_model_run_name,
+                "trained_model/ckpt_file": Path(self.trained_model_path).name,
+            }
+        )
+
+        # Add dataset section to MLflow hyperparameters
+        mlf_logger.log_hyperparams(
+            {
+                "dataset/images_dir": self.images_dirs,
+                "dataset/annotation_files": self.annotation_files,
+                "dataset/seed": self.seed_n,
+                "dataset/evaluation_split": self.evaluation_split,
+            }
         )
 
         # Return trainer linked to logger
@@ -107,6 +148,7 @@ class DetectorEvaluate:
             list_annotation_files=self.annotation_files,
             split_seed=self.seed_n,
             config=self.config,
+            no_data_augmentation=True,
         )
 
         # Get trained model
@@ -114,19 +156,34 @@ class DetectorEvaluate:
             self.trained_model_path, config=self.config
         )
 
-        # Run testing
+        # Evaluate model on either the validation or the test split
         trainer = self.setup_trainer()
-        trainer.test(
-            trained_model,
-            data_module,
-        )
+        if self.args.use_test_set:
+            trainer.test(
+                trained_model,
+                data_module,
+            )
+        else:
+            trainer.validate(
+                trained_model,
+                data_module,
+            )
 
-        # Save images if required
+        # Save images with bounding boxes if required
         if self.args.save_frames:
+            # get relevant dataloader
+            if self.args.use_test_set:
+                eval_dataloader = data_module.test_dataloader()
+            else:
+                eval_dataloader = data_module.val_dataloader()
+
             save_images_with_boxes(
-                test_dataloader=data_module.test_dataloader(),
+                dataloader=eval_dataloader,
                 trained_model=trained_model,
-                output_dir=self.args.frames_output_dir,
+                output_dir=str(
+                    Path(self.args.frames_output_dir)
+                    / f"evaluation_output_{self.evaluation_split}"
+                ),
                 score_threshold=self.args.frames_score_threshold,
             )
 
@@ -205,7 +262,14 @@ def evaluate_parse_args(args):
             "the trained model is used."
         ),
     )
-
+    parser.add_argument(
+        "--use_test_set",
+        action="store_true",
+        help=(
+            "Evaluate the model on the test split, rather than on the default "
+            "validation split."
+        ),
+    )
     parser.add_argument(
         "--accelerator",
         type=str,
@@ -220,35 +284,20 @@ def evaluate_parse_args(args):
     parser.add_argument(
         "--experiment_name",
         type=str,
-        default="Sept2023_evaluation",
         help=(
             "Name of the experiment in MLflow, under which the current run "
             "will be logged. "
-            "For example, the name of the dataset could be used, to group "
-            "runs using the same data. "
-            "Default: Sept2023_evaluation"
-        ),
-    )
-    parser.add_argument(
-        "--fast_dev_run",
-        action="store_true",
-        help="Debugging option to run training for one batch and one epoch",
-    )
-    parser.add_argument(
-        "--limit_test_batches",
-        type=float,
-        default=1.0,
-        help=(
-            "Debugging option to run training on a fraction of "
-            "the training set."
-            "Default: 1.0 (all the training set)"
+            "By default: <trained_model_mlflow_experiment_name>_evaluation."
         ),
     )
     parser.add_argument(
         "--mlflow_folder",
         type=str,
         default="./ml-runs",
-        help=("Path to MLflow directory. Default: ./ml-runs"),
+        help=(
+            "Path to MLflow directory where to log the evaluation data. "
+            "Default: 'ml-runs' directory under the current working directory."
+        ),
     )
     parser.add_argument(
         "--save_frames",
@@ -269,10 +318,27 @@ def evaluate_parse_args(args):
         type=str,
         default="",
         help=(
-            "Output directory for the exported frames. "
+            "Output directory for the evaluated frames, with bounding boxes. "
+            "Predicted boxes are plotted in red, and ground-truth boxes in "
+            "green. "
             "By default, the frames are saved in a "
-            "`results_<timestamp> folder "
+            "`evaluation_output_<timestamp> folder "
             "under the current working directory."
+        ),
+    )
+    parser.add_argument(
+        "--fast_dev_run",
+        action="store_true",
+        help="Debugging option to run training for one batch and one epoch",
+    )
+    parser.add_argument(
+        "--limit_test_batches",
+        type=float,
+        default=1.0,
+        help=(
+            "Debugging option to run training on a fraction of "
+            "the training set."
+            "Default: 1.0 (all the training set)"
         ),
     )
     return parser.parse_args(args)
