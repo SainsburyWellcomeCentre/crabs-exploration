@@ -327,39 +327,19 @@ def train_parse_args(args):
         help="Seed for dataset splits. Default: 42",
     )
     parser.add_argument(
-        "--fast_dev_run",
-        action="store_true",
-        help="Debugging option to run training for one batch and one epoch",
-    )
-    parser.add_argument(
-        "--limit_train_batches",
-        type=float,
-        default=1.0,
-        help=(
-            "Debugging option to run training on a fraction of the "
-            "training set. "
-            "Default: 1.0 (the full training set)"
-        ),
-    )
-    parser.add_argument(
         "--mlflow_folder",
         type=str,
         default="./ml-runs",
-        help=("Path to MLflow directory. Default: ./ml-runs"),
+        help=(
+            "Path to MLflow directory where to log the training data. "
+            "Default: 'ml-runs' directory under the current working directory."
+        ),
     )
     parser.add_argument(
         "--checkpoint_path",
         type=str,
         default=None,
         help=("Path to checkpoint for resume training"),
-    )
-    parser.add_argument(
-        "--optuna",
-        action="store_true",
-        help=(
-            "Run a hyperparameter optimisation using Optuna prior to training "
-            "the model"
-        ),
     )
     parser.add_argument(
         "--no_data_augmentation",
@@ -373,6 +353,29 @@ def train_parse_args(args):
         "--log_data_augmentation",
         action="store_true",
         help=("Log data augmentation transforms to " "MLflow as artifacts"),
+    )
+    parser.add_argument(
+        "--optuna",
+        action="store_true",
+        help=(
+            "Run a hyperparameter optimisation using Optuna prior to training "
+            "the model"
+        ),
+    )
+    parser.add_argument(
+        "--fast_dev_run",
+        action="store_true",
+        help="Debugging option to run training for one batch and one epoch",
+    )
+    parser.add_argument(
+        "--limit_train_batches",
+        type=float,
+        default=1.0,
+        help=(
+            "Debugging option to run training on a fraction of the "
+            "training set. "
+            "Default: 1.0 (the full training set)"
+        ),
     )
     return parser.parse_args(args)
 
