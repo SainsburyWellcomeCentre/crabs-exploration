@@ -243,3 +243,37 @@ class FasterRCNN(LightningModule):
             weight_decay=self.config["wdecay"],
         )
         return {"optimizer": optimizer}
+
+    # def predict_step(
+    #   self, images: torch.Tensor, dataloader_idx=0
+    # ) -> torch.Tensor:
+    #     """Perform inference on a batch of images."""
+
+    #     # ensure batch is on device
+    #     # batch = batch.to(self.device)
+    #     # torch.Size([2160, 4096, 3])
+
+    #     # apply inference transform
+    #     # test_val_transforms = CrabsDataModule._get_test_val_transform(None)
+    #     # inference_transforms = transforms.Compose(
+    #     #     [
+    #     #         transforms.ToImage(),
+    #     #         transforms.ToDtype(torch.float32, scale=True),
+    #     #     ]
+    #     # )
+    #     # batch_transformed = inference_transforms(batch) # B, C, H, W
+    #     # breakpoint()
+
+    #     # # run prediction
+    #     # predictions = self.model(images)
+    #     transform = transforms.Compose(
+    #         [
+    #             transforms.ToImage(),
+    #             transforms.ToDtype(torch.float32, scale=True),
+    #         ]
+    #     )
+    #     image_tensors = transform(images).to(self.device)
+    #     # image_tensors = image_tensors.unsqueeze(0)
+    #     with torch.no_grad():
+    #         predictions = self.model(image_tensors)
+    #     return predictions

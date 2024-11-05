@@ -7,12 +7,18 @@ import sys
 from pathlib import Path
 
 import cv2
+import lightning
 import numpy as np
 import torch
 import torchvision.transforms.v2 as transforms
 import yaml  # type: ignore
 
 from crabs.detector.models import FasterRCNN
+from crabs.detector.utils.detection import (
+    log_mlflow_metadata_as_info,
+    set_mlflow_run_name,
+    setup_mlflow_logger,
+)
 from crabs.tracker.evaluate_tracker import TrackerEvaluate
 from crabs.tracker.sort import Sort
 from crabs.tracker.utils.io import (
@@ -59,6 +65,41 @@ class Tracking:
             max_age=self.config["max_age"],
             min_hits=self.config["min_hits"],
             iou_threshold=self.config["iou_threshold"],
+        )
+
+        # MLflow experiment name and run name
+        self.experiment_name = args.experiment_name
+        self.run_name = set_mlflow_run_name()
+        self.mlflow_folder = args.mlflow_folder
+
+        # Log MLflow information to screen
+        log_mlflow_metadata_as_info(self)
+
+    def setup_trainer(self):
+        """Set up trainer object with logging for testing."""
+        # Setup logger
+        mlf_logger = setup_mlflow_logger(
+            experiment_name=self.experiment_name,
+            run_name=self.run_name,
+            mlflow_folder=self.mlflow_folder,
+            cli_args=self.args,
+        )
+
+        # Add trained model section to MLflow hyperparameters
+        mlf_logger.log_hyperparams(
+            {
+                "trained_model/experiment_name": self.trained_model_expt_name,
+                "trained_model/run_name": self.trained_model_run_name,
+                "trained_model/ckpt_file": Path(self.trained_model_path).name,
+            }
+        )
+
+        # Add other unlogged information from init?
+
+        # Return trainer linked to logger
+        return lightning.Trainer(
+            accelerator=self.accelerator,  # lightning accelerators
+            logger=mlf_logger,
         )
 
     def setup(self):
@@ -229,6 +270,12 @@ class Tracking:
         if self.args.save_frames:
             close_csv_file(self.csv_file)
 
+        # if this is a slurm job: add slurm logs as artifacts
+        # slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        # slurm_job_name = os.environ.get("SLURM_JOB_NAME")
+        # if slurm_job_id and (slurm_job_name != "bash"):
+        #     slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
+
 
 def main(args) -> None:
     """Run detection+tracking inference on video.
@@ -317,6 +364,25 @@ def tracking_parse_args(args):
         help=(
             "Accelerator for Pytorch. "
             "Valid inputs are: cpu or gpu. Default: gpu."
+        ),
+    )
+    parser.add_argument(
+        "--experiment_name",
+        type=str,
+        default="Inference",
+        help=(
+            "Name of the experiment in MLflow, under which the current run "
+            "will be logged. "
+            "By default: Inference."
+        ),
+    )
+    parser.add_argument(
+        "--mlflow_folder",
+        type=str,
+        default="./ml-runs",
+        help=(
+            "Path to MLflow directory where to log the evaluation data. "
+            "Default: 'ml-runs' directory under the current working directory."
         ),
     )
     parser.add_argument(
