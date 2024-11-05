@@ -77,7 +77,9 @@ def mock_tracker():
             pred_labels = prediction[0]["labels"].detach().cpu().numpy()
 
             pred_sort = []
-            for box, score, label in zip(pred_boxes, pred_scores, pred_labels):
+            for box, score, _label in zip(
+                pred_boxes, pred_scores, pred_labels
+            ):
                 if (
                     score > self.score_threshold
                 ):  # Assuming score_threshold is a property of mock_tracker
