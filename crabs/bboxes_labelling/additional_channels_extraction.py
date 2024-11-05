@@ -1,3 +1,5 @@
+"""Script to compute additional channels."""
+
 import argparse
 import os
 from pathlib import Path
@@ -9,16 +11,15 @@ from PIL import Image
 
 
 def apply_grayscale_and_blur(
-    frame: np.array,
+    frame: np.ndarray,
     kernel_size: list,
     sigmax: int,
-) -> np.array:
-    """
-    Convert the frame to grayscale and apply Gaussian blurring.
+) -> tuple:
+    """Convert the frame to grayscale and apply Gaussian blurring.
 
     Parameters
     ----------
-    frame : np.array
+    frame : np.ndarray
         frame array read from the video capture
     kernel_size : list
         kernel size for GaussianBlur
@@ -27,10 +28,11 @@ def apply_grayscale_and_blur(
 
     Returns
     -------
-    gray_frame : np.array
+    gray_frame
         grayscaled input frame
-    blurred_frame : np.array
+    blurred_frame
         Gaussian-blurred grayscaled input frame
+
     """
     # convert the frame to grayscale frame
     gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -41,9 +43,7 @@ def apply_grayscale_and_blur(
 
 
 def compute_mean_and_max_abs_blurred_frame(cap, kernel_size, sigmax):
-    """
-    Compute the mean blurred frame and the maximum absolute-value
-    blurred frame for a video capture cap.
+    """Compute mean blurred frame and maximum absolute-value blurred frame.
 
     Parameters
     ----------
@@ -60,6 +60,7 @@ def compute_mean_and_max_abs_blurred_frame(cap, kernel_size, sigmax):
         mean of all blurred frames in the video
     max_abs_blurred_frame : np.array
         pixelwise max absolute value across all blurred frames in the video
+
     """
     frame_counter = 0
 
@@ -105,8 +106,9 @@ def compute_background_subtracted_frame(
     mean_blurred_frame,
     max_abs_blurred_frame,
 ):
-    """
-    Compute the background subtracted frame for the
+    """Compute background subtracted frame.
+
+    Compute background subtracted frame for the
     input blurred frame, given the mean and max absolute frames of
     its corresponding video.
 
@@ -124,6 +126,7 @@ def compute_background_subtracted_frame(
     background_subtracted_frame : np.array
         normalised difference between the blurred frame f and
         the mean blurred frame
+
     """
     return (
         ((blurred_frame - mean_blurred_frame) / max_abs_blurred_frame) + 1
@@ -136,8 +139,7 @@ def compute_motion_frame(
     mean_blurred_frame,
     max_abs_blurred_frame,
 ):
-    """
-    _summary_.
+    """_summary_.
 
     Parameters
     ----------
@@ -157,6 +159,7 @@ def compute_motion_frame(
     motion_frame : np.array
         absolute difference between the background subtracted frame f
         and the background subtracted frame f+delta
+
     """
     # compute the blurred frame frame_idx+delta
     _, blurred_frame_delta = apply_grayscale_and_blur(
@@ -178,8 +181,9 @@ def compute_motion_frame(
 
 
 def compute_stacked_inputs(args: argparse.Namespace) -> None:
-    """
-    Compute the stacked inputs consist of
+    """Compute stacked inputs.
+
+    Stack consist of
     grayscale, background subtracted and motion signal.
 
     Parameters
@@ -279,8 +283,7 @@ def compute_stacked_inputs(args: argparse.Namespace) -> None:
 
 
 def argument_parser() -> argparse.Namespace:
-    """
-    Parse command-line arguments for the script.
+    """Parse command-line arguments for the script.
 
     Returns
     -------
@@ -288,6 +291,7 @@ def argument_parser() -> argparse.Namespace:
         An object containing the parsed command-line arguments.
         The attributes of this object correspond to the defined
         command-line arguments in the script.
+
     """
     parser = argparse.ArgumentParser()
     parser.add_argument(

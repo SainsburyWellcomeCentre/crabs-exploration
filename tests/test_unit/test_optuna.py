@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from crabs.detector.train_model import DectectorTrain
+from crabs.detector.train_model import DetectorTrain
 from crabs.detector.utils.hpo import compute_optimal_hyperparameters
 
 
@@ -37,8 +37,8 @@ def args():
 
 @pytest.fixture
 def detector_train(args, config):
-    with patch.object(DectectorTrain, "load_config_yaml", MagicMock()):
-        train_instance = DectectorTrain(args=args)
+    with patch.object(DetectorTrain, "load_config_yaml", MagicMock()):
+        train_instance = DetectorTrain(args=args)
         print(config)
         train_instance.config = config
         return train_instance

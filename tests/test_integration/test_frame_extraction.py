@@ -23,6 +23,7 @@ def assert_output_files(list_input_videos: list, cli_dict: dict) -> None:
         List of videos used for frame extraction.
     cli_dict : dict
         A validation dictionary with the parameters of the frame extraction.
+
     """
     # check name of directory with extracted frames
     list_subfolders = [
@@ -30,13 +31,9 @@ def assert_output_files(list_input_videos: list, cli_dict: dict) -> None:
     ]
     extracted_frames_dir = Path(list_subfolders[0])
     assert len(list_subfolders) == 1
-    assert (
-        type(
-            datetime.datetime.strptime(
-                extracted_frames_dir.name, "%Y%m%d_%H%M%S"
-            )
-        )
-        == datetime.datetime
+    assert isinstance(
+        datetime.datetime.strptime(extracted_frames_dir.name, "%Y%m%d_%H%M%S"),
+        datetime.datetime,
     )
 
     # check there is an extracted_frames.json file
@@ -74,7 +71,7 @@ def assert_output_files(list_input_videos: list, cli_dict: dict) -> None:
         )  # only one must match
 
     # check n_elements in json file matches n of files generated
-    with open((extracted_frames_dir / "extracted_frames.json")) as js:
+    with open(extracted_frames_dir / "extracted_frames.json") as js:
         extracted_frames_dict = json.load(js)
         n_extracted_frames = sum(
             [len(list_idcs) for list_idcs in extracted_frames_dict.values()]
@@ -172,11 +169,9 @@ def test_frame_extraction_one_dir(
 
 
 def test_extension_case_insensitive(video_extensions_flipped: list) -> None:
-    """
-    Tests that the function that computes the list of SLEAP videos
+    """Tests that the function that computes the list of SLEAP videos
     is case-insensitive for the user-provided extension.
     """
-
     # build list of video files in dir
     list_files = list_files_in_dir(INPUT_DATA_DIR)
 

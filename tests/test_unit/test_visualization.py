@@ -151,8 +151,8 @@ def test_draw_detection(annotations, detections):
 
 
 @pytest.mark.parametrize(
-    "output_dir_name, expected_dir_name",
-    [("output", r"^output$"), ("", r"^results_\d{8}_\d{6}$")],
+    "output_dir_name",
+    ["output", "evaluation_output"],
 )
 @pytest.mark.parametrize(
     "detections",
@@ -176,7 +176,10 @@ def test_draw_detection(annotations, detections):
 @patch("crabs.detector.utils.visualization.cv2.imwrite")
 @patch("crabs.detector.utils.visualization.os.makedirs")
 def test_save_images_with_boxes(
-    mock_makedirs, mock_imwrite, detections, output_dir_name, expected_dir_name
+    mock_makedirs,
+    mock_imwrite,
+    detections,
+    output_dir_name,
 ):
     trained_model = MagicMock()
     test_dataloader = MagicMock()
@@ -190,7 +193,9 @@ def test_save_images_with_boxes(
     )
 
     # extract and check first positional argument to (mocked) os.makedirs
+    output_dir_regexp = re.compile(rf"{output_dir_name}_\d{{8}}_\d{{6}}$")
     input_path_makedirs = mock_makedirs.call_args[0][0]
-    assert re.match(expected_dir_name, input_path_makedirs)
+    assert output_dir_regexp.match(input_path_makedirs)
 
+    # should be called as many times as batches in the dataloader
     assert mock_imwrite.call_count == len(test_dataloader)

@@ -1,3 +1,5 @@
+"""Script to combine and format annotations."""
+
 from pathlib import Path
 from typing import Optional
 
@@ -19,7 +21,7 @@ def combine_VIA_and_convert_to_COCO(
     via_default_dir: Optional[str] = None,
     via_project_name: Optional[str] = None,
 ) -> str:
-    """Combine a list of VIA JSON files into one and convert to COCO format
+    r"""Combine a list of VIA JSON files into one and convert to COCO format.
 
     Parameters
     ----------
@@ -40,8 +42,8 @@ def combine_VIA_and_convert_to_COCO(
     -------
     str
         path to the COCO json file. By default, the file
-    """
 
+    """
     # Get list of all JSON files in directory
     all_files = Path(parent_dir_via_jsons).glob("*")
     list_input_json_files = [
@@ -61,6 +63,7 @@ def combine_VIA_and_convert_to_COCO(
 
 
 def app_wrapper():
+    """Wrap function for the Typer app."""
     app()
 
 

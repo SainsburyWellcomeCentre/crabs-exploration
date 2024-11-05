@@ -13,7 +13,7 @@ SPLIT_SEED = 42
 
 # %%%%%%%%%%%%%%%%%%%%
 # Read config as dict
-with open(CONFIG, "r") as f:
+with open(CONFIG) as f:
     config_dict = yaml.safe_load(f)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

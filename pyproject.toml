@@ -40,12 +40,17 @@ dev = [
     "pytest",
     "pytest-cov",
     "coverage",
-    "tox",            # >=4 ?
-    "black",
+    "tox",
     "mypy",
     "pre-commit",
     "ruff",
     "setuptools_scm",
+    "check-manifest",
+    # "codespell",
+    # "pandas-stubs",
+    # "types-attrs",
+    # "types-PyYAML",
+    # "types-requests",
 ]
 
 [project.scripts]
@@ -67,15 +72,15 @@ include-package-data = true
 
 [tool.setuptools.packages.find]
 include = ["crabs*"]
-exclude = ["tests*"]
+exclude = ["tests"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=crabs"
 
-[tool.black]
-target-version = ['py39', 'py310']
-skip-string-normalization = false
-line-length = 79
+# [tool.black]
+# target-version = ['py39', 'py310']
+# skip-string-normalization = false
+# line-length = 79
 
 [tool.setuptools_scm]
 
@@ -91,26 +96,39 @@ ignore = [
 [tool.ruff]
 line-length = 79
 exclude = ["__init__.py", "build", ".eggs"]
-select = ["I", "E", "F"]
 fix = true
+
+[tool.ruff.lint]
+# See https://docs.astral.sh/ruff/rules/
 ignore = [
-    'E501', # line too long: should be handled by black
+    "D203", # one blank line before class
+    "D213", # multi-line-summary second line
 ]
-# force-exclude = true
-# ignore = [
-#     "D203", # no-blank-line-before-class
-#     "D212", # multi-line-summary-first-line
-#     "D417", # argument description in docstring (unreliable)
-# ]
-# per-file-ignores = {"test_*" = [
-#     "S101",
-# ]}
-# [tool.tomlsort]
-# all = true
-# spaces_indent_inline_array = 4
-# trailing_comma_inline_array = true
-# overrides."project.classifiers".inline_arrays = false
-# overrides."tool.coverage.paths.source".inline_arrays = false
+select = [
+    "E",      # pycodestyle errors
+    "F",      # Pyflakes
+    "UP",     # pyupgrade
+    "I",      # isort
+    "B",      # flake8 bugbear
+    "SIM",    # flake8 simplify
+    "C90",    # McCabe complexity
+    "D",      # pydocstyle
+    "NPY201", # checks for syntax that was deprecated in numpy2.0
+]
+per-file-ignores = { "tests/*" = [
+    "D100", # missing docstring in public module
+    "D205", # missing blank line between summary and description
+    "D103", # missing docstring in public function
+], "examples/*" = [
+    "B018", # Found useless expression
+    "D103", # Missing docstring in public function
+    "D400", # first line should end with a period.
+    "D415", # first line should end with a period, question mark...
+    "D205", # missing blank line between summary and description
+] }
+
+[tool.ruff.format]
+docstring-code-format = true # Also format code in docstrings
 
 
 [tool.tox]

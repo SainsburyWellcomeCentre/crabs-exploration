@@ -1,3 +1,5 @@
+"""Utility functions for handling input and output operations."""
+
 import argparse
 import csv
 import os
@@ -10,14 +12,13 @@ import numpy as np
 
 from crabs.detector.utils.visualization import draw_bbox
 from crabs.tracker.utils.tracking import (
-    save_output_frames,
+    save_output_frame,
     write_tracked_bbox_to_csv,
 )
 
 
 def prep_csv_writer(output_dir: str, video_file_root: str):
-    """
-    Prepare csv writer to output tracking results.
+    """Prepare csv writer to output tracking results.
 
     Parameters
     ----------
@@ -29,16 +30,18 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
     Returns
     -------
     Tuple
-        A tuple containing the CSV writer, the CSV file object, and the tracking output directory path.
-    """
+        A tuple containing the CSV writer, the CSV file object, and the
+        tracking output directory path.
 
+    """
+    # Create a timestamped directory for the tracking output
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    tracking_output_dir = Path(output_dir + f"_{timestamp}") / video_file_root
-    # Create the subdirectory for the specific video file root
+    tracking_output_dir = Path(output_dir + f"_{timestamp}")
     tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_file = open(
-        f"{str(tracking_output_dir)}/predicted_tracks.csv",
+    # Initialise csv file
+    csv_file = open(  # noqa: SIM115
+        f"{str(tracking_output_dir)}/{video_file_root}_tracks.csv",
         "w",
     )
     csv_writer = csv.writer(csv_file)
@@ -62,12 +65,12 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
 
 def prep_video_writer(
     output_dir: str,
+    video_file_root: str,
     frame_width: int,
     frame_height: int,
     cap_fps: float,
 ) -> cv2.VideoWriter:
-    """
-    Prepare video writer to output processed video.
+    """Prepare video writer to output processed video.
 
     Parameters
     ----------
@@ -86,10 +89,11 @@ def prep_video_writer(
     -------
     cv2.VideoWriter
         The video writer object for writing video frames.
+
     """
     output_file = os.path.join(
         output_dir,
-        "tracked_video.mp4",
+        f"{video_file_root}_tracks.mp4",
     )
     output_codec = cv2.VideoWriter_fourcc("m", "p", "4", "v")
     video_output = cv2.VideoWriter(
@@ -111,15 +115,14 @@ def save_required_output(
     frame_number: int,
     pred_scores: np.ndarray,
 ) -> None:
-    """
-    Handle the output based on argument options.
+    """Handle the output based on argument options.
 
     Parameters
     ----------
     video_file_root : Path
         The root name of the video file.
-    save_csv_and_frames : bool
-        Flag to save CSV and frames.
+    save_frames : bool
+        Flag to save frames.
     tracking_output_dir : Path
         Directory to save tracking output.
     csv_writer : Any
@@ -136,18 +139,24 @@ def save_required_output(
         The frame number.
     pred_scores : np.ndarray
         The prediction score from detector
+
     """
-    frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
+    frame_name = f"frame_{frame_number:08d}.png"
 
     for bbox, pred_score in zip(tracked_boxes, pred_scores):
         write_tracked_bbox_to_csv(
-            bbox, frame, frame_name, csv_writer, pred_score
+            np.array(bbox), frame, frame_name, csv_writer, pred_score
         )
 
     if save_frames:
-        save_output_frames(
+        # create subdirectory of frames
+        frames_subdir = tracking_output_dir / f"{video_file_root}_frames"
+        frames_subdir.mkdir(parents=True, exist_ok=True)
+
+        # save frame (without bounding boxes)
+        save_output_frame(
             frame_name,
-            tracking_output_dir,
+            frames_subdir,
             frame,
             frame_number,
         )
@@ -168,24 +177,20 @@ def save_required_output(
 
 
 def close_csv_file(csv_file) -> None:
-    """
-    Close the CSV file if it's open.
-    """
+    """Close the CSV file if it's open."""
     if csv_file:
         csv_file.close()
 
 
 def release_video(video_output) -> None:
-    """
-    Release the video file if it's open.
-    """
+    """Release the video file if it's open."""
     if video_output:
         video_output.release()
 
 
 def read_metrics_from_csv(filename):
-    """
-    Read the tracking output metrics from a CSV file.
+    """Read the tracking output metrics from a CSV file.
+
     To be called by plot_output_histogram.
 
     Parameters
@@ -197,7 +202,9 @@ def read_metrics_from_csv(filename):
     -------
     tuple:
         Tuple containing lists of true positives, missed detections,
-        false positives, number of switches, and total ground truth for each frame.
+        false positives, number of switches, and total ground truth
+        for each frame.
+
     """
     true_positives_list = []
     missed_detections_list = []
@@ -206,7 +213,7 @@ def read_metrics_from_csv(filename):
     total_ground_truth_list = []
     mota_value_list = []
 
-    with open(filename, mode="r") as file:
+    with open(filename) as file:
         reader = csv.DictReader(file)
         for row in reader:
             true_positives_list.append(int(row["True Positives"]))
@@ -227,8 +234,7 @@ def read_metrics_from_csv(filename):
 
 
 def plot_output_histogram(filename):
-    """
-    Plot metrics along with the total ground truth for each frame.
+    """Plot metrics along with the total ground truth for each frame.
 
     Example usage:
     > filename = <video_name>/tracking_metrics_output.csv
@@ -236,6 +242,8 @@ def plot_output_histogram(filename):
 
     Parameters
     ----------
+    filename : str
+        Name of the CSV file to read.
     true_positives_list : list[int]
         List of counts of true positives for each frame.
     missed_detections_list : list[int]
@@ -246,6 +254,7 @@ def plot_output_histogram(filename):
         List of counts of identity switches for each frame.
     total_ground_truth_list : list[int]
         List of total ground truth objects for each frame.
+
     """
     (
         true_positives_list,

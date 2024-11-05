@@ -1,3 +1,5 @@
+"""Utility functions to work with annotations in JSON format."""
+
 import json
 import os
 import re
@@ -8,8 +10,7 @@ from typing import Any, Optional
 def read_json_file(
     file_path: str,
 ) -> dict:
-    """
-    Read JSON file as dict.
+    """Read JSON file as dict.
 
     Parameters
     ----------
@@ -20,6 +21,7 @@ def read_json_file(
     -------
     Optional[dict]
         Dictionary with the JSON data
+
     """
     try:
         with open(file_path) as file:
@@ -41,8 +43,7 @@ def combine_multiple_via_jsons(
     via_default_dir: Optional[str] = None,
     via_project_name: Optional[str] = None,
 ) -> str:
-    """
-    Combine all the input VIA JSON files into one.
+    r"""Combine all the input VIA JSON files into one.
 
     A VIA JSON file is a json file specific to the VIA tool
     that defines the annotations and also the visualisation settings
@@ -78,6 +79,7 @@ def combine_multiple_via_jsons(
     -------
     json_out_fullpath: str
         full path to the combined VIA JSON file
+
     """
     # Initialise data structures for the combined VIA JSON file
     via_data_combined = {}
@@ -128,15 +130,15 @@ def combine_multiple_via_jsons(
             raise ValueError(msg)
 
         # assign directory path to the VIA combined dictionary
-        via_data_combined["_via_settings"]["core"][
-            "default_filepath"
-        ] = via_default_dir
+        via_data_combined["_via_settings"]["core"]["default_filepath"] = (
+            via_default_dir
+        )
 
     # If required: change _via_settings > project > name
     if via_project_name:
-        via_data_combined["_via_settings"]["project"][
-            "name"
-        ] = via_project_name
+        via_data_combined["_via_settings"]["project"]["name"] = (
+            via_project_name
+        )
 
     # Save the VIA combined data as a new JSON file
     # if no output directory is passed, use the parent directory
@@ -160,8 +162,7 @@ def convert_via_json_to_coco(
     coco_out_filename: Optional[str] = None,
     coco_out_dir: Optional[str] = None,
 ) -> str:
-    """
-    Convert annotation data for one category from VIA-JSON format to COCO.
+    """Convert annotation data for one category from VIA-JSON format to COCO.
 
     This function takes annotation data in a VIA JSON format and converts it
     into COCO format, which is widely used for object detection datasets.
@@ -175,12 +176,9 @@ def convert_via_json_to_coco(
     ----------
     json_file_path : str
         Path to the VIA-JSON file containing the annotation data.
-    coco_category_ID : int, optional
-        category ID of all the annotations
-    coco_category_name : str, optional
-        category name of all the annotations
-    coco_supercategory_name : str, optional
-        supercategory for all the annotations
+    coco_category : dict, optional
+        Dictionary with the category ID, name and supercategory for all the
+        annotations.
     coco_out_filename : str, optional
         Name of the COCO output file. If None (default), the input VIA JSON
         filename is used with the suffix '_coco_gen'
@@ -193,6 +191,7 @@ def convert_via_json_to_coco(
     -------
     str
         path to the COCO json file.
+
     """
     # Load the annotation data in VIA JSON format
     with open(json_file_path) as json_file:
@@ -213,8 +212,8 @@ def convert_via_json_to_coco(
     for image_info in annotation_data["_via_img_metadata"].values():
         image_data = {
             "id": image_id,
-            "width": 0,  # TODO: find how we can get this (not available in JSON)
-            "height": 0,  # TODO: find how we can get this (not available in JSON)
+            "width": 0,  # TODO: find how we can get this data from json
+            "height": 0,  # TODO: find how we can get this data from json
             "file_name": image_info["filename"],
         }
         coco_data["images"].append(image_data)

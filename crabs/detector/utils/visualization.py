@@ -1,3 +1,5 @@
+"""Utilities for visualizing object detection results."""
+
 import os
 from datetime import datetime
 from typing import Any, Optional
@@ -23,17 +25,18 @@ def draw_bbox(
     colour: tuple,
     label_text: Optional[str] = None,
 ) -> None:
-    """
-    Draw bounding boxes on the image based on detection results.
+    """Draw bounding boxes on the image based on detection results.
 
     Parameters
     ----------
     frame : np.ndarray
         Image with bounding boxes drawn on it.
     top_left : tuple[float, float]
-        Tuple containing (x, y) coordinates of the top-left corner of the bounding box.
+        Tuple containing (x, y) coordinates of the top-left corner of the
+        bounding box.
     bottom_right : tuple[float, float]
-        Tuple containing (x, y) coordinates of the bottom-right corner of the bounding box.
+        Tuple containing (x, y) coordinates of the bottom-right corner of the
+        bounding box.
     colour : tuple
         Color of the bounding box in BGR format.
     label_text : str, optional
@@ -42,6 +45,7 @@ def draw_bbox(
     Returns
     -------
     None
+
     """
     # Draw bounding box
     cv2.rectangle(
@@ -72,8 +76,7 @@ def draw_detection(
     detections: Optional[dict[Any, Any]] = None,
     score_threshold: Optional[float] = None,
 ) -> np.ndarray:
-    """
-    Draw the results based on the detection.
+    """Draw the results based on the detection.
 
     Parameters
     ----------
@@ -90,9 +93,9 @@ def draw_detection(
     -------
     np.ndarray
         Image(s) with bounding boxes drawn on them.
+
     """
     coco_list = COCO_INSTANCE_CATEGORY_NAMES
-    image_with_boxes = None
 
     for image, label, prediction in zip(
         imgs, annotations, detections or [None] * len(imgs)
@@ -151,26 +154,29 @@ def draw_detection(
 
 
 def save_images_with_boxes(
-    test_dataloader: torch.utils.data.DataLoader,
+    dataloader: torch.utils.data.DataLoader,
     trained_model: torch.nn.Module,
     output_dir: str,
     score_threshold: float,
 ) -> None:
-    """
-    Save images with bounding boxes drawn around detected objects.
+    """Save images with bounding boxes drawn around detected objects.
 
     Parameters
     ----------
-    test_dataloader : DataLoader
-        DataLoader for the test dataset.
+    dataloader : DataLoader
+        DataLoader with the images to save.
     trained_model : torch.nn.Module
         The trained object detection model.
+    output_dir : str
+        Path to directory to save the images with bounding boxes.
+        The directory name will be added a timestamp.
     score_threshold : float
         Threshold for object detection.
 
     Returns
-    ----------
+    -------
         None
+
     """
     device = (
         torch.device("cuda")
@@ -181,15 +187,15 @@ def save_images_with_boxes(
     trained_model.to(device)
     trained_model.eval()
 
-    if not output_dir:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = f"results_{timestamp}"
+    # set output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = f"{output_dir}_{timestamp}"
     os.makedirs(output_dir, exist_ok=True)
 
     with torch.no_grad():
         imgs_id = 0
-        for imgs, annotations in test_dataloader:
-            imgs_id += 1
+        for imgs, annotations in dataloader:
+            imgs_id += 1  # noqa: SIM113
             imgs = list(img.to(device) for img in imgs)
 
             detections = trained_model(imgs)
@@ -201,9 +207,10 @@ def save_images_with_boxes(
             cv2.imwrite(f"{output_dir}/imgs{imgs_id}.jpg", image_with_boxes)
 
 
-def plot_sample(imgs: list, row_title: Optional[str] = None, **imshow_kwargs):
-    """
-    Plot a sample (image & annotations) from a dataset.
+def plot_sample(  # noqa: C901
+    imgs: list, row_title: Optional[str] = None, **imshow_kwargs
+):
+    """Plot a sample (image & annotations) from a dataset.
 
     Example usage:
     > full_dataset = CrabsCocoDetection([IMAGES_PATH],[ANNOTATIONS_PATH])
@@ -211,7 +218,8 @@ def plot_sample(imgs: list, row_title: Optional[str] = None, **imshow_kwargs):
     > plt.figure()
     > plot_sample([sample])
 
-    From https://github.com/pytorch/vision/blob/main/gallery/transforms/helpers.py
+    From:
+    https://github.com/pytorch/vision/blob/main/gallery/transforms/helpers.py
     """
     if not isinstance(imgs[0], list):
         # Make a 2d grid even if there's just 1 row

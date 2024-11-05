@@ -1,3 +1,5 @@
+"""Script to clip a video file."""
+
 import argparse
 from datetime import datetime
 from pathlib import Path
@@ -8,16 +10,22 @@ import cv2
 def real_time_to_frame_number(
     real_time: datetime, video_fps: float, start_real_time: datetime
 ) -> int:
-    """
-    Convert a real-time timestamp to the corresponding frame number in a video.
+    """Convert a real-time timestamp to the corresponding frame number.
 
-    Parameters:
-        real_time (datetime): The real-time timestamp.
-        video_fps (float): Frames per second of the video.
-        start_real_time (datetime): The starting real-time timestamp of the video.
+    Parameters
+    ----------
+    real_time : datetime
+        The real-time timestamp.
+    video_fps : float
+        Frames per second of the video.
+    start_real_time : datetime
+        The starting real-time timestamp of the video.
 
-    Returns:
-        int: The corresponding frame number in the video.
+    Returns
+    -------
+    int
+        The corresponding frame number in the video.
+
     """
     time_difference = real_time - start_real_time
     total_seconds = time_difference.total_seconds()
@@ -27,18 +35,23 @@ def real_time_to_frame_number(
 def create_clip(
     input_file: str, start_frame: int, end_frame: int, output_file: str
 ) -> None:
-    """
-    Create a video clip from the input video file, starting from a specific frame
-    and ending at another frame.
+    """Create a video clip from the input video file.
 
-    Parameters:
-        input_file (str): Path to the input video file.
-        start_frame (int): Starting frame number.
-        end_frame (int): Ending frame number.
-        output_file (str): Path to the output video file to be created.
+    Parameters
+    ----------
+    input_file : str
+        Path to the input video file.
+    start_frame : int
+        Starting frame number.
+    end_frame : int
+        Ending frame number.
+    output_file : str
+        Path to the output video file to be created.
 
-    Returns:
-        None
+    Returns
+    -------
+    None
+
     """
     cap = cv2.VideoCapture(input_file)
     video_fps = cap.get(cv2.CAP_PROP_FPS)
@@ -75,8 +88,8 @@ def argument_parser() -> argparse.Namespace:
         An object containing the parsed command-line arguments.
         The attributes of this object correspond to the defined
         command-line arguments in the script.
-    """
 
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--video_path",

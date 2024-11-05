@@ -1,4 +1,7 @@
+"""Train FasterRCNN model for object detection."""
+
 import argparse
+import logging
 import os
 import sys
 from pathlib import Path
@@ -12,6 +15,8 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from crabs.detector.datamodules import CrabsDataModule
 from crabs.detector.models import FasterRCNN
 from crabs.detector.utils.detection import (
+    log_dataset_metadata_as_info,
+    log_mlflow_metadata_as_info,
     prep_annotation_files,
     prep_img_directories,
     set_mlflow_run_name,
@@ -25,16 +30,18 @@ from crabs.detector.utils.train import (
 )
 
 
-class DectectorTrain:
-    """Training class for detector algorithm
+class DetectorTrain:
+    """Training class for detector algorithm.
 
     Parameters
     ----------
     args: argparse.Namespace
         An object containing the parsed command-line arguments.
+
     """
 
     def __init__(self, args: argparse.Namespace):
+        """Initialise the training class with the given arguments."""
         # inputs
         self.args = args
         self.config_file = args.config_file
@@ -52,6 +59,7 @@ class DectectorTrain:
 
         # MLflow
         self.experiment_name = args.experiment_name
+        self.run_name = set_mlflow_run_name()
         self.mlflow_folder = args.mlflow_folder
 
         # Debugging
@@ -61,19 +69,19 @@ class DectectorTrain:
         # Restart from checkpoint
         self.checkpoint_path = args.checkpoint_path
 
+        # Log dataset information to screen
+        log_dataset_metadata_as_info(self)
+
+        # Log MLflow information to screen
+        log_mlflow_metadata_as_info(self)
+
     def load_config_yaml(self):
-        """
-        Load yaml file that contains config parameters.
-        """
-        with open(self.config_file, "r") as f:
+        """Load yaml file that contains config parameters."""
+        with open(self.config_file) as f:
             self.config = yaml.safe_load(f)
 
     def setup_trainer(self):
-        """
-        Setup trainer with logging and checkpointing.
-        """
-        self.run_name = set_mlflow_run_name()
-
+        """Set up trainer with logging and checkpointing."""
         # Setup logger with checkpointing
         mlf_logger = setup_mlflow_logger(
             experiment_name=self.experiment_name,
@@ -84,6 +92,15 @@ class DectectorTrain:
             # pass the checkpointing config if defined
         )
 
+        # Add dataset section to MLflow hyperparameters
+        mlf_logger.log_hyperparams(
+            {
+                "dataset/images_dir": self.images_dirs,
+                "dataset/annotation_files": self.annotation_files,
+                "dataset/seed": self.seed_n,
+            }
+        )
+
         # Define checkpointing callback for trainer
         config_ckpt = self.config.get("checkpoint_saving")
         if config_ckpt:
@@ -91,7 +108,9 @@ class DectectorTrain:
                 filename="checkpoint-{epoch}",
                 every_n_epochs=config_ckpt["every_n_epochs"],
                 save_top_k=config_ckpt["keep_last_n_ckpts"],
-                monitor="epoch",  # monitor the metric "epoch" for selecting which checkpoints to save
+                monitor="epoch",
+                # monitor the metric "epoch" for selecting which checkpoints
+                # to save
                 mode="max",  # get the max of the monitored metric
                 save_last=config_ckpt["save_last"],
                 save_weights_only=config_ckpt["save_weights_only"],
@@ -115,7 +134,7 @@ class DectectorTrain:
     def optuna_objective_fn(self, trial: optuna.Trial) -> float:
         """Objective function for Optuna.
 
-        When used with Optuna, it wil maximise precision and recall on the
+        When used with Optuna, it will maximise precision and recall on the
         validation set.
 
         Parameters
@@ -127,6 +146,7 @@ class DectectorTrain:
         -------
         float
             The value to maximise.
+
         """
         # Sample hyperparameters from the search space for this trial
         optuna_config = self.config["optuna"]
@@ -161,6 +181,7 @@ class DectectorTrain:
         -------
         lightning.Trainer
             The trainer object used for training.
+
         """
         # Create data module
         data_module = CrabsDataModule(
@@ -172,6 +193,7 @@ class DectectorTrain:
         )
 
         # Get model
+        # (from a previous checkpoint if required)
         if not self.checkpoint_path:
             lightning_model = FasterRCNN(
                 self.config, optuna_log=self.args.optuna
@@ -182,9 +204,11 @@ class DectectorTrain:
             if checkpoint_type == "weights":
                 lightning_model = FasterRCNN.load_from_checkpoint(
                     self.checkpoint_path,
-                    config=self.config,  # overwrite hparams from ckpt with config
+                    config=self.config,
+                    # overwrite hparams from ckpt with config
                     optuna_log=self.args.optuna,
-                )  # a 'weights' checkpoint is one saved with `save_weights_only=True`
+                )
+                # a 'weights' checkpoint is saved with `save_weights_only=True`
 
         # Get trainer
         trainer = self.setup_trainer()
@@ -199,13 +223,15 @@ class DectectorTrain:
                 self.checkpoint_path if checkpoint_type == "full" else None
             ),
             # a 'full' checkpoint is one saved with `save_weights_only=False`
-            # (automatically restores model, epoch, step, LR schedulers, etc...)
-            # see https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
+            # (automatically restores model, epoch, step, LR schedulers, etc.)
+            # see
+            # https://lightning.ai/docs/pytorch/stable/common/checkpointing_basic.html#save-hyperparameters
         )
 
         return trainer
 
     def train_model(self):
+        """Train detector."""
         # Run hyperparameter sweep with Optuna if required
         if self.args.optuna:
             # Optimize hyperparameters in config
@@ -223,13 +249,13 @@ class DectectorTrain:
 
         # if this is a slurm job: add slurm logs as artifacts
         slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        if slurm_job_id:
+        slurm_job_name = os.environ.get("SLURM_JOB_NAME")
+        if slurm_job_id and (slurm_job_name != "bash"):
             slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
 
 
 def main(args) -> None:
-    """
-    Main function to orchestrate the training process.
+    """Run detector training.
 
     Parameters
     ----------
@@ -239,12 +265,14 @@ def main(args) -> None:
     Returns
     -------
     None
+
     """
-    trainer = DectectorTrain(args)
+    trainer = DetectorTrain(args)
     trainer.train_model()
 
 
 def train_parse_args(args):
+    """Parse command-line arguments for training."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--dataset_dirs",
@@ -257,37 +285,10 @@ def train_parse_args(args):
         nargs="+",
         default=[],
         help=(
-            "list of paths to annotation files. The full path or the filename can be provided. "
-            "If only filename is provided, it is assumed to be under dataset/annotations."
-        ),
-    )
-    parser.add_argument(
-        "--config_file",
-        type=str,
-        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
-        help=(
-            "Location of YAML config to control training. "
-            "Default: crabs-exploration/crabs/detection_tracking/config/faster_rcnn.yaml"
-        ),
-    )
-    parser.add_argument(
-        "--accelerator",
-        type=str,
-        default="gpu",
-        help=(
-            "Accelerator for Pytorch Lightning. Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. Default: gpu"
-            "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "
-            "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"
-        ),
-    )
-    parser.add_argument(
-        "--experiment_name",
-        type=str,
-        default="Sept2023",
-        help=(
-            "Name of the experiment in MLflow, under which the current run will be logged. "
-            "For example, the name of the dataset could be used, to group runs using the same data. "
-            "Default: Sep2023"
+            "list of paths to annotation files. The full path or the filename "
+            "can be provided. "
+            "If only filename is provided, it is assumed to be under "
+            "dataset/annotations."
         ),
     )
     parser.add_argument(
@@ -295,6 +296,75 @@ def train_parse_args(args):
         type=int,
         default=42,
         help="Seed for dataset splits. Default: 42",
+    )
+    parser.add_argument(
+        "--config_file",
+        type=str,
+        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
+        help=(
+            "Location of YAML config to control training. "
+            "Default: "
+            "crabs-exploration/crabs/detection_tracking/config/faster_rcnn.yaml"
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint_path",
+        type=str,
+        default=None,
+        help=("Path to checkpoint to resume training. " "Default: None."),
+    )
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="gpu",
+        help=(
+            "Accelerator for Pytorch Lightning. "
+            "Valid inputs are: cpu, gpu, tpu, ipu, auto, mps. Default: gpu. "
+            "See https://lightning.ai/docs/pytorch/stable/common/trainer.html#accelerator "  # noqa: E501
+            "and https://lightning.ai/docs/pytorch/stable/accelerators/mps_basic.html#run-on-apple-silicon-gpus"  # noqa: E501
+        ),
+    )
+    parser.add_argument(
+        "--experiment_name",
+        type=str,
+        default="Sept2023",
+        help=(
+            "Name of the experiment in MLflow, under which "
+            "the current run will be logged. "
+            "For example, the name of the dataset could be used, "
+            "to group runs using the same data. "
+            "Default: Sep2023"
+        ),
+    )
+    parser.add_argument(
+        "--mlflow_folder",
+        type=str,
+        default="./ml-runs",
+        help=(
+            "Path to MLflow directory where to log the training data. "
+            "Default: 'ml-runs' directory under the current working directory."
+        ),
+    )
+    parser.add_argument(
+        "--no_data_augmentation",
+        action="store_true",
+        help=(
+            "Ignore the data augmentation transforms "
+            "defined in the config file"
+        ),
+    )
+    parser.add_argument(
+        "--log_data_augmentation",
+        action="store_true",
+        help=("Log data augmentation transforms to " "MLflow as artifacts"),
+    )
+    parser.add_argument(
+        "--optuna",
+        action="store_true",
+        help=(
+            "Run a hyperparameter optimisation using Optuna prior to training "
+            "the model"
+        ),
     )
     parser.add_argument(
         "--fast_dev_run",
@@ -306,41 +376,18 @@ def train_parse_args(args):
         type=float,
         default=1.0,
         help=(
-            "Debugging option to run training on a fraction of the training set."
-            "Default: 1.0 (all the training set)"
+            "Debugging option to run training on a fraction of the "
+            "training set. "
+            "Default: 1.0 (the full training set)"
         ),
-    )
-    parser.add_argument(
-        "--mlflow_folder",
-        type=str,
-        default="./ml-runs",
-        help=("Path to MLflow directory. Default: ./ml-runs"),
-    )
-    parser.add_argument(
-        "--checkpoint_path",
-        type=str,
-        default=None,
-        help=("Path to checkpoint for resume training"),
-    )
-    parser.add_argument(
-        "--optuna",
-        action="store_true",
-        help="Run a hyperparameter optimisation using Optuna prior to training the model",
-    )
-    parser.add_argument(
-        "--no_data_augmentation",
-        action="store_true",
-        help="Ignore the data augmentation transforms defined in config file",
-    )
-    parser.add_argument(
-        "--log_data_augmentation",
-        action="store_true",
-        help="Log data augmentation transforms linked to datamodule as MLflow artifacts",
     )
     return parser.parse_args(args)
 
 
 def app_wrapper():
+    """Wrap function to run the training."""
+    logging.getLogger().setLevel(logging.INFO)
+
     torch.set_float32_matmul_precision("medium")
 
     train_args = train_parse_args(sys.argv[1:])

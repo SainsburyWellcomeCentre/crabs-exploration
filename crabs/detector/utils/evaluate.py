@@ -1,8 +1,7 @@
-"""Utils used in evaluation"""
+"""Utils used in evaluation."""
 
 import argparse
 import ast
-import logging
 import sys
 from pathlib import Path
 
@@ -14,12 +13,9 @@ from crabs.detector.utils.detection import (
     prep_img_directories,
 )
 
-logging.basicConfig(level=logging.INFO)
-
 
 def compute_precision_recall(class_stats: dict) -> tuple[float, float, dict]:
-    """
-    Compute precision and recall.
+    """Compute precision and recall.
 
     Parameters
     ----------
@@ -27,9 +23,10 @@ def compute_precision_recall(class_stats: dict) -> tuple[float, float, dict]:
         Statistics or information about different classes.
 
     Returns
-    ----------
+    -------
     Tuple[float, float]
         precision and recall
+
     """
     for _, stats in class_stats.items():
         precision = stats["tp"] / max(stats["tp"] + stats["fp"], 1)
@@ -41,8 +38,9 @@ def compute_precision_recall(class_stats: dict) -> tuple[float, float, dict]:
 def compute_confusion_matrix_elements(
     targets: list, detections: list, ious_threshold: float
 ) -> tuple[float, float, dict]:
-    """
-    Compute metrics (true positive, false positive, false negative) for object detection.
+    """Compute detection metrics.
+
+    Compute true positive, false positive, and false negative values.
 
     Parameters
     ----------
@@ -58,9 +56,10 @@ def compute_confusion_matrix_elements(
         Statistics or information about different classes.
 
     Returns
-    ----------
+    -------
     Tuple[float, float]
         precision and recall
+
     """
     class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
     for target, detection in zip(targets, detections):
@@ -85,24 +84,27 @@ def compute_confusion_matrix_elements(
             else:
                 class_stats["crab"]["fp"] += 1
 
-        for target_box_index, target_box in enumerate(gt_boxes):
+        for target_box_index, _target_box in enumerate(gt_boxes):
             found_match = False
             for idx, iou in enumerate(max_ious):
                 if (
-                    iou.item()
-                    > ious_threshold  # we need this condition because the max overlap is not necessarily above the threshold
-                    and max_indices[idx]
-                    == target_box_index  # the matching index is the index of the GT box with which it has max overlap
+                    iou.item() > ious_threshold
+                    # we need this condition because the max overlap
+                    # is not necessarily above the threshold
+                    and max_indices[idx] == target_box_index
+                    # the matching index is the index of the GT
+                    # box with which it has max overlap
                 ):
-                    # There's an IoU match and the matched index corresponds to the current target_box_index
+                    # There's an IoU match and the matched index corresponds
+                    # to the current target_box_index
                     found_match = True
                     break  # Exit loop, a match was found
 
             if not found_match:
                 # print(found_match)
-                class_stats["crab"][
-                    "fn"
-                ] += 1  # Ground truth box has no corresponding detection
+                class_stats["crab"]["fn"] += (
+                    1  # Ground truth box has no corresponding detection
+                )
 
     precision, recall, class_stats = compute_precision_recall(class_stats)
 
@@ -120,7 +122,7 @@ def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
     try:
         assert (
             Path(trained_model_path).parent.stem == "checkpoints"
-        ), "The parent directory to an MLflow checkpoint is expected to be called 'checkpoints'"
+        ), "The parent directory to an MLflow checkpoint is expected to be called 'checkpoints'"  # noqa: E501
     except AssertionError as e:
         print(f"Assertion failed: {e}")
         sys.exit(1)
@@ -138,16 +140,16 @@ def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
     # get parameters of the run
     run = mlrun_client.get_run(ckpt_runID)
     params = run.data.params
+    params["run_name"] = run.info.run_name
 
     return params
 
 
 def get_config_from_ckpt(config_file: str, trained_model_path: str) -> dict:
     """Get config from checkpoint if config is not passed as a CLI argument."""
-
     # If config in CLI arguments: used passed config
     if config_file:
-        with open(config_file, "r") as f:
+        with open(config_file) as f:
             config_dict = yaml.safe_load(f)
 
     # If not: used config from ckpt
@@ -188,7 +190,7 @@ def get_config_from_ckpt(config_file: str, trained_model_path: str) -> dict:
 def get_cli_arg_from_ckpt(
     args: argparse.Namespace, cli_arg_str: str, trained_model_path: str
 ):
-    """Get CLI argument from checkpoint if not in args."""
+    """Get CLI argument from checkpoint if not passed as CLI argument."""
     if getattr(args, cli_arg_str):
         cli_arg = getattr(args, cli_arg_str)
     else:
@@ -202,7 +204,6 @@ def get_img_directories_from_ckpt(
     args: argparse.Namespace, trained_model_path: str
 ) -> list[str]:
     """Get image directories from checkpoint if not passed as CLI argument."""
-
     # Get dataset directories from ckpt if not defined
     dataset_dirs = get_cli_arg_from_ckpt(
         args=args,
@@ -220,7 +221,6 @@ def get_annotation_files_from_ckpt(
     args: argparse.Namespace, trained_model_path: str
 ) -> list[str]:
     """Get annotation files from checkpoint if not passed as CLI argument."""
-
     # Get path to input annotation files from ckpt if not defined
     input_annotation_files = get_cli_arg_from_ckpt(
         args=args,
@@ -240,3 +240,20 @@ def get_annotation_files_from_ckpt(
         input_annotation_files, dataset_dirs
     )
     return annotation_files
+
+
+def get_mlflow_experiment_name_from_ckpt(
+    args: argparse.Namespace, trained_model_path: str
+) -> str:
+    """Define MLflow experiment name from the training job.
+
+    Only used if the experiment name is not passed via CLI.
+    """
+    if args.experiment_name:
+        experiment_name = args.experiment_name
+    else:
+        params = get_mlflow_parameters_from_ckpt(trained_model_path)
+        trained_model_expt_name = params["cli_args/experiment_name"]
+        experiment_name = trained_model_expt_name + "_evaluation"
+
+    return experiment_name

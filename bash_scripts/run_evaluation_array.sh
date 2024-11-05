@@ -10,7 +10,7 @@
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-2%3
+#SBATCH --array=0-4%3
 
 
 # NOTE on SBATCH command for array jobs
@@ -40,17 +40,37 @@ set -o pipefail  # make the pipe fail if any part of it fails
 # Define variables
 # ----------------------
 
-# mlflow
-EXPERIMENT_NAME="Sept2023"
+# List of models to evaluate: define MLFLOW_CKPTS_FOLDER and CKPT_FILENAME
+
+# Example 1: to evaluate all epoch-checkpoints of an MLflow
+# MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/7a6d5551ca974d578a293928d6385d5a/checkpoints
+# CKPT_FILENAME=*.ckpt
+
+# Example 2: to evaluate all 'last' checkpoints of an MLflow experiment
+# MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/*/checkpoints
+# CKPT_FILENAME=last.ckpt
+
+# Example 3: to evaluate all 'checkpoint-epoch=' checkpoints of an MLflow experiment,
+# MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/*/checkpoints
+# CKPT_FILENAME=checkpoint-epoch=*.ckpt
+
+# NOTE: if any of the paths have spaces, put the path in quotes, but stopping and re-starting at the wildcard.
+# e.g.: "/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/"*"/checkpoints"
+# e.g.: "checkpoint-epoch="*".ckpt"
+
+MLFLOW_CKPTS_FOLDER="/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/7a6d5551ca974d578a293928d6385d5a/checkpoints"
+CKPT_FILENAME="checkpoint-epoch="*".ckpt"
+mapfile -t LIST_CKPT_FILES < <(find $MLFLOW_CKPTS_FOLDER -type f -name $CKPT_FILENAME)
+
+# model to evaluate in this job
+CKPT_PATH=${LIST_CKPT_FILES[${SLURM_ARRAY_TASK_ID}]}
+
+# whether to evaluate on the validation set or
+# on the test set
+EVALUATION_SPLIT=validation
+
+# output for mlflow logs
 MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
-
-# dataset and train config
-DATASET_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
-TRAIN_CONFIG_FILE=/ceph/zoo/users/sminano/cluster_train_config.yaml
-
-# seeds for each dataset split
-LIST_SEEDS=($(echo {42..44}))
-SPLIT_SEED=${LIST_SEEDS[${SLURM_ARRAY_TASK_ID}]}
 
 # version of the codebase
 GIT_BRANCH=main
@@ -60,8 +80,8 @@ GIT_BRANCH=main
 # --------------------
 # Check len(list of input data) matches max SLURM_ARRAY_TASK_COUNT
 # if not, exit
-if [[ $SLURM_ARRAY_TASK_COUNT -ne ${#LIST_SEEDS[@]} ]]; then
-    echo "The number of array tasks does not match the number of inputs"
+if [[ $SLURM_ARRAY_TASK_COUNT -ne ${#LIST_CKPT_FILES[@]} ]]; then
+    echo "The number of array tasks does not match the number of .ckpt files"
     exit 1
 fi
 
@@ -72,7 +92,7 @@ module load miniconda
 
 # Define a environment for each job in the
 # temporary directory of the compute node
-ENV_NAME=crabs-dev-$SPLIT_SEED-$SLURM_ARRAY_JOB_ID
+ENV_NAME=crabs-dev-$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID
 ENV_PREFIX=$TMPDIR/$ENV_NAME
 
 # create environment
@@ -86,7 +106,6 @@ source activate $ENV_PREFIX
 
 # install crabs package in virtual env
 python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
-
 
 # log pip and python locations
 echo $ENV_PREFIX
@@ -105,13 +124,23 @@ echo "Memory used per GPU before training"
 echo $(nvidia-smi --query-gpu=name,memory.total,memory.free,memory.used --format=csv) #noheader
 echo "-----"
 
-# -------------------
-# Run training script
-# -------------------
-train-detector  \
- --dataset_dirs $DATASET_DIR \
- --config_file $TRAIN_CONFIG_FILE \
+
+# -------------------------
+# Run evaluation script
+# -------------------------
+echo "Evaluating trained model at $CKPT_PATH on $EVALUATION_SPLIT set: "
+
+# append relevant flag to command if the test set is to be used
+if [ "$EVALUATION_SPLIT" = "validation" ]; then
+    USE_TEST_SET_FLAG=""
+elif [ "$EVALUATION_SPLIT" = "test" ]; then
+    USE_TEST_SET_FLAG="--use_test_set"
+fi
+
+# run evaluation command
+evaluate-detector  \
+ --trained_model_path $CKPT_PATH \
  --accelerator gpu \
- --experiment_name $EXPERIMENT_NAME \
- --seed_n $SPLIT_SEED \
  --mlflow_folder $MLFLOW_FOLDER \
+ $USE_TEST_SET_FLAG
+echo "-----"

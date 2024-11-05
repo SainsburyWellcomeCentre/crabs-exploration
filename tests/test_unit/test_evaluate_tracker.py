@@ -144,12 +144,14 @@ def test_ground_truth_data_from_csv(evaluation):
             {1: 11, 2: 12, 3: 13, 4: np.nan},
             {1: 11, 2: 12, 3: 13, 5: np.nan},
             0,
-        ),  # crab disappears but was missed detection in frame f-1, with a new missed crab in frame f
+        ),  # crab disappears but was missed detection in frame f-1,
+        # with a new missed crab in frame f
         (
             {1: 11, 2: 12, 3: 13, 4: np.nan},
             {1: 11, 2: 12, 3: np.nan},
             0,
-        ),  # crab disappears but was missed detection in frame f-1, and existing crab was missed in frame f
+        ),  # crab disappears but was missed detection in frame f-1,
+        # and existing crab was missed in frame f
         # ----- a crab (GT=4) appears ---------
         (
             {1: 11, 2: 12, 3: 13},
@@ -175,17 +177,55 @@ def test_ground_truth_data_from_csv(evaluation):
             {1: 11, 2: 12, 3: 13, 5: np.nan},
             {1: 11, 2: 12, 3: 13, 4: np.nan},
             0,
-        ),  # crab that appears is missed detection in current frame, and another missed detection in previous frame disappears
+        ),  # crab that appears is missed detection in current frame,
+        # and another missed detection in previous frame disappears
         (
             {1: 11, 2: 12, 3: np.nan},
             {1: 11, 2: 12, 3: 13, 4: np.nan},
             0,
-        ),  # crab that appears is missed detection in current frame, and a pre-existing crab is missed detection in previous frame
+        ),  # crab that appears is missed detection in current frame,
+        # and a pre-existing crab is missed detection in previous frame
+        # ----------
+        # Test consistency with last predicted ID if a crab (GT=3)
+        # that continues to exist is not detected for a few frames (>= 1)
+        # ------------
+        (
+            {1: 11, 2: 12, 3: np.nan},
+            {1: 11, 2: 12, 3: 13},
+            0,
+        ),  # crab that continues to exist, and the current predicted ID is
+        # consistent with last_known_predicted_ids={1: 11, 2: 12, 3: 13, 4: 14}
+        (
+            {1: 11, 2: 12, 3: np.nan},
+            {1: 11, 2: 12, 3: 14},
+            1,
+        ),  # crab that continues to exist, and the current predicted ID
+        # is NOT consistent with the
+        # last_known_predicted_ids={1: 11, 2: 12, 3: 13, 4: 14}
+        # ----------
+        # Test consistency with last predicted ID if a crab (GT=3)
+        # re-appears after a few frames (>= 1)
+        # ------------
+        (
+            {1: 11, 2: 12},
+            {1: 11, 2: 12, 3: 13},
+            0,
+        ),  # crab whose GT ID is in last_known_predicted_ids, appears
+        # in the current frame, and the current predicted ID is consistent
+        # with last_known_predicted_ids
+        (
+            {1: 11, 2: 12},
+            {1: 11, 2: 12, 3: 14},
+            1,
+        ),  # crab whose GT ID is in last_known_predicted_ids, appears
+        # in the current frame, and the current predicted ID is NOT consistent
+        # with last_known_predicted_ids
     ],
 )
 def test_count_identity_switches(
     evaluation, prev_frame_id_map, current_frame_id_map, expected_output
 ):
+    evaluation.last_known_predicted_ids = {1: 11, 2: 12, 3: 13, 4: 14}
     assert (
         evaluation.count_identity_switches(
             prev_frame_id_map, current_frame_id_map
@@ -457,7 +497,7 @@ def test_evaluate_mota(
     ) = evaluation.evaluate_mota(
         gt_data,
         pred_data,
-        0.1,
+        0.1,  # iou_threshold
         prev_frame_id_map,
     )
     assert mota == pytest.approx(expected_output[0])

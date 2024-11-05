@@ -32,8 +32,7 @@ ANNOTATION_FILE_2 = (
 )
 @pytest.mark.parametrize("n_files_to_exclude", [0, 1, 20, 97])
 def test_exclude_files(list_datasets, list_annotations, n_files_to_exclude):
-    """
-    Test if the required files are excluded correctly from the
+    """Test if the required files are excluded correctly from the
     dataset defined by a list of annotation files, and a list of
     corresponding image directories.
 

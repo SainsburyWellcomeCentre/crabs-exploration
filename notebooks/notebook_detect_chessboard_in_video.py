@@ -1,6 +1,4 @@
-""" Extract frames in calibration video
-
-"""
+"""Extract frames in calibration video"""
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 from pathlib import Path

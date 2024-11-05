@@ -1,21 +1,10 @@
-r"""
-A script to extract frames for labelling using SLEAP's algorith,.
-
-Example usage:
-    python bboxes\ labelling/extract_frames_to_label_w_sleap.py
-    'crab_sample_data/sample_clips/'
-    --initial_samples 5
-    --n_components 2
-    --n_clusters 2
-    --per_cluster 1
-    --compute_features_per_video
+"""A script to extract frames for labelling using SLEAP's algorithm.
 
 TODO: can I make it deterministic?
 TODO: check https://github.com/talmolab/sleap-io/tree/main/sleap_io
 TODO: change it to copy directory structure from input? See
 https://www.geeksforgeeks.org/python-copy-directory-structure-without-files/
 """
-
 
 import copy
 import json
@@ -38,12 +27,11 @@ from sleap.info.feature_suggestions import (
 app = typer.Typer(rich_markup_mode="rich")
 
 
-def get_list_of_sleap_videos(
+def get_list_of_sleap_videos(  # noqa: C901
     list_video_locations,
-    list_video_extensions_in=["mp4"],
+    video_extensions_in=("mp4"),
 ):
-    """
-    Generate list of SLEAP videos.
+    """Generate list of SLEAP videos.
 
     The locations in which we look for videos
     can be expressed as paths to files or
@@ -55,7 +43,7 @@ def get_list_of_sleap_videos(
         list of video locations. These may be paths to video files or
         paths to their parent directories (only one level deep is searched).
 
-    list_video_extensions_in : list[str]
+    video_extensions_in : tuple[str]
         list of video extensions to look for in the directories.
         By default, mp4 videos.
 
@@ -63,8 +51,10 @@ def get_list_of_sleap_videos(
     -------
     list_sleap_videos : list[sleap.io.video.Video]
         list of SLEAP videos
+
     """
     # Make list of extensions case insensitive
+    list_video_extensions_in = list(video_extensions_in)
     list_video_extensions = copy.deepcopy(list_video_extensions_in)
     for ext in list_video_extensions_in:
         if ext.isupper():
@@ -89,8 +79,7 @@ def get_list_of_sleap_videos(
         # If the path is a file with the relevant extension:
         # append path directly to list
         elif location_path.is_file() and (
-            location_path.suffix[1:]
-            in list_video_extensions
+            location_path.suffix[1:] in list_video_extensions
             # suffix includes dot
         ):
             list_video_paths.append(location_path)
@@ -123,9 +112,7 @@ def get_list_of_sleap_videos(
 
 
 def get_map_videos_to_extracted_frames(list_sleap_videos, suggestions):
-    """
-    Compute dictionary that maps videos to
-    their frame indices selected for labelling.
+    """Compute dictionary mapping videos to frame indices for labelling.
 
     Parameters
     ----------
@@ -159,7 +146,7 @@ def get_map_videos_to_extracted_frames(list_sleap_videos, suggestions):
 
 def compute_suggested_sleap_frames(
     list_video_locations,
-    video_extensions=["mp4"],
+    video_extensions=("mp4"),
     initial_samples=200,
     sample_method="stride",
     scale=1.0,
@@ -169,9 +156,7 @@ def compute_suggested_sleap_frames(
     per_cluster=5,
     compute_features_per_video=True,
 ):
-    """
-    Compute suggested frames for labelling using SLEAP's
-    FeatureSuggestionPipeline.
+    """Compute frames for labelling using SLEAP's FeatureSuggestionPipeline.
 
     See https://sleap.ai/guides/gui.html#labeling-suggestions
 
@@ -180,9 +165,9 @@ def compute_suggested_sleap_frames(
     list_video_locations : list[str]
         list of video locations. These may be paths to video files or
         paths to their parent directories (only one level deep is searched).
-    video_extensions : list[str]
-        list of video extensions to look for in the directories.
-        Default: ["mp4"]
+    video_extensions : tuple[str]
+        tuple of video extensions to look for in the directories.
+        Default: ("mp4")
     initial_samples : int
         initial number of frames to extract per video
         Default: 200
@@ -217,6 +202,7 @@ def compute_suggested_sleap_frames(
         dictionary that maps each video path to a list
         of frames indices extracted for labelling.
         The frame indices are sorted in ascending order.
+
     """
     # Transform list of input videos to list of SLEAP Video instances
     list_sleap_videos = get_list_of_sleap_videos(
@@ -265,9 +251,7 @@ def extract_frames_to_label_from_video(
     output_subdir_path,
     flag_parent_dir_subdir_in_output=False,
 ):
-    """
-    Extract suggested frames for labelling from
-    corresponding videos using OpenCV.
+    """Extract frames for labelling from corresponding videos using OpenCV.
 
     The png files for each frame are named with
     the following format:
@@ -291,6 +275,7 @@ def extract_frames_to_label_from_video(
     ------
     KeyError
         If a frame from a video is not correctly read by openCV
+
     """
     for vid_str in map_videos_to_extracted_frames:
         # Initialise video capture
@@ -354,7 +339,7 @@ def compute_and_extract_frames_to_label(
     list_video_locations: list[str],
     output_path: str = ".",
     output_subdir: Optional[str] = None,
-    video_extensions: list[str] = ["mp4"],
+    video_extensions: tuple[str] = ("mp4",),
     initial_samples: int = 200,
     sample_method: str = "stride",  # choices=["random", "stride"],
     scale: float = 1.0,
@@ -364,9 +349,7 @@ def compute_and_extract_frames_to_label(
     per_cluster: int = 5,
     compute_features_per_video: bool = True,
 ):
-    """Compute suggested frames to label and
-    extract them as png files.
-
+    """Compute frames to label and extract them as png files.
 
     We use SLEAP's image feature method to select
     the frames for labelling and export them as png
@@ -385,9 +368,9 @@ def compute_and_extract_frames_to_label(
     output_subdir : str, optional
         name of output subdirectory in which to put extracted frames,
         by default the timestamp in the format YYYMMDD_HHMMSS.
-    video_extensions : list, optional
+    video_extensions : tuple, optional
         extensions to search for when looking for video files,
-        by default ["mp4"]
+        by default ("mp4")
     initial_samples : int, optional
         initial number of frames to extract per video, by default 200
     sample_method : str, optional
@@ -408,6 +391,7 @@ def compute_and_extract_frames_to_label(
     compute_features_per_video : bool, optional
         whether to compute the (PCA?) features per video, or across all videos,
         by default True
+
     """
     # Compute list of suggested frames using SLEAP
     map_videos_to_extracted_frames = compute_suggested_sleap_frames(
@@ -449,7 +433,8 @@ def compute_and_extract_frames_to_label(
                 indent=4,
             )
         logging.info(
-            f"Existing json file with extracted frames updated at {json_output_file}",
+            "Existing json file with "
+            f"extracted frames updated at {json_output_file}",
         )
     # else: start a new file
     else:
@@ -473,6 +458,7 @@ def compute_and_extract_frames_to_label(
 
 
 def app_wrapper():
+    """Wrap function for the Typer app."""
     app()
 
 
