@@ -1,99 +1,81 @@
-from pathlib import Path
-from unittest.mock import ANY, Mock, patch
+import csv
 
 import numpy as np
-import pytest
 
-from crabs.tracker.utils.io import save_required_output
+from crabs.tracker.utils.io import write_tracked_detections_to_csv
 
 
-@pytest.fixture
-def setup_mocks():
-    csv_writer_mock = Mock()
-    video_output_mock = Mock()
+def test_write_tracked_detections_to_csv(tmp_path):
+    # Create test data
+    csv_file_path = tmp_path / "test_output.csv"
+    tracked_bboxes_per_frame = [
+        np.array([[10, 20, 30, 40, 1], [50, 60, 70, 80, 2]]),
+        np.array([[15, 25, 35, 45, 1]]),
+    ]
+    pred_bboxes_scores_per_frame = [np.array([0.9, 0.8]), np.array([0.85])]
+    frame_name_regexp = "frame_{frame_idx:08d}.png"
+    all_frames_size = 8888
 
-    video_file_root = Path("sample_video")
-    tracking_output_dir = Path("output")
-    tracked_boxes = [[10, 20, 30, 40, 1]]
-    frame = np.zeros((480, 640, 3), dtype=np.uint8)
-    frame_number = 1
-    pred_score = [[0.9]]
-
-    return (
-        video_file_root,
-        tracking_output_dir,
-        csv_writer_mock,
-        video_output_mock,
-        tracked_boxes,
-        frame,
-        frame_number,
-        pred_score,
+    # Call function
+    write_tracked_detections_to_csv(
+        csv_file_path,
+        tracked_bboxes_per_frame,
+        pred_bboxes_scores_per_frame,
+        frame_name_regexp,
+        all_frames_size,
     )
 
+    # Read csv file
+    with open(csv_file_path, newline="") as csvfile:
+        csv_reader = csv.reader(csvfile)
+        rows = list(csv_reader)
 
-@patch("crabs.tracker.utils.io.save_output_frames")
-@patch("crabs.tracker.utils.io.write_tracked_bbox_to_csv")
-@patch("crabs.tracker.utils.io.draw_bbox")
-@pytest.mark.parametrize(
-    "save_frames, save_video",
-    [
-        (True, True),
-        (True, False),
-        (False, True),
-        (False, False),
-    ],
-)
-def test_save_required_output(
-    mock_draw_bbox,
-    mock_write_tracked_bbox_to_csv,
-    mock_save_frames,
-    save_frames,
-    save_video,
-    setup_mocks,
-):
-    (
-        video_file_root,
-        tracking_output_dir,
-        csv_writer,
-        video_output,
-        tracked_boxes,
-        frame,
-        frame_number,
-        pred_score,
-    ) = setup_mocks
+    # Expected header
+    expected_header = [
+        "filename",
+        "file_size",
+        "file_attributes",
+        "region_count",
+        "region_id",
+        "region_shape_attributes",
+        "region_attributes",
+    ]
 
-    save_required_output(
-        video_file_root,
-        save_frames,
-        tracking_output_dir,
-        csv_writer,
-        save_video,
-        video_output,
-        tracked_boxes,
-        frame,
-        frame_number,
-        pred_score,
-    )
+    # Expected rows
+    expected_rows = [
+        expected_header,
+        [
+            "frame_00000000.png",
+            "8888",
+            '{"clip":123}',
+            "1",
+            "0",
+            '{"name":"rect","x":10,"y":20,"width":20,"height":20}',
+            '{"track":"1", "confidence":"0.9"}',
+        ],
+        [
+            "frame_00000000.png",
+            "8888",
+            '{"clip":123}',
+            "1",
+            "0",
+            '{"name":"rect","x":50,"y":60,"width":20,"height":20}',
+            '{"track":"2", "confidence":"0.8"}',
+        ],
+        [
+            "frame_00000001.png",
+            "8888",
+            '{"clip":123}',
+            "1",
+            "0",
+            '{"name":"rect","x":15,"y":25,"width":20,"height":20}',
+            '{"track":"1", "confidence":"0.85"}',
+        ],
+    ]
 
-    frame_name = f"{video_file_root}_frame_{frame_number:08d}.png"
+    # Assert the header
+    assert rows[0] == expected_header
 
-    mock_write_tracked_bbox_to_csv.assert_called_once_with(
-        tracked_boxes[0], frame, frame_name, csv_writer, pred_score[0]
-    )
-
-    if save_frames:
-        mock_save_frames.assert_called_once_with(
-            frame_name,
-            tracking_output_dir,
-            frame,
-            frame_number,
-        )
-
-    if save_video:
-        mock_draw_bbox.assert_any_call(
-            ANY, (10, 20), (30, 40), (0, 0, 255), "id : 1"
-        )
-        video_output.write.assert_called_once_with(ANY)
-    else:
-        mock_draw_bbox.assert_not_called()
-        video_output.write.assert_not_called()
+    # Assert the rows
+    for i, expected_row in enumerate(expected_rows[1:], start=1):
+        assert rows[i] == expected_row
