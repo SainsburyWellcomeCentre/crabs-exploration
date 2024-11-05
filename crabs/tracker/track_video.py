@@ -270,6 +270,12 @@ class Tracking:
         if self.args.save_frames:
             close_csv_file(self.csv_file)
 
+        # if this is a slurm job: add slurm logs as artifacts
+        # slurm_job_id = os.environ.get("SLURM_JOB_ID")
+        # slurm_job_name = os.environ.get("SLURM_JOB_NAME")
+        # if slurm_job_id and (slurm_job_name != "bash"):
+        #     slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
+
 
 def main(args) -> None:
     """Run detection+tracking inference on video.
