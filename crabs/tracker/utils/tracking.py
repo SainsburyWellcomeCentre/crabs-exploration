@@ -65,10 +65,11 @@ def format_bbox_predictions_for_sort(
     """
     pred_boxes = prediction[0]["boxes"].detach().cpu().numpy()
     pred_scores = prediction[0]["scores"].detach().cpu().numpy()
-    pred_labels = prediction[0]["labels"].detach().cpu().numpy()
+    # pred_labels = prediction[0]["labels"].detach().cpu().numpy()
+    # -- why is this stored?
 
     pred_sort = []
-    for box, score, _label in zip(pred_boxes, pred_scores, pred_labels):
+    for box, score in zip(pred_boxes, pred_scores):
         if score > score_threshold:
             bbox = np.concatenate((box, [score]))
             pred_sort.append(bbox)
