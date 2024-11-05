@@ -1,11 +1,9 @@
 """Utility functions for tracking."""
 
 import json
-import logging
 from pathlib import Path
 from typing import Any
 
-import cv2
 import numpy as np
 import pandas as pd
 
@@ -46,83 +44,9 @@ def extract_bounding_box_info(row: list[str]) -> dict[str, Any]:
     }
 
 
-def write_tracked_bbox_to_csv(
-    bbox: np.ndarray,
-    frame: np.ndarray,
-    frame_name: str,
-    csv_writer: Any,
-    pred_score: np.ndarray,
-) -> None:
-    """Write bounding box annotation to a CSV file.
-
-    Parameters
-    ----------
-    bbox : np.ndarray
-        A numpy array containing the bounding box coordinates
-        (xmin, ymin, xmax, ymax, id).
-    frame : np.ndarray
-        The frame to which the bounding box belongs.
-    frame_name : str
-        The name of the frame.
-    csv_writer : Any
-        The CSV writer object to write the annotation.
-    pred_score : np.ndarray
-        The prediction score from detector.
-
-    """
-    # Bounding box geometry
-    xmin, ymin, xmax, ymax, id = bbox
-    width_box = int(xmax - xmin)
-    height_box = int(ymax - ymin)
-
-    # Add to csv
-    csv_writer.writerow(
-        (
-            frame_name,
-            frame.size,
-            '{{"clip":{}}}'.format("123"),
-            1,
-            0,
-            f'{{"name":"rect","x":{xmin},"y":{ymin},"width":{width_box},"height":{height_box}}}',
-            f'{{"track":"{int(id)}", "confidence":"{pred_score}"}}',
-        )
-    )
-
-
-def save_output_frame(
-    frame_name: str,
-    tracking_output_dir: Path,
-    frame: np.ndarray,
-    frame_number: int,
-) -> None:
-    """Save tracked bounding boxes as frames.
-
-    Parameters
-    ----------
-    frame_name : str
-        The name of the image file to save frame in.
-    tracking_output_dir : Path
-        The directory where tracked frames and CSV file will be saved.
-    frame : np.ndarray
-        The frame image.
-    frame_number : int
-        The frame number.
-
-    Returns
-    -------
-    None
-
-    """
-    # Save frame as PNG
-    frame_path = tracking_output_dir / frame_name
-    img_saved = cv2.imwrite(str(frame_path), frame)
-    if not img_saved:
-        logging.error(
-            f"Didn't save {frame_name}, frame {frame_number}, Skipping."
-        )
-
-
-def prep_sort(prediction: dict, score_threshold: float) -> np.ndarray:
+def format_bbox_predictions_for_sort(
+    prediction: dict, score_threshold: float
+) -> np.ndarray:
     """Put predictions in format expected by SORT.
 
     Parameters
@@ -136,7 +60,7 @@ def prep_sort(prediction: dict, score_threshold: float) -> np.ndarray:
     Returns
     -------
     np.ndarray:
-        An array containing sorted bounding boxes of detected objects.
+        An array containing bounding boxes of detected objects in SORT format.
 
     """
     pred_boxes = prediction[0]["boxes"].detach().cpu().numpy()
