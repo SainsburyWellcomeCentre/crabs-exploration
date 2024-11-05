@@ -165,7 +165,7 @@ def save_required_output(
         frame_copy = frame.copy()
         for bbox in tracked_boxes:
             xmin, ymin, xmax, ymax, id = bbox
-            print(f"Calling draw_bbox with {bbox}")
+         
             draw_bbox(
                 frame_copy,
                 (xmin, ymin),
@@ -268,7 +268,7 @@ def plot_output_histogram(filename):
     plot_name = filepath.name
 
     num_frames = len(true_positives_list)
-    frames = range(1, num_frames + 1)
+    frame_numbers = range(1, num_frames + 1)
 
     plt.figure(figsize=(10, 6))
 

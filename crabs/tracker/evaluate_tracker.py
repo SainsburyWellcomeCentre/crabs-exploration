@@ -399,7 +399,7 @@ class TrackerEvaluate:
             "Missed Detections": [],
             "False Positives": [],
             "Number of Switches": [],
-            "Mota": [],
+            "MOTA": [],
         }
 
         for frame_number in sorted(ground_truth_dict.keys()):
