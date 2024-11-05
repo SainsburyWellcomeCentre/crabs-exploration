@@ -336,6 +336,8 @@ def tracking_parse_args(args):
 
 def app_wrapper():
     """Wrap function to run the tracking application."""
+    logging.getLogger().setLevel(logging.INFO)
+
     torch.set_float32_matmul_precision("medium")
 
     tracking_args = tracking_parse_args(sys.argv[1:])
