@@ -20,6 +20,8 @@ def mock_args():
         accelerator="gpu",
         annotations_file=None,
         save_video=None,
+        experiment_name=None,
+        mlflow_folder=Path(temp_dir) / "ml-runs",
     )
 
 
