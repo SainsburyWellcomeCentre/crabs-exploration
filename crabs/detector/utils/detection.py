@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+import logging
 import os
 from pathlib import Path
 from typing import Any, Optional
@@ -315,3 +316,21 @@ def bbox_tensors_to_COCO_dict(
     }
 
     return coco_dict
+
+
+def log_dataset_metadata_as_info(detector_interface):
+    """Print dataset metadata as logging info."""
+    logging.info("Dataset")
+    logging.info(f"Images directories: {detector_interface.images_dirs}")
+    logging.info(f"Annotation files: {detector_interface.annotation_files}")
+    logging.info(f"Seed: {detector_interface.seed_n}")
+    logging.info("---------------------------------")
+
+
+def log_mlflow_metadata_as_info(detector_interface):
+    """Print MLflow metadata as logging info."""
+    logging.info("MLflow logs for current job")
+    logging.info(f"Experiment name: {detector_interface.experiment_name}")
+    logging.info(f"Run name: {detector_interface.run_name}")
+    logging.info(f"Folder: {Path(detector_interface.mlflow_folder).resolve()}")
+    logging.info("---------------------------------")
