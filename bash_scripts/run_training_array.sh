@@ -21,7 +21,7 @@
 # Source bashrc
 # ----------------------
 # Otherwise `which python` points to the miniconda module's Python
-source ~/.bashrc
+# source ~/.bashrc
 
 
 # memory
@@ -82,7 +82,7 @@ conda create \
     python=3.10
 
 # activate environment
-conda activate $ENV_PREFIX
+source activate $ENV_PREFIX
 
 # install crabs package in virtual env
 python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
