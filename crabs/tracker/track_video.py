@@ -13,6 +13,10 @@ import torchvision.transforms.v2 as transforms
 import yaml  # type: ignore
 
 from crabs.detector.models import FasterRCNN
+from crabs.detector.utils.detection import (
+    log_mlflow_metadata_as_info,
+    set_mlflow_run_name,
+)
 from crabs.tracker.evaluate_tracker import TrackerEvaluate
 from crabs.tracker.sort import Sort
 from crabs.tracker.utils.io import (
@@ -60,6 +64,14 @@ class Tracking:
             min_hits=self.config["min_hits"],
             iou_threshold=self.config["iou_threshold"],
         )
+
+        # MLflow experiment name and run name
+        self.experiment_name = args.experiment_name
+        self.run_name = set_mlflow_run_name()
+        self.mlflow_folder = args.mlflow_folder
+
+        # Log MLflow information to screen
+        log_mlflow_metadata_as_info(self)
 
     def setup(self):
         """Load tracking config, trained model and input video path."""
@@ -317,6 +329,24 @@ def tracking_parse_args(args):
         help=(
             "Accelerator for Pytorch. "
             "Valid inputs are: cpu or gpu. Default: gpu."
+        ),
+    )
+    parser.add_argument(
+        "--experiment_name",
+        type=str,
+        help=(
+            "Name of the experiment in MLflow, under which the current run "
+            "will be logged. "
+            "By default: <trained_model_mlflow_experiment_name>_evaluation."
+        ),
+    )
+    parser.add_argument(
+        "--mlflow_folder",
+        type=str,
+        default="./ml-runs",
+        help=(
+            "Path to MLflow directory where to log the evaluation data. "
+            "Default: 'ml-runs' directory under the current working directory."
         ),
     )
     parser.add_argument(
