@@ -4,6 +4,7 @@ import argparse
 import ast
 import sys
 from pathlib import Path
+from typing import Optional
 
 import torchvision
 import yaml  # type: ignore
@@ -145,7 +146,9 @@ def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
     return params
 
 
-def get_config_from_ckpt(config_file: str, trained_model_path: str) -> dict:
+def get_config_from_ckpt(
+    config_file: Optional[str], trained_model_path: str
+) -> dict:
     """Get config from checkpoint if config is not passed as a CLI argument."""
     # If config in CLI arguments: used passed config
     if config_file:

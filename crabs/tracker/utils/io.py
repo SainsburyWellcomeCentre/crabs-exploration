@@ -77,7 +77,7 @@ def write_tracked_detections_to_csv(
 
 
 def write_frame_to_output_video(
-    frame: np.array,
+    frame: np.ndarray,
     tracked_boxes_id_per_frame: list,
     output_video_object: cv2.VideoWriter,
 ) -> None:
