@@ -10,15 +10,29 @@ import numpy as np
 from crabs.detector.utils.visualization import draw_bbox
 
 
-def get_video_parameters(video: cv2.VideoCapture) -> dict:
+def get_video_parameters(video_path: str) -> dict:
     """Get total number of frames, frame width and height, and fps of video."""
+    # Open video
+    video_object = cv2.VideoCapture(video_path)
+    if not video_object.isOpened():
+        raise Exception("Error opening video file")
+
+    # Get video parameters
     video_parameters = {}
-    video_parameters["total_frames"] = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-    video_parameters["frame_width"] = int(video.get(cv2.CAP_PROP_FRAME_WIDTH))
-    video_parameters["frame_height"] = int(
-        video.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    video_parameters["total_frames"] = int(
+        video_object.get(cv2.CAP_PROP_FRAME_COUNT)
     )
-    video_parameters["fps"] = video.get(cv2.CAP_PROP_FPS)
+    video_parameters["frame_width"] = int(
+        video_object.get(cv2.CAP_PROP_FRAME_WIDTH)
+    )
+    video_parameters["frame_height"] = int(
+        video_object.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    )
+    video_parameters["fps"] = video_object.get(cv2.CAP_PROP_FPS)
+
+    # Release video object
+    video_object.release()
+
     return video_parameters
 
 
@@ -99,18 +113,6 @@ def write_frame_to_output_video(
     output_video_object.write(frame_copy)
 
 
-def write_frame_as_image(frame, frame_path):
-    """Write frame as image without detections."""
-    img_saved = cv2.imwrite(
-        frame_path,
-        frame,
-    )
-    if not img_saved:
-        logging.error(
-            f"Error saving {frame_path}."  # f"frame_{frame_idx:08d}.png"
-        )
-
-
 def parse_video_frame_reading_error_and_log(frame_idx, total_frames):
     """Parse error message for reading a video frame."""
     if frame_idx == total_frames:
@@ -122,9 +124,29 @@ def parse_video_frame_reading_error_and_log(frame_idx, total_frames):
 
 
 def generate_tracked_video(
-    input_video_object, output_video_object, tracked_bboxes
+    input_video_path, output_video_path, tracked_bboxes
 ):
     """Generate tracked video."""
+    # Open input video
+    input_video_object = cv2.VideoCapture(input_video_path)
+    if not input_video_object.isOpened():
+        raise Exception("Error opening video file")
+    input_video_params = get_video_parameters(input_video_path)
+
+    # ------
+    # Set up output video writer following input video parameters
+    output_codec = cv2.VideoWriter_fourcc("m", "p", "4", "v")
+    output_video_writer = cv2.VideoWriter(
+        output_video_path,
+        output_codec,
+        input_video_params["fps"],
+        (
+            input_video_params["frame_width"],
+            input_video_params["frame_height"],
+        ),
+    )
+    # ------
+
     # Loop over frames
     frame_idx = 0
     while input_video_object.isOpened():
@@ -141,21 +163,19 @@ def generate_tracked_video(
         write_frame_to_output_video(
             frame,
             tracked_bboxes[frame_idx]["bboxes_tracked"],
-            output_video_object,
+            output_video_writer,
         )
 
         frame_idx += 1
 
     # Release video objects
     input_video_object.release()
-    output_video_object.release()
+    output_video_writer.release()
     cv2.destroyAllWindows()
-
-    return frame_idx
 
 
 def write_all_video_frames_as_images(
-    input_video_object: cv2.VideoCapture,
+    input_video_path: str,
     frames_subdir: Path,
     frame_name_format_str: str = "frame_{frame_idx:08d}.png",
 ):
@@ -163,8 +183,8 @@ def write_all_video_frames_as_images(
 
     Parameters
     ----------
-    input_video_object : cv2.VideoCapture
-        The input video object.
+    input_video_path : str
+        The path to the input video.
     frames_subdir : Path
         The directory to save frames.
     frame_name_format_str : str
@@ -172,6 +192,11 @@ def write_all_video_frames_as_images(
         E.g. "frame_{frame_idx:08d}.png"
 
     """
+    # Open input video
+    input_video_object = cv2.VideoCapture(input_video_path)
+    if not input_video_object.isOpened():
+        raise Exception("Error opening video file")
+
     # Loop over frames
     frame_idx = 0
     while input_video_object.isOpened():
@@ -184,8 +209,22 @@ def write_all_video_frames_as_images(
             )
             break
 
+        # ------------
         # Write frame to file
         frame_path = str(
             frames_subdir / frame_name_format_str.format(frame_idx=frame_idx)
         )
-        write_frame_as_image(frame, frame_path)
+        img_saved = cv2.imwrite(
+            frame_path,
+            frame,
+        )
+        if not img_saved:
+            logging.info(f"Error saving {frame_path}.")
+        # ------------
+
+        # Update frame index
+        frame_idx += 1
+
+    # Release video objects
+    input_video_object.release()
+    cv2.destroyAllWindows()

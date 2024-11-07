@@ -21,7 +21,6 @@ from crabs.tracker.evaluate_tracker import TrackerEvaluate
 from crabs.tracker.sort import Sort
 from crabs.tracker.utils.io import (
     generate_tracked_video,
-    get_video_parameters,
     parse_video_frame_reading_error_and_log,
     write_all_video_frames_as_images,
     write_tracked_detections_to_csv,
@@ -63,10 +62,6 @@ class Tracking:
         # input video data
         self.input_video_path = args.video_path
         self.input_video_file_root = f"{Path(self.input_video_path).stem}"
-        self.input_video_object = cv2.VideoCapture(self.input_video_path)
-        if not self.input_video_object.isOpened():
-            raise Exception("Error opening video file")
-        self.input_video_params = get_video_parameters(self.input_video_object)
 
         # output directory root name
         self.tracking_output_dir_root = args.output_dir
@@ -75,11 +70,8 @@ class Tracking:
         # hardware
         self.accelerator = "cuda" if args.accelerator == "gpu" else "cpu"
 
-        # Prepare outputs
-        # - output directory
-        # - csv file
-        # - video writer if required
-        # - frames subdirectory if required
+        # Prepare outputs: output directory, csv, and video and frames
+        # if required
         self.prep_outputs()
 
     def load_config_yaml(self):
@@ -108,21 +100,11 @@ class Tracking:
             / f"{self.input_video_file_root}_tracks.csv"
         )
 
-        # Set up output video writer if required
+        # Set up output video path if required
         if self.args.save_video:
-            output_codec = cv2.VideoWriter_fourcc("m", "p", "4", "v")
             self.output_video_path = str(
                 self.tracking_output_dir
                 / f"{self.input_video_file_root}_tracks.mp4"
-            )
-            self.output_video_object = cv2.VideoWriter(
-                self.output_video_path,
-                output_codec,
-                self.input_video_params["fps"],
-                (
-                    self.input_video_params["frame_width"],
-                    self.input_video_params["frame_height"],
-                ),
             )
 
         # Set up frames subdirectory if required
@@ -196,14 +178,20 @@ class Tracking:
         # Initialise dict to store tracked bboxes
         tracked_bboxes_dict = {}
 
+        # Open input video
+        input_video_object = cv2.VideoCapture(self.input_video_path)
+        if not input_video_object.isOpened():
+            raise Exception("Error opening video file")
+        total_n_frames = int(input_video_object.get(cv2.CAP_PROP_FRAME_COUNT))
+
         # Loop over frames
         frame_idx = 0
-        while self.input_video_object.isOpened():
+        while input_video_object.isOpened():
             # Read frame
-            ret, frame = self.input_video_object.read()
+            ret, frame = input_video_object.read()
             if not ret:
                 parse_video_frame_reading_error_and_log(
-                    frame_idx, self.input_video_params["total_frames"]
+                    frame_idx, total_n_frames
                 )
                 break
 
@@ -232,6 +220,9 @@ class Tracking:
             # Update frame index
             frame_idx += 1
 
+        # Release video object
+        input_video_object.release()
+
         return tracked_bboxes_dict
 
     def detect_and_track_video(self) -> None:
@@ -256,8 +247,8 @@ class Tracking:
         # (it loops again thru frames)
         if self.args.save_video:
             generate_tracked_video(
-                self.input_video_object,
-                self.output_video_object,
+                self.input_video_path,
+                self.output_video_path,
                 tracked_bboxes_dict["bboxes_tracked"],
             )
             logging.info(f"Tracked video saved to {self.output_video_path}")
@@ -266,7 +257,7 @@ class Tracking:
         # (it loops again thru frames)
         if self.args.save_frames:
             write_all_video_frames_as_images(
-                self.input_video_object,
+                self.input_video_path,
                 self.frames_subdir,
                 self.frame_name_format_str,
             )
