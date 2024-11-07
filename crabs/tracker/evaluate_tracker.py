@@ -290,7 +290,7 @@ class TrackerEvaluate:
 
         return switch_counter
 
-    def evaluate_mota(
+    def compute_mota_one_frame(
         self,
         gt_data: dict[str, np.ndarray],
         pred_data: dict[str, np.ndarray],
@@ -399,7 +399,7 @@ class TrackerEvaluate:
             frame, organized by frame number.
         predicted_dict : dict
             Dictionary containing predicted bounding boxes and IDs for each
-            frame, organized by frame number.
+            frame, organized by frame _index_.
 
         Returns
         -------
@@ -434,7 +434,7 @@ class TrackerEvaluate:
                     num_switches,
                     total_gt,
                     prev_frame_id_map,
-                ) = self.evaluate_mota(
+                ) = self.compute_mota_one_frame(
                     gt_data_frame,
                     pred_data_frame,
                     self.iou_threshold,

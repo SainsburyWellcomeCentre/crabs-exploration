@@ -502,7 +502,7 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
         ),
     ],
 )
-def test_evaluate_mota(
+def test_compute_mota_one_frame(
     gt_data,
     pred_data,
     prev_frame_id_map,
@@ -517,7 +517,7 @@ def test_evaluate_mota(
         num_switches,
         total_gt,
         _,
-    ) = tracker_evaluate_interface.evaluate_mota(
+    ) = tracker_evaluate_interface.compute_mota_one_frame(
         gt_data,
         pred_data,
         0.1,  # iou_threshold
