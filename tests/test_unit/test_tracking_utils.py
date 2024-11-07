@@ -1,12 +1,10 @@
-import csv
-import io
-
 import numpy as np
 import pytest
+import torch
 
 from crabs.tracker.utils.tracking import (
     extract_bounding_box_info,
-    write_tracked_bbox_to_csv,
+    format_bbox_predictions_for_sort,
 )
 
 
@@ -35,32 +33,49 @@ def test_extract_bounding_box_info():
     assert result == expected_result
 
 
-@pytest.fixture
-def csv_output():
-    return io.StringIO()
+@pytest.mark.parametrize(
+    "score_threshold, expected_output",
+    [
+        (
+            0.5,
+            torch.tensor(
+                [
+                    [10, 20, 30, 40, 0.9],
+                    [50, 60, 70, 80, 0.85],
+                    [15, 25, 35, 45, 0.8],
+                ]
+            ),
+        ),
+        (
+            0.85,
+            torch.tensor(
+                [
+                    [10, 20, 30, 40, 0.9],
+                    [50, 60, 70, 80, 0.85],
+                ]
+            ),
+        ),
+        (
+            0.95,
+            torch.tensor([]),
+        ),
+    ],
+)
+def test_format_bbox_predictions_for_sort(score_threshold, expected_output):
+    # Define the test data
+    prediction = [
+        {
+            "boxes": torch.tensor(
+                [[10, 20, 30, 40], [50, 60, 70, 80], [15, 25, 35, 45]]
+            ),
+            "scores": torch.tensor([0.9, 0.85, 0.8]),
+        }
+    ]
 
+    # Call the function
+    result = format_bbox_predictions_for_sort(prediction, score_threshold)
 
-@pytest.fixture
-def csv_writer(csv_output):
-    return csv.writer(csv_output)
-
-
-def test_write_tracked_bbox_to_csv(csv_writer, csv_output):
-    bbox = np.array([10, 20, 50, 80, 1])
-    frame = np.zeros((100, 100, 3), dtype=np.uint8)
-    frame_name = "frame_0001.png"
-    pred_score = 0.900
-
-    write_tracked_bbox_to_csv(bbox, frame, frame_name, csv_writer, pred_score)
-
-    expected_row = (
-        "frame_0001.png",
-        30000,
-        '"{""clip"":123}"',
-        1,
-        0,
-        '"{""name"":""rect"",""x"":10,""y"":20,""width"":40,""height"":60}"',
-        '"{""track"":""1"", ""confidence"":""0.9""}"',
-    )
-    expected_row_str = ",".join(map(str, expected_row))
-    assert csv_output.getvalue().strip() == expected_row_str
+    # Assert the result
+    assert np.array_equal(
+        result, expected_output
+    ), f"Expected {expected_output}, but got {result}"
