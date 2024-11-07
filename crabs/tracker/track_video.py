@@ -23,6 +23,7 @@ from crabs.tracker.utils.io import (
     generate_tracked_video,
     get_video_parameters,
     parse_video_frame_reading_error_and_log,
+    write_all_video_frames_as_images,
     write_tracked_detections_to_csv,
 )
 from crabs.tracker.utils.tracking import format_bbox_predictions_for_sort
@@ -87,7 +88,13 @@ class Tracking:
             self.config = yaml.safe_load(f)
 
     def prep_outputs(self):
-        """Prepare output directories and files."""
+        """Prepare output directories and files.
+
+        It creates a timestamped directory to store the tracking output.
+        It sets the name of the output csv file for the tracked bounding boxes.
+        It sets up the output video writer if required.
+        It sets up the frames subdirectory if required.
+        """
         # Create output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.tracking_output_dir = Path(
@@ -141,7 +148,7 @@ class Tracking:
             tracked bounding boxes after updating the tracking system.
 
         """
-        # format predictions for SORT
+        # format predictions for SORT ---- review
         pred_sort = format_bbox_predictions_for_sort(
             prediction, self.config["score_threshold"]
         )
@@ -186,14 +193,6 @@ class Tracking:
                 .cpu()
                 .numpy(),
             }
-
-            # # Save frame without detections if required
-            # if self.args.save_frames:
-            #     frame_path = str(
-            #         self.frames_subdir
-            #         / self.frame_name_format_str.format(frame_idx=frame_idx)
-            #     )
-            #     write_frame_as_image(frame, frame_path)
 
             # Update frame index
             frame_idx += 1
@@ -252,6 +251,16 @@ class Tracking:
 
         # Write frames if required
         # (it loops again thru frames)
+        if self.args.save_frames:
+            write_all_video_frames_as_images(
+                self.input_video_object,
+                self.frames_subdir,
+                self.frame_name_format_str,
+            )
+            logging.info(
+                "Input frames saved to "
+                f"{self.tracking_output_dir / self.frames_subdir}"
+            )
 
         # Evaluate tracker if ground truth is passed
         # TODO: refactor?

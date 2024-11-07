@@ -2,6 +2,7 @@
 
 import csv
 import logging
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -149,3 +150,40 @@ def generate_tracked_video(
     cv2.destroyAllWindows()
 
     return frame_idx
+
+
+def write_all_video_frames_as_images(
+    input_video_object: cv2.VideoCapture,
+    frames_subdir: Path,
+    frame_name_format_str: str = "frame_{frame_idx:08d}.png",
+):
+    """Save frames of input video as image files.
+
+    Parameters
+    ----------
+    input_video_object : cv2.VideoCapture
+        The input video object.
+    frames_subdir : Path
+        The directory to save frames.
+    frame_name_format_str : str
+        The format to follow for the frame filenames.
+        E.g. "frame_{frame_idx:08d}.png"
+
+    """
+    # Loop over frames
+    frame_idx = 0
+    while input_video_object.isOpened():
+        # Read frame
+        ret, frame = input_video_object.read()
+        if not ret:
+            parse_video_frame_reading_error_and_log(
+                frame_idx,
+                int(input_video_object.get(cv2.CAP_PROP_FRAME_COUNT)),
+            )
+            break
+
+        # Write frame to file
+        frame_path = str(
+            frames_subdir / frame_name_format_str.format(frame_idx=frame_idx)
+        )
+        write_frame_as_image(frame, frame_path)
