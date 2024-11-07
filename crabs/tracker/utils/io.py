@@ -106,3 +106,46 @@ def write_frame_as_image(frame, frame_path):
         logging.error(
             f"Error saving {frame_path}."  # f"frame_{frame_idx:08d}.png"
         )
+
+
+def parse_video_frame_reading_error_and_log(frame_idx, total_frames):
+    """Parse error message for reading a video frame."""
+    if frame_idx == total_frames:
+        logging.info(f"All {total_frames} frames processed")
+    else:
+        logging.info(
+            f"Error reading frame index " f"{frame_idx}/{total_frames}."
+        )
+
+
+def generate_tracked_video(
+    input_video_object, output_video_object, tracked_bboxes
+):
+    """Generate tracked video."""
+    # Loop over frames
+    frame_idx = 0
+    while input_video_object.isOpened():
+        # Read frame
+        ret, frame = input_video_object.read()
+        if not ret:
+            parse_video_frame_reading_error_and_log(
+                frame_idx,
+                int(input_video_object.get(cv2.CAP_PROP_FRAME_COUNT)),
+            )
+            break
+
+        # Write frame to output video
+        write_frame_to_output_video(
+            frame,
+            tracked_bboxes[frame_idx],
+            output_video_object,
+        )
+
+        frame_idx += 1
+
+    # Release video objects
+    input_video_object.release()
+    output_video_object.release()
+    cv2.destroyAllWindows()
+
+    return frame_idx

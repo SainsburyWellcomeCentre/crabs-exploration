@@ -20,9 +20,9 @@ from crabs.detector.utils.evaluate import (
 from crabs.tracker.evaluate_tracker import TrackerEvaluate
 from crabs.tracker.sort import Sort
 from crabs.tracker.utils.io import (
+    generate_tracked_video,
     get_video_parameters,
-    write_frame_as_image,
-    write_frame_to_output_video,
+    parse_video_frame_reading_error_and_log,
     write_tracked_detections_to_csv,
 )
 from crabs.tracker.utils.tracking import format_bbox_predictions_for_sort
@@ -126,15 +126,6 @@ class Tracking:
             )
             self.frames_subdir.mkdir(parents=True, exist_ok=True)
 
-    def parse_frame_reading_error_and_log(self, frame_idx, total_frames):
-        """Parse error message for reading frames."""
-        if frame_idx == total_frames:
-            logging.info(f"All {total_frames} frames processed")
-        else:
-            logging.info(
-                f"Error reading frame index " f"{frame_idx}/{total_frames}."
-            )
-
     def update_tracking(self, prediction: dict) -> np.ndarray:
         """Update the tracking data with the latest prediction.
 
@@ -211,6 +202,8 @@ class Tracking:
 
     def detect_and_track_video(self) -> None:
         """Run detection and tracking on input video."""
+        # ------------------------------------------------
+        # factor out as prep?
         # Load trained model
         trained_model = FasterRCNN.load_from_checkpoint(
             self.trained_model_path,
@@ -247,16 +240,25 @@ class Tracking:
             tracked_bboxes_dict["bboxes_scores"],
         )
 
-        # Write to video if required -- outside loop
+        # Generate tracked video if required
+        # (it loops again thru frames)
+        if self.args.save_video:
+            generate_tracked_video(
+                self.input_video_object,
+                self.output_video_object,
+                tracked_bboxes_dict["bboxes_tracked"],
+            )
+            logging.info(f"Tracked video saved to {self.output_video_path}")
 
-        # Write frames if required -- outside loop
+        # Write frames if required
+        # (it loops again thru frames)
 
         # Evaluate tracker if ground truth is passed
         # TODO: refactor?
         if self.args.annotations_file:
             evaluation = TrackerEvaluate(
                 self.args.annotations_file,
-                list_tracked_bboxes_all_frames,
+                tracked_bboxes_dict["bboxes_tracked"],
                 self.config["iou_threshold"],
                 self.tracking_output_dir,
             )
