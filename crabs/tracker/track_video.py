@@ -133,6 +133,32 @@ class Tracking:
             )
             self.frames_subdir.mkdir(parents=True, exist_ok=True)
 
+    def prep_detector_and_tracker(self):
+        """Set up the detector and tracker for tracking."""
+        # TODO: use Lightning's Trainer?
+        # Load trained model
+        self.trained_model = FasterRCNN.load_from_checkpoint(
+            self.trained_model_path,
+            config=self.trained_model_config,  # config of trained model!
+        )
+        self.trained_model.eval()
+        self.trained_model.to(self.accelerator)
+
+        # Define transforms to apply to input frames
+        self.inference_transforms = transforms.Compose(
+            [
+                transforms.ToImage(),
+                transforms.ToDtype(torch.float32, scale=True),
+            ]
+        )
+
+        # Initialise SORT tracker
+        self.sort_tracker = Sort(
+            max_age=self.config["max_age"],
+            min_hits=self.config["min_hits"],
+            iou_threshold=self.config["iou_threshold"],
+        )
+
     def update_tracking(self, prediction: dict) -> np.ndarray:
         """Update the tracking data with the latest prediction.
 
@@ -159,7 +185,7 @@ class Tracking:
         return tracked_boxes_id_per_frame
 
     def core_detection_and_tracking(self, transform, trained_model):
-        """Run detection and tracking."""
+        """Run detection and tracking loop through all video frames."""
         # Initialise dict to store tracked bboxes
         tracked_bboxes_dict = {}
 
@@ -201,35 +227,15 @@ class Tracking:
 
     def detect_and_track_video(self) -> None:
         """Run detection and tracking on input video."""
-        # ------------------------------------------------
-        # factor out as prep?
-        # Load trained model
-        trained_model = FasterRCNN.load_from_checkpoint(
-            self.trained_model_path,
-            config=self.trained_model_config,  # config of trained model!
-        )
-        trained_model.eval()
-        trained_model.to(self.accelerator)
-
-        # Initialise SORT tracker
-        self.sort_tracker = Sort(
-            max_age=self.config["max_age"],
-            min_hits=self.config["min_hits"],
-            iou_threshold=self.config["iou_threshold"],
-        )
-
-        # Define transforms
-        transform = transforms.Compose(
-            [
-                transforms.ToImage(),
-                transforms.ToDtype(torch.float32, scale=True),
-            ]
-        )
-        # ------------------------------------------------
+        # Prepare detector and tracker
+        # - Load trained model
+        # - Define transforms
+        # - Initialise SORT tracker
+        self.prep_detector_and_tracker()
 
         # Run detection and tracking over all frames in video
         tracked_bboxes_dict = self.core_detection_and_tracking(
-            transform, trained_model
+            self.inference_transforms, self.trained_model
         )
 
         # Write list of tracked bounding boxes to csv
@@ -263,7 +269,6 @@ class Tracking:
             )
 
         # Evaluate tracker if ground truth is passed
-        # TODO: refactor?
         if self.args.annotations_file:
             evaluation = TrackerEvaluate(
                 self.args.annotations_file,
