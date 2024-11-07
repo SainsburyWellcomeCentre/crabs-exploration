@@ -155,7 +155,8 @@ If a file with ground-truth annotations is passed to the command (with the `--an
 
 To see the full list of possible arguments to the `evaluate-detector` command, run it with the `--help` flag.
 
-
+## Task-specific guides
+For further information on specific tasks, such as launching a training job or evaluating a set of models in the HPC cluster, please see [our guides](guides).
 
 <!-- ### Evaluate the tracking performance
 
