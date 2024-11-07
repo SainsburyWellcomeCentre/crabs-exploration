@@ -162,62 +162,52 @@ class Tracking:
 
     def core_detection_and_tracking(self, transform, trained_model):
         """Run detection and tracking."""
-        # Run detection+tracking per frame
-        # TODO: factor out?
+        # Initialise dict to store tracked bboxes
+        tracked_bboxes_dict = {}
+
+        # Loop over frames
         frame_idx = 0
-        list_tracked_bboxes_all_frames = []
-        list_tracked_bboxes_scores = []
         while self.input_video_object.isOpened():
             # Read frame
             ret, frame = self.input_video_object.read()
             if not ret:
-                self.parse_frame_reading_error_and_log(
+                parse_video_frame_reading_error_and_log(
                     frame_idx, self.input_video_params["total_frames"]
                 )
                 break
 
             # Run prediction per frame
             # TODO: can I pass a video as a generator?
-            # do I need to go frame by frame?
             # TODO: use trainer.predict()
             image_tensors = transform(frame).to(self.accelerator)
             image_tensors = image_tensors.unsqueeze(0)
             with torch.no_grad():
                 prediction = trained_model(image_tensors)
-                list_tracked_bboxes_scores.append(
-                    prediction[0]["scores"].detach().cpu().numpy()
-                )
 
             # Update tracking
             tracked_boxes_id_per_frame = self.update_tracking(prediction)
-            list_tracked_bboxes_all_frames.append(tracked_boxes_id_per_frame)
 
-            # Write frame with tracks to video if required
-            if self.args.save_video:
-                write_frame_to_output_video(
-                    frame,
-                    tracked_boxes_id_per_frame,
-                    self.output_video_object,  # ---- set up
-                )
+            # Add data to dict
+            tracked_bboxes_dict[frame_idx] = {
+                "bboxes_tracked": tracked_boxes_id_per_frame,
+                "bboxes_scores": prediction[0]["scores"]
+                .detach()
+                .cpu()
+                .numpy(),
+            }
 
-            # Save frame without detections if required
-            if self.args.save_frames:
-                frame_path = str(
-                    self.frames_subdir
-                    / self.frame_name_format_str.format(frame_idx=frame_idx)
-                )
-                write_frame_as_image(frame, frame_path)
+            # # Save frame without detections if required
+            # if self.args.save_frames:
+            #     frame_path = str(
+            #         self.frames_subdir
+            #         / self.frame_name_format_str.format(frame_idx=frame_idx)
+            #     )
+            #     write_frame_as_image(frame, frame_path)
 
             # Update frame index
             frame_idx += 1
 
-        # Close videos
-        self.input_video_object.release()
-        if self.args.save_video:
-            self.output_video_object.release()
-
-        # TODO: instead return a dict, with key=frame_index?
-        return list_tracked_bboxes_all_frames, list_tracked_bboxes_scores
+        return tracked_bboxes_dict
 
     def detect_and_track_video(self) -> None:
         """Run detection and tracking on input video."""
@@ -243,18 +233,18 @@ class Tracking:
                 transforms.ToDtype(torch.float32, scale=True),
             ]
         )
+        # ------------------------------------------------
 
-        # Run detection and tracking
-        # TODO: make output a dict
-        (list_tracked_bboxes_all_frames, list_tracked_bboxes_scores) = (
-            self.core_detection_and_tracking(transform, trained_model)
+        # Run detection and tracking over all frames in video
+        tracked_bboxes_dict = self.core_detection_and_tracking(
+            transform, trained_model
         )
 
         # Write list of tracked bounding boxes to csv
         write_tracked_detections_to_csv(
             self.csv_file_path,
-            list_tracked_bboxes_all_frames,
-            list_tracked_bboxes_scores,
+            tracked_bboxes_dict["bboxes_tracked"],
+            tracked_bboxes_dict["bboxes_scores"],
         )
 
         # Write to video if required -- outside loop
