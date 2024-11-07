@@ -8,19 +8,26 @@ from crabs.tracker.utils.io import write_tracked_detections_to_csv
 def test_write_tracked_detections_to_csv(tmp_path):
     # Create test data
     csv_file_path = tmp_path / "test_output.csv"
-    tracked_bboxes_per_frame = [
-        np.array([[10, 20, 30, 40, 1], [50, 60, 70, 80, 2]]),
-        np.array([[15, 25, 35, 45, 1]]),
-    ]
-    pred_bboxes_scores_per_frame = [np.array([0.9, 0.8]), np.array([0.85])]
+
+    # Create dictionary with tracked bounding boxes for 2 frames
+    tracked_bboxes_dict = {}
+    # frame_idx = 0
+    tracked_bboxes_dict[0] = {
+        "bboxes_tracked": np.array([[10, 20, 30, 40, 1], [50, 60, 70, 80, 2]]),
+        "bboxes_scores": np.array([0.9, 0.8]),
+    }
+    # frame_idx = 1
+    tracked_bboxes_dict[1] = {
+        "bboxes_tracked": np.array([[15, 25, 35, 45, 1]]),
+        "bboxes_scores": np.array([0.85]),
+    }
     frame_name_regexp = "frame_{frame_idx:08d}.png"
     all_frames_size = 8888
 
     # Call function
     write_tracked_detections_to_csv(
         csv_file_path,
-        tracked_bboxes_per_frame,
-        pred_bboxes_scores_per_frame,
+        tracked_bboxes_dict,
         frame_name_regexp,
         all_frames_size,
     )
