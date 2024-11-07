@@ -276,10 +276,12 @@ class Tracking:
             )
 
         # Evaluate tracker if ground truth is passed
+        # Review: it doesn't use the score threshold?
+        # (I think it is already applied)
         if self.args.annotations_file:
             evaluation = TrackerEvaluate(
                 self.args.annotations_file,
-                tracked_bboxes_dict["bboxes_tracked"],
+                tracked_bboxes_dict,
                 self.config["iou_threshold"],
                 self.tracking_output_dir,
             )

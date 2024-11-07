@@ -18,8 +18,8 @@ class TrackerEvaluate:
 
     def __init__(
         self,
-        gt_dir: str,
-        predicted_boxes_id: list[np.ndarray],
+        gt_dir: str,  # annotations_file
+        predicted_boxes_dict: dict,
         iou_threshold: float,
         tracking_output_dir: Path,
     ):
@@ -32,8 +32,12 @@ class TrackerEvaluate:
         ----------
         gt_dir : str
             Directory path of the ground truth CSV file.
-        predicted_boxes_id : list[np.ndarray]
-            List of numpy arrays containing predicted bounding boxes and IDs.
+        predicted_boxes_dict : dict
+            Dictionary mapping frame indices to bounding boxes arrays
+            (under "bboxes_tracked") and bounding boxes scores (under
+            "bboxes_scores"). The bounding boxes array have shape
+            (n, 5) where n is the number of boxes in the frame and
+            the 5 columns are (xmin, ymin, xmax, ymax, id).
         iou_threshold : float
             Intersection over Union (IoU) threshold for evaluating
             tracking performance.
@@ -42,7 +46,7 @@ class TrackerEvaluate:
 
         """
         self.gt_dir = gt_dir
-        self.predicted_boxes_id = predicted_boxes_id
+        self.predicted_boxes_dict = predicted_boxes_dict
         self.iou_threshold = iou_threshold
         self.tracking_output_dir = tracking_output_dir
         self.last_known_predicted_ids: dict = {}
@@ -50,7 +54,8 @@ class TrackerEvaluate:
     def get_predicted_data(self) -> dict[int, dict[str, Any]]:
         """Format predicted bounding box and ID as dictionary.
 
-        Dictionary keys are frame numbers.
+        Dictionary keys are frame numbers. It splits bounding boxes
+        array of input dictionary.
 
         Returns
         -------
@@ -63,14 +68,21 @@ class TrackerEvaluate:
             - 'id': A numpy array containing the IDs of the tracked objects.
 
         """
+        # TODO: we probably can do away with this function and
+        # just use "predicted_boxes_dict" directly
         predicted_dict: dict[int, dict[str, Any]] = {}
 
-        for frame_number, frame_data in enumerate(self.predicted_boxes_id):
-            if frame_data.size == 0:
+        for frame_idx in self.predicted_boxes_dict:
+            frame_number = frame_idx + 1
+            predicted_bboxes_array = self.predicted_boxes_dict[frame_idx][
+                "bboxes_tracked"
+            ]
+
+            if predicted_bboxes_array.size == 0:  # why? no predictions?
                 continue
 
-            bboxes = frame_data[:, :4]
-            ids = frame_data[:, 4]
+            bboxes = predicted_bboxes_array[:, :4]
+            ids = predicted_bboxes_array[:, 4]
 
             predicted_dict[frame_number] = {"bbox": bboxes, "id": ids}
 
@@ -429,7 +441,7 @@ class TrackerEvaluate:
                 results["Missed Detections"].append(missed_detections)
                 results["False Positives"].append(false_positives)
                 results["Number of Switches"].append(num_switches)
-                results["Mota"].append(mota)
+                results["MOTA"].append(mota)
 
         save_tracking_mota_metrics(self.tracking_output_dir, results)
 
