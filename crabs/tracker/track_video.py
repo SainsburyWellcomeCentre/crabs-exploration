@@ -184,8 +184,15 @@ class Tracking:
 
         return tracked_boxes_id_per_frame
 
-    def core_detection_and_tracking(self, transform, trained_model):
-        """Run detection and tracking loop through all video frames."""
+    def core_detection_and_tracking(self):
+        """Run detection and tracking loop through all video frames.
+
+        Returns a dictionary with frame indices mapping to a dict holding:
+        - tracked bounding boxes for that frame, as a numpy array of shape
+          (nboxes, 5). The columns correspond to the values (xmin, ymin, xmax,
+          ymax, id).
+        - scores for each bounding box, as a numpu array of shape (nboxes,)
+        """
         # Initialise dict to store tracked bboxes
         tracked_bboxes_dict = {}
 
@@ -203,10 +210,12 @@ class Tracking:
             # Run prediction per frame
             # TODO: can I pass a video as a generator?
             # TODO: use trainer.predict()
-            image_tensors = transform(frame).to(self.accelerator)
+            image_tensors = self.inference_transforms(frame).to(
+                self.accelerator
+            )
             image_tensors = image_tensors.unsqueeze(0)
             with torch.no_grad():
-                prediction = trained_model(image_tensors)
+                prediction = self.trained_model(image_tensors)
 
             # Update tracking
             tracked_boxes_id_per_frame = self.update_tracking(prediction)
@@ -234,15 +243,13 @@ class Tracking:
         self.prep_detector_and_tracker()
 
         # Run detection and tracking over all frames in video
-        tracked_bboxes_dict = self.core_detection_and_tracking(
-            self.inference_transforms, self.trained_model
-        )
+        tracked_bboxes_dict = self.core_detection_and_tracking()
 
         # Write list of tracked bounding boxes to csv
         write_tracked_detections_to_csv(
             self.csv_file_path,
-            tracked_bboxes_dict["bboxes_tracked"],
-            tracked_bboxes_dict["bboxes_scores"],
+            tracked_bboxes_dict,
+            frame_name_regexp=self.frame_name_format_str,
         )
 
         # Generate tracked video if required

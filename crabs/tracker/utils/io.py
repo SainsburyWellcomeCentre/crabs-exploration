@@ -24,8 +24,7 @@ def get_video_parameters(video: cv2.VideoCapture) -> dict:
 
 def write_tracked_detections_to_csv(
     csv_file_path: str,
-    tracked_bboxes_per_frame: list[np.ndarray],
-    pred_bboxes_scores_per_frame: list[np.ndarray],
+    tracked_bboxes_dict: dict,
     frame_name_regexp: str = "frame_{frame_idx:08d}.png",
     all_frames_size: int = 8888,
 ):
@@ -52,11 +51,14 @@ def write_tracked_detections_to_csv(
     )
 
     # write detections
-    for frame_idx in range(len(tracked_bboxes_per_frame)):
+    # loop thru frames
+    for frame_idx in tracked_bboxes_dict:
+        # loop thru all boxes in frame
         for bbox, pred_score in zip(
-            tracked_bboxes_per_frame[frame_idx],
-            pred_bboxes_scores_per_frame[frame_idx],
+            tracked_bboxes_dict[frame_idx]["bboxes_tracked"],
+            tracked_bboxes_dict[frame_idx]["bboxes_scores"],
         ):
+            # extract shape
             xmin, ymin, xmax, ymax, id = bbox
             width_box = int(xmax - xmin)
             height_box = int(ymax - ymin)
@@ -79,12 +81,12 @@ def write_tracked_detections_to_csv(
 
 def write_frame_to_output_video(
     frame: np.ndarray,
-    tracked_boxes_id_per_frame: list,
+    tracked_bboxes_one_frame: np.ndarray,
     output_video_object: cv2.VideoWriter,
 ) -> None:
     """Write frame with tracked bounding boxes to output video."""
     frame_copy = frame.copy()  # why copy?
-    for bbox in tracked_boxes_id_per_frame:
+    for bbox in tracked_bboxes_one_frame:
         xmin, ymin, xmax, ymax, id = bbox
 
         draw_bbox(
@@ -138,7 +140,7 @@ def generate_tracked_video(
         # Write frame to output video
         write_frame_to_output_video(
             frame,
-            tracked_bboxes[frame_idx],
+            tracked_bboxes[frame_idx]["bboxes_tracked"],
             output_video_object,
         )
 
