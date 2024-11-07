@@ -141,14 +141,14 @@ class Tracking:
             iou_threshold=self.config["iou_threshold"],
         )
 
-    def update_tracking(self, prediction: dict) -> np.ndarray:
+    def update_tracking(self, prediction_dict: dict) -> np.ndarray:
         """Update the tracking data with the latest prediction.
 
         Parameters
         ----------
-        prediction : dict
+        prediction_dict : dict
             Dictionary containing predicted bounding boxes, scores, and labels.
-            # What are the keys?
+            The keys are: boxes, scores, and labels.
 
         Returns
         -------
@@ -156,13 +156,15 @@ class Tracking:
             tracked bounding boxes after updating the tracking system.
 
         """
-        # format predictions for SORT ---- review
-        pred_sort = format_bbox_predictions_for_sort(
-            prediction, self.config["score_threshold"]
+        # format predictions for SORT
+        prediction_tensor = format_bbox_predictions_for_sort(
+            prediction_dict, self.config["score_threshold"]
         )
 
         # update tracked bboxes and append
-        tracked_boxes_id_per_frame = self.sort_tracker.update(pred_sort)
+        tracked_boxes_id_per_frame = self.sort_tracker.update(
+            prediction_tensor.cpu()  # move to CPU for SORT
+        )
 
         return tracked_boxes_id_per_frame
 
@@ -198,23 +200,23 @@ class Tracking:
             # Run detection per frame
             # TODO: can I pass a video as a generator?
             # TODO: use trainer.predict()
-            image_tensors = self.inference_transforms(frame).to(
+            image_tensor = self.inference_transforms(frame).to(
                 self.accelerator
             )
-            image_tensors = image_tensors.unsqueeze(0)
+            # add batch dimension
+            image_tensor = image_tensor.unsqueeze(0)
             with torch.no_grad():
-                prediction = self.trained_model(image_tensors)
+                prediction = self.trained_model(image_tensor)[0]
+                # select the one image in the batch with [0]
 
             # Update tracking
+            # (predictions moved to cpu before passing to SORT)
             tracked_boxes_id_per_frame = self.update_tracking(prediction)
 
             # Add data to dict; key is frame index (0-based) for input clip
             tracked_bboxes_dict[frame_idx] = {
                 "bboxes_tracked": tracked_boxes_id_per_frame,
-                "bboxes_scores": prediction[0]["scores"]
-                .detach()  # --- can we move to cpu later, in one go?
-                .cpu()
-                .numpy(),
+                "bboxes_scores": prediction["scores"],
             }
 
             # Update frame index

@@ -4,9 +4,42 @@ import json
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 import torch
+
+
+def format_bbox_predictions_for_sort(
+    prediction_dict: dict, score_threshold: float
+) -> torch.Tensor:
+    """Put predictions in format expected by SORT.
+
+    Parameters
+    ----------
+    prediction_dict : dict
+        Dictionary containing predicted bounding boxes, scores,
+        and labels.
+
+    score_threshold : float
+        The threshold score for filtering out low-confidence predictions.
+
+    Returns
+    -------
+    torch.Tensor:
+        A torch tensor containing bounding boxes and scores along
+        columns.
+
+    """
+    # Format as a tensor with scores as last column
+    predictions_tensor = torch.hstack(
+        (
+            prediction_dict["boxes"],
+            prediction_dict["scores"].unsqueeze(dim=1),
+        )
+    )
+
+    # Filter rows in tensor based on last column
+    # if pred_score > score_threshold:
+    return predictions_tensor[predictions_tensor[:, -1] > score_threshold]
 
 
 def extract_bounding_box_info(row: list[str]) -> dict[str, Any]:
@@ -43,44 +76,6 @@ def extract_bounding_box_info(row: list[str]) -> dict[str, Any]:
         "height": height,
         "id": track_id,
     }
-
-
-def format_bbox_predictions_for_sort(
-    prediction: list, score_threshold: float
-) -> np.ndarray:
-    """Put predictions in format expected by SORT.
-
-    Parameters
-    ----------
-    prediction : list
-        List of dictionaries containing predicted bounding boxes, scores,
-        and labels.
-
-    score_threshold : float
-        The threshold score for filtering out low-confidence predictions.
-
-    Returns
-    -------
-    np.ndarray:
-        An array containing bounding boxes of detected objects in SORT format.
-
-    """
-    # Format as a tensor with scores as last column
-    predictions_tensor = torch.hstack(
-        (
-            prediction[0]["boxes"],
-            prediction[0]["scores"].unsqueeze(dim=1),
-        )
-    )
-
-    # Filter rows in tensor based on last column
-    # if pred_score > score_threshold:
-    return (
-        predictions_tensor[predictions_tensor[:, -1] > score_threshold]
-        .detach()
-        .cpu()
-        .numpy()
-    )
 
 
 def save_tracking_mota_metrics(
