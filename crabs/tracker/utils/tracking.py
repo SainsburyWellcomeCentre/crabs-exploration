@@ -68,6 +68,7 @@ def format_bbox_predictions_for_sort(
     # pred_labels = prediction[0]["labels"].detach().cpu().numpy()
     # -- why is this stored?
 
+    # can we vectorise this?
     pred_sort = []
     for box, score in zip(pred_boxes, pred_scores):
         if score > score_threshold:
@@ -75,6 +76,7 @@ def format_bbox_predictions_for_sort(
             pred_sort.append(bbox)
 
     return np.asarray(pred_sort)
+    # can they be passed as torch tensor so we don't have to copy to cpu?
 
 
 def save_tracking_mota_metrics(

@@ -73,7 +73,6 @@ class TrackerEvaluate:
         predicted_dict: dict[int, dict[str, Any]] = {}
 
         for frame_idx in self.predicted_boxes_dict:
-            frame_number = frame_idx + 1
             predicted_bboxes_array = self.predicted_boxes_dict[frame_idx][
                 "bboxes_tracked"
             ]
@@ -84,7 +83,7 @@ class TrackerEvaluate:
             bboxes = predicted_bboxes_array[:, :4]
             ids = predicted_bboxes_array[:, 4]
 
-            predicted_dict[frame_number] = {"bbox": bboxes, "id": ids}
+            predicted_dict[frame_idx] = {"bbox": bboxes, "id": ids}
 
         return predicted_dict
 
@@ -102,6 +101,8 @@ class TrackerEvaluate:
             - 'id': The ground truth ID
 
         """
+        # TODO: refactor with pandas
+
         with open(self.gt_dir) as csvfile:
             csvreader = csv.reader(csvfile)
             next(csvreader)  # Skip the header row
@@ -111,7 +112,10 @@ class TrackerEvaluate:
 
         # Format as a dictionary with key = frame number
         ground_truth_dict: dict = {}
+
+        # loop thru annotations
         for data in ground_truth_data:
+            # Get frame, bbox, id
             frame_number = data["frame_number"]
             bbox = np.array(
                 [
@@ -124,9 +128,11 @@ class TrackerEvaluate:
             )
             track_id = int(float(data["id"]))
 
+            # If frame does not exist in dict: initialise
             if frame_number not in ground_truth_dict:
                 ground_truth_dict[frame_number] = {"bbox": [], "id": []}
 
+            # Append bbox and id to the dictionary
             ground_truth_dict[frame_number]["bbox"].append(bbox)
             ground_truth_dict[frame_number]["id"].append(track_id)
 
