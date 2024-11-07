@@ -69,7 +69,7 @@ class Tracking:
 
         # output directory root name
         self.tracking_output_dir_root = args.output_dir
-        self.frame_name_format_str = "frame_{frame_idx:08d}.png"  # %08d
+        self.frame_name_format_str = "frame_{frame_idx:08d}.png"
 
         # hardware
         self.accelerator = "cuda" if args.accelerator == "gpu" else "cpu"
@@ -142,6 +142,7 @@ class Tracking:
         ----------
         prediction : dict
             Dictionary containing predicted bounding boxes, scores, and labels.
+            # What are the keys?
 
         Returns
         -------
@@ -270,12 +271,6 @@ class Tracking:
                 self.tracking_output_dir,
             )
             evaluation.run_evaluation()
-
-        # if this is a slurm job: add slurm logs as artifacts
-        # slurm_job_id = os.environ.get("SLURM_JOB_ID")
-        # slurm_job_name = os.environ.get("SLURM_JOB_NAME")
-        # if slurm_job_id and (slurm_job_name != "bash"):
-        #     slurm_logs_as_artifacts(trainer.logger, slurm_job_id)
 
 
 def main(args) -> None:
