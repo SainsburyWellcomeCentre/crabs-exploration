@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import torch
 
 
 def extract_bounding_box_info(row: list[str]) -> dict[str, Any]:
@@ -45,14 +46,15 @@ def extract_bounding_box_info(row: list[str]) -> dict[str, Any]:
 
 
 def format_bbox_predictions_for_sort(
-    prediction: dict, score_threshold: float
+    prediction: list, score_threshold: float
 ) -> np.ndarray:
     """Put predictions in format expected by SORT.
 
     Parameters
     ----------
-    prediction : dict
-        The dictionary containing predicted bounding boxes, scores, and labels.
+    prediction : list
+        List of dictionaries containing predicted bounding boxes, scores,
+        and labels.
 
     score_threshold : float
         The threshold score for filtering out low-confidence predictions.
@@ -63,20 +65,22 @@ def format_bbox_predictions_for_sort(
         An array containing bounding boxes of detected objects in SORT format.
 
     """
-    pred_boxes = prediction[0]["boxes"].detach().cpu().numpy()
-    pred_scores = prediction[0]["scores"].detach().cpu().numpy()
-    # pred_labels = prediction[0]["labels"].detach().cpu().numpy()
-    # -- why is this stored?
+    # Format as a tensor with scores as last column
+    predictions_tensor = torch.hstack(
+        (
+            prediction[0]["boxes"],
+            prediction[0]["scores"].unsqueeze(dim=1),
+        )
+    )
 
-    # can we vectorise this?
-    pred_sort = []
-    for box, score in zip(pred_boxes, pred_scores):
-        if score > score_threshold:
-            bbox = np.concatenate((box, [score]))
-            pred_sort.append(bbox)
-
-    return np.asarray(pred_sort)
-    # can they be passed as torch tensor so we don't have to copy to cpu?
+    # Filter rows in tensor based on last column
+    # if pred_score > score_threshold:
+    return (
+        predictions_tensor[predictions_tensor[:, -1] > score_threshold]
+        .detach()
+        .cpu()
+        .numpy()
+    )
 
 
 def save_tracking_mota_metrics(
