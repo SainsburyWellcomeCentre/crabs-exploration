@@ -208,7 +208,7 @@ class Tracking:
             # Update tracking
             tracked_boxes_id_per_frame = self.update_tracking(prediction)
 
-            # Add data to dict
+            # Add data to dict; key is frame index (0-based) for input clip
             tracked_bboxes_dict[frame_idx] = {
                 "bboxes_tracked": tracked_boxes_id_per_frame,
                 "bboxes_scores": prediction[0]["scores"]
