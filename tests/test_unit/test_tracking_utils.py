@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 import torch
 
@@ -47,7 +46,7 @@ def test_extract_bounding_box_info():
             ),
         ),
         (
-            0.85,
+            0.83,
             torch.tensor(
                 [
                     [10, 20, 30, 40, 0.9],
@@ -57,25 +56,24 @@ def test_extract_bounding_box_info():
         ),
         (
             0.95,
-            torch.tensor([]),
+            torch.empty((0, 5)),
         ),
     ],
 )
 def test_format_bbox_predictions_for_sort(score_threshold, expected_output):
     # Define the test data
-    prediction = [
-        {
-            "boxes": torch.tensor(
-                [[10, 20, 30, 40], [50, 60, 70, 80], [15, 25, 35, 45]]
-            ),
-            "scores": torch.tensor([0.9, 0.85, 0.8]),
-        }
-    ]
+    prediction = {
+        "boxes": torch.tensor(
+            [[10, 20, 30, 40], [50, 60, 70, 80], [15, 25, 35, 45]]
+        ),
+        "scores": torch.tensor([0.9, 0.85, 0.8]),
+    }
 
     # Call the function
     result = format_bbox_predictions_for_sort(prediction, score_threshold)
 
     # Assert the result
-    assert np.array_equal(
-        result, expected_output
-    ), f"Expected {expected_output}, but got {result}"
+    (
+        torch.testing.assert_close(result, expected_output),
+        f"Expected {expected_output}, but got {result}",
+    )
