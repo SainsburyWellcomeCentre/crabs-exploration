@@ -113,7 +113,7 @@ def write_frame_to_output_video(
     output_video_object.write(frame_copy)
 
 
-def parse_video_frame_reading_error_and_log(frame_idx, total_frames):
+def parse_video_frame_reading_error_and_log(frame_idx: int, total_frames: int):
     """Parse error message for reading a video frame."""
     if frame_idx == total_frames:
         logging.info(f"All {total_frames} frames processed")
@@ -123,18 +123,11 @@ def parse_video_frame_reading_error_and_log(frame_idx, total_frames):
         )
 
 
-def generate_tracked_video(
-    input_video_path, output_video_path, tracked_bboxes
-):
-    """Generate tracked video."""
-    # Open input video
-    input_video_object = cv2.VideoCapture(input_video_path)
-    if not input_video_object.isOpened():
-        raise Exception("Error opening video file")
-    input_video_params = get_video_parameters(input_video_path)
-
-    # ------
-    # Set up output video writer following input video parameters
+def setup_video_writer_from_input_video(
+    reference_video_path: str, output_video_path: str
+) -> cv2.VideoWriter:
+    """Set up video writer with the same parameters as reference video."""
+    input_video_params = get_video_parameters(reference_video_path)
     output_codec = cv2.VideoWriter_fourcc("m", "p", "4", "v")
     output_video_writer = cv2.VideoWriter(
         output_video_path,
@@ -145,7 +138,22 @@ def generate_tracked_video(
             input_video_params["frame_height"],
         ),
     )
-    # ------
+    return output_video_writer
+
+
+def generate_tracked_video(
+    input_video_path: str, output_video_path: str, tracked_bboxes: dict
+):
+    """Generate tracked video."""
+    # Open input video
+    input_video_object = cv2.VideoCapture(input_video_path)
+    if not input_video_object.isOpened():
+        raise Exception("Error opening video file")
+
+    # Set up output video writer following input video parameters
+    output_video_writer = setup_video_writer_from_input_video(
+        input_video_path, output_video_path
+    )
 
     # Loop over frames
     frame_idx = 0
@@ -172,6 +180,16 @@ def generate_tracked_video(
     input_video_object.release()
     output_video_writer.release()
     cv2.destroyAllWindows()
+
+
+def write_frame_as_image(frame: np.ndarray, frame_path: str):
+    """Write frame as image file."""
+    img_saved = cv2.imwrite(
+        frame_path,
+        frame,
+    )
+    if not img_saved:
+        logging.info(f"Error saving {frame_path}.")
 
 
 def write_all_video_frames_as_images(
@@ -209,18 +227,14 @@ def write_all_video_frames_as_images(
             )
             break
 
-        # ------------
         # Write frame to file
-        frame_path = str(
-            frames_subdir / frame_name_format_str.format(frame_idx=frame_idx)
-        )
-        img_saved = cv2.imwrite(
-            frame_path,
+        write_frame_as_image(
             frame,
+            str(
+                frames_subdir
+                / frame_name_format_str.format(frame_idx=frame_idx)
+            ),
         )
-        if not img_saved:
-            logging.info(f"Error saving {frame_path}.")
-        # ------------
 
         # Update frame index
         frame_idx += 1

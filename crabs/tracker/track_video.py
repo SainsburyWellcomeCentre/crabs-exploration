@@ -107,7 +107,7 @@ class Tracking:
                 / f"{self.input_video_file_root}_tracks.mp4"
             )
 
-        # Set up frames subdirectory if required
+        # Set up frames subdirectory path if required
         if self.args.save_frames:
             self.frames_subdir = (
                 self.tracking_output_dir
@@ -195,7 +195,7 @@ class Tracking:
                 )
                 break
 
-            # Run prediction per frame
+            # Run detection per frame
             # TODO: can I pass a video as a generator?
             # TODO: use trainer.predict()
             image_tensors = self.inference_transforms(frame).to(
@@ -212,7 +212,7 @@ class Tracking:
             tracked_bboxes_dict[frame_idx] = {
                 "bboxes_tracked": tracked_boxes_id_per_frame,
                 "bboxes_scores": prediction[0]["scores"]
-                .detach()
+                .detach()  # --- can we move to cpu later, in one go?
                 .cpu()
                 .numpy(),
             }
@@ -249,7 +249,7 @@ class Tracking:
             generate_tracked_video(
                 self.input_video_path,
                 self.output_video_path,
-                tracked_bboxes_dict["bboxes_tracked"],
+                tracked_bboxes_dict,
             )
             logging.info(f"Tracked video saved to {self.output_video_path}")
 
