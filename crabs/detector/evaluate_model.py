@@ -75,6 +75,12 @@ class DetectorEvaluate:
         )
         self.evaluation_split = "test" if self.args.use_test_set else "val"
 
+        # output directory for frames
+        self.frames_output_dir_root = str(
+            Path(self.args.frames_output_dir)
+            / f"evaluation_output_{self.evaluation_split}"
+        )
+
         # Hardware
         self.accelerator = args.accelerator
 
@@ -172,10 +178,7 @@ class DetectorEvaluate:
             save_images_with_boxes(
                 dataloader=eval_dataloader,
                 trained_model=trained_model,
-                output_dir=str(
-                    Path(self.args.frames_output_dir)
-                    / f"evaluation_output_{self.evaluation_split}"
-                ),
+                output_dir=self.frames_output_dir_root,
                 score_threshold=self.args.frames_score_threshold,
             )
 
