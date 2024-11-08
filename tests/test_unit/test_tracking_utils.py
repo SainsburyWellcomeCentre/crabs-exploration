@@ -3,7 +3,7 @@ import torch
 
 from crabs.tracker.utils.tracking import (
     extract_bounding_box_info,
-    format_bbox_predictions_for_sort,
+    format_and_filter_bbox_predictions_for_sort,
 )
 
 
@@ -70,7 +70,9 @@ def test_format_bbox_predictions_for_sort(score_threshold, expected_output):
     }
 
     # Call the function
-    result = format_bbox_predictions_for_sort(prediction, score_threshold)
+    result = format_and_filter_bbox_predictions_for_sort(
+        prediction, score_threshold
+    )
 
     # Assert the result
     (

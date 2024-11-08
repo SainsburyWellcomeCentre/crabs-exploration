@@ -11,15 +11,19 @@ def test_write_tracked_detections_to_csv(tmp_path):
 
     # Create dictionary with tracked bounding boxes for 2 frames
     tracked_bboxes_dict = {}
+
     # frame_idx = 0
     tracked_bboxes_dict[0] = {
-        "bboxes_tracked": np.array([[10, 20, 30, 40, 1], [50, 60, 70, 80, 2]]),
-        "bboxes_scores": np.array([0.9, 0.8]),
+        "tracked_boxes": np.array([[10, 20, 30, 40], [50, 60, 70, 80]]),
+        "ids": np.array([1, 2]),
+        "scores": np.array([0.9, 0.8]),
     }
+
     # frame_idx = 1
     tracked_bboxes_dict[1] = {
-        "bboxes_tracked": np.array([[15, 25, 35, 45, 1]]),
-        "bboxes_scores": np.array([0.85]),
+        "tracked_boxes": np.array([[15, 25, 35, 45]]),
+        "ids": np.array([1]),
+        "scores": np.array([0.85]),
     }
     frame_name_regexp = "frame_{frame_idx:08d}.png"
     all_frames_size = 8888
