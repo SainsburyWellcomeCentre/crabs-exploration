@@ -10,12 +10,18 @@ import numpy as np
 from crabs.detector.utils.visualization import draw_bbox
 
 
-def get_video_parameters(video_path: str) -> dict:
-    """Get total number of frames, frame width and height, and fps of video."""
-    # Open video
+def open_video(video_path: str) -> cv2.VideoCapture:
+    """Open video file."""
     video_object = cv2.VideoCapture(video_path)
     if not video_object.isOpened():
         raise Exception("Error opening video file")
+    return video_object
+
+
+def get_video_parameters(video_path: str) -> dict:
+    """Get total number of frames, frame width and height, and fps of video."""
+    # Open video
+    video_object = open_video(video_path)
 
     # Get video parameters
     video_parameters = {}
