@@ -34,10 +34,10 @@ class TrackerEvaluate:
             Directory path of the ground truth CSV file.
         predicted_boxes_dict : dict
             Dictionary mapping frame indices to bounding boxes arrays
-            (under "bboxes_tracked") and bounding boxes scores (under
-            "bboxes_scores"). The bounding boxes array have shape
-            (n, 5) where n is the number of boxes in the frame and
-            the 5 columns are (xmin, ymin, xmax, ymax, id).
+            (under "tracked_boxes"), ids (under "ids") and detection scores
+            (under "scores"). The bounding boxes array have shape (n, 4) where
+            n is the number of boxes in the frame and the 4 columns are (xmin,
+            ymin, xmax, ymax).
         iou_threshold : float
             Intersection over Union (IoU) threshold for evaluating
             tracking performance.
@@ -50,42 +50,6 @@ class TrackerEvaluate:
         self.iou_threshold = iou_threshold
         self.tracking_output_dir = tracking_output_dir
         self.last_known_predicted_ids: dict = {}
-
-    def get_predicted_data(self) -> dict[int, dict[str, Any]]:
-        """Format predicted bounding box and ID as dictionary.
-
-        Dictionary keys are frame numbers. It splits bounding boxes
-        array of input dictionary.
-
-        Returns
-        -------
-        dict[int, dict[str, Any]]:
-            A dictionary where the key is the frame number and the value is
-            another dictionary containing:
-            - 'bbox': A numpy array with shape (N, 4) containing coordinates
-            of the bounding boxes [x, y, x + width, y + height] for every
-            object in the frame.
-            - 'id': A numpy array containing the IDs of the tracked objects.
-
-        """
-        # TODO: we probably can do away with this function and
-        # just use "predicted_boxes_dict" directly
-        predicted_dict: dict[int, dict[str, Any]] = {}
-
-        for frame_idx in self.predicted_boxes_dict:
-            predicted_bboxes_array = self.predicted_boxes_dict[frame_idx][
-                "bboxes_tracked"
-            ]
-
-            if predicted_bboxes_array.size == 0:  # why? no predictions?
-                continue
-
-            bboxes = predicted_bboxes_array[:, :4]
-            ids = predicted_bboxes_array[:, 4]
-
-            predicted_dict[frame_idx] = {"bbox": bboxes, "id": ids}
-
-        return predicted_dict
 
     def get_ground_truth_data(self) -> dict[int, dict[str, Any]]:
         """Fromat ground truth bounding box data as dict with key frame number.
@@ -331,8 +295,8 @@ class TrackerEvaluate:
         indices_of_matched_gt_boxes = set()
         gt_to_tracked_id_current_frame = {}
 
-        pred_boxes = pred_data["bbox"]
-        pred_ids = pred_data["id"]
+        pred_boxes = pred_data["tracked_boxes"]
+        pred_ids = pred_data["ids"]
 
         gt_boxes = gt_data["bbox"]
         gt_ids = gt_data["id"]
@@ -455,9 +419,10 @@ class TrackerEvaluate:
 
     def run_evaluation(self) -> None:
         """Run evaluation of tracking based on tracking ground truth."""
-        predicted_dict = self.get_predicted_data()
         ground_truth_dict = self.get_ground_truth_data()
-        mota_values = self.evaluate_tracking(ground_truth_dict, predicted_dict)
+        mota_values = self.evaluate_tracking(
+            ground_truth_dict, self.predicted_boxes_dict
+        )
 
         overall_mota = np.mean(mota_values)
         logging.info("Overall MOTA: %f" % overall_mota)  # noqa: UP031

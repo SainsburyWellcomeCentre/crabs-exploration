@@ -8,10 +8,12 @@ import pandas as pd
 import torch
 
 
-def format_bbox_predictions_for_sort(
+def format_and_filter_bbox_predictions_for_sort(
     prediction_dict: dict, score_threshold: float
 ) -> torch.Tensor:
     """Put predictions in format expected by SORT.
+
+    Lower confidence predictions are filtered out.
 
     Parameters
     ----------
@@ -25,8 +27,8 @@ def format_bbox_predictions_for_sort(
     Returns
     -------
     torch.Tensor:
-        A torch tensor containing bounding boxes and scores along
-        columns.
+        A torch tensor of shape (N, 5) representing N detection bounding boxes
+        in format [xmin, ymin, xmax, ymax, score].
 
     """
     # Format as a tensor with scores as last column

@@ -74,12 +74,13 @@ def write_tracked_detections_to_csv(
     # loop thru frames
     for frame_idx in tracked_bboxes_dict:
         # loop thru all boxes in frame
-        for bbox, pred_score in zip(
-            tracked_bboxes_dict[frame_idx]["bboxes_tracked"],
-            tracked_bboxes_dict[frame_idx]["bboxes_scores"],
+        for bbox, id, pred_score in zip(
+            tracked_bboxes_dict[frame_idx]["tracked_boxes"],
+            tracked_bboxes_dict[frame_idx]["ids"],
+            tracked_bboxes_dict[frame_idx]["scores"],
         ):
             # extract shape
-            xmin, ymin, xmax, ymax, id = bbox
+            xmin, ymin, xmax, ymax = bbox
             width_box = int(xmax - xmin)
             height_box = int(ymax - ymin)
 
@@ -101,13 +102,16 @@ def write_tracked_detections_to_csv(
 
 def write_frame_to_output_video(
     frame: np.ndarray,
-    tracked_bboxes_one_frame: np.ndarray,
+    tracked_bboxes_one_frame: dict,
     output_video_object: cv2.VideoWriter,
 ) -> None:
     """Write frame with tracked bounding boxes to output video."""
     frame_copy = frame.copy()  # why copy?
-    for bbox in tracked_bboxes_one_frame:
-        xmin, ymin, xmax, ymax, id = bbox
+    for bbox, id in zip(
+        tracked_bboxes_one_frame["tracked_boxes"],
+        tracked_bboxes_one_frame["ids"],
+    ):
+        xmin, ymin, xmax, ymax = bbox
 
         draw_bbox(
             frame_copy,
@@ -152,9 +156,7 @@ def generate_tracked_video(
 ):
     """Generate tracked video."""
     # Open input video
-    input_video_object = cv2.VideoCapture(input_video_path)
-    if not input_video_object.isOpened():
-        raise Exception("Error opening video file")
+    input_video_object = open_video(input_video_path)
 
     # Set up output video writer following input video parameters
     output_video_writer = setup_video_writer_from_input_video(
@@ -176,7 +178,7 @@ def generate_tracked_video(
         # Write frame to output video
         write_frame_to_output_video(
             frame,
-            tracked_bboxes[frame_idx]["bboxes_tracked"],
+            tracked_bboxes[frame_idx],
             output_video_writer,
         )
 
@@ -217,9 +219,7 @@ def write_all_video_frames_as_images(
 
     """
     # Open input video
-    input_video_object = cv2.VideoCapture(input_video_path)
-    if not input_video_object.isOpened():
-        raise Exception("Error opening video file")
+    input_video_object = open_video(input_video_path)
 
     # Loop over frames
     frame_idx = 0
