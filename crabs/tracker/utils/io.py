@@ -1,45 +1,57 @@
 """Utility functions for handling input and output operations."""
 
 import csv
-import os
-from datetime import datetime
+import logging
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 from crabs.detector.utils.visualization import draw_bbox
-from crabs.tracker.utils.tracking import (
-    save_output_frame,
-    write_tracked_bbox_to_csv,
-)
 
 
-def prep_csv_writer(output_dir: str, video_file_root: str):
-    """Prepare csv writer to output tracking results.
+def open_video(video_path: str) -> cv2.VideoCapture:
+    """Open video file."""
+    video_object = cv2.VideoCapture(video_path)
+    if not video_object.isOpened():
+        raise Exception("Error opening video file")
+    return video_object
 
-    Parameters
-    ----------
-    output_dir : str
-        The output folder where the output will be stored.
-    video_file_root : str
-        The root name of the video file.
 
-    Returns
-    -------
-    Tuple
-        A tuple containing the CSV writer, the CSV file object, and the
-        tracking output directory path.
+def get_video_parameters(video_path: str) -> dict:
+    """Get total number of frames, frame width and height, and fps of video."""
+    # Open video
+    video_object = open_video(video_path)
 
-    """
-    # Create a timestamped directory for the tracking output
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    tracking_output_dir = Path(output_dir + f"_{timestamp}")
-    tracking_output_dir.mkdir(parents=True, exist_ok=True)
+    # Get video parameters
+    video_parameters = {}
+    video_parameters["total_frames"] = int(
+        video_object.get(cv2.CAP_PROP_FRAME_COUNT)
+    )
+    video_parameters["frame_width"] = int(
+        video_object.get(cv2.CAP_PROP_FRAME_WIDTH)
+    )
+    video_parameters["frame_height"] = int(
+        video_object.get(cv2.CAP_PROP_FRAME_HEIGHT)
+    )
+    video_parameters["fps"] = video_object.get(cv2.CAP_PROP_FPS)
 
+    # Release video object
+    video_object.release()
+
+    return video_parameters
+
+
+def write_tracked_detections_to_csv(
+    csv_file_path: str,
+    tracked_bboxes_dict: dict,
+    frame_name_regexp: str = "frame_{frame_idx:08d}.png",
+    all_frames_size: int = 8888,
+):
+    """Write tracked detections to a csv file."""
     # Initialise csv file
     csv_file = open(  # noqa: SIM115
-        f"{str(tracking_output_dir)}/{video_file_root}_tracks.csv",
+        csv_file_path,
         "w",
     )
     csv_writer = csv.writer(csv_file)
@@ -58,128 +70,181 @@ def prep_csv_writer(output_dir: str, video_file_root: str):
         )
     )
 
-    return csv_writer, csv_file, tracking_output_dir
+    # write detections
+    # loop thru frames
+    for frame_idx in tracked_bboxes_dict:
+        # loop thru all boxes in frame
+        for bbox, id, pred_score in zip(
+            tracked_bboxes_dict[frame_idx]["tracked_boxes"],
+            tracked_bboxes_dict[frame_idx]["ids"],
+            tracked_bboxes_dict[frame_idx]["scores"],
+        ):
+            # extract shape
+            xmin, ymin, xmax, ymax = bbox
+            width_box = int(xmax - xmin)
+            height_box = int(ymax - ymin)
 
-
-def prep_video_writer(
-    output_dir: str,
-    video_file_root: str,
-    frame_width: int,
-    frame_height: int,
-    cap_fps: float,
-) -> cv2.VideoWriter:
-    """Prepare video writer to output processed video.
-
-    Parameters
-    ----------
-    output_dir : str
-        The output folder where the output will be stored.
-    video_file_root :str
-        The root name of the video file.
-    frame_width : int
-        The width of the video frames.
-    frame_height : int
-        The height of the video frames.
-    cap_fps : float
-        The frames per second of the video.
-
-    Returns
-    -------
-    cv2.VideoWriter
-        The video writer object for writing video frames.
-
-    """
-    output_file = os.path.join(
-        output_dir,
-        f"{video_file_root}_tracks.mp4",
-    )
-    output_codec = cv2.VideoWriter_fourcc("m", "p", "4", "v")
-    video_output = cv2.VideoWriter(
-        output_file, output_codec, cap_fps, (frame_width, frame_height)
-    )
-
-    return video_output
-
-
-def save_required_output(
-    video_file_root: Path,
-    save_frames: bool,
-    tracking_output_dir: Path,
-    csv_writer: cv2.VideoWriter,
-    save_video: bool,
-    video_output: cv2.VideoWriter,
-    tracked_boxes: list[list[float]],
-    frame: np.ndarray,
-    frame_number: int,
-    pred_scores: np.ndarray,
-) -> None:
-    """Handle the output based on argument options.
-
-    Parameters
-    ----------
-    video_file_root : Path
-        The root name of the video file.
-    save_frames : bool
-        Flag to save frames.
-    tracking_output_dir : Path
-        Directory to save tracking output.
-    csv_writer : Any
-        CSV writer object.
-    save_video : bool
-        Flag to save video.
-    video_output : cv2.VideoWriter
-        Video writer object for writing video frames.
-    tracked_boxes : list[list[float]]
-        List of tracked bounding boxes.
-    frame : np.ndarray
-        The current frame.
-    frame_number : int
-        The frame number.
-    pred_scores : np.ndarray
-        The prediction score from detector
-
-    """
-    frame_name = f"frame_{frame_number:08d}.png"
-
-    for bbox, pred_score in zip(tracked_boxes, pred_scores):
-        write_tracked_bbox_to_csv(
-            np.array(bbox), frame, frame_name, csv_writer, pred_score
-        )
-
-    if save_frames:
-        # create subdirectory of frames
-        frames_subdir = tracking_output_dir / f"{video_file_root}_frames"
-        frames_subdir.mkdir(parents=True, exist_ok=True)
-
-        # save frame (without bounding boxes)
-        save_output_frame(
-            frame_name,
-            frames_subdir,
-            frame,
-            frame_number,
-        )
-
-    if save_video:
-        frame_copy = frame.copy()
-        for bbox in tracked_boxes:
-            xmin, ymin, xmax, ymax, id = bbox
-            draw_bbox(
-                frame_copy,
-                (xmin, ymin),
-                (xmax, ymax),
-                (0, 0, 255),
-                f"id : {int(id)}",
+            # Add to csv
+            csv_writer.writerow(
+                (
+                    frame_name_regexp.format(
+                        frame_idx=frame_idx
+                    ),  # f"frame_{frame_idx:08d}.png",  # frame index!
+                    all_frames_size,  # frame size
+                    '{{"clip":{}}}'.format("123"),
+                    1,
+                    0,
+                    f'{{"name":"rect","x":{xmin},"y":{ymin},"width":{width_box},"height":{height_box}}}',
+                    f'{{"track":"{int(id)}", "confidence":"{pred_score}"}}',
+                )
             )
-        video_output.write(frame_copy)
 
 
-def close_csv_file(csv_file) -> None:
-    """Close the CSV file if it's open."""
-    if csv_file:
-        csv_file.close()
+def write_frame_to_output_video(
+    frame: np.ndarray,
+    tracked_bboxes_one_frame: dict,
+    output_video_object: cv2.VideoWriter,
+) -> None:
+    """Write frame with tracked bounding boxes to output video."""
+    frame_copy = frame.copy()  # why copy?
+    for bbox, id in zip(
+        tracked_bboxes_one_frame["tracked_boxes"],
+        tracked_bboxes_one_frame["ids"],
+    ):
+        xmin, ymin, xmax, ymax = bbox
+
+        draw_bbox(
+            frame_copy,
+            (xmin, ymin),
+            (xmax, ymax),
+            (0, 0, 255),
+            f"id : {int(id)}",
+        )
+    output_video_object.write(frame_copy)
 
 
-def release_video(video_output) -> None:
-    """Release the video file if it's open."""
-    if video_output:
-        video_output.release()
+def parse_video_frame_reading_error_and_log(frame_idx: int, total_frames: int):
+    """Parse error message for reading a video frame."""
+    if frame_idx == total_frames:
+        logging.info(f"All {total_frames} frames processed")
+    else:
+        logging.info(
+            f"Error reading frame index " f"{frame_idx}/{total_frames}."
+        )
+
+
+def setup_video_writer_from_input_video(
+    reference_video_path: str, output_video_path: str
+) -> cv2.VideoWriter:
+    """Set up video writer with the same parameters as reference video."""
+    input_video_params = get_video_parameters(reference_video_path)
+    output_codec = cv2.VideoWriter_fourcc("m", "p", "4", "v")
+    output_video_writer = cv2.VideoWriter(
+        output_video_path,
+        output_codec,
+        input_video_params["fps"],
+        (
+            input_video_params["frame_width"],
+            input_video_params["frame_height"],
+        ),
+    )
+    return output_video_writer
+
+
+def generate_tracked_video(
+    input_video_path: str, output_video_path: str, tracked_bboxes: dict
+):
+    """Generate tracked video."""
+    # Open input video
+    input_video_object = open_video(input_video_path)
+
+    # Set up output video writer following input video parameters
+    output_video_writer = setup_video_writer_from_input_video(
+        input_video_path, output_video_path
+    )
+
+    # Loop over frames
+    frame_idx = 0
+    while input_video_object.isOpened():
+        # Read frame
+        ret, frame = input_video_object.read()
+        if not ret:
+            parse_video_frame_reading_error_and_log(
+                frame_idx,
+                int(input_video_object.get(cv2.CAP_PROP_FRAME_COUNT)),
+            )
+            break
+
+        # Write frame to output video
+        write_frame_to_output_video(
+            frame,
+            tracked_bboxes[frame_idx],
+            output_video_writer,
+        )
+
+        frame_idx += 1
+
+    # Release video objects
+    input_video_object.release()
+    output_video_writer.release()
+    cv2.destroyAllWindows()
+
+
+def write_frame_as_image(frame: np.ndarray, frame_path: str):
+    """Write frame as image file."""
+    img_saved = cv2.imwrite(
+        frame_path,
+        frame,
+    )
+    if not img_saved:
+        logging.info(f"Error saving {frame_path}.")
+
+
+def write_all_video_frames_as_images(
+    input_video_path: str,
+    frames_subdir: Path,
+    frame_name_format_str: str = "frame_{frame_idx:08d}.png",
+):
+    """Save frames of input video as image files.
+
+    Parameters
+    ----------
+    input_video_path : str
+        The path to the input video.
+    frames_subdir : Path
+        The directory to save frames.
+    frame_name_format_str : str
+        The format to follow for the frame filenames.
+        E.g. "frame_{frame_idx:08d}.png"
+
+    """
+    # Open input video
+    input_video_object = open_video(input_video_path)
+
+    # Loop over frames
+    frame_idx = 0
+    while input_video_object.isOpened():
+        # Read frame
+        ret, frame = input_video_object.read()
+        if not ret:
+            parse_video_frame_reading_error_and_log(
+                frame_idx,
+                int(input_video_object.get(cv2.CAP_PROP_FRAME_COUNT)),
+            )
+            break
+
+        # Write frame to file
+        write_frame_as_image(
+            frame,
+            str(
+                frames_subdir
+                / frame_name_format_str.format(frame_idx=frame_idx)
+            ),
+        )
+
+        # Update frame index
+        frame_idx += 1
+
+    # Release video objects
+    input_video_object.release()
+    cv2.destroyAllWindows()

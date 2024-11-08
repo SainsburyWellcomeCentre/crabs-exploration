@@ -1,12 +1,47 @@
 """Utility functions for tracking."""
 
 import json
-import logging
 from pathlib import Path
 from typing import Any
 
-import cv2
-import numpy as np
+import pandas as pd
+import torch
+
+
+def format_and_filter_bbox_predictions_for_sort(
+    prediction_dict: dict, score_threshold: float
+) -> torch.Tensor:
+    """Put predictions in format expected by SORT.
+
+    Lower confidence predictions are filtered out.
+
+    Parameters
+    ----------
+    prediction_dict : dict
+        Dictionary containing predicted bounding boxes, scores,
+        and labels.
+
+    score_threshold : float
+        The threshold score for filtering out low-confidence predictions.
+
+    Returns
+    -------
+    torch.Tensor:
+        A torch tensor of shape (N, 5) representing N detection bounding boxes
+        in format [xmin, ymin, xmax, ymax, score].
+
+    """
+    # Format as a tensor with scores as last column
+    predictions_tensor = torch.hstack(
+        (
+            prediction_dict["boxes"],
+            prediction_dict["scores"].unsqueeze(dim=1),
+        )
+    )
+
+    # Filter rows in tensor based on last column
+    # if pred_score > score_threshold:
+    return predictions_tensor[predictions_tensor[:, -1] > score_threshold]
 
 
 def extract_bounding_box_info(row: list[str]) -> dict[str, Any]:
@@ -45,107 +80,11 @@ def extract_bounding_box_info(row: list[str]) -> dict[str, Any]:
     }
 
 
-def write_tracked_bbox_to_csv(
-    bbox: np.ndarray,
-    frame: np.ndarray,
-    frame_name: str,
-    csv_writer: Any,
-    pred_score: np.ndarray,
-) -> None:
-    """Write bounding box annotation to a CSV file.
-
-    Parameters
-    ----------
-    bbox : np.ndarray
-        A numpy array containing the bounding box coordinates
-        (xmin, ymin, xmax, ymax, id).
-    frame : np.ndarray
-        The frame to which the bounding box belongs.
-    frame_name : str
-        The name of the frame.
-    csv_writer : Any
-        The CSV writer object to write the annotation.
-    pred_score : np.ndarray
-        The prediction score from detector.
-
-    """
-    # Bounding box geometry
-    xmin, ymin, xmax, ymax, id = bbox
-    width_box = int(xmax - xmin)
-    height_box = int(ymax - ymin)
-
-    # Add to csv
-    csv_writer.writerow(
-        (
-            frame_name,
-            frame.size,
-            '{{"clip":{}}}'.format("123"),
-            1,
-            0,
-            f'{{"name":"rect","x":{xmin},"y":{ymin},"width":{width_box},"height":{height_box}}}',
-            f'{{"track":"{int(id)}", "confidence":"{pred_score}"}}',
-        )
-    )
-
-
-def save_output_frame(
-    frame_name: str,
+def save_tracking_mota_metrics(
     tracking_output_dir: Path,
-    frame: np.ndarray,
-    frame_number: int,
+    track_results: dict[str, Any],
 ) -> None:
-    """Save tracked bounding boxes as frames.
-
-    Parameters
-    ----------
-    frame_name : str
-        The name of the image file to save frame in.
-    tracking_output_dir : Path
-        The directory where tracked frames and CSV file will be saved.
-    frame : np.ndarray
-        The frame image.
-    frame_number : int
-        The frame number.
-
-    Returns
-    -------
-    None
-
-    """
-    # Save frame as PNG
-    frame_path = tracking_output_dir / frame_name
-    img_saved = cv2.imwrite(str(frame_path), frame)
-    if not img_saved:
-        logging.error(
-            f"Didn't save {frame_name}, frame {frame_number}, Skipping."
-        )
-
-
-def prep_sort(prediction: dict, score_threshold: float) -> np.ndarray:
-    """Put predictions in format expected by SORT.
-
-    Parameters
-    ----------
-    prediction : dict
-        The dictionary containing predicted bounding boxes, scores, and labels.
-
-    score_threshold : float
-        The threshold score for filtering out low-confidence predictions.
-
-    Returns
-    -------
-    np.ndarray:
-        An array containing sorted bounding boxes of detected objects.
-
-    """
-    pred_boxes = prediction[0]["boxes"].detach().cpu().numpy()
-    pred_scores = prediction[0]["scores"].detach().cpu().numpy()
-    pred_labels = prediction[0]["labels"].detach().cpu().numpy()
-
-    pred_sort = []
-    for box, score, _label in zip(pred_boxes, pred_scores, pred_labels):
-        if score > score_threshold:
-            bbox = np.concatenate((box, [score]))
-            pred_sort.append(bbox)
-
-    return np.asarray(pred_sort)
+    """Save tracking metrics to a CSV file."""
+    track_df = pd.DataFrame(track_results)
+    output_filename = f"{tracking_output_dir}/tracking_metrics_output.csv"
+    track_df.to_csv(output_filename, index=False)
