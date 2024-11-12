@@ -384,11 +384,16 @@ class TrackerEvaluate:
             "MOTA": [],
         }
 
-        for frame_number in sorted(ground_truth_dict.keys()):
+        for frame_index, frame_number in enumerate(
+            sorted(ground_truth_dict.keys())
+        ):
+            # assuming all frames have GT data
             gt_data_frame = ground_truth_dict[frame_number]
 
-            if frame_number < len(predicted_dict):
-                pred_data_frame = predicted_dict[frame_number]
+            if frame_number <= len(predicted_dict):
+                pred_data_frame = predicted_dict[
+                    frame_index
+                ]  # 0-based indexing
 
                 (
                     mota,
@@ -405,7 +410,9 @@ class TrackerEvaluate:
                     prev_frame_id_map,
                 )
                 mota_values.append(mota)
-                results["Frame Number"].append(frame_number)
+                results["Frame Number"].append(
+                    frame_number
+                )  # TODO: change to index!
                 results["Total Ground Truth"].append(total_gt)
                 results["True Positives"].append(true_positives)
                 results["Missed Detections"].append(missed_detections)
