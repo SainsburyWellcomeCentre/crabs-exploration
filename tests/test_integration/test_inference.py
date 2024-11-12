@@ -11,9 +11,9 @@ from crabs.tracker.utils.io import open_video
 
 @pytest.fixture()
 def input_data_paths(pooch_registry: pooch.Pooch):
-    """Fixture to get the input data for a detector+tracking run.
+    """Input data for a detector+tracking run.
 
-    The input data is fetched from the pooch registry.
+    The data is fetched from the pooch registry.
 
     Returns
     -------
@@ -70,17 +70,17 @@ def test_detect_and_track_video(
     tmp_path: Path,
     flags_to_append: list,
 ):
-    """Test the detect-and-track-video entry point with groundtruth.
+    """Test the detect-and-track-video entry point when groundtruth is passed.
 
     Checks:
-    - status code of the command
+    - status code of the detect-and-track-video command
     - existence of csv file with predictions
     - existence of csv file with tracking metrics
     - existence of video file if requested
     - existence of exported frames if requested
 
     """
-    # Run detect-and-track-video with the test data
+    # Run detect-and-track-video on the test data
     main_command = [
         "detect-and-track-video",
         f"--trained_model_path={input_data_paths['ckpt']}",
@@ -94,13 +94,14 @@ def test_detect_and_track_video(
     completed_process = subprocess.run(
         main_command,
         check=True,
-        cwd=tmp_path,  # set cwd to pytest tmpdir so the output is saved there
+        cwd=tmp_path,
+        # set cwd to Pytest's temporary dir so the output is saved there
     )
 
     # check the command runs successfully
     assert completed_process.returncode == 0
 
-    # check the tracking output directory is created
+    # check the tracking output directory is created and has expected name
     pattern = re.compile(rf"{output_dir_root_name}_\d{{8}}_\d{{6}}$")
     list_subdirs = [x for x in tmp_path.iterdir() if x.is_dir()]
     tracking_output_dir = list_subdirs[0]
@@ -134,7 +135,7 @@ def test_detect_and_track_video(
         input_video_object = open_video(input_data_paths["video"])
         total_n_frames = int(input_video_object.get(cv2.CAP_PROP_FRAME_COUNT))
 
-        # check subdirectory exists
+        # check frames subdirectory exists
         frames_subdir = (
             tmp_path
             / tracking_output_dir
@@ -142,7 +143,7 @@ def test_detect_and_track_video(
         )
         assert frames_subdir.exists()
 
-        # check files
+        # check files are named as expected
         pattern = re.compile(r"frame_\d{8}.png")
         list_files = [x for x in frames_subdir.iterdir() if x.is_file()]
 
