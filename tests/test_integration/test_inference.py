@@ -57,8 +57,18 @@ def input_data_paths(pooch_registry: pooch.Pooch):
         ["--save_video", "--save_frames"],
     ],
 )
+@pytest.mark.parametrize(
+    "output_dir_root_name",
+    [
+        "tracking_output",
+        "output",
+    ],
+)
 def test_detect_and_track_video(
-    input_data_paths: dict, tmp_path: Path, flags_to_append: list
+    input_data_paths: dict,
+    output_dir_root_name: str,
+    tmp_path: Path,
+    flags_to_append: list,
 ):
     """Test the detect-and-track-video entry point with groundtruth.
 
@@ -78,20 +88,20 @@ def test_detect_and_track_video(
         f"--config_file={input_data_paths['tracking_config']}",
         f"--annotations_file={input_data_paths['annotations']}",
         "--accelerator=cpu",
-        # f"--output_dir={tmp_path}",
+        f"--output_dir={output_dir_root_name}",
     ]
     main_command.extend(flags_to_append)
     completed_process = subprocess.run(
         main_command,
         check=True,
-        cwd=tmp_path,  # set cwd to pytest tmpdir if no output_dir is passed
+        cwd=tmp_path,  # set cwd to pytest tmpdir so the output is saved there
     )
 
     # check the command runs successfully
     assert completed_process.returncode == 0
 
     # check the tracking output directory is created
-    pattern = re.compile(r"tracking_output_\d{8}_\d{6}")
+    pattern = re.compile(rf"{output_dir_root_name}_\d{{8}}_\d{{6}}$")
     list_subdirs = [x for x in tmp_path.iterdir() if x.is_dir()]
     tracking_output_dir = list_subdirs[0]
     assert len(list_subdirs) == 1
