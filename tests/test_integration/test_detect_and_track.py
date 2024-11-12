@@ -10,13 +10,14 @@ from crabs.tracker.utils.io import open_video
 
 
 @pytest.fixture()
-def get_input_data_for_ineference(pooch_registry: pooch.Pooch):
-    """Fixture to get the input data for the inference tests.
+def input_data_paths(pooch_registry: pooch.Pooch):
+    """Fixture to get the input data for a detector+tracking run.
 
     Returns
     -------
-    tuple
-        Tuple with the path to the input video, annotations and config.
+    dict
+        Dictionary with the paths to the input video, annotations,
+        config.
 
     """
     input_data_paths = {}
@@ -55,7 +56,7 @@ def get_input_data_for_ineference(pooch_registry: pooch.Pooch):
         [],
         ["--save_video"],
         ["--save_frames"],
-        ["--save_video --save_frames"],
+        ["--save_video", "--save_frames"],
     ],
 )
 def test_detect_and_track_video(
