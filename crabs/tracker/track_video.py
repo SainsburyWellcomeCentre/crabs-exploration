@@ -372,7 +372,7 @@ def tracking_parse_args(args):
             "Optionally, it can include a video file named "
             "<video-name>_tracks.mp4, and all frames from the video "
             "under a <video-name>_frames subdirectory. "
-            "Default: ./tracking_output_<timestamp>. "
+            "Default: tracking_output_<timestamp>. "
         ),
     )
     parser.add_argument(
