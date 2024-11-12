@@ -30,6 +30,10 @@ from crabs.tracker.utils.tracking import (
     format_and_filter_bbox_predictions_for_sort,
 )
 
+DEFAULT_TRACKING_CONFIG = str(
+    Path(__file__).parent / "config" / "tracking_config.yaml"
+)
+
 
 class Tracking:
     """Interface for detecting and tracking crabs on a video.
@@ -349,7 +353,7 @@ def tracking_parse_args(args):
     parser.add_argument(
         "--config_file",
         type=str,
-        default=str(Path(__file__).parent / "config" / "tracking_config.yaml"),
+        default=DEFAULT_TRACKING_CONFIG,
         help=(
             "Location of YAML config to control tracking. "
             "Default: "
