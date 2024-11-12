@@ -9,6 +9,46 @@ import pytest
 from crabs.tracker.utils.io import open_video
 
 
+@pytest.fixture()
+def get_input_data_for_ineference(pooch_registry: pooch.Pooch):
+    """Fixture to get the input data for the inference tests.
+
+    Returns
+    -------
+    tuple
+        Tuple with the path to the input video, annotations and config.
+
+    """
+    input_data_paths = {}
+    video_root_name = "04.09.2023-04-Right_RE_test_3_frames"
+    input_data_paths["video_root_name"] = video_root_name
+
+    # get trained model from pooch registry
+    list_files_ml_runs = pooch_registry.fetch(
+        "ml-runs.zip",
+        processor=pooch.Unzip(
+            extract_dir="",
+        ),
+        progressbar=True,
+    )
+    input_data_paths["ckpt"] = [
+        file for file in list_files_ml_runs if file.endswith("last.ckpt")
+    ][0]
+
+    # get input video, annotations and config
+    input_data_paths["video"] = pooch_registry.fetch(
+        f"{video_root_name}/{video_root_name}.mp4"
+    )
+    input_data_paths["annotations"] = pooch_registry.fetch(
+        f"{video_root_name}/{video_root_name}_ground_truth.csv"
+    )
+    input_data_paths["tracking_config"] = pooch_registry.fetch(
+        f"{video_root_name}/tracking_config.yaml"
+    )
+
+    return input_data_paths
+
+
 @pytest.mark.parametrize(
     "flags_to_append",
     [
@@ -19,7 +59,7 @@ from crabs.tracker.utils.io import open_video
     ],
 )
 def test_detect_and_track_video(
-    pooch_registry: pooch.Pooch, tmp_path: Path, flags_to_append: list
+    input_data_paths: dict, tmp_path: Path, flags_to_append: list
 ):
     """Test the detect-and-track-video entry point.
 
@@ -32,49 +72,21 @@ def test_detect_and_track_video(
     - MOTA score is as expected
 
     """
-    # get trained model from pooch registry -----> make fixture
-    list_files_ml_runs = pooch_registry.fetch(
-        "ml-runs.zip",
-        processor=pooch.Unzip(
-            extract_dir="",
-        ),
-        progressbar=True,
-    )
-    path_to_ckpt = [
-        file for file in list_files_ml_runs if file.endswith("last.ckpt")
-    ][0]
-
-    # get input video, annotations and config ----> make fixture
-    video_root_name = "04.09.2023-04-Right_RE_test_3_frames"
-    path_to_input_video = pooch_registry.fetch(
-        f"{video_root_name}/{video_root_name}.mp4"
-    )
-    path_to_annotations = pooch_registry.fetch(
-        f"{video_root_name}/{video_root_name}_ground_truth.csv"
-    )
-    path_to_tracking_config = pooch_registry.fetch(
-        f"{video_root_name}/tracking_config.yaml"
-    )
-
-    # Open input video
-    input_video_object = open_video(path_to_input_video)
-    total_n_frames = int(input_video_object.get(cv2.CAP_PROP_FRAME_COUNT))
-
     # # get expected output
     # path_to_tracked_boxes = pooch_registry.fetch(
     #     f"{sample_video_dir}/04.09.2023-04-Right_RE_test_3_frames_tracks.csv"
     # )
     # path_to_tracking_metrics = pooch_registry.fetch(
-    #     f"{sample_video_dir}/tracking_metrics_output.csv"
+    #     f"{video_root_name}/tracking_metrics_output.csv"
     # )
 
     # run detect-and-track-video with the test data
     main_command = [
         "detect-and-track-video",
-        f"--trained_model_path={path_to_ckpt}",
-        f"--video_path={path_to_input_video}",
-        f"--config_file={path_to_tracking_config}",
-        f"--annotations_file={path_to_annotations}",
+        f"--trained_model_path={input_data_paths['ckpt']}",
+        f"--video_path={input_data_paths['video']}",
+        f"--config_file={input_data_paths['tracking_config']}",
+        f"--annotations_file={input_data_paths['annotations']}",
         "--accelerator=cpu",
         # f"--output_dir={tmp_path}",
     ]
@@ -96,26 +108,47 @@ def test_detect_and_track_video(
     assert pattern.match(tracking_output_dir.stem)
 
     # check csv with predictions exists
-    assert (
-        tmp_path / tracking_output_dir / f"{video_root_name}_tracks.csv"
-    ).exists()
+    predictions_csv = (
+        tmp_path
+        / tracking_output_dir
+        / f"{input_data_paths['video_root_name']}_tracks.csv"
+    )
+    assert (predictions_csv).exists()
 
     # check csv with tracking metrics exists
-    assert (
+    tracking_metrics_csv = (
         tmp_path / tracking_output_dir / "tracking_metrics_output.csv"
-    ).exists()
+    )
+    assert (tracking_metrics_csv).exists()
+
+    # check content of tracking metrics csv is as expected
+    # # read the csv
+    # tracking_metrics_df = pd.read_csv(tracking_metrics_csv)
+    # expected_tracking_metrics_df = pd.read_csv(path_to_tracking_metrics)
+
+    # # assert dataframes are the same
+    # pd.testing.assert_frame_equal(
+    #     tracking_metrics_df, expected_tracking_metrics_df
+    # )
 
     # if the video is requested: check it exists
     if "--save_video" in flags_to_append:
         assert (
-            tmp_path / tracking_output_dir / f"{video_root_name}_tracks.mp4"
+            tmp_path
+            / tracking_output_dir
+            / f"{input_data_paths['video_root_name']}_tracks.mp4"
         ).exists()
 
     # if the frames are requested: check they exist
     if "--save_frames" in flags_to_append:
+        input_video_object = open_video(input_data_paths["video"])
+        total_n_frames = int(input_video_object.get(cv2.CAP_PROP_FRAME_COUNT))
+
         # check subdirectory exists
         frames_subdir = (
-            tmp_path / tracking_output_dir / f"{video_root_name}_frames"
+            tmp_path
+            / tracking_output_dir
+            / f"{input_data_paths['video_root_name']}_frames"
         )
         assert frames_subdir.exists()
 
