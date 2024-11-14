@@ -30,9 +30,10 @@ jobs:
         # Run all supported Python versions on linux
         os: [ubuntu-latest]
         python-version: ["3.9", "3.10"]
-        # Include 1 Intel macos (13) and 1 M1 macos (latest)
+        # Include one Intel macos (12) and one M1 macos (latest)
+        # not using macos-13 because of https://github.com/actions/runner-images/issues/3885
         include:
-          - os: macos-13  # intel macOS
+          - os: macos-12  # intel macOS
             python-version: "3.10"
           - os: macos-latest  # M1 macOS
             python-version: "3.10"
