@@ -21,26 +21,33 @@ from crabs.tracker.evaluate_tracker import TrackerEvaluate
 from crabs.tracker.sort import Sort
 from crabs.tracker.utils.io import (
     generate_tracked_video,
+    open_video,
     parse_video_frame_reading_error_and_log,
     write_all_video_frames_as_images,
     write_tracked_detections_to_csv,
 )
-from crabs.tracker.utils.tracking import format_bbox_predictions_for_sort
+from crabs.tracker.utils.tracking import (
+    format_and_filter_bbox_predictions_for_sort,
+)
+
+DEFAULT_TRACKING_CONFIG = str(
+    Path(__file__).parent / "config" / "tracking_config.yaml"
+)
 
 
 class Tracking:
-    """Interface for tracking crabs on a video using a trained detector.
+    """Interface for detecting and tracking crabs on a video.
 
     Parameters
     ----------
-    args : argparse.Namespace)
+    args : argparse.Namespace
         Command-line arguments containing configuration settings.
 
     """
 
     def __init__(self, args: argparse.Namespace) -> None:
         """Initialise the tracking interface with the given arguments."""
-        # inputs
+        # CLI inputs and config file
         self.args = args
         self.config_file = args.config_file
         self.load_config_yaml()
@@ -50,6 +57,7 @@ class Tracking:
         trained_model_params = get_mlflow_parameters_from_ckpt(
             self.trained_model_path
         )
+        # to log later in MLflow:
         self.trained_model_run_name = trained_model_params["run_name"]
         self.trained_model_expt_name = trained_model_params[
             "cli_args/experiment_name"
@@ -63,15 +71,15 @@ class Tracking:
         self.input_video_path = args.video_path
         self.input_video_file_root = f"{Path(self.input_video_path).stem}"
 
-        # output directory root name
+        # tracking output directory root name
         self.tracking_output_dir_root = args.output_dir
         self.frame_name_format_str = "frame_{frame_idx:08d}.png"
 
         # hardware
         self.accelerator = "cuda" if args.accelerator == "gpu" else "cpu"
 
-        # Prepare outputs: output directory, csv, and video and frames
-        # if required
+        # Prepare outputs:
+        # output directory, csv, and if required video and frames
         self.prep_outputs()
 
     def load_config_yaml(self):
@@ -80,12 +88,13 @@ class Tracking:
             self.config = yaml.safe_load(f)
 
     def prep_outputs(self):
-        """Prepare output directories and files.
+        """Prepare output directory and file paths.
 
-        It creates a timestamped directory to store the tracking output.
-        It sets the name of the output csv file for the tracked bounding boxes.
-        It sets up the output video writer if required.
-        It sets up the frames subdirectory if required.
+        This method:
+        - creates a timestamped directory to store the tracking output.
+        - sets the name of the output csv file for the tracked bounding boxes.
+        - sets up the output video path if required.
+        - sets up the frames subdirectory path if required.
         """
         # Create output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -116,8 +125,9 @@ class Tracking:
             self.frames_subdir.mkdir(parents=True, exist_ok=True)
 
     def prep_detector_and_tracker(self):
-        """Set up the detector and tracker for tracking."""
+        """Prepare the trained detector and the tracker for inference."""
         # TODO: use Lightning's Trainer?
+
         # Load trained model
         self.trained_model = FasterRCNN.load_from_checkpoint(
             self.trained_model_path,
@@ -141,23 +151,27 @@ class Tracking:
             iou_threshold=self.config["iou_threshold"],
         )
 
-    def update_tracking(self, prediction_dict: dict) -> np.ndarray:
-        """Update the tracking data with the latest prediction.
+    def run_tracking(self, prediction_dict: dict) -> np.ndarray:
+        """Update the tracker with the latest prediction.
 
         Parameters
         ----------
         prediction_dict : dict
-            Dictionary containing predicted bounding boxes, scores, and labels.
-            The keys are: boxes, scores, and labels.
+            Dictionary with data of the predicted bounding boxes.
+            The keys are: "boxes", "scores", and "labels". The labels
+            refer to the class of the object detected, and not its ID.
 
         Returns
         -------
         np.ndarray:
-            tracked bounding boxes after updating the tracking system.
+            Array of tracked bounding boxes with object IDs added as the last
+            column. The shape of the array is (n, 5), where n is the number of
+            tracked boxes. The columns correspond to the values (xmin, ymin,
+            xmax, ymax, id).
 
         """
         # format predictions for SORT
-        prediction_tensor = format_bbox_predictions_for_sort(
+        prediction_tensor = format_and_filter_bbox_predictions_for_sort(
             prediction_dict, self.config["score_threshold"]
         )
 
@@ -168,22 +182,55 @@ class Tracking:
 
         return tracked_boxes_id_per_frame
 
+    def run_detection(self, frame: np.ndarray) -> dict:
+        """Run detection on a single frame.
+
+        Returns
+        -------
+        dict:
+            Dictionary with data of the predicted bounding boxes.
+            The keys are "boxes", "scores", and "labels". The labels
+            refer to the class of the object detected, and not its ID.
+            The data is stored as torch tensors.
+
+        """
+        # Apply transforms to frame and place tensor on devide
+        image_tensor = self.inference_transforms(frame).to(self.accelerator)
+
+        # Add batch dimension
+        image_tensor = image_tensor.unsqueeze(0)
+
+        # Run detection
+        with torch.no_grad():
+            # use [0] to select the one image in the batch
+            detections_dict = self.trained_model(image_tensor)[0]
+
+        return detections_dict
+
     def core_detection_and_tracking(self):
         """Run detection and tracking loop through all video frames.
 
-        Returns a dictionary with frame indices mapping to a dict holding:
-        - tracked bounding boxes for that frame, as a numpy array of shape
-          (nboxes, 5). The columns correspond to the values (xmin, ymin, xmax,
-          ymax, id).
-        - scores for each bounding box, as a numpu array of shape (nboxes,)
+        Returns a dictionary with tracked bounding boxes per frame, and
+        with scores for each detection.
+
+        Returns
+        -------
+        dict:
+            A nested dictionary that maps frame indices (0-based) to a
+            dictionary with the following keys:
+            - "tracked_boxes", which contains the tracked bounding boxes as a
+            numpy array of shape (n, 5), where n is the number of tracked
+            boxes, and the 5 columns correspond to the values (xmin, ymin,
+            xmax, ymax, id).
+            - "scores", which contains the scores for each bounding box,
+            as a numpu array of shape (nboxes,)
+
         """
         # Initialise dict to store tracked bboxes
-        tracked_bboxes_dict = {}
+        tracked_detections_all_frames = {}
 
         # Open input video
-        input_video_object = cv2.VideoCapture(self.input_video_path)
-        if not input_video_object.isOpened():
-            raise Exception("Error opening video file")
+        input_video_object = open_video(self.input_video_path)
         total_n_frames = int(input_video_object.get(cv2.CAP_PROP_FRAME_COUNT))
 
         # Loop over frames
@@ -198,25 +245,16 @@ class Tracking:
                 break
 
             # Run detection per frame
-            # TODO: can I pass a video as a generator?
-            # TODO: use trainer.predict()
-            image_tensor = self.inference_transforms(frame).to(
-                self.accelerator
-            )
-            # add batch dimension
-            image_tensor = image_tensor.unsqueeze(0)
-            with torch.no_grad():
-                prediction = self.trained_model(image_tensor)[0]
-                # select the one image in the batch with [0]
+            detections_dict = self.run_detection(frame)
 
             # Update tracking
-            # (predictions moved to cpu before passing to SORT)
-            tracked_boxes_id_per_frame = self.update_tracking(prediction)
+            tracked_boxes_array = self.run_tracking(detections_dict)
 
             # Add data to dict; key is frame index (0-based) for input clip
-            tracked_bboxes_dict[frame_idx] = {
-                "bboxes_tracked": tracked_boxes_id_per_frame,
-                "bboxes_scores": prediction["scores"],
+            tracked_detections_all_frames[frame_idx] = {
+                "tracked_boxes": tracked_boxes_array[:, :-1],
+                "ids": tracked_boxes_array[:, -1],  # IDs are the last column
+                "scores": detections_dict["scores"],
             }
 
             # Update frame index
@@ -225,7 +263,7 @@ class Tracking:
         # Release video object
         input_video_object.release()
 
-        return tracked_bboxes_dict
+        return tracked_detections_all_frames
 
     def detect_and_track_video(self) -> None:
         """Run detection and tracking on input video."""
@@ -269,8 +307,6 @@ class Tracking:
             )
 
         # Evaluate tracker if ground truth is passed
-        # Review: it doesn't use the score threshold?
-        # (I think it is already applied)
         if self.args.annotations_file:
             evaluation = TrackerEvaluate(
                 self.args.annotations_file,
@@ -317,7 +353,7 @@ def tracking_parse_args(args):
     parser.add_argument(
         "--config_file",
         type=str,
-        default=str(Path(__file__).parent / "config" / "tracking_config.yaml"),
+        default=DEFAULT_TRACKING_CONFIG,
         help=(
             "Location of YAML config to control tracking. "
             "Default: "

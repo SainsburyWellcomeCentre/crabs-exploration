@@ -292,14 +292,14 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 "id": np.array([1, 2, 3]),
             },
             {
-                "bbox": np.array(
+                "tracked_boxes": np.array(
                     [
                         [10.0, 10.0, 20.0, 20.0],
                         [30.0, 30.0, 40.0, 40.0],
                         [50.0, 50.0, 60.0, 60.0],
                     ]
                 ),
-                "id": np.array([11, 12, 13]),
+                "ids": np.array([11, 12, 13]),
             },
             {1: 11, 2: 12, 3: 13},
             [1.0, 3, 0, 0, 0],
@@ -316,14 +316,14 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 "id": np.array([1, 2, 3]),
             },
             {
-                "bbox": np.array(
+                "tracked_boxes": np.array(
                     [
                         [10.0, 10.0, 20.0, 20.0],
                         [30.0, 30.0, 40.0, 40.0],
                         [50.0, 50.0, 60.0, 60.0],
                     ]
                 ),
-                "id": np.array([11, 12, 13]),
+                "ids": np.array([11, 12, 13]),
             },
             {1: 11, 12: 2, 3: np.nan},
             [1.0, 3, 0, 0, 0],
@@ -341,14 +341,14 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 "id": np.array([1, 2, 3]),
             },
             {
-                "bbox": np.array(
+                "tracked_boxes": np.array(
                     [
                         [10.0, 10.0, 20.0, 20.0],
                         [30.0, 30.0, 40.0, 40.0],
                         [50.0, 50.0, 60.0, 60.0],
                     ]
                 ),
-                "id": np.array([11, 12, 14]),
+                "ids": np.array([11, 12, 14]),
             },
             {1: 11, 2: 12, 3: 13},
             [2 / 3, 3, 0, 0, 1],
@@ -366,10 +366,10 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 "id": np.array([1, 2, 4]),
             },
             {
-                "bbox": np.array(
+                "tracked_boxes": np.array(
                     [[10.0, 10.0, 20.0, 20.0], [30.0, 30.0, 40.0, 40.0]]
                 ),
-                "id": np.array([11, 12]),
+                "ids": np.array([11, 12]),
             },
             {1: 11, 2: 12, 3: 13},
             [2 / 3, 2, 1, 0, 0],
@@ -387,7 +387,7 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 "id": np.array([1, 2, 3]),
             },
             {
-                "bbox": np.array(
+                "tracked_boxes": np.array(
                     [
                         [10.0, 10.0, 20.0, 20.0],
                         [30.0, 30.0, 40.0, 40.0],
@@ -395,7 +395,7 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                         [70.0, 70.0, 80.0, 80.0],
                     ]
                 ),
-                "id": np.array([11, 12, 13, 14]),
+                "ids": np.array([11, 12, 13, 14]),
             },
             {1: 11, 2: 12, 3: 13},
             [2 / 3, 3, 0, 1, 0],
@@ -413,14 +413,14 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 "id": np.array([1, 2, 3]),
             },
             {
-                "bbox": np.array(
+                "tracked_boxes": np.array(
                     [
                         [10.0, 10.0, 20.0, 20.0],
                         [30.0, 30.0, 30.0, 30.0],
                         [50.0, 50.0, 60.0, 60.0],
                     ]
                 ),
-                "id": np.array([11, 12, 14]),
+                "ids": np.array([11, 12, 14]),
             },
             {1: 11, 2: 12, 3: 13},
             [0, 2, 1, 1, 1],
@@ -438,14 +438,14 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 "id": np.array([1, 2, 3]),
             },
             {
-                "bbox": np.array(
+                "tracked_boxes": np.array(
                     [
                         [10.0, 10.0, 20.0, 20.0],
                         [30.0, 30.0, 30.0, 30.0],
                         [50.0, 50.0, 60.0, 60.0],
                     ]
                 ),
-                "id": np.array([11, 14, 13]),
+                "ids": np.array([11, 14, 13]),
             },
             {1: 11, 2: 12, 3: 13},
             [1 / 3, 2, 1, 1, 0],
@@ -463,14 +463,14 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 "id": np.array([1, 2, 4]),
             },
             {
-                "bbox": np.array(
+                "tracked_boxes": np.array(
                     [
                         [10.0, 10.0, 20.0, 20.0],
                         [30.0, 30.0, 40.0, 40.0],
                         [50.0, 50.0, 60.0, 60.0],
                     ]
                 ),
-                "id": np.array([11, 12, 13]),
+                "ids": np.array([11, 12, 13]),
             },
             {1: 11, 2: 12, 3: 13},
             [2 / 3, 3, 0, 0, 1],
@@ -488,14 +488,14 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 "id": np.array([1, 2, 3]),
             },
             {
-                "bbox": np.array(
+                "tracked_boxes": np.array(
                     [
                         [10.0, 10.0, 20.0, 20.0],
                         [30.0, 30.0, 40.0, 40.0],
                         [50.0, 50.0, 60.0, 60.0],
                     ]
                 ),
-                "id": np.array([11, 13, 12]),
+                "ids": np.array([11, 13, 12]),
             },
             {1: 11, 2: 12, 3: 13},
             [1 / 3, 3, 0, 0, 2],

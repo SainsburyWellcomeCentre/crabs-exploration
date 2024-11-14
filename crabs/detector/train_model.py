@@ -29,6 +29,10 @@ from crabs.detector.utils.train import (
     log_data_augm_as_artifacts,
 )
 
+DEFAULT_DETECTOR_CONFIG = str(
+    Path(__file__).parent / "config" / "faster_rcnn.yaml"
+)
+
 
 class DetectorTrain:
     """Training class for detector algorithm.
@@ -300,7 +304,7 @@ def train_parse_args(args):
     parser.add_argument(
         "--config_file",
         type=str,
-        default=str(Path(__file__).parent / "config" / "faster_rcnn.yaml"),
+        default=DEFAULT_DETECTOR_CONFIG,
         help=(
             "Location of YAML config to control training. "
             "Default: "
