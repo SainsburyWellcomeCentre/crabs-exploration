@@ -27,11 +27,10 @@ def input_data_paths(pooch_registry: pooch.Pooch):
     input_data_paths["video_root_name"] = video_root_name
 
     # get path to trained model from pooch registry
-    path_to_ckpt = next(
-        x
-        for x in pooch_registry.registry_files
-        if x.startswith("ml-runs/") and x.endswith("last.ckpt")
-    )
+    mlflow_files = [
+        x for x in pooch_registry.registry_files if x.startswith("ml-runs/")
+    ]
+    path_to_ckpt = next(x for x in mlflow_files if x.endswith("last.ckpt"))
 
     # get input video, annotations and config from registry
     map_key_to_filepath = {
@@ -42,6 +41,11 @@ def input_data_paths(pooch_registry: pooch.Pooch):
     }
     for key, filepath in map_key_to_filepath.items():
         input_data_paths[key] = pooch_registry.fetch(filepath)
+
+    # download all other mlflow files
+    for file in mlflow_files:
+        if file != path_to_ckpt:
+            pooch_registry.fetch(file)
 
     return input_data_paths
 
