@@ -60,29 +60,30 @@ def input_data_paths(pooch_registry: pooch.Pooch):
     ],
 )
 @pytest.mark.parametrize(
-    "output_dir_root_name",
+    "output_dir_name_in, output_dir_name_expected",
     [
-        "tracking_output",
-        "output",
+        (None, "tracking_output"),
+        ("output", "output"),
     ],
 )
 def test_detect_and_track_video(
     input_data_paths: dict,
-    output_dir_root_name: str,
+    output_dir_name_in: str,
+    output_dir_name_expected: str,
     tmp_path: Path,
     flags_to_append: list,
 ):
     """Test the detect-and-track-video entry point when groundtruth is passed.
 
-    Checks:
-    - status code of the detect-and-track-video command
-    - existence of csv file with predictions
-    - existence of csv file with tracking metrics
-    - existence of video file if requested
-    - existence of exported frames if requested
+    The test checks:
+    - the exit code of the detect-and-track-video command
+    - the existence of csv file with predictions
+    - the existence of csv file with tracking metrics
+    - the existence of video file if requested
+    - the existence of exported frames if requested
 
     """
-    # Run detect-and-track-video on the test data
+    # Define main detect-and-track-video command
     main_command = [
         "detect-and-track-video",
         f"--trained_model_path={input_data_paths['ckpt']}",
@@ -90,9 +91,15 @@ def test_detect_and_track_video(
         f"--config_file={input_data_paths['tracking_config']}",
         f"--annotations_file={input_data_paths['annotations']}",
         "--accelerator=cpu",
-        f"--output_dir={output_dir_root_name}",
     ]
+    # append required flags
     main_command.extend(flags_to_append)
+
+    # append output dir flag
+    if output_dir_name_in:
+        main_command.append(f"--output_dir={output_dir_name_in}")
+
+    # run command
     completed_process = subprocess.run(
         main_command,
         check=True,
@@ -105,11 +112,13 @@ def test_detect_and_track_video(
     assert completed_process.returncode == 0
 
     # check the tracking output directory is created and has expected name
-    pattern = re.compile(rf"{output_dir_root_name}_\d{{8}}_\d{{6}}$")
-    list_subdirs = [x for x in tmp_path.iterdir() if x.is_dir()]
-    tracking_output_dir = list_subdirs[0]
-    assert len(list_subdirs) == 1
-    assert pattern.match(tracking_output_dir.stem)
+    expected_pattern = re.compile(
+        rf"{output_dir_name_expected}_\d{{8}}_\d{{6}}$"
+    )
+    list_cwd_subdirs = [x for x in tmp_path.iterdir() if x.is_dir()]
+    tracking_output_dir = list_cwd_subdirs[0]
+    assert len(list_cwd_subdirs) == 1
+    assert expected_pattern.match(tracking_output_dir.stem)
 
     # check csv with predictions exists
     predictions_csv = (
@@ -147,8 +156,8 @@ def test_detect_and_track_video(
         assert frames_subdir.exists()
 
         # check files are named as expected
-        pattern = re.compile(r"frame_\d{8}.png")
+        expected_pattern = re.compile(r"frame_\d{8}.png")
         list_files = [x for x in frames_subdir.iterdir() if x.is_file()]
 
         assert len(list_files) == total_n_frames
-        assert all(pattern.match(x.name) for x in list_files)
+        assert all(expected_pattern.match(x.name) for x in list_files)
