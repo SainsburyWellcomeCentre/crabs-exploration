@@ -26,14 +26,11 @@ def input_data_paths(pooch_registry: pooch.Pooch):
     video_root_name = "04.09.2023-04-Right_RE_test_3_frames"
     input_data_paths["video_root_name"] = video_root_name
 
-    # get trained model from pooch registry
-    list_files_ml_runs = pooch_registry.fetch(
-        "ml-runs.zip",
-        processor=pooch.Unzip(extract_dir=""),
-        progressbar=True,
-    )
-    input_data_paths["ckpt"] = next(
-        x for x in list_files_ml_runs if x.endswith("last.ckpt")
+    # get path to trained model from pooch registry
+    path_to_ckpt = next(
+        x
+        for x in pooch_registry.registry_files
+        if x.startswith("ml-runs/") and x.endswith("last.ckpt")
     )
 
     # get input video, annotations and config from registry
@@ -41,6 +38,7 @@ def input_data_paths(pooch_registry: pooch.Pooch):
         "video": f"{video_root_name}/{video_root_name}.mp4",
         "annotations": f"{video_root_name}/{video_root_name}_ground_truth.csv",
         "tracking_config": f"{video_root_name}/tracking_config.yaml",
+        "ckpt": path_to_ckpt,
     }
     for key, filepath in map_key_to_filepath.items():
         input_data_paths[key] = pooch_registry.fetch(filepath)
