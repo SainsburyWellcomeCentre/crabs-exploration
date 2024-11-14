@@ -56,7 +56,7 @@ def assert_output_files(list_input_videos: list, cli_dict: dict) -> None:
 
     # check filename format of images: <video_name>_frame_{frame_idx:08d}
     list_regex_patterns = [
-        Path(input_video_str).stem + "_frame_[\d]{8}$"
+        Path(input_video_str).stem + r"_frame_[\d]{8}$"
         for input_video_str in list_input_videos
     ]
     for f in list_imgs:
