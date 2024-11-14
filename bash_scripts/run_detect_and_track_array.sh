@@ -46,9 +46,6 @@ CKPT_PATH="/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/40b168
 # Path to the tracking config file
 TRACKING_CONFIG_FILE="/ceph/zoo/users/sminano/cluster_tracking_config.yaml"
 
-# Path to the groundtruth annotations file
-GROUNDTRUTH_ANNOTATIONS_FILE="/ceph/zoo/users/sminano/tracking_groundtruth/04.09.2023-04-Right_RE_test_corrected_ST_csv_SM_corrected_20241029_113207.csv"
-
 # List of videos to run inference on: define VIDEOS_DIR and VIDEO_FILENAME
 # NOTE: if any of the paths have spaces, put the path in quotes, but stopping and re-starting at the wildcard.
 # e.g.: "/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/"*"/checkpoints"
@@ -123,18 +120,6 @@ INPUT_VIDEO=${LIST_VIDEOS[${SLURM_ARRAY_TASK_ID}]}
 
 echo "Running inference on $INPUT_VIDEO using trained model at $CKPT_PATH"
 
-# append relevant flag to command if the test set is to be used
-# if [ "$SAVE_FRAMES" = "true" ]; then
-#     SAVE_FRAMES_FLAG="--save_frames"
-# else
-#     SAVE_FRAMES_FLAG=""
-# fi
-
-# if [ "$SAVE_VIDEO" = "true" ]; then
-#     SAVE_VIDEO_FLAG="--save_video"
-# else
-#     SAVE_VIDEO_FLAG=""
-# fi
 # Set flags based on boolean variables
 SAVE_FRAMES_FLAG=${SAVE_FRAMES:+--save_frames}
 SAVE_VIDEO_FLAG=${SAVE_VIDEO:+--save_video}
@@ -144,7 +129,6 @@ detect-and-track-video  \
     --trained_model_path $CKPT_PATH  \
     --video_path $INPUT_VIDEO  \
     --config_file $TRACKING_CONFIG_FILE  \
-    --annotations_file $GROUNDTRUTH_ANNOTATIONS_FILE  \
     --accelerator gpu  \
     $SAVE_FRAMES_FLAG  \
     $SAVE_VIDEO_FLAG
