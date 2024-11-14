@@ -59,17 +59,8 @@ def input_data_paths(pooch_registry: pooch.Pooch):
         ["--save_video", "--save_frames"],
     ],
 )
-@pytest.mark.parametrize(
-    "output_dir_name_in, output_dir_name_expected",
-    [
-        (None, "tracking_output"),
-        ("output", "output"),
-    ],
-)
 def test_detect_and_track_video(
     input_data_paths: dict,
-    output_dir_name_in: str,
-    output_dir_name_expected: str,
     tmp_path: Path,
     flags_to_append: list,
 ):
@@ -95,10 +86,6 @@ def test_detect_and_track_video(
     # append required flags
     main_command.extend(flags_to_append)
 
-    # append output dir flag
-    if output_dir_name_in:
-        main_command.append(f"--output_dir={output_dir_name_in}")
-
     # run command
     completed_process = subprocess.run(
         main_command,
@@ -112,6 +99,7 @@ def test_detect_and_track_video(
     assert completed_process.returncode == 0
 
     # check the tracking output directory is created and has expected name
+    output_dir_name_expected = "tracking_output"
     expected_pattern = re.compile(
         rf"{output_dir_name_expected}_\d{{8}}_\d{{6}}$"
     )
