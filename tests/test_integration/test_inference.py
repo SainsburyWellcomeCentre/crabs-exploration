@@ -95,7 +95,8 @@ def test_detect_and_track_video(
         main_command,
         check=True,
         cwd=tmp_path,
-        # set cwd to Pytest's temporary dir so the output is saved there
+        # set cwd to Pytest's temporary directory
+        # so the output is saved there
     )
 
     # check the command runs successfully
