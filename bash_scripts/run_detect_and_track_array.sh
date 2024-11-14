@@ -44,7 +44,7 @@ set -o pipefail  # make the pipe fail if any part of it fails
 CKPT_PATH="/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/40b1688a76d94bd08175cb380d0a6e0e/checkpoints/last.ckpt"
 
 # Path to the tracking config file
-TRACKING_CONFIG_FILE="/ceph/zoo/users/sminano/tracking_config_cluster"
+TRACKING_CONFIG_FILE="/ceph/zoo/users/sminano/cluster_tracking_config.yaml"
 
 # Path to the groundtruth annotations file
 GROUNDTRUTH_ANNOTATIONS_FILE="/ceph/zoo/users/sminano/annotations.json"
