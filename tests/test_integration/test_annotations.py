@@ -400,7 +400,7 @@ def test_exclude_pattern(via_json_1: str, via_json_2: str, tmp_path: Path):
     # combine input json files, excluding those that end with _2.json
     json_out_fullpath = combine_multiple_via_jsons(
         [via_json_1, via_json_2],
-        exclude_pattern="\w+_2.json$",
+        exclude_pattern=r"\w+_2.json$",
         json_out_dir=str(tmp_path),
     )
 
