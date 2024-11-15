@@ -92,15 +92,19 @@ class Tracking:
 
         This method:
         - creates a timestamped directory to store the tracking output.
+          Optionally the timestamp can be omitted.
         - sets the name of the output csv file for the tracked bounding boxes.
         - sets up the output video path if required.
         - sets up the frames subdirectory path if required.
         """
         # Create output directory
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.tracking_output_dir = Path(
-            self.tracking_output_dir_root + f"_{timestamp}"
-        )
+        if self.args.output_dir_no_timestamp:
+            self.tracking_output_dir = Path(self.tracking_output_dir_root)
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.tracking_output_dir = Path(
+                self.tracking_output_dir_root + f"_{timestamp}"
+            )
         self.tracking_output_dir.mkdir(parents=True, exist_ok=True)
 
         # Set name of output csv file
@@ -366,13 +370,21 @@ def tracking_parse_args(args):
         default="tracking_output",
         help=(
             "Root name of the directory to save the tracking output. "
-            "The name of the output directory is appended with a timestamp. "
+            "By default, the name of the output directory is appended with "
+            "a timestamp. "
             "The tracking output consist of a .csv. file named "
             "<video-name>_tracks.csv with the tracked bounding boxes. "
             "Optionally, it can include a video file named "
             "<video-name>_tracks.mp4, and all frames from the video "
             "under a <video-name>_frames subdirectory. "
-            "Default: ./tracking_output_<timestamp>. "
+            "Default: tracking_output_<timestamp>. "
+        ),
+    )
+    parser.add_argument(
+        "--output_dir_no_timestamp",
+        action="store_true",
+        help=(
+            "Flag to disable appending a timestamp to the output directory. "
         ),
     )
     parser.add_argument(
