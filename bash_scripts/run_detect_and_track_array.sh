@@ -55,12 +55,18 @@ VIDEOS_DIR="/ceph/zoo/users/sminano/escape_clips_sample"
 VIDEO_FILENAME=*.mov
 mapfile -t LIST_VIDEOS < <(find $VIDEOS_DIR -type f -name $VIDEO_FILENAME)
 
-# Select output
-SAVE_FRAMES=true
+
+# Set output directory name
+# by default under current working directory
+OUTPUT_DIR_NAME="tracking_output_slurm_$SLURM_ARRAY_JOB_ID"
+
+# Select optional output
 SAVE_VIDEO=true
+SAVE_FRAMES=false
+
 
 # version of the codebase
-GIT_BRANCH=main
+GIT_BRANCH=smg/optional-timestamp-to-output-dir
 
 # --------------------
 # Check inputs
@@ -125,10 +131,14 @@ SAVE_FRAMES_FLAG=${SAVE_FRAMES:+--save_frames}
 SAVE_VIDEO_FLAG=${SAVE_VIDEO:+--save_video}
 
 # run detect-and-track command
+# --output_dir_no_timestamp: to save all results from
+# array job in the same output directory
 detect-and-track-video  \
     --trained_model_path $CKPT_PATH  \
     --video_path $INPUT_VIDEO  \
     --config_file $TRACKING_CONFIG_FILE  \
+    --output_dir $OUTPUT_DIR_NAME  \
+    --output_dir_no_timestamp  \
     --accelerator gpu  \
     $SAVE_FRAMES_FLAG  \
     $SAVE_VIDEO_FLAG
