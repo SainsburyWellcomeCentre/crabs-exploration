@@ -156,12 +156,12 @@ detect-and-track-video  \
 
 # copy tracking config to output directory
 shopt -s extglob  # Enable extended globbing
-TARGET_DIR=$(echo tracking_output_* | awk '{print $1}')
 
+# get tracking config filename without extension
 TRACKING_CONFIG_NAME_NO_EXT="${TRACKING_CONFIG_FILE##*/}"
 TRACKING_CONFIG_NAME_NO_EXT="${TRACKING_CONFIG_NAME_NO_EXT%.*}"
 
-cp "$TRACKING_CONFIG_FILE" "$TARGET_DIR"/"$TRACKING_CONFIG_NAME_NO_EXT"_$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.yaml
+cp "$TRACKING_CONFIG_FILE" "$OUTPUT_DIR_NAME"/"$TRACKING_CONFIG_NAME_NO_EXT"_$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.yaml
 
 
-echo "Copied $TRACKING_CONFIG_FILE to $TARGET_DIR"
+echo "Copied $TRACKING_CONFIG_FILE to $OUTPUT_DIR_NAME"
