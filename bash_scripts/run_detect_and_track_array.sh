@@ -127,8 +127,17 @@ INPUT_VIDEO=${LIST_VIDEOS[${SLURM_ARRAY_TASK_ID}]}
 echo "Running inference on $INPUT_VIDEO using trained model at $CKPT_PATH"
 
 # Set flags based on boolean variables
-SAVE_FRAMES_FLAG=${SAVE_FRAMES:+--save_frames}
-SAVE_VIDEO_FLAG=${SAVE_VIDEO:+--save_video}
+if [ "$SAVE_FRAMES" = "true" ]; then
+    SAVE_FRAMES_FLAG="--save_frames"
+else
+    SAVE_FRAMES_FLAG=""
+fi
+
+if [ "$SAVE_VIDEO" = "true" ]; then
+    SAVE_VIDEO_FLAG="--save_video"
+else
+    SAVE_VIDEO_FLAG=""
+fi
 
 # run detect-and-track command
 # --output_dir_no_timestamp: to save all results from
