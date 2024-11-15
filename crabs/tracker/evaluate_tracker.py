@@ -18,6 +18,7 @@ class TrackerEvaluate:
 
     def __init__(
         self,
+        input_video_file_root: str,
         gt_dir: str,  # annotations_file
         predicted_boxes_dict: dict,
         iou_threshold: float,
@@ -30,6 +31,8 @@ class TrackerEvaluate:
 
         Parameters
         ----------
+        input_video_file_root : str
+            Filename without extension to the input video file.
         gt_dir : str
             Directory path of the ground truth CSV file.
         predicted_boxes_dict : dict
@@ -45,6 +48,7 @@ class TrackerEvaluate:
             Path to the directory where the tracking output will be saved.
 
         """
+        self.input_video_file_root = input_video_file_root
         self.gt_dir = gt_dir
         self.predicted_boxes_dict = predicted_boxes_dict
         self.iou_threshold = iou_threshold
@@ -420,7 +424,9 @@ class TrackerEvaluate:
                 results["Number of Switches"].append(num_switches)
                 results["MOTA"].append(mota)
 
-        save_tracking_mota_metrics(self.tracking_output_dir, results)
+        save_tracking_mota_metrics(
+            self.tracking_output_dir, self.input_video_file_root, results
+        )
 
         return mota_values
 

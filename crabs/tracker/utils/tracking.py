@@ -82,9 +82,12 @@ def extract_bounding_box_info(row: list[str]) -> dict[str, Any]:
 
 def save_tracking_mota_metrics(
     tracking_output_dir: Path,
+    input_video_file_root: str,
     track_results: dict[str, Any],
 ) -> None:
     """Save tracking metrics to a CSV file."""
     track_df = pd.DataFrame(track_results)
-    output_filename = f"{tracking_output_dir}/tracking_metrics_output.csv"
+    output_filename = (
+        f"{tracking_output_dir}/{input_video_file_root}_tracking_metrics.csv"
+    )
     track_df.to_csv(output_filename, index=False)

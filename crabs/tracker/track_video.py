@@ -316,6 +316,7 @@ class Tracking:
         # Evaluate tracker if ground truth is passed
         if self.args.annotations_file:
             evaluation = TrackerEvaluate(
+                self.input_video_file_root,
                 self.args.annotations_file,
                 tracked_bboxes_dict,
                 self.config["iou_threshold"],
