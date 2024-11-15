@@ -171,6 +171,7 @@ echo "Copied $TRACKING_CONFIG_FILE to $OUTPUT_DIR_NAME"
 # -----------------------------
 # Delete virtual environment
 # ----------------------------
+conda deactivate
 conda remove \
     --prefix $ENV_PREFIX \
     --all \
