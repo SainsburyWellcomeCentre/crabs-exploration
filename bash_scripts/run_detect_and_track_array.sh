@@ -140,8 +140,9 @@ else
 fi
 
 # run detect-and-track command
-# --output_dir_no_timestamp: to save all results from
-# array job in the same output directory
+# - to save all results from the array job in the same output directory
+#   we use --output_dir_no_timestamp
+# - the output directory is created under SLURM_SUBMIT_DIR by default
 detect-and-track-video  \
     --trained_model_path $CKPT_PATH  \
     --video_path $INPUT_VIDEO  \
@@ -159,9 +160,9 @@ shopt -s extglob  # Enable extended globbing
 
 # get tracking config filename without extension
 INPUT_VIDEO_NO_EXT="${INPUT_VIDEO##*/}"
-INPUT_VIDEO_NO_EXT="${INPUT_VIDEO%.*}"
+INPUT_VIDEO_NO_EXT="${INPUT_VIDEO_NO_EXT%.*}"
 
-cp "$TRACKING_CONFIG_FILE" "$OUTPUT_DIR_NAME"/"$INPUT_VIDEO_NO_EXT"_config.yaml
+cp "$TRACKING_CONFIG_FILE" "$SLURM_SUBMIT_DIR"/"$OUTPUT_DIR_NAME"/"$INPUT_VIDEO_NO_EXT"_config.yaml
 
 
 echo "Copied $TRACKING_CONFIG_FILE to $OUTPUT_DIR_NAME"
