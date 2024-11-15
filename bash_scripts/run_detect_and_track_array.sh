@@ -166,3 +166,12 @@ cp "$TRACKING_CONFIG_FILE" "$SLURM_SUBMIT_DIR"/"$OUTPUT_DIR_NAME"/"$INPUT_VIDEO_
 
 
 echo "Copied $TRACKING_CONFIG_FILE to $OUTPUT_DIR_NAME"
+
+
+# -----------------------------
+# Delete virtual environment
+# -----------------------------
+conda remove \
+    --prefix $ENV_PREFIX \
+    --all \
+    -y
