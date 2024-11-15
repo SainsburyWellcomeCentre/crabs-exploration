@@ -10,7 +10,7 @@
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-1%2
+#SBATCH --array=0-233%25
 
 
 # NOTE on SBATCH command for array jobs
@@ -51,7 +51,7 @@ TRACKING_CONFIG_FILE="/ceph/zoo/users/sminano/cluster_tracking_config.yaml"
 # e.g.: "/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/"*"/checkpoints"
 # e.g.: "checkpoint-epoch="*".ckpt"
 # List of videos to run inference on
-VIDEOS_DIR="/ceph/zoo/users/sminano/escape_clips_sample"
+VIDEOS_DIR="/ceph/zoo/users/sminano/escape_clips_all"
 VIDEO_FILENAME=*.mov
 mapfile -t LIST_VIDEOS < <(find $VIDEOS_DIR -type f -name $VIDEO_FILENAME)
 
