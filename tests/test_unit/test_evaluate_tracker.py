@@ -10,7 +10,8 @@ from crabs.tracker.evaluate_tracker import TrackerEvaluate
 def tracker_evaluate_interface():
     annotations_file_csv = Path(__file__).parents[1] / "data" / "gt_test.csv"
     return TrackerEvaluate(
-        annotations_file_csv,
+        input_video_file_root="/path/to/video.mp4",
+        gt_dir=annotations_file_csv,
         predicted_boxes_dict={},
         iou_threshold=0.1,
         tracking_output_dir="/path/output",
