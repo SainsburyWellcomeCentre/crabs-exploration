@@ -69,7 +69,7 @@ class Tracking:
 
         # input video data
         self.input_video_path = args.video_path
-        self.input_video_file_root = f"{Path(self.input_video_path).stem}"
+        self.input_video_file_root = Path(self.input_video_path).stem
 
         # tracking output directory root name
         self.tracking_output_dir_root = args.output_dir
