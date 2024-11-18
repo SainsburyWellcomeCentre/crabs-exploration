@@ -1,85 +1,143 @@
-import tempfile
 from argparse import Namespace
 from pathlib import Path
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from crabs.tracker.track_video import Tracking
 
 
-@pytest.fixture
-def mock_args():
-    tmp_dir = tempfile.mkdtemp()
-
+@pytest.fixture()
+def mock_args(tmp_path: Path) -> Namespace:
     return Namespace(
-        config_file="/path/to/config.yaml",
         video_path="/path/to/video.mp4",
         trained_model_path="path/to/model.ckpt",
-        output_dir=tmp_dir,
         accelerator="gpu",
+        output_dir=str(tmp_path),
+        output_dir_no_timestamp=None,
         annotations_file=None,
         save_video=None,
         save_frames=None,
     )
 
 
-@patch(
-    "builtins.open",
-    new_callable=mock_open,
-    read_data="max_age: 10\nmin_hits: 3\niou_threshold: 0.1",
-)
-@patch("cv2.VideoCapture")
-@patch("crabs.tracker.utils.io.get_video_parameters")
-@patch("crabs.tracker.track_video.get_config_from_ckpt")
-@patch("crabs.tracker.track_video.get_mlflow_parameters_from_ckpt")
-# we patch where the function is looked at, see
-# https://docs.python.org/3/library/unittest.mock.html#where-to-patch
-@patch("yaml.safe_load")
-def test_tracking_constructor(
-    mock_yaml_load,
-    mock_get_mlflow_parameters_from_ckpt,
-    mock_get_config_from_ckpt,
-    mock_get_video_parameters,
-    mock_videocapture,
-    mock_open,
-    mock_args,
-):
+@pytest.fixture()
+def mock_mkdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Monkeypatch pathlib.Path.mkdir().
+
+    Instead of creating the directory at the path specified,
+    mock the method to create the directory under a temporary
+    directory created by pytest.
+
+    Parameters
+    ----------
+    tmp_path : pathlib.Path
+        a temporary directory created by pytest
+    monkeypatch : pytest.MonkeyPatch
+        a monkeypatch fixture
+
+    """
+
+    # monkeypatch Path.mkdir() to create directories under
+    # a temporary directory created by pytest
+    def mock_mkdir(parents, exist_ok):
+        return Path(tmp_path).mkdir(parents=parents, exist_ok=exist_ok)
+
+    monkeypatch.setattr(Path, "mkdir", mock_mkdir)
+
+
+def test_tracking_constructor(monkeypatch, mock_args, tmp_path):
+    # Mock the open function to use a mock_open object
+    mock_open = MagicMock()
+    monkeypatch.setattr("builtins.open", mock_open)
+
     # mock reading tracking config from file
-    mock_yaml_load.return_value = {
-        "max_age": 10,
-        "min_hits": 3,
-        "iou_threshold": 0.1,
-    }
+    monkeypatch.setattr(
+        "yaml.safe_load",
+        lambda x: {
+            "max_age": 10,
+            "min_hits": 3,
+            "iou_threshold": 0.1,
+        },
+    )
 
     # mock getting mlflow parameters from checkpoint
-    mock_get_mlflow_parameters_from_ckpt.return_value = {
-        "run_name": "trained_model_run_name",
-        "cli_args/experiment_name": "trained_model_expt_name",
-    }
+    monkeypatch.setattr(
+        "crabs.tracker.track_video.get_mlflow_parameters_from_ckpt",
+        lambda x: {
+            "run_name": "trained_model_run_name",
+            "cli_args/experiment_name": "trained_model_expt_name",
+        },
+    )
 
     # mock getting trained model's config
-    mock_get_config_from_ckpt.return_value = {}
+    monkeypatch.setattr(
+        "crabs.tracker.track_video.get_config_from_ckpt",
+        lambda **kwargs: {},
+    )
 
-    # mock getting video parameters
-    mock_get_video_parameters.return_value = {
-        "total_frames": 614,
-        "frame_width": 1920,
-        "frame_height": 1080,
-        "fps": 60,
-    }
+    # Create a temporary directory for the output
+    mock_args.output_dir = str(tmp_path)
 
-    # mock input video as if opened correctly
-    mock_video_capture = MagicMock()
-    mock_video_capture.isOpened.return_value = True
-    mock_videocapture.return_value = mock_video_capture
-
-    # instantiate tracking interface
+    # Instantiate the Tracking class
     tracker = Tracking(mock_args)
 
-    # check output dir is created correctly
-    # TODO: add asserts for other attributes assigned in constructor
+    # Check output dir is created correctly
     assert tracker.args.output_dir == mock_args.output_dir
 
-    # delete output dir
+    # Additional assertions and checks can be added here
+
+    # Clean up the temporary directory
     Path(mock_args.output_dir).rmdir()
+
+
+@patch("yaml.safe_load")
+def test_prep_outputs(mock_args, mock_mkdir):
+    """Test attributes related to outputs are correctly defined.
+
+    Check paths are defined and output directory and
+    optionally frames subdirectory are created.
+
+    """
+    # Instantiate tracking interface
+    tracker = Tracking(mock_args)
+
+    # Run prep_outputs method
+    tracker.prep_outputs()
+
+    # assert output directory is created
+    # can I mock current working directory?
+    # mock mkdir to create everything under a pytest tempdir?
+    # - with default name
+    # - with required name
+    # - with or without timestamp
+    if mock_args.output_dir_no_timestamp:
+        if mock_args.output_dir:
+            assert (
+                Path(tracker.tracking_output_dir).stem == mock_args.output_dir
+            )
+        else:
+            assert Path(tracker.tracking_output_dir).stem == "tracking_output"
+
+    assert tracker.tracking_output_dir.exists()
+
+    # check path to csv file with detections is defined
+    assert tracker.csv_file_path == str(
+        tracker.tracking_output_dir
+        / f"{tracker.input_video_file_root}_tracks.csv"
+    )
+
+    # check path to output video is defined
+    if mock_args.save_video:
+        assert tracker.output_video_path == str(
+            tracker.tracking_output_dir
+            / f"{tracker.input_video_file_root}_tracks.mp4"
+        )
+
+    # check path to frames subdirectory is defined and created
+    if mock_args.save_frames:
+        assert tracker.frames_subdir == str(
+            tracker.tracking_output_dir
+            / f"{tracker.input_video_file_root}_frames"
+        )
+        assert tracker.frames_subdir.exists()
