@@ -24,7 +24,7 @@
 
 
 > [!TIP]
-> To retrieve a version of these files that is different from the files at the tip of `main`, edit the remote file path in the curl command:
+> To retrieve a version of the file that is different from the file at the tip of `main`, edit the remote file path in the `curl` command:
 >
 > - For example, to download the version of the file at the tip of a branch called `<BRANCH-NAME>`, edit the path above to replace `main` with `<BRANCH-NAME>`:
 >   ```
