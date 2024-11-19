@@ -66,7 +66,7 @@ SAVE_FRAMES=false
 
 
 # version of the codebase
-GIT_BRANCH=smg/optional-timestamp-to-output-dir
+GIT_BRANCH=main
 
 # --------------------
 # Check inputs
