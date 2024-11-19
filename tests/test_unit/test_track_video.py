@@ -1,3 +1,4 @@
+import re
 from argparse import Namespace
 from pathlib import Path
 from typing import Callable
@@ -73,11 +74,14 @@ def mock_mkdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         a monkeypatch fixture
 
     """
+    pathlib_mkdir = Path.mkdir
 
     # monkeypatch Path.mkdir() to create directories under
     # a temporary directory created by pytest
-    def mock_mkdir(parents, exist_ok):
-        return Path(tmp_path).mkdir(parents, exist_ok)
+    def mock_mkdir(self, parents=False, exist_ok=False):
+        return pathlib_mkdir(
+            tmp_path / self, parents=parents, exist_ok=exist_ok
+        )
 
     monkeypatch.setattr(Path, "mkdir", mock_mkdir)
 
@@ -143,20 +147,40 @@ def test_tracking_constructor(
     assert tracker.accelerator == "cuda"
 
 
-def test_prep_outputs(mock_args, mock_mkdir, mock_tracker_init_requirements):
+def test_prep_outputs(create_mock_args, mock_mkdir, tmp_path, monkeypatch):
     """Test attributes related to outputs are correctly defined.
 
     Check paths are defined and output directory and
     optionally frames subdirectory are created.
 
     """
-    # Instantiate tracking interface
+    # Create mock arguments for the constructor
+    tracking_config = {
+        "max_age": 10,
+        "min_hits": 3,
+        "iou_threshold": 0.1,
+    }
+    mock_args = create_mock_args(tracking_config, tmp_path)
+
+    # mock getting mlflow parameters from checkpoint
+    monkeypatch.setattr(
+        "crabs.tracker.track_video.get_mlflow_parameters_from_ckpt",
+        lambda x: {
+            "run_name": "trained_model_run_name",
+            "cli_args/experiment_name": "trained_model_expt_name",
+        },
+    )
+
+    # mock getting trained model's config
+    monkeypatch.setattr(
+        "crabs.tracker.track_video.get_config_from_ckpt",
+        lambda **kwargs: {},
+    )
+
+    # Instantiate tracking interface --- includes prep outputs step
     # mkdir should be patched to create output directory
     # under a Pytest temporary directory
     tracker = Tracking(mock_args)
-
-    # Run prep_outputs method
-    tracker.prep_outputs()
 
     # assert output directory is created
     # can I mock current working directory?
@@ -164,15 +188,15 @@ def test_prep_outputs(mock_args, mock_mkdir, mock_tracker_init_requirements):
     # - with default name
     # - with required name
     # - with or without timestamp
-    if mock_args.output_dir_no_timestamp:
-        if mock_args.output_dir:
-            assert (
-                Path(tracker.tracking_output_dir).stem == mock_args.output_dir
-            )
-        else:
-            assert Path(tracker.tracking_output_dir).stem == "tracking_output"
+    # if mock_args.output_dir_no_timestamp: -----
 
-    assert tracker.tracking_output_dir.exists()
+    # check name of output directory
+    if mock_args.output_dir:
+        output_dir_root = mock_args.output_dir
+    else:
+        output_dir_root = "tracking_output"
+    output_dir_regexp = re.compile(rf"{output_dir_root}_\d{{8}}_\d{{6}}$")
+    assert output_dir_regexp.match(tracker.tracking_output_dir.stem)
 
     # check path to csv file with detections is defined
     assert tracker.csv_file_path == str(
@@ -187,10 +211,16 @@ def test_prep_outputs(mock_args, mock_mkdir, mock_tracker_init_requirements):
             / f"{tracker.input_video_file_root}_tracks.mp4"
         )
 
+    # check output directory is created
+    # (under pytest temporary directory, which
+    # acts as if current working directory via mkdir mocking)
+    full_path_tracking_output_dir = tmp_path / tracker.tracking_output_dir
+    assert full_path_tracking_output_dir.exists()
+
     # check path to frames subdirectory is defined and created
     if mock_args.save_frames:
         assert tracker.frames_subdir == str(
-            tracker.tracking_output_dir
+            full_path_tracking_output_dir
             / f"{tracker.input_video_file_root}_frames"
         )
         assert tracker.frames_subdir.exists()
