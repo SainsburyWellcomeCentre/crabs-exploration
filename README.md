@@ -138,7 +138,7 @@ To track crabs in a new video, using a trained detector and a tracker, run the f
 detect-and-track-video --trained_model_path <path-to-ckpt-file> --video_path <path-to-input-video>
 ```
 
-This will produce a `tracking_output_<timestamp>` directory with the output from tracking under the current working directory.
+This will produce a `tracking_output_<timestamp>` directory with the output from tracking under the current working directory. To avoid adding the `<timestamp>` suffix to the directory name, add the `--output_dir_no_timestamp` flag to the command. To see the full list of possible arguments to the `evaluate-detector` command, run it with the `--help` flag.
 
 The tracking output consists of:
 - a .csv file named `<video-name>_tracks.csv`, with the tracked bounding boxes data;
@@ -152,8 +152,6 @@ Note that when using `--save_frames`, the frames of the video are saved as-is, w
 If a file with ground-truth annotations is passed to the command (with the `--annotations_file` flag), the MOTA metric for evaluating tracking is computed and printed to screen.
 
 <!-- When used in combination with the `--save_video` flag, the tracked video will contain predicted bounding boxes in red, and ground-truth bounding boxes in green. -- PR 216-->
-
-To see the full list of possible arguments to the `evaluate-detector` command, run it with the `--help` flag.
 
 ## Task-specific guides
 For further information on specific tasks, such as launching a training job or evaluating a set of models in the HPC cluster, please see [our guides](guides).
