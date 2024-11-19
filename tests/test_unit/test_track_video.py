@@ -1,5 +1,6 @@
 from argparse import Namespace
 from pathlib import Path
+from typing import Callable
 
 import pytest
 import yaml
@@ -8,44 +9,52 @@ from crabs.tracker.track_video import Tracking
 
 
 @pytest.fixture()
-def tracking_config() -> dict:
-    return {
-        "max_age": 10,
-        "min_hits": 3,
-        "iou_threshold": 0.1,
-    }
+def create_mock_args():
+    """Return a factory of mock arguments for Tracking class.
 
-
-@pytest.fixture()
-def tracking_config_file(tracking_config: dict, tmp_path: Path) -> Path:
-    """Return a sample tracking config file.
-
-    The file is saved as a yaml file in the Pytest temporary directory.
+    The factory returns a Namespace object with mock arguments for Tracking
+    class. When called, the factory also creates a temporary file with the
+    specified tracking config, whose path gets added to the Namespace object.
     """
-    path_to_config = Path(tmp_path) / "tracking_config.yaml"
 
-    with open(path_to_config, "w") as outfile:
-        yaml.dump(
-            tracking_config,
-            outfile,
+    def _create_tracking_config_file(
+        tracking_config: dict, tmp_path: Path
+    ) -> Path:
+        """Return the path to a tracking config file under a Pytest temporary
+        directory.
+        """
+        path_to_config = Path(tmp_path) / "tracking_config.yaml"
+
+        with open(path_to_config, "w") as outfile:
+            yaml.dump(
+                tracking_config,
+                outfile,
+            )
+        return path_to_config
+
+    def _create_mock_args(
+        tracking_config: dict,
+        tmp_path: Path,
+    ) -> Namespace:
+        """Return a Namespace object with mock arguments for Tracking class,
+        given a tracking config dictionary and a factory to create a tracking
+        config files.
+        """
+        return Namespace(
+            video_path="/path/to/video.mp4",
+            trained_model_path="path/to/model.ckpt",
+            config_file=_create_tracking_config_file(
+                tracking_config, tmp_path
+            ),
+            accelerator="gpu",
+            output_dir="tracking_output",  # default
+            output_dir_no_timestamp=None,
+            annotations_file=None,
+            save_video=None,
+            save_frames=None,
         )
 
-    return path_to_config
-
-
-@pytest.fixture()
-def mock_args(tracking_config_file: Path) -> Namespace:
-    return Namespace(
-        video_path="/path/to/video.mp4",
-        trained_model_path="path/to/model.ckpt",
-        config_file=tracking_config_file,
-        accelerator="gpu",
-        output_dir="tracking_output",  # default
-        output_dir_no_timestamp=None,
-        annotations_file=None,
-        save_video=None,
-        save_frames=None,
-    )
+    return _create_mock_args
 
 
 @pytest.fixture()
@@ -74,11 +83,19 @@ def mock_mkdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 def test_tracking_constructor(
-    mock_args: Namespace,
-    tracking_config: dict,
+    create_mock_args: Callable,
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Test Tracking class constructor."""
+    """Test constructor for Tracking class."""
+    # Create mock arguments for the constructor
+    tracking_config = {
+        "max_age": 10,
+        "min_hits": 3,
+        "iou_threshold": 0.1,
+    }
+    mock_args = create_mock_args(tracking_config, tmp_path)
+
     # mock getting mlflow parameters from checkpoint
     trained_model_mlflow_params = {
         "run_name": "trained_model_run_name",
@@ -96,17 +113,16 @@ def test_tracking_constructor(
         lambda **kwargs: trained_model_config,
     )
 
-    # mock prep_outputs method before instantiating Tracking class
-    # mock prep outputs
+    # mock prep_outputs method
     monkeypatch.setattr(
         "crabs.tracker.track_video.Tracking.prep_outputs",
         lambda x: None,
     )
 
-    # Instantiate the Tracking class
+    # instantiate the Tracking class
     tracker = Tracking(mock_args)
 
-    # Check attributes from constructor are correctly defined
+    # check attributes from constructor are correctly defined
     assert tracker.args == mock_args
     assert tracker.config_file == mock_args.config_file
     assert tracker.config == tracking_config
