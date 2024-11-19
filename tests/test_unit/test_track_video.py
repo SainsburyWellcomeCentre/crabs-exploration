@@ -44,8 +44,6 @@ def create_mock_args():
 
     def _create_mock_args(
         args_dict: dict,
-        # tracking_config: dict,
-        # tmp_path: Path,
     ) -> Namespace:
         """Return a Namespace object with mock arguments for Tracking class,
         given a tracking config dictionary and a factory to create a tracking
@@ -74,8 +72,6 @@ def mock_mkdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """
     pathlib_mkdir = Path.mkdir
 
-    # monkeypatch Path.mkdir() to create directories under
-    # a temporary directory created by pytest
     def mock_mkdir(self, parents=False, exist_ok=False):
         return pathlib_mkdir(
             tmp_path / self, parents=parents, exist_ok=exist_ok
@@ -86,6 +82,7 @@ def mock_mkdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def test_tracking_constructor(
     create_mock_args: Callable,
+    create_tracking_config_file: Callable,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -96,7 +93,21 @@ def test_tracking_constructor(
         "min_hits": 3,
         "iou_threshold": 0.1,
     }
-    mock_args = create_mock_args(tracking_config, tmp_path)
+    mock_args = create_mock_args(
+        {
+            "video_path": "/path/to/video.mp4",
+            "trained_model_path": "path/to/model.ckpt",
+            "config_file": create_tracking_config_file(
+                tracking_config, tmp_path
+            ),
+            "accelerator": "gpu",
+            "output_dir": "tracking_output",
+            "output_dir_no_timestamp": False,
+            "annotations_file": None,
+            "save_video": False,
+            "save_frames": False,
+        }
+    )
 
     # mock getting mlflow parameters from checkpoint
     trained_model_mlflow_params = {
@@ -221,9 +232,9 @@ def test_prep_outputs(
         lambda **kwargs: {},
     )
 
-    # Instantiate tracking interface --- includes prep outputs step
-    # mkdir should be patched to create output directory
-    # under a Pytest temporary directory
+    # Instantiate tracking interface - includes prep_outputs step
+    # Note: mkdir is patched via `mock_mkdir` to create any output
+    # directories under a Pytest temporary directory
     tracker = Tracking(mock_args)
 
     # check name of output directory
@@ -251,13 +262,12 @@ def test_prep_outputs(
         )
 
     # check output directory is created
-    # (under pytest temporary directory, which
-    # acts as if current working directory via mkdir mocking)
+    # (under pytest temporary directory)
     assert (tmp_path / tracker.tracking_output_dir).exists()
 
     # check path to frames subdirectory is defined and created
     if mock_args.save_frames:
-        # assert name
+        # assert directory name
         assert tracker.frames_subdir == (
             tracker.tracking_output_dir
             / f"{tracker.input_video_file_root}_frames"
