@@ -144,3 +144,13 @@ evaluate-detector  \
  --mlflow_folder $MLFLOW_FOLDER \
  $USE_TEST_SET_FLAG
 echo "-----"
+
+
+# -----------------------------
+# Delete virtual environment
+# ----------------------------
+conda deactivate
+conda remove \
+    --prefix $ENV_PREFIX \
+    --all \
+    -y

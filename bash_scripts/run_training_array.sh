@@ -115,3 +115,12 @@ train-detector  \
  --experiment_name $EXPERIMENT_NAME \
  --seed_n $SPLIT_SEED \
  --mlflow_folder $MLFLOW_FOLDER \
+
+# -----------------------------
+# Delete virtual environment
+# ----------------------------
+conda deactivate
+conda remove \
+    --prefix $ENV_PREFIX \
+    --all \
+    -y
