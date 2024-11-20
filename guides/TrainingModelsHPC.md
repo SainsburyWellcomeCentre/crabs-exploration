@@ -65,7 +65,7 @@
 
     Additionally for an array job, one may want to edit the number of jobs in the array (by default set to 3):
 
-    - this would mean editing the line that start with `#SBATCH --array=0-n%m` in the `run_training_array.sh` script. That command specifies to run `n` separate jobs, but not more than `m` at a time.
+    - this would mean editing the line that start with `#SBATCH --array=0-n%m` in the `run_training_array.sh` script. You will need to set `n` to the total number of jobs minus 1. The variable `m` refers to the number of jobs that can be run at a time.
     - if the number of jobs in the array is edited, the variable `LIST_SEEDS` needs to be modified accordingly, otherwise we will get an error when launching the job.
 
 1.  **Edit the config YAML file if required**
