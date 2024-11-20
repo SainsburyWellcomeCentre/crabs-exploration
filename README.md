@@ -138,7 +138,7 @@ To track crabs in a new video, using a trained detector and a tracker, run the f
 detect-and-track-video --trained_model_path <path-to-ckpt-file> --video_path <path-to-input-video>
 ```
 
-This will produce a `tracking_output_<timestamp>` directory with the output from tracking under the current working directory. To avoid adding the `<timestamp>` suffix to the directory name, add the `--output_dir_no_timestamp` flag to the command. To see the full list of possible arguments to the `evaluate-detector` command, run it with the `--help` flag.
+This will produce a `tracking_output_<timestamp>` directory with the output from tracking under the current working directory. To avoid adding the `<timestamp>` suffix to the directory name, run the command with the `--output_dir_no_timestamp` flag. To see the full list of possible arguments to the `detect-and-track-video` command, run it with the `--help` flag.
 
 The tracking output consists of:
 - a .csv file named `<video-name>_tracks.csv`, with the tracked bounding boxes data;

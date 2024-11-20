@@ -371,7 +371,8 @@ def tracking_parse_args(args):
         help=(
             "Root name of the directory to save the tracking output. "
             "By default, the name of the output directory is appended with "
-            "a timestamp. "
+            "a timestamp. The timestamp can be omitted with the "
+            "--output_dir_no_timestamp flag. "
             "The tracking output consist of a .csv. file named "
             "<video-name>_tracks.csv with the tracked bounding boxes. "
             "Optionally, it can include a video file named "
@@ -384,7 +385,8 @@ def tracking_parse_args(args):
         "--output_dir_no_timestamp",
         action="store_true",
         help=(
-            "Flag to disable appending a timestamp to the output directory. "
+            "Flag to disable appending a timestamp to the output "
+            "directory name. "
         ),
     )
     parser.add_argument(
