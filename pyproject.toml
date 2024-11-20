@@ -33,6 +33,7 @@ dependencies = [
     "lightning",
     "mlflow",
     "optuna",
+    "movement",
 ]
 
 [project.optional-dependencies]
