@@ -42,7 +42,7 @@
     When launching an array job, we may want to edit the following variables in the bash script:
 
     - The `MLFLOW_CKPTS_FOLDER` and the `CKPT_FILENAME` variables, define which trained models we would like to evaluate. See the examples in the bash script comments for the syntax.
-    - The number of trained models to evaluate needs to match the number of jobs in the array. To change the number of jobs in the array job, edit the line that start with `#SBATCH --array=0-n%m`. That command specifies to run `n` separate jobs, but not more than `m` at a time.
+    - The number of trained models to evaluate needs to match the number of jobs in the array. To change the number of jobs in the array job, edit the line that starts with `#SBATCH --array=0-n%m` and set `n` to the total number of jobs minus 1. The variable `m` refers to the number of jobs that can be run at a time.
      - The `MLFLOW_FOLDER`. By default, we point to the "scratch" folder at `/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch` . This folder holds runs that we don't need to keep. For runs we would like to keep, we will instead point to the folder at `/ceph/zoo/users/sminano/ml-runs-all/ml-runs`.
 
      Less frequently, one may need to edit:

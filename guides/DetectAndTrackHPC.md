@@ -43,7 +43,7 @@
     - The `CKPT_PATH` variable, which is the path to the trained detector model.
     - The `VIDEOS_DIR` variable, which defines the path to the videos directory.
     - The `VIDEO_FILENAME` variable, which allows us to define a wildcard expression to select a subset of videos in the directory. See the examples in the bash script comments for the syntax.
-    - Remember that the number of videos to run inference on needs to match the number of jobs in the array. To change the number of jobs in the array job, edit the line that start with `#SBATCH --array=0-n%m`. That command specifies to run `n` separate jobs, but not more than `m` at a time.
+    - Remember that the number of videos to run inference on needs to match the number of jobs in the array. To change the number of jobs in the array job, edit the line that starts with `#SBATCH --array=0-n%m` and set `n` to the total number of jobs minus 1. The variable `m` refers to the number of jobs that can be run at a time.
 
 
     Less frequently, one may need to edit:
