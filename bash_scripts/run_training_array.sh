@@ -17,12 +17,6 @@
 # with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
 # the number of array jobs should match the number of input files
 
-# ---------------------
-# Source bashrc
-# ----------------------
-# Otherwise `which python` points to the miniconda module's Python
-# source ~/.bashrc
-
 
 # memory
 # see https://pytorch.org/docs/stable/notes/cuda.html#environment-variables
