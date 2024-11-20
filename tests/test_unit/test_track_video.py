@@ -11,15 +11,17 @@ from crabs.tracker.track_video import Tracking
 
 @pytest.fixture()
 def create_tracking_config_file():
-    """Return a factory to create a tracking config file under a Pytest
-    temporary directory.
+    """Return a factory of tracking config files.
+
+    The file is saved under a Pytest temporary directory and
+    its path is returned.
     """
 
     def _create_tracking_config_file(
         tracking_config: dict, tmp_path: Path
     ) -> Path:
-        """Return the path to a tracking config file under a Pytest temporary
-        directory.
+        """Create a tracking config file under a
+        Pytest temporary directory and return its path.
         """
         path_to_config = Path(tmp_path) / "tracking_config.yaml"
 
@@ -35,19 +37,13 @@ def create_tracking_config_file():
 
 @pytest.fixture()
 def create_mock_args():
-    """Return a factory of mock arguments for Tracking class.
-
-    The factory returns a Namespace object with mock arguments for Tracking
-    class. When called, the factory also creates a temporary file with the
-    specified tracking config, whose path gets added to the Namespace object.
-    """
+    """Return a factory of mock input arguments for the Tracking class."""
 
     def _create_mock_args(
         args_dict: dict,
     ) -> Namespace:
-        """Return a Namespace object with mock arguments for Tracking class,
-        given a tracking config dictionary and a factory to create a tracking
-        config files.
+        """Create a Namespace object with mock arguments for the Tracking class
+        for a given tracking config dictionary.
         """
         return Namespace(**args_dict)
 
@@ -59,8 +55,8 @@ def mock_mkdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Monkeypatch pathlib.Path.mkdir().
 
     Instead of creating the directory at the path specified,
-    mock the method to create the directory under a temporary
-    directory created by pytest.
+    mock the mkdir method to create the directory under
+    Pytest's temporary directory.
 
     Parameters
     ----------
@@ -86,7 +82,7 @@ def test_tracking_constructor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
-    """Test constructor for Tracking class."""
+    """Test the constructor for the Tracking class."""
     # Create mock arguments for the constructor
     tracking_config = {
         "max_age": 10,
@@ -135,7 +131,7 @@ def test_tracking_constructor(
     # instantiate the Tracking class
     tracker = Tracking(mock_args)
 
-    # check attributes from constructor are correctly defined
+    # check attributes from constructor are correctly set
     assert tracker.args == mock_args
     assert tracker.config_file == mock_args.config_file
     assert tracker.config == tracking_config
@@ -195,12 +191,11 @@ def test_prep_outputs(
     tmp_path,
     monkeypatch,
 ):
-    """Test attributes related to outputs are correctly defined.
+    """Test prep_outputs method of the Tracking class.
 
-    Checks paths for required outputs are defined, and that the output
-    directory and (optional) frames subdirectory are created. The
-    directories are created under a temporary directory created by pytest.
-
+    Checks the paths for the required outputs are defined, and that the output
+    directory and the (optional) frames subdirectory are created. Any created
+    directories are placed under a temporary directory created by Pytest.
     """
     # Create mock arguments for the constructor
     mock_args = create_mock_args(
@@ -232,7 +227,8 @@ def test_prep_outputs(
         lambda **kwargs: {},
     )
 
-    # Instantiate tracking interface - includes prep_outputs step
+    # Instantiate the tracking interface class
+    # The constructor includes running the .prep_outputs method
     # Note: mkdir is patched via `mock_mkdir` to create any output
     # directories under a Pytest temporary directory
     tracker = Tracking(mock_args)
