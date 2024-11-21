@@ -1,4 +1,4 @@
-"""Inspect crab trajectories using movement"""
+"""Inspect crab groundtruth clip using movement"""
 
 # %%
 import itertools
