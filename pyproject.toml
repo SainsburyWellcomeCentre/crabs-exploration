@@ -53,6 +53,10 @@ dev = [
     # "types-PyYAML",
     # "types-requests",
 ]
+notebooks = [
+    "ipykernel",
+    "ipympl", # for interactive plots
+]
 
 [project.scripts]
 extract-frames = "crabs.bboxes_labelling.extract_frames_to_label_w_sleap:app_wrapper"
