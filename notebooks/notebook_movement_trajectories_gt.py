@@ -22,8 +22,8 @@ file_csv = (
 
 # load ground truth (corrected)
 groundtruth_csv_corrected = (
-    "/Users/sofia/arc/project_Zoo_crabs/escape_clips/"
-    "04.09.2023-04-Right_RE_test_corrected_ST_csv_SM_corrected.csv"
+    "/Users/sofia/arc/project_Zoo_crabs/tracking_groundtruth_generation/"
+    "04.09.2023-04-Right_RE_test_corrected_ST_SM_20241029_113207.csv"
 )
 
 
