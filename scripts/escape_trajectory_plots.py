@@ -1,4 +1,4 @@
-"""Generate trajectory plots for escape clips"""
+"""Generate trajectory plots for escape clips."""
 
 from pathlib import Path
 
@@ -7,13 +7,18 @@ import numpy as np
 from movement.io import load_bboxes
 
 
-def main(input_data,output_figures_dir):
+def main(input_data, output_figures_dir):
+    """Read input files as movement datasets and generate plots."""
     # Create a directory if it doesnt exist
     if not output_figures_dir.exists():
         output_figures_dir.mkdir(parents=True)
 
     # List all csv files in the input directory
-    list_csv_files = [x for x in input_data.iterdir() if x.is_file() and x.name.endswith('_tracks.csv')]
+    list_csv_files = [
+        x
+        for x in input_data.iterdir()
+        if x.is_file() and x.name.endswith("_tracks.csv")
+    ]
     list_csv_files.sort()
     print(len(list_csv_files))
 
@@ -36,14 +41,13 @@ def main(input_data,output_figures_dir):
     )  # 96 colors
 
     # loop thru escape clip files
-    for csv_file in list_csv_files[:3]:
-
+    for csv_file in list_csv_files:
         # Create movement ds
         ds = load_bboxes.from_via_tracks_file(
             csv_file, fps=None, use_frame_numbers_from_file=False
         )
 
-        # Print summary metrics 
+        # Print summary metrics
         print(Path(ds.source_file).name)
         print(f"Number of frames: {ds.sizes['time']}")
         print(f"Number of individuals: {ds.sizes['individuals']}")
@@ -58,7 +62,6 @@ def main(input_data,output_figures_dir):
                 - ds.position[:, ind, :].isnull().any(axis=1).sum().item()
             )
 
-        
         # Plot trajectories per individual
         fig, ax = plt.subplots(1, 1)
         for ind_idx in range(ds.sizes["individuals"]):
@@ -99,7 +102,7 @@ def main(input_data,output_figures_dir):
 
         # Plot histogram of trajectories' lengths
         fig, ax = plt.subplots(1, 1)
-        out = ax.hist(
+        ax.hist(
             non_nan_frames_per_ID.values(),
             bins=np.arange(0, len(ds.time) + 50, 50),
             alpha=0.5,
@@ -126,15 +129,10 @@ def main(input_data,output_figures_dir):
 
 
 if __name__ == "__main__":
-
-    # Input data
-    # Ensure the input data points to the directory containing the csv files in ceph
     input_data = Path(
-        "/ceph/zoo/users/sminano/escape_clips_tracking_output_slurm_5699097"
+        "/home/sminano/swc/project_crabs/escape_clips_tracking_output_slurm_5699097"
     )
 
-    output_figures_dir = Path(
-        "/ceph/zoo/users/sminano/escape_clips_tracking_output_slurm_5699097/figures"
-    )
+    output_figures_dir = input_data / "figures"
 
-    main(input_data,output_figures_dir)
+    main(input_data, output_figures_dir)
