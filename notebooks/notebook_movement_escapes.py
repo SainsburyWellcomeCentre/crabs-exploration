@@ -1,37 +1,47 @@
-"""Inspect crab escape trajectories using movement."""
+"""Inspect crab escape trajectories using `movement`.
 
-# %%
+Requirements
+1. Create and activate a conda environment with `movement` by following the 
+   instructions at https://movement.neuroinformatics.dev/getting_started/installation.html
+
+2. Install some additional dependencies on the conda environment by running:
+      ```
+      pip install ipykernel ipympl
+      ```
+
+3. Mount the zoo directory in ceph following the guide at
+   https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html
+
+"""
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Import required packages
+from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 from movement.io import load_bboxes
 
-# %%%%%%%%%%%%%%%%%%%%%%%%
-# Requirements
-# 1. Install the crabs package with "notebooks" dependencies.
-#    From the root folder of the repo and in an active conda environment run
-#       ```
-#       pip install .[notebooks]
-#       ```
-# 2. Mount the zoo directory in ceph following the guide at
-#    https://howto.neuroinformatics.dev/programming/Mount-ceph-ubuntu-temp.html
-
-# %%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Uncomment the following line to enable interactive plots
 # %matplotlib widget
 
-# %%%%%%%%%%%%%%%%%%%%%
-# Input data
-# Ensure the input data points to the directory containing the csv files in ceph
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Point to input data
+
 input_data = Path(
-    "/home/sminano/swc/project_crabs/escape_clips_tracking_output_slurm_5699097"
+    "/home/sminano/swc/project_crabs/escape_clips_tracking_output_slurm_5699097" #---
     # "/ceph/zoo/users/sminano/escape_clips_tracking_output_slurm_5699097"
+    # Ensure the input data points to the directory containing the 
+    # csv files in ceph
 )
 
-output_figures_dir = input_data / "figures"
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Set output directory for figures
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+output_figures_dir = input_data / f"figures_{timestamp}"
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Create output directory if it doesnt exist
 if not output_figures_dir.exists():
     output_figures_dir.mkdir(parents=True)
@@ -64,7 +74,8 @@ print("--------------------")
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Compute number of frames with non-nan position per ID
+# For each ID, compute the number of frames 
+# for which the centroid position has non-nan x,y coordinates
 non_nan_frames_per_ID = {}
 for ind, _id_str in enumerate(ds.individuals):
     non_nan_frames_per_ID[ind] = (
