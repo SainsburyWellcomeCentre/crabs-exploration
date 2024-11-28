@@ -6,6 +6,7 @@ recursive-include guides *.md
 recursive-include crabs/tracker *.md
 recursive-include bash_scripts *.sh
 recursive-include notebooks *.py
+recursive-include notebooks *.ipynb
 recursive-include scripts *.py
 recursive-include crabs *.yaml
 recursive-include guides *.png
