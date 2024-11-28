@@ -33,7 +33,6 @@ dependencies = [
     "lightning",
     "mlflow",
     "optuna",
-    "movement",
 ]
 
 [project.optional-dependencies]
@@ -52,10 +51,6 @@ dev = [
     # "types-attrs",
     # "types-PyYAML",
     # "types-requests",
-]
-notebooks = [
-    "ipykernel",
-    "ipympl", # for interactive plots
 ]
 
 [project.scripts]
