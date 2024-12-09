@@ -46,6 +46,8 @@ dev = [
     "ruff",
     "setuptools_scm",
     "check-manifest",
+    "pooch",
+    "tqdm",
     # "codespell",
     # "pandas-stubs",
     # "types-attrs",
