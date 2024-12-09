@@ -13,7 +13,7 @@ GIN_TEST_DATA_REPO = "https://gin.g-node.org/SainsburyWellcomeCentre/crabs-explo
 def pooch_registry() -> dict:
     """Pooch registry for the test data.
 
-    This fixture is common for all the test session. The
+    This fixture is common to the entire test session. The
     file registry is downloaded fresh for every test session.
 
     Returns
@@ -39,9 +39,7 @@ def pooch_registry() -> dict:
     )
 
     # Load registry file onto pooch registry
-    registry.load_registry(
-        file_registry,
-    )
+    registry.load_registry(file_registry)
 
     # Delete registry file
     Path(file_registry).unlink()
