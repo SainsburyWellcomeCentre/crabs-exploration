@@ -12,13 +12,6 @@
 #SBATCH --mail-user=s.minano@ucl.ac.uk
 
 
-# ---------------------
-# Source bashrc
-# ----------------------
-# Otherwise `which python` points to the miniconda module's Python
-# source ~/.bashrc
-
-
 # memory
 # see https://pytorch.org/docs/stable/notes/cuda.html#environment-variables
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -101,3 +94,12 @@ train-detector  \
  --experiment_name $EXPERIMENT_NAME \
  --seed_n $SPLIT_SEED \
  --mlflow_folder $MLFLOW_FOLDER \
+
+# -----------------------------
+# Delete virtual environment
+# ----------------------------
+conda deactivate
+conda remove \
+    --prefix $ENV_PREFIX \
+    --all \
+    -y
