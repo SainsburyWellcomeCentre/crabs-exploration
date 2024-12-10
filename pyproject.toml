@@ -148,5 +148,6 @@ python =
 extras =
     dev
 commands =
-    pytest -v --color=yes --cov=crabs --cov-report=xml
+    pytest -v --color=yes --cov=crabs --cov-report=xml {posargs}
 """
+# {posargs} allows parameters to get to pytest
