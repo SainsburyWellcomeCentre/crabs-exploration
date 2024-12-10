@@ -50,6 +50,8 @@ def input_data_paths(pooch_registry: pooch.Pooch):
     return input_data_paths
 
 
+# mark integration test as slow
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "no_timestamp_flag",
     [
