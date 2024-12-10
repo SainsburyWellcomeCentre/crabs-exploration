@@ -51,6 +51,13 @@ def input_data_paths(pooch_registry: pooch.Pooch):
 
 
 @pytest.mark.parametrize(
+    "no_timestamp_flag",
+    [
+        None,
+        "--output_dir_no_timestamp",
+    ],
+)
+@pytest.mark.parametrize(
     "flags_to_append",
     [
         [],
@@ -63,6 +70,7 @@ def test_detect_and_track_video(
     input_data_paths: dict,
     tmp_path: Path,
     flags_to_append: list,
+    no_timestamp_flag: str | None,
 ):
     """Test the detect-and-track-video entry point when groundtruth is passed.
 
@@ -85,6 +93,8 @@ def test_detect_and_track_video(
     ]
     # append required flags
     main_command.extend(flags_to_append)
+    if no_timestamp_flag:
+        main_command.append(no_timestamp_flag)
 
     # run command
     completed_process = subprocess.run(
@@ -100,9 +110,12 @@ def test_detect_and_track_video(
 
     # check the tracking output directory is created and has expected name
     output_dir_name_expected = "tracking_output"
-    expected_pattern = re.compile(
-        rf"{output_dir_name_expected}_\d{{8}}_\d{{6}}$"
-    )
+    if no_timestamp_flag:
+        expected_pattern = re.compile(rf"{output_dir_name_expected}$")
+    else:
+        expected_pattern = re.compile(
+            rf"{output_dir_name_expected}_\d{{8}}_\d{{6}}$"
+        )
     list_cwd_subdirs = [x for x in tmp_path.iterdir() if x.is_dir()]
     tracking_output_dir = list_cwd_subdirs[0]
     assert len(list_cwd_subdirs) == 1
