@@ -21,26 +21,28 @@ def pooch_registry() -> dict:
         URL and hash of the GIN repository with the test data
 
     """
+    # Cache the test data in the user's home directory
+    test_data_dir = Path.home() / ".crabs-exploration-test-data"
+
+    # Remove the file registry if it exists
+    # otherwise the registry is not downloaded everytime
+    file_registry_path = test_data_dir / "files-registry.txt"
+    if file_registry_path.is_file():
+        Path(file_registry_path).unlink()
+
     # Initialise pooch registry
     registry = pooch.create(
-        Path.home() / ".crabs-exploration-test-data",
+        test_data_dir,
         base_url=f"{GIN_TEST_DATA_REPO}/raw/master/test_data",
     )
 
     # Download only the registry file from GIN
-    # if known_hash = None, the file is always downloaded.
+    # (this file should always be downloaded fresh from GIN)
     file_registry = pooch.retrieve(
         url=f"{GIN_TEST_DATA_REPO}/raw/master/files-registry.txt",
         known_hash=None,
-        fname="files-registry.txt",
-        # we need to pass a filename otherwise the file is not overwritten
-        # every time!
-        # From the docs: if fname=None, will create a unique file name using
-        # a combination of the last part of the URL (assuming it’s the file
-        # name) and the MD5 hash of the URL. So if fname=None, the file won't
-        # be overwritten while the URL stays the same, even if the content
-        # changes.
-        path=Path.home() / ".crabs-exploration-test-data",
+        fname=file_registry_path.name,
+        path=file_registry_path.parent,
     )
 
     # Load registry file onto pooch registry
