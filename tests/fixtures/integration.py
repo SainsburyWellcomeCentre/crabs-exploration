@@ -32,6 +32,11 @@ def pooch_registry() -> dict:
     file_registry = pooch.retrieve(
         url=f"{GIN_TEST_DATA_REPO}/raw/master/files-registry.txt",
         known_hash=None,
+        fname="files-registry.txt",  
+        # we need to pass a filename otherwise the file is not overwritten every time!
+        # From the docs: if fname=None, will create a unique file name using 
+        # a combination of the last part of the URL (assuming it’s the file 
+        # name) and the MD5 hash of the URL. 
         path=Path.home() / ".crabs-exploration-test-data",
     )
 
