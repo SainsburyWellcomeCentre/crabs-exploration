@@ -146,8 +146,8 @@ If we are launching the tool for the first time for a new project:
 - From the fields that appear after clicking `+`, click on `Type` and select `dropdown`.
   - If you now select a bounding box in the image, a dropdown menu to define its category shows up.
 - In the table below,:
-  - add `crab` under `id`
-  - add `crab` under `description`
+  - add `0` under `id` - we select `0` but this can be any number that we map to the category `crab`.
+  - add `crab` under `description` - this will set the `category` for the bounding box.
   - select the radio button under `def` - this sets all annotations to be `crabs` by default. If we don't do these none of the annotations will be labelled.
 - To visualise the Annotator Editor for the current frame, press `spacebar`
   - The dropdown menu for a bounding box does not show up if annotator editor is visible.
