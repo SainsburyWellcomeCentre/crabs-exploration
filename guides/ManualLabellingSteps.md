@@ -194,11 +194,13 @@ Troubleshooting reloading
 ---
 
 ## Appendix A: differences between COCO and VIA JSON exported files
-The VIA tool allows us to export the annotations in a few different formats. In this guide, we focus on two of them: exporting the data as a COCO formatted JSON file, and exporting the full VIA project as a JSON file. In this guide, we refer to these options as the COCO and VIA formats. However, the VIA tool also allows us to export annotations as a .csv file, and to export the annotations only or the region/file attributes only as JSON files. For now, we do not consider these other options of exporting the data.
+The VIA tool allows us to export the annotations in a few different formats. In this guide, we focus on two of them: exporting the data as a COCO formatted JSON file, and exporting the full VIA project as a JSON file. In this guide, we refer to these options as the COCO and VIA formats. 
+
+However, the VIA tool also allows us to export annotations as a .csv file, and to export the annotations only or the region/file attributes only as JSON files. For now, we do not consider these other options of exporting the data, as they are not standalone (i.e., for a complete description given the .csv file or the annotations-only JSON file, we would need the region attributes JSON file as well).
 
 There are some differences to note between the COCO format and the VIA format:
-- To correctly export the data in COCO format, we need to define a category for the annotations. If we don't, none of the annotations are exported to the COCO file.
-- The COCO format also requires the category ID to be an integer. If we provide a category ID that is a string, the VIA export will accept it, but the COCO exported file will produce a category ID equal to `null`.
+- To correctly export the data in COCO format, we need to define a category for the annotations (as specified in the steps above). If we don't, none of the annotations are exported to the COCO file.
+- The COCO format also requires the category ID to be an integer (this is also highlighted in the steps above). If we provide a category ID that is a string, the VIA export will accept it, but the COCO exported file will produce a category ID equal to `null`.
 - Given the same VIA project, the image ID in the COCO generated file and in the VIA generated file may not match. This is because in the conversion to COCO format, sometimes the VIA tool attempts to infer the image ID from the image filename. Also, in the VIA format the image ID will be 0-indexed, whereas in the COCO format, when the image ID cannot be extracted from the filename, it will be 1-indexed.
 
 ## Appendix B: COCO format
