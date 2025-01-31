@@ -194,7 +194,7 @@ Troubleshooting reloading
 ---
 
 ## Appendix A: differences between COCO and VIA JSON exported files
-The VIA tool allows us to export the annotations in a few different formats. In this guide, we focus on two of them: exporting the data as a COCO formatted JSON file, and exporting the full VIA project as a JSON file. In this guide, we refer to these options as the COCO and VIA formats. 
+The VIA tool allows us to export the annotations in a few different formats. In this guide, we focus on two of them: exporting the data as a COCO formatted JSON file, and exporting the full VIA project as a JSON file. In this guide, we refer to these options as the COCO and VIA formats.
 
 However, the VIA tool also allows us to export annotations as a .csv file, and to export the annotations only or the region/file attributes only as JSON files. For now, we do not consider these other options of exporting the data, as they are not standalone (i.e., for a complete description given the .csv file or the annotations-only JSON file, we would need the region attributes JSON file as well).
 
