@@ -10,17 +10,20 @@
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-2%3
+#SBATCH --array=0-14%5
 
 
 # NOTE on SBATCH command for array jobs
 # with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
 # the number of array jobs should match the number of input files
 
+# ---------------------
+# Source bashrc
+# ----------------------
+# Otherwise `which python` points to the miniconda module's Python
+# needs to be before error setting?
+source ~/.bashrc
 
-# memory
-# see https://pytorch.org/docs/stable/notes/cuda.html#environment-variables
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # -----------------------------
 # Error settings for bash
@@ -42,10 +45,6 @@ MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
 DATASET_DIR=/ceph/zoo/users/sminano/crabs_bboxes_labels/Sep2023_labelled
 ANNOTATIONS_DIR=/ceph/zoo/users/sminano/crabs_subset_annotations/large_annotations
 TRAIN_CONFIG_FILE=/ceph/zoo/users/sminano/crabs_data_augmentation_configs/01_config_all_data_augmentation.yaml
-
-# seeds for each dataset split
-LIST_SEEDS=($(echo {42..44}))
-SPLIT_SEED=${LIST_SEEDS[${SLURM_ARRAY_TASK_ID}]}
 
 # version of the codebase
 GIT_BRANCH=main
@@ -95,7 +94,7 @@ module load miniconda
 
 # Define a environment for each job in the
 # temporary directory of the compute node
-ENV_NAME=crabs-dev-$SPLIT_SEED-$SLURM_ARRAY_JOB_ID
+ENV_NAME=crabs-dev-$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID
 ENV_PREFIX=$TMPDIR/$ENV_NAME
 
 # create environment
@@ -107,14 +106,16 @@ conda create \
 # activate environment
 source activate $ENV_PREFIX
 
-# install crabs package in virtual env
-python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
-
 
 # log pip and python locations
 echo $ENV_PREFIX
 which python
 which pip
+echo "-----------------"
+
+# install crabs package in virtual env
+python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
+
 
 # print the version of crabs package (last number is the commit hash)
 echo "Git branch: $GIT_BRANCH"
