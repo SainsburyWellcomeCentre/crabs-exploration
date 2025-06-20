@@ -30,7 +30,7 @@ dependencies = [
     "torchvision",
     "pycocotools",
     "filterpy",
-    "lightning",
+    "lightning==2.5.0",  # see https://github.com/Lightning-AI/pytorch-lightning/pull/20669
     "mlflow",
     "optuna",
 ]

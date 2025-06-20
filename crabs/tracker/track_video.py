@@ -76,7 +76,10 @@ class Tracking:
         self.frame_name_format_str = "frame_{frame_idx:08d}.png"
 
         # hardware
-        self.accelerator = "cuda" if args.accelerator == "gpu" else "cpu"
+        if args.accelerator == "gpu":
+            self.accelerator = "cuda"
+        else:
+            self.accelerator = args.accelerator
 
         # Prepare outputs:
         # output directory, csv, and if required video and frames
@@ -423,7 +426,7 @@ def tracking_parse_args(args):
         default="gpu",
         help=(
             "Accelerator for Pytorch. "
-            "Valid inputs are: cpu or gpu. Default: gpu."
+            "Valid inputs are: cpu, mps, or gpu. Default: gpu."
         ),
     )
     parser.add_argument(
