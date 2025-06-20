@@ -17,6 +17,9 @@
 # with "SBATCH --array=0-n%m" ---> runs n separate jobs, but not more than m at a time.
 # the number of array jobs should match the number of input files
 
+# To exclude specific nodes from being used, use the --exclude flag:
+#SBATCH --exclude=gpu-380-12,gpu-350-01
+
 # ---------------------
 # Source bashrc
 # ----------------------
