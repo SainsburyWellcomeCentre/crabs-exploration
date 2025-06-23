@@ -75,7 +75,7 @@ def draw_detection(
     annotations: dict,
     detections: Optional[dict[Any, Any]] = None,
     score_threshold: Optional[float] = None,
-) -> np.ndarray:
+) -> list[np.ndarray]:
     """Draw the results based on the detection.
 
     Parameters
@@ -91,12 +91,13 @@ def draw_detection(
 
     Returns
     -------
-    np.ndarray
+    list[np.ndarray]
         Image(s) with bounding boxes drawn on them.
 
     """
     coco_list = COCO_INSTANCE_CATEGORY_NAMES
 
+    list_images_with_boxes = []
     for image, label, prediction in zip(
         imgs, annotations, detections or [None] * len(imgs)
     ):
@@ -150,7 +151,9 @@ def draw_detection(
                         (0, 0, 255),
                         label_text,
                     )
-    return image_with_boxes
+        list_images_with_boxes.append(image_with_boxes)
+
+    return list_images_with_boxes
 
 
 def save_images_with_boxes(
@@ -193,18 +196,20 @@ def save_images_with_boxes(
     os.makedirs(output_dir, exist_ok=True)
 
     with torch.no_grad():
-        imgs_id = 0
-        for imgs, annotations in dataloader:
-            imgs_id += 1  # noqa: SIM113
+        for batch_id, (imgs, annotations) in enumerate(dataloader):
             imgs = list(img.to(device) for img in imgs)
 
             detections = trained_model(imgs)
 
-            image_with_boxes = draw_detection(
+            imgs_with_boxes = draw_detection(
                 imgs, annotations, detections, score_threshold
             )
 
-            cv2.imwrite(f"{output_dir}/imgs{imgs_id}.jpg", image_with_boxes)
+            for img_id, img_with_boxes in enumerate(imgs_with_boxes):
+                cv2.imwrite(
+                    f"{output_dir}/img_batch_{batch_id}_{img_id}.jpg",
+                    img_with_boxes,
+                )
 
 
 def plot_sample(  # noqa: C901
