@@ -115,7 +115,7 @@ def draw_detections(
                 image_with_boxes,
                 ((target_boxes[i][0])[0], (target_boxes[i][0])[1]),
                 ((target_boxes[i][1])[0], (target_boxes[i][1])[1]),
-                colour=(0, 255, 0),
+                colour=(0, 255, 0),  # RGB format
             )
         if prediction:
             pred_score = list(prediction["scores"].detach().cpu().numpy())
@@ -148,7 +148,7 @@ def draw_detections(
                             (pred_boxes[i][1])[0],
                             (pred_boxes[i][1])[1],
                         ),
-                        (0, 0, 255),
+                        (255, 0, 0),  # RGB format
                         label_text,
                     )
         list_images_with_boxes.append(image_with_boxes)
@@ -208,7 +208,9 @@ def save_images_with_boxes(
             for img_id, img_with_boxes in enumerate(imgs_with_boxes):
                 cv2.imwrite(
                     f"{output_dir}/img_batch_{batch_id}_{img_id}.jpg",
-                    img_with_boxes,
+                    cv2.cvtColor(img_with_boxes, cv2.COLOR_RGB2BGR),
+                    # change to BGR format as opencv expects; note this
+                    # is not required if the image is read with opencv
                 )
 
 
