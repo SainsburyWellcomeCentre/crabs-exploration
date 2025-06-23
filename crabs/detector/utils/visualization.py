@@ -70,7 +70,7 @@ def draw_bbox(
         )
 
 
-def draw_detection(
+def draw_detections(
     imgs: list,
     annotations: dict,
     detections: Optional[dict[Any, Any]] = None,
@@ -201,7 +201,7 @@ def save_images_with_boxes(
 
             detections = trained_model(imgs)
 
-            imgs_with_boxes = draw_detection(
+            imgs_with_boxes = draw_detections(
                 imgs, annotations, detections, score_threshold
             )
 
