@@ -422,7 +422,9 @@ def tracking_parse_args(args):
         help=(
             "Location of CSV file containing ground truth annotations "
             "(optional). "
-            "If passed, the evaluation metrics for the tracker are computed."
+            "If passed, the evaluation metrics for the tracker are computed "
+            "and saved to a CSV file at "
+            "<output-dir>/<video-name>_tracking_metrics.csv."
         ),
     )
     parser.add_argument(
