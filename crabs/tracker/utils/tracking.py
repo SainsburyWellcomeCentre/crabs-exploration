@@ -69,7 +69,13 @@ def extract_bounding_box_info(row: list[str]) -> dict[str, Any]:
     height = region_shape_attributes["height"]
     track_id = region_attributes["track"]
 
+    # Extract frame number from filename
+    # (it assumes frame number is the last part of the filename
+    # and is preceded by an underscore)
     frame_number = int(filename.split("_")[-1].split(".")[0])
+
+    # Return dictionary with frame number, bounding box coordinates,
+    # and track ID
     return {
         "frame_number": frame_number,
         "x": x,

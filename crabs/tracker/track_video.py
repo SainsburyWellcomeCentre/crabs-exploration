@@ -245,6 +245,9 @@ class Tracking:
         while input_video_object.isOpened():
             # Read frame
             ret, frame = input_video_object.read()
+
+            # If frame reading not successful, log either error
+            # or completion and break loop
             if not ret:
                 parse_video_frame_reading_error_and_log(
                     frame_idx, total_n_frames
@@ -300,7 +303,8 @@ class Tracking:
             )
             logging.info(f"Tracked video saved to {self.output_video_path}")
 
-        # Write frames if required
+        # Write frames if required (without bounding boxes)
+        # this is to support manual labelling of tracks
         # (it loops again thru frames)
         if self.args.save_frames:
             write_all_video_frames_as_images(
@@ -416,7 +420,7 @@ def tracking_parse_args(args):
         type=str,
         default=None,
         help=(
-            "Location of JSON file containing ground truth annotations "
+            "Location of CSV file containing ground truth annotations "
             "(optional). "
             "If passed, the evaluation metrics for the tracker are computed."
         ),
