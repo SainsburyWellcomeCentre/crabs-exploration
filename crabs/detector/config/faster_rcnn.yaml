@@ -32,7 +32,7 @@ checkpoint_saving:
 # Evaluation parameters
 # -----------------------
 iou_threshold: 0.1
-batch_size_test: 4
+batch_size_test: 1
 
 # -------------------
 # Data augmentation

@@ -70,12 +70,12 @@ def draw_bbox(
         )
 
 
-def draw_detection(
+def draw_detections(
     imgs: list,
     annotations: dict,
     detections: Optional[dict[Any, Any]] = None,
     score_threshold: Optional[float] = None,
-) -> np.ndarray:
+) -> list[np.ndarray]:
     """Draw the results based on the detection.
 
     Parameters
@@ -91,12 +91,13 @@ def draw_detection(
 
     Returns
     -------
-    np.ndarray
+    list[np.ndarray]
         Image(s) with bounding boxes drawn on them.
 
     """
     coco_list = COCO_INSTANCE_CATEGORY_NAMES
 
+    list_images_with_boxes = []
     for image, label, prediction in zip(
         imgs, annotations, detections or [None] * len(imgs)
     ):
@@ -114,7 +115,7 @@ def draw_detection(
                 image_with_boxes,
                 ((target_boxes[i][0])[0], (target_boxes[i][0])[1]),
                 ((target_boxes[i][1])[0], (target_boxes[i][1])[1]),
-                colour=(0, 255, 0),
+                colour=(0, 255, 0),  # RGB format
             )
         if prediction:
             pred_score = list(prediction["scores"].detach().cpu().numpy())
@@ -147,10 +148,12 @@ def draw_detection(
                             (pred_boxes[i][1])[0],
                             (pred_boxes[i][1])[1],
                         ),
-                        (0, 0, 255),
+                        (255, 0, 0),  # RGB format
                         label_text,
                     )
-    return image_with_boxes
+        list_images_with_boxes.append(image_with_boxes)
+
+    return list_images_with_boxes
 
 
 def save_images_with_boxes(
@@ -193,18 +196,22 @@ def save_images_with_boxes(
     os.makedirs(output_dir, exist_ok=True)
 
     with torch.no_grad():
-        imgs_id = 0
-        for imgs, annotations in dataloader:
-            imgs_id += 1  # noqa: SIM113
+        for batch_id, (imgs, annotations) in enumerate(dataloader):
             imgs = list(img.to(device) for img in imgs)
 
             detections = trained_model(imgs)
 
-            image_with_boxes = draw_detection(
+            imgs_with_boxes = draw_detections(
                 imgs, annotations, detections, score_threshold
             )
 
-            cv2.imwrite(f"{output_dir}/imgs{imgs_id}.jpg", image_with_boxes)
+            for img_id, img_with_boxes in enumerate(imgs_with_boxes):
+                cv2.imwrite(
+                    f"{output_dir}/img_batch_{batch_id}_{img_id}.jpg",
+                    cv2.cvtColor(img_with_boxes, cv2.COLOR_RGB2BGR),
+                    # change to BGR format as opencv expects; note this
+                    # is not required if the image is read with opencv
+                )
 
 
 def plot_sample(  # noqa: C901
