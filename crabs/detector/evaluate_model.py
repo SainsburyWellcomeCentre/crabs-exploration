@@ -302,10 +302,10 @@ def evaluate_parse_args(args):
     parser.add_argument(
         "--frames_score_threshold",
         type=float,
-        default=0.5,
+        default=0.0,
         help=(
             "Score threshold for visualising detections on output frames. "
-            "Default: 0.5"
+            "Default: 0.0"
         ),
     )
     parser.add_argument(
