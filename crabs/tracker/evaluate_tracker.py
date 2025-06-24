@@ -183,7 +183,7 @@ class TrackerEvaluate:
 
         """
         # If no previous frame data is available,
-        # set last known predicted IDs to current frame values
+        # set last_known_predicted_ids to current frame values
         # and return 0 switches
         if gt_to_tracked_id_previous_frame is None:
             for gt_id, pred_id in gt_to_tracked_id_current_frame.items():
@@ -192,13 +192,13 @@ class TrackerEvaluate:
             return 0
 
         switch_counter = 0
-        # Filter sets of ground truth IDs for current and previous frames
-        # to exclude NaN predicted IDs
+
+        # Get GT IDs present in current and previous frame
         gt_ids_current_frame = set(gt_to_tracked_id_current_frame.keys())
         gt_ids_prev_frame = set(gt_to_tracked_id_previous_frame.keys())
 
         # Compute lists of ground truth IDs that continue, disappear,
-        # and appear
+        # and appear between current and previous frame
         gt_ids_cont = list(gt_ids_current_frame & gt_ids_prev_frame)
         gt_ids_disappear = list(gt_ids_prev_frame - gt_ids_current_frame)
         gt_ids_appear = list(gt_ids_current_frame - gt_ids_prev_frame)
@@ -213,54 +213,70 @@ class TrackerEvaluate:
         for gt_id in gt_ids_cont:
             previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
             current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
-            if all(
-                not np.isnan(x)  # type: ignore
-                for x in [previous_pred_id, current_pred_id]
-            ):  # Exclude if missed detection in previous AND current frame
-                if current_pred_id != previous_pred_id:
-                    switch_counter += 1
-                    used_pred_ids.add(current_pred_id)
-            # if the object was a missed detection in the previous frame:
-            # check if current prediction matches historical
-            elif np.isnan(previous_pred_id) and not np.isnan(current_pred_id):  # type: ignore  # noqa: SIM102
-                if gt_id in self.last_known_predicted_ids:
-                    last_known_predicted_id = self.last_known_predicted_ids[
-                        gt_id
-                    ]
-                    if current_pred_id != last_known_predicted_id:
-                        switch_counter += 1
-            # save most recent predicted ID associated to this groundtruth ID
+
+            # If previous and current prediction IDs are not NaN but
+            # they are different, count as an ID switch
+            if (
+                all(
+                    not np.isnan(x)  # type: ignore
+                    for x in [previous_pred_id, current_pred_id]
+                )
+                and current_pred_id != previous_pred_id
+            ):
+                switch_counter += 1
+                used_pred_ids.add(current_pred_id)
+
+            # If the object was a missed detection in the previous frame
+            # but not in the current frame: count as ID switch if current
+            # prediction does not match historical
+            elif (
+                np.isnan(previous_pred_id)
+                and not np.isnan(current_pred_id)
+                and gt_id in self.last_known_predicted_ids
+                and current_pred_id != self.last_known_predicted_ids[gt_id]
+            ):
+                switch_counter += 1
+
+            # Update most recent predicted ID associated to this groundtruth ID
             self.last_known_predicted_ids[gt_id] = current_pred_id
 
         # Case 2: Objects that disappear according to GT
+        # (will be ID switch if the corresponding predicted ID )
         for gt_id in gt_ids_disappear:
             previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
-            if not np.isnan(  # noqa: SIM102
-                previous_pred_id  # type: ignore
-            ):  # Exclude if missed detection in previous frame
-                if previous_pred_id in gt_to_tracked_id_current_frame.values():  # noqa: SIM102
-                    if previous_pred_id not in used_pred_ids:
-                        switch_counter += 1
-                        used_pred_ids.add(previous_pred_id)
+
+            # Count as ID switch if the object was detected in the previous
+            # frame and the same ID exists in the current frame
+            if (
+                not np.isnan(previous_pred_id)
+                and previous_pred_id in gt_to_tracked_id_current_frame.values()
+                and previous_pred_id not in used_pred_ids
+            ):
+                switch_counter += 1
+                used_pred_ids.add(previous_pred_id)
 
         # Case 3: Objects that appear according to GT
         for gt_id in gt_ids_appear:
             current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
-            if not np.isnan(
-                current_pred_id  # type: ignore
-            ):  # Exclude if missed detection in current frame
-                # check if there was and ID switch wrt previous frame
-                if current_pred_id in gt_to_tracked_id_previous_frame.values():
-                    if previous_pred_id not in used_pred_ids:
-                        switch_counter += 1
-                # if ID not immediately swapped from previous frame:
-                # check if predicted ID matches the last known one
-                elif gt_id in self.last_known_predicted_ids:
-                    last_known_predicted_id = self.last_known_predicted_ids[
-                        gt_id
-                    ]
-                    if current_pred_id != last_known_predicted_id:
-                        switch_counter += 1
+
+            # Count as ID switch if the object was detected in the current
+            # frame and:
+            # - the same ID exists in the previous frame
+            # - the last known predicted ID does not match the current predicted ID
+            if not np.isnan(current_pred_id):
+                if (
+                    current_pred_id in gt_to_tracked_id_previous_frame.values()
+                    and previous_pred_id not in used_pred_ids
+                ):
+                    switch_counter += 1
+                    used_pred_ids.add(previous_pred_id)
+
+                elif (
+                    gt_id in self.last_known_predicted_ids
+                    and current_pred_id != self.last_known_predicted_ids[gt_id]
+                ):
+                    switch_counter += 1
+
                 self.last_known_predicted_ids[gt_id] = current_pred_id
 
         return switch_counter
@@ -269,7 +285,6 @@ class TrackerEvaluate:
         self,
         gt_data: dict[str, np.ndarray],
         pred_data: dict[str, np.ndarray],
-        iou_threshold: float,
         gt_to_tracked_id_previous_frame: Optional[dict[int, int]],
     ) -> tuple[float, int, int, int, int, int, dict[int, int]]:
         """Evaluate MOTA (Multiple Object Tracking Accuracy).
@@ -284,8 +299,6 @@ class TrackerEvaluate:
             Dictionary containing predicted bounding boxes and IDs.
             - 'bbox': Bounding boxes with shape (N, 4).
             - 'id': Predicted IDs with shape (N,).
-        iou_threshold : float
-            Intersection over Union (IoU) threshold for considering a match.
         gt_to_tracked_id_previous_frame : Optional[dict[int, int]]
             A dictionary mapping ground truth IDs to predicted IDs from the
             previous frame.
@@ -304,7 +317,6 @@ class TrackerEvaluate:
         false_positives = 0
         true_positives = 0
         indices_of_matched_gt_boxes = set()
-        gt_to_tracked_id_current_frame = {}
 
         pred_boxes = pred_data["tracked_boxes"]
         pred_ids = pred_data["ids"]
@@ -312,60 +324,49 @@ class TrackerEvaluate:
         gt_boxes = gt_data["bbox"]
         gt_ids = gt_data["id"]
 
+        # Initialise dictionary to map ground truth IDs to tracked IDs
+        gt_to_tracked_id_current_frame = {
+            gt_id: np.nan for gt_id in gt_data["id"]
+        }
+
         # Loop through detections
         for pred_box, pred_id in zip(pred_boxes, pred_ids):
             best_iou = 0.0
             index_gt_best_match = None
-            index_gt_not_match = None
 
             # Look for best matching ground truth box
             for j, gt_box in enumerate(gt_boxes):
                 if j not in indices_of_matched_gt_boxes:
                     iou = self.calculate_iou(gt_box, pred_box)
-                    if iou > iou_threshold and iou > best_iou:
+                    if iou > self.iou_threshold and iou > best_iou:
                         best_iou = iou
                         index_gt_best_match = j
-                    else:
-                        index_gt_not_match = j
 
+            # If no best match is found, add to false positives
+            if index_gt_best_match is None:
+                false_positives += 1
             # If a best match is found, add to true positives
-            if index_gt_best_match is not None:
+            else:
                 true_positives += 1
-                # Successfully found a matching ground truth box for the
-                # tracked box.
+
+                # Log index of best match
                 indices_of_matched_gt_boxes.add(index_gt_best_match)
-                # Map ground truth ID to tracked ID
+
+                # Overwrite ground truth ID with matched tracked ID
                 gt_to_tracked_id_current_frame[
                     int(gt_ids[index_gt_best_match])
                 ] = int(pred_id)
-            # If no best match is found, add to false positives
-            else:
-                false_positives += 1
 
-            # I DONT GET THIS PART --- CAN I REMOVE IT?
-            # ARENT THERE MANY index_gt_not_match?
-            # If there are GT boxes that are unmatched, set their corresponding
-            # tracked ID to NaN -- but there could be many right?
-            if index_gt_not_match is not None:
-                gt_to_tracked_id_current_frame[
-                    int(gt_ids[index_gt_not_match])
-                ] = np.nan  # type: ignore
-
-            # # I think it should be like this:<----------
-            # indices_of_unmatched_gt_boxes = (
-            #     set(range(len(gt_boxes))) - indices_of_matched_gt_boxes
-            # )
-            # for index_unmatched_gt in indices_of_unmatched_gt_boxes:
-            #     gt_to_tracked_id_current_frame[
-            #         int(gt_ids[index_unmatched_gt])
-            #     ] = np.nan  # type: ignore
-
+        # Count missed detections
         missed_detections = total_gt - len(indices_of_matched_gt_boxes)
+
+        # Count identity switches
         num_switches = self.count_identity_switches(
             gt_to_tracked_id_previous_frame,
             gt_to_tracked_id_current_frame,
         )
 
+        # Compute MOTA
         mota = (
             1 - (missed_detections + false_positives + num_switches) / total_gt
         )
@@ -415,7 +416,7 @@ class TrackerEvaluate:
         }
 
         # Initialise previous frame ID map to track ID switches
-        prev_frame_id_map: Optional[dict] = None
+        gt_to_tracked_id_previous_frame: Optional[dict] = None
 
         # Check that the number of frames in the ground truth and predictions
         # are the same, print warning if not
@@ -464,12 +465,11 @@ class TrackerEvaluate:
                 false_positives,
                 num_switches,
                 total_gt,
-                prev_frame_id_map,
+                gt_to_tracked_id_previous_frame,
             ) = self.compute_mota_one_frame(
                 ground_truth_dict[frame_number],
                 predicted_dict[frame_index],
-                self.iou_threshold,
-                prev_frame_id_map,
+                gt_to_tracked_id_previous_frame,
             )
 
             # Append results
@@ -500,4 +500,4 @@ class TrackerEvaluate:
         )
 
         overall_mota = np.mean(mota_values)
-        logging.info(f"Mean MOTA over all frames: {overall_mota:.4f}")
+        logging.info(f"Mean MOTA over all frames: {overall_mota}")
