@@ -3,7 +3,7 @@
 import csv
 import logging
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import numpy as np
 
@@ -163,7 +163,7 @@ class TrackerEvaluate:
     def count_identity_switches(  # noqa: C901
         self,
         gt_to_tracked_id_previous_frame: Optional[dict[int, int]],
-        gt_to_tracked_id_current_frame: dict[int, int | float],
+        gt_to_tracked_id_current_frame: dict[int, Union[int, float]],
     ) -> int:
         """Count the number of identity switches between two sets of IDs.
 
@@ -172,7 +172,7 @@ class TrackerEvaluate:
         gt_to_tracked_id_previous_frame : Optional[dict[int, int]]
             A dictionary mapping ground truth IDs to predicted IDs from the
             previous frame.
-        gt_to_tracked_id_current_frame : dict[int, int | float]
+        gt_to_tracked_id_current_frame : dict[int, Union[int, float]]
             A dictionary mapping ground truth IDs to predicted IDs for the
             current frame. The predicted IDs can be nan if the object was
             missed in the current frame.
@@ -271,7 +271,7 @@ class TrackerEvaluate:
         gt_data: dict[str, np.ndarray],
         pred_data: dict[str, np.ndarray],
         gt_to_tracked_id_previous_frame: Optional[dict[int, int]],
-    ) -> tuple[float, int, int, int, int, int, dict[int, int | float]]:
+    ) -> tuple[float, int, int, int, int, int, dict[int, Union[int, float]]]:
         """Evaluate MOTA (Multiple Object Tracking Accuracy).
 
         Parameters
@@ -293,7 +293,7 @@ class TrackerEvaluate:
         float
             The computed MOTA (Multi-Object Tracking Accuracy) score for the
             tracking performance.
-        dict[int, int]
+        dict[int, Union[int, float]]
             A dictionary mapping ground truth IDs to predicted IDs for the
             current frame.
 
