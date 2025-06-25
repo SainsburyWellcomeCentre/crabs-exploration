@@ -125,9 +125,9 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: 14},
             {1: 11, 2: 12, 3: 14},
-            1,  # maybe this should be 2 for consistency with next one?
+            2,  # maybe this should be 2 for consistency with next one? ===================
             id="object_continues_to_exist_swaps_id_with_disappearing_object",
-        ),  # crab swaps ID with a disappearing crab -------
+        ),  # crab swaps ID with a disappearing crab 
         pytest.param(
             {1: 11, 2: 12, 3: 13},
             {1: 11, 2: 12, 3: 99, 4: 13},
@@ -137,7 +137,7 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: 14},
             {1: 11, 2: 12, 3: 14, 4: 13},
-            2,
+            4, # =====
             id="object_continues_to_exist_swaps_id_with_continuing_object",
         ),  # crab swaps ID with another crab that continues to exist
         # ----- a crab (GT=4) disappears ---------
@@ -150,7 +150,7 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: 14},
             {1: 11, 2: 12, 3: 14},
-            1, # maybe this should be 2 for consistency with next one?
+            2,  # maybe this should be 2 for consistency with next one? ==========
             id="object_disappears_swaps_id_with_continuing_object",
         ),  # crab disappears and another pre-existing one takes its ID --------
         pytest.param(
@@ -180,7 +180,7 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
         ),  # crab disappears but was missed detection in frame f-1,
         # and existing crab was missed in frame f
         # ----- a crab (GT=3) disappears ---------
-               pytest.param(
+        pytest.param(
             {1: 11, 2: 12, 3: 13},
             {1: 11, 2: 12, 4: 13},
             1,
@@ -197,7 +197,7 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
             {1: 11, 2: 12, 3: 13},
             {1: 11, 2: 12, 3: 15, 4: 13},
             2,
-            id="object_appears_swaps_id_with_continuing_object",  #------
+            id="object_appears_swaps_id_with_continuing_object",  # ------
         ),  # crab that appears gets ID of a pre-existing crab
         # and crab that continues is re-ID
         pytest.param(
@@ -265,12 +265,12 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
         ),  # crab whose GT ID is in last_known_predicted_ids, appears
         # in the current frame, and the current predicted ID is NOT consistent
         # with last_known_predicted_ids
-         pytest.param(
+        pytest.param(
             {1: 11, 2: 12, 3: 13, 5: np.nan},
             {1: 11, 2: 12, 3: np.nan, 5: 13},
             1,
             id="object_not_in_historical_takes_id_of_missed_object",
-        ),  
+        ),
     ],
 )
 def test_count_identity_switches(
