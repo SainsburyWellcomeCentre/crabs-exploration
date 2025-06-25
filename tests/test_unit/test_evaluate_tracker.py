@@ -103,43 +103,55 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
             {1: 11, 2: 12, 3: 13, 4: 14},  # current_frame_id_map
             0,  # expected id switches
             id="object_continues_to_exist_correct",
-        ),  # correct
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: 14},
             {1: 11, 2: 12, 3: np.nan, 4: 14},
             0,
             id="object_continues_to_exist_missed_in_frame",
-        ),  # crab is missed detection in current frame
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: np.nan, 4: 14},
             {1: 11, 2: 12, 3: 13, 4: 14},
             0,
             id="object_continues_to_exist_missed_in_previous_frame",
-        ),  # crab is missed detection in previous frame
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: 14},
             {1: 11, 2: 12, 3: 15, 4: 14},
             1,
-            id="object_continues_to_exist_re_ided_in_current_frame",
-        ),  # crab is re-IDed in current frame
+            id="object_continues_to_exist_re_id",
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: 14},
             {1: 11, 2: 12, 3: 14},
-            2,  # maybe this should be 2 for consistency with next one? ===================
-            id="object_continues_to_exist_swaps_id_with_disappearing_object",
-        ),  # crab swaps ID with a disappearing crab 
+            2,
+            id="object_continues_to_exist_re_id_and_swap_with_disappearing_object",
+        ),
+        pytest.param(
+            {1: 11, 2: 12, 3: 13},
+            {1: 11, 2: 12, 3: 99, 5: 13},
+            2,
+            id="object_continues_to_exist_re_id_and_swap_with_appearing_new_object",
+        ),
+        pytest.param(
+            {1: 11, 2: 12, 3: 13},
+            {1: 11, 2: 12, 3: 99, 4: 14},
+            1,
+            id="object_continues_to_exist_re_id_with_appearing_old_object",
+        ),  # old object = object that has historical data
         pytest.param(
             {1: 11, 2: 12, 3: 13},
             {1: 11, 2: 12, 3: 99, 4: 13},
-            2,
-            id="object_continues_to_exist_swaps_id_with_appearing_object",
-        ),  # crab swaps ID with an appearing crab
+            3,
+            id="object_continues_to_exist_re_id_and_swap_with_appearing_old_object_wrong",
+        ),  # old object = object that has historical data
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: 14},
             {1: 11, 2: 12, 3: 14, 4: 13},
-            4, # =====
-            id="object_continues_to_exist_swaps_id_with_continuing_object",
-        ),  # crab swaps ID with another crab that continues to exist
+            4,
+            id="two_objects_that_continue_to_exist_re_id_and_swap",
+        ),
         # ----- a crab (GT=4) disappears ---------
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: 14},
@@ -150,82 +162,77 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: 14},
             {1: 11, 2: 12, 3: 14},
-            2,  # maybe this should be 2 for consistency with next one? ==========
-            id="object_disappears_swaps_id_with_continuing_object",
-        ),  # crab disappears and another pre-existing one takes its ID --------
+            2,
+            id="object_disappears_swaps_id_with_re_ided_continuing_object",
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: 14},
             {1: 11, 2: 12, 3: 13, 5: 14},
             1,
-            id="object_disappears_swaps_id_with_appearing_object",
-        ),  # crab disappears and an appearing one takes its ID
+            id="object_disappears_swaps_id_with_appearing_new_object",
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: np.nan},
             {1: 11, 2: 12, 3: 13},
             0,
             id="object_disappears_missed_in_previous_frame",
-        ),  # crab disappears but was missed detection in frame f-1
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: np.nan},
             {1: 11, 2: 12, 3: 13, 5: np.nan},
             0,
             id="object_disappears_missed_in_previous_frame_and_new_object_missed",
-        ),  # crab disappears but was missed detection in frame f-1,
-        # with a new missed crab in frame f
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: 13, 4: np.nan},
             {1: 11, 2: 12, 3: np.nan},
             0,
             id="object_disappears_missed_in_previous_frame_and_continuing_object_missed",
-        ),  # crab disappears but was missed detection in frame f-1,
-        # and existing crab was missed in frame f
+        ),
         # ----- a crab (GT=3) disappears ---------
         pytest.param(
             {1: 11, 2: 12, 3: 13},
-            {1: 11, 2: 12, 4: 13},
+            {1: 11, 2: 12, 5: 13},
             1,
-            id="disappearing_object_swaps_id_with_appearing_object",
-        ),  # disappear crab swaps ID with an appearing crab
-        # ----- a crab (GT=4) appears ---------
+            id="disappearing_object_swaps_id_with_new_appearing_object",
+        ),
+        # ----- a crab (GT=5) appears without historical data ---------
         pytest.param(
             {1: 11, 2: 12, 3: 13},
-            {1: 11, 2: 12, 3: 13, 4: 14},
+            {1: 11, 2: 12, 3: 13, 5: 15},
             0,
-            id="object_appears_correct",
-        ),  # correct
+            id="new_object_appears_correct",
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: 13},
-            {1: 11, 2: 12, 3: 15, 4: 13},
+            {1: 11, 2: 12, 3: 15, 5: 13},
             2,
-            id="object_appears_swaps_id_with_continuing_object",  # ------
-        ),  # crab that appears gets ID of a pre-existing crab
-        # and crab that continues is re-ID
+            id="new_object_appears_swaps_id_with_re_ided_continuing_object",
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: 13},
-            {1: 11, 2: 12, 4: 13},
+            {1: 11, 2: 12, 5: 13},
             1,
-            id="object_appears_swaps_id_with_disappearing_object",
-        ),  # crab that appears gets ID of a crab that disappears
+            id="new_object_appears_swaps_id_with_disappearing_object",
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: 13},
-            {1: 11, 2: 12, 3: 13, 4: np.nan},
-            0,
-            id="object_appears_missed_in_current_frame",
-        ),  # missed detection in current frame
-        pytest.param(
             {1: 11, 2: 12, 3: 13, 5: np.nan},
-            {1: 11, 2: 12, 3: 13, 4: np.nan},
             0,
-            id="object_appears_missed_in_current_frame_and_disappearing_object_missed_in_previous_frame",
-        ),  # crab that appears is missed detection in current frame,
-        # and another missed detection in previous frame disappears
+            id="new_object_appears_missed_in_current_frame",
+        ),
+        pytest.param(
+            {1: 11, 2: 12, 3: 13, 4: np.nan},
+            {1: 11, 2: 12, 3: 13, 5: np.nan},
+            0,
+            id="new_object_appears_missed_in_current_frame_and_disappearing_object_missed_in_previous_frame",
+        ),
         pytest.param(
             {1: 11, 2: 12, 3: np.nan},
-            {1: 11, 2: 12, 3: 13, 4: np.nan},
+            {1: 11, 2: 12, 3: 13, 5: np.nan},
             0,
-            id="object_appears_missed_in_current_frame_and_continuing_object_missed_in_previous_frame",
-        ),  # crab that appears is missed detection in current frame,
-        # and a pre-existing crab is missed detection in previous frame
+            id="new_object_appears_missed_in_current_frame_and_continuing_object_missed_in_previous_frame",
+        ),
         # ----------
         # Test consistency with last predicted ID if a crab (GT=3)
         # that continues to exist is not detected for a few frames (>= 1)
@@ -235,16 +242,13 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
             {1: 11, 2: 12, 3: 13},
             0,
             id="object_missed_in_previous_frame_consistent_with_historical",
-        ),  # crab that continues to exist, and the current predicted ID is
-        # consistent with last_known_predicted_ids={1: 11, 2: 12, 3: 13, 4: 14}
+        ),  # last_known_predicted_ids={1: 11, 2: 12, 3: 13, 4: 14}
         pytest.param(
             {1: 11, 2: 12, 3: np.nan},
             {1: 11, 2: 12, 3: 14},
             1,
             id="object_missed_in_previous_frame_not_consistent_with_historical",
-        ),  # crab that continues to exist, and the current predicted ID
-        # is NOT consistent with the
-        # last_known_predicted_ids={1: 11, 2: 12, 3: 13, 4: 14}
+        ),  # last_known_predicted_ids={1: 11, 2: 12, 3: 13, 4: 14}
         # ----------
         # Test consistency with last predicted ID if a crab (GT=3)
         # re-appears after a few frames (>= 1)
@@ -254,22 +258,18 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
             {1: 11, 2: 12, 3: 13},
             0,
             id="object_reappears_consistent_with_historical",
-        ),  # crab whose GT ID is in last_known_predicted_ids, appears
-        # in the current frame, and the current predicted ID is consistent
-        # with last_known_predicted_ids
+        ),  # last_known_predicted_ids={1: 11, 2: 12, 3: 13, 4: 14}
         pytest.param(
             {1: 11, 2: 12},
             {1: 11, 2: 12, 3: 14},
             1,
             id="object_reappears_not_consistent_with_historical",
-        ),  # crab whose GT ID is in last_known_predicted_ids, appears
-        # in the current frame, and the current predicted ID is NOT consistent
-        # with last_known_predicted_ids
+        ),  # last_known_predicted_ids={1: 11, 2: 12, 3: 13, 4: 14}
         pytest.param(
             {1: 11, 2: 12, 3: 13, 5: np.nan},
             {1: 11, 2: 12, 3: np.nan, 5: 13},
             1,
-            id="object_not_in_historical_takes_id_of_missed_object",
+            id="new_object_swaps_id_with_missed_continuing_object",
         ),
     ],
 )
@@ -361,7 +361,7 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 ),
                 "ids": np.array([11, 12, 13]),
             },
-            {1: 11, 12: 2, 3: np.nan},
+            {1: 11, 12: 2, 3: np.nan},  # prev_frame_id_map
             [1.0, 3, 0, 0, 0],  # MOTA, TP, MD, FP, IDswitches
         ),
         # ID switch
@@ -386,7 +386,7 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 ),
                 "ids": np.array([11, 12, 14]),
             },
-            {1: 11, 2: 12, 3: 13},
+            {1: 11, 2: 12, 3: 13},  # prev_frame_id_map
             [2 / 3, 3, 0, 0, 1],  # MOTA, TP, MD, FP, IDswitches
         ),
         # missed detection
@@ -407,8 +407,8 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 ),
                 "ids": np.array([11, 12]),
             },
-            {1: 11, 2: 12, 3: 13},
-            [2 / 3, 2, 1, 0, 0],
+            {1: 11, 2: 12, 3: 13},  # prev_frame_id_map
+            [2 / 3, 2, 1, 0, 0],  # MOTA, TP, MD, FP, IDswitches
         ),
         # false positive
         (
@@ -433,8 +433,8 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 ),
                 "ids": np.array([11, 12, 13, 14]),
             },
-            {1: 11, 2: 12, 3: 13},
-            [2 / 3, 3, 0, 1, 0],
+            {1: 11, 2: 12, 3: 13},  # prev_frame_id_map
+            [2 / 3, 3, 0, 1, 0],  # MOTA, TP, MD, FP, IDswitches
         ),
         # low IOU and ID switch
         (
@@ -458,8 +458,8 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 ),
                 "ids": np.array([11, 12, 14]),
             },
-            {1: 11, 2: 12, 3: 13},
-            [0, 2, 1, 1, 1],
+            {1: 11, 2: 12, 3: 13},  # prev_frame_id_map
+            [0, 2, 1, 1, 1],  # MOTA, TP, MD, FP, IDswitches
         ),
         # low IOU and ID switch on same box
         (
@@ -483,8 +483,8 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 ),
                 "ids": np.array([11, 14, 13]),
             },
-            {1: 11, 2: 12, 3: 13},
-            [1 / 3, 2, 1, 1, 0],
+            {1: 11, 2: 12, 3: 13},  # prev_frame_id_map
+            [1 / 3, 2, 1, 1, 0],  # MOTA, TP, MD, FP, IDswitches
         ),
         # current tracked id = prev tracked id, but prev_gt_id != current gt id
         (
@@ -508,8 +508,8 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 ),
                 "ids": np.array([11, 12, 13]),
             },
-            {1: 11, 2: 12, 3: 13},
-            [2 / 3, 3, 0, 0, 1],
+            {1: 11, 2: 12, 3: 13},  # prev_frame_id_map
+            [2 / 3, 3, 0, 0, 1],  # MOTA, TP, MD, FP, IDswitches
         ),
         # ID swapped
         (
@@ -533,8 +533,8 @@ def test_calculate_iou(box1, box2, expected_iou, tracker_evaluate_interface):
                 ),
                 "ids": np.array([11, 13, 12]),
             },
-            {1: 11, 2: 12, 3: 13},
-            [1 / 3, 3, 0, 0, 2],
+            {1: 11, 2: 12, 3: 13},  # prev_frame_id_map
+            [1 - (4 / 3), 3, 0, 0, 4],  # MOTA, TP, MD, FP, IDswitches
         ),
     ],
 )
@@ -556,7 +556,6 @@ def test_compute_mota_one_frame(
     ) = tracker_evaluate_interface.compute_mota_one_frame(
         gt_data,
         pred_data,
-        # 0.1,
         prev_frame_id_map,
     )
     assert mota == pytest.approx(expected_output[0])

@@ -163,7 +163,7 @@ class TrackerEvaluate:
     def count_identity_switches(  # noqa: C901
         self,
         gt_to_tracked_id_previous_frame: Optional[dict[int, int]],
-        gt_to_tracked_id_current_frame: dict[int, int],
+        gt_to_tracked_id_current_frame: dict[int, int | float],
     ) -> int:
         """Count the number of identity switches between two sets of IDs.
 
@@ -172,9 +172,10 @@ class TrackerEvaluate:
         gt_to_tracked_id_previous_frame : Optional[dict[int, int]]
             A dictionary mapping ground truth IDs to predicted IDs from the
             previous frame.
-        gt_to_tracked_id_current_frame : dict[int, int]
+        gt_to_tracked_id_current_frame : dict[int, int | float]
             A dictionary mapping ground truth IDs to predicted IDs for the
-            current frame.
+            current frame. The predicted IDs can be nan if the object was
+            missed in the current frame.
 
         Returns
         -------
@@ -184,29 +185,60 @@ class TrackerEvaluate:
         """
         switch_counter = 0
 
-        if not gt_to_tracked_id_previous_frame:
+        # If there is no data from previous frame, return 0 identity switches
+        if gt_to_tracked_id_previous_frame is None:
             return switch_counter
 
+        # If there is no historical data, set it to the previous frame
+        # (note that predicted IDs in historical data are never nan)
+        if not self.last_known_predicted_ids:
+            self.last_known_predicted_ids = {
+                k: v
+                for k, v in gt_to_tracked_id_previous_frame.items()
+                if not np.isnan(v)
+            }
+
         # Count cases a current GT ID maps to different predicted IDs
-        # in the current and previous frame (ignoring nan predicted IDs)
+        # in the current and in the previous frame / last seen frame
+        # (ignore predicted IDs that are nan)
         for gt_id in gt_to_tracked_id_current_frame:
             pred_id_current_frame = gt_to_tracked_id_current_frame[gt_id]
             pred_id_previous_frame = gt_to_tracked_id_previous_frame.get(
                 gt_id, np.nan
             )
+
+            # Previous prediction is nan if it was missed or if there
+            # was no ground truth
+            previous_prediction_nan = np.isnan(pred_id_previous_frame)
+
             if (
-                not np.isnan(pred_id_current_frame)
-                and not np.isnan(pred_id_previous_frame)
-                and pred_id_current_frame != pred_id_previous_frame
+                # If neither current nor previous prediction are nan
+                # and they are different - count as an ID switch
+                (
+                    not np.isnan(pred_id_current_frame)
+                    and not previous_prediction_nan
+                    and pred_id_current_frame != pred_id_previous_frame
+                )
+                # Check historical if previous predicted ID is nan but current
+                # isn't, and the corresponding GT ID has historical data
+                or (
+                    not np.isnan(pred_id_current_frame)
+                    and previous_prediction_nan
+                    and gt_id in self.last_known_predicted_ids
+                    and pred_id_current_frame
+                    != self.last_known_predicted_ids[gt_id]
+                )
             ):
                 switch_counter += 1
 
         # Count cases a current predicted ID maps to different GT IDs
         # in the current and previous frame (ignoring nan predicted IDs)
+        # (ID swaps)
         for pred_id_current_frame in gt_to_tracked_id_current_frame.values():
             if (
                 not np.isnan(pred_id_current_frame)
-                and pred_id_current_frame in gt_to_tracked_id_previous_frame.values()
+                and pred_id_current_frame
+                in gt_to_tracked_id_previous_frame.values()
             ):
                 # Get corresponding GT ID from current frame
                 gt_id_current_frame = [
@@ -226,6 +258,12 @@ class TrackerEvaluate:
                 if gt_id_current_frame != gt_id_previous_frame:
                     switch_counter += 1
 
+        # Update historical with current frame data
+        # (ignore predicted IDs that are nan)
+        for k, v in gt_to_tracked_id_current_frame.items():
+            if not np.isnan(v):
+                self.last_known_predicted_ids[k] = v
+
         return switch_counter
 
     def compute_mota_one_frame(
@@ -233,7 +271,7 @@ class TrackerEvaluate:
         gt_data: dict[str, np.ndarray],
         pred_data: dict[str, np.ndarray],
         gt_to_tracked_id_previous_frame: Optional[dict[int, int]],
-    ) -> tuple[float, int, int, int, int, int, dict[int, int]]:
+    ) -> tuple[float, int, int, int, int, int, dict[int, int | float]]:
         """Evaluate MOTA (Multiple Object Tracking Accuracy).
 
         Parameters
@@ -273,7 +311,7 @@ class TrackerEvaluate:
 
         # Initialise dictionary to map ground truth IDs to tracked IDs
         gt_to_tracked_id_current_frame = {
-            gt_id: np.nan for gt_id in gt_data["id"]
+            int(gt_id): np.nan for gt_id in gt_data["id"]
         }
 
         # Loop through detections
