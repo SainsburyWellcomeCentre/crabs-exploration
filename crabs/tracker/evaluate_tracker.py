@@ -56,7 +56,7 @@ class TrackerEvaluate:
         self.last_known_predicted_ids: dict = {}
 
     def get_ground_truth_data(self) -> dict[int, dict[str, Any]]:
-        """Fromat ground truth data as a dictionary with key frame number.
+        """Format ground truth data as a dictionary with key frame number.
 
         Returns
         -------
@@ -171,11 +171,12 @@ class TrackerEvaluate:
         ----------
         gt_to_tracked_id_previous_frame : Optional[dict[int, int]]
             A dictionary mapping ground truth IDs to predicted IDs from the
-            previous frame.
+            previous frame. A predicted ID can be NaN if the object was
+            a missed detection in the previous frame.
         gt_to_tracked_id_current_frame : dict[int, Union[int, float]]
             A dictionary mapping ground truth IDs to predicted IDs for the
-            current frame. The predicted IDs can be nan if the object was
-            missed in the current frame.
+            current frame. A predicted ID can be NaN if the object was
+            a missed detection in the current frame.
 
         Returns
         -------
@@ -408,22 +409,19 @@ class TrackerEvaluate:
         if len(ground_truth_dict) > len(predicted_dict):
             logging.warning(
                 "There are more frames in the ground truth than in the "
-                "predictions."
-                f"Only the first {len(predicted_dict)} frames will be "
-                "evaluated."
-                "To match the frames across ground truth and predictions, "
-                "we assume the first frame number in the ground truth is the "
-                "frame with index 0 in the predictions."
+                f"predictions. Only the first {len(predicted_dict)} frames "
+                "will be evaluated. To match the frames across ground truth "
+                "and predictions, we assume the first frame number in the "
+                "ground truth is the frame with index 0 in the predictions."
             )
         elif len(ground_truth_dict) < len(predicted_dict):
             logging.warning(
                 "There are more frames in the predictions than in the "
-                "ground truth."
-                f"Only the first {len(ground_truth_dict)} frames will be "
-                "evaluated."
-                "To match the frames across ground truth and predictions, "
-                "we assume the first frame number in the ground truth is the "
-                "frame with index 0 in the predictions."
+                f"ground truth. Only the first {len(ground_truth_dict)} "
+                "frames will be evaluated. To match the frames across ground "
+                "truth and predictions, we assume the first frame number in "
+                "the ground truth is the frame with index 0 in the "
+                "predictions."
             )
 
         # Loop through frame numbers in ground truth dict
