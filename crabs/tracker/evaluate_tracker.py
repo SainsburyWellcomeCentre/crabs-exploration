@@ -160,7 +160,7 @@ class TrackerEvaluate:
 
         return iou
 
-    def count_identity_switches(  # noqa: C901
+    def count_identity_switches(
         self,
         gt_to_tracked_id_previous_frame: Optional[dict[int, int]],
         gt_to_tracked_id_current_frame: dict[int, Union[int, float]],
@@ -353,8 +353,8 @@ class TrackerEvaluate:
         )
 
         # Compute MOTA
-        mota = (
-            1 - (missed_detections + false_positives + num_switches) / total_gt
+        mota = 1 - (
+            (missed_detections + false_positives + num_switches) / total_gt
         )
         return (
             mota,

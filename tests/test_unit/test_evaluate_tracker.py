@@ -7,14 +7,14 @@ from crabs.tracker.evaluate_tracker import TrackerEvaluate
 
 
 @pytest.fixture
-def tracker_evaluate_interface():
+def tracker_evaluate_interface(tmp_path):
     annotations_file_csv = Path(__file__).parents[1] / "data" / "gt_test.csv"
     return TrackerEvaluate(
-        input_video_file_root="/path/to/video.mp4",
+        input_video_file_root="sample_video",
         annotations_file=annotations_file_csv,
         predicted_boxes_dict={},
         iou_threshold=0.1,
-        tracking_output_dir="/path/output",
+        tracking_output_dir=tmp_path,
     )
 
 
@@ -564,3 +564,76 @@ def test_compute_mota_one_frame(
     assert false_positives == expected_output[3]
     assert num_switches == expected_output[4]
     assert total_gt == (true_positives + missed_detections)
+
+
+def test_evaluate_tracking(
+    tracker_evaluate_interface,
+):
+    # gt data
+    bboxes_gt_all_frames = np.array(
+        [
+            [528.0, 391.0, 573.0, 430.0],
+            [2568.0, 466.0, 2608.0, 502.0],
+        ]
+    )
+    bboxes_gt_ids = np.array([70, 71])
+
+    # build ground truth dict with key = frame number
+    ground_truth_dict = {
+        333: {
+            "bbox": bboxes_gt_all_frames,
+            "id": bboxes_gt_ids,
+        },
+        334: {
+            "bbox": bboxes_gt_all_frames,
+            "id": bboxes_gt_ids,
+        },
+        335: {
+            "bbox": bboxes_gt_all_frames,  # no movement
+            "id": bboxes_gt_ids,
+        },
+    }
+
+    # build predicted dict with key = frame index
+    predicted_dict = {
+        0: {
+            "tracked_boxes": np.array(
+                [
+                    bboxes_gt_all_frames[0, :],  # one true positive
+                    [5000.0, 5000.0, 5000.0, 5000.0],  # one false positive
+                ]
+            ),
+            "ids": np.array([1, 3]),
+        },
+        1: {
+            "tracked_boxes": bboxes_gt_all_frames,  # 2 true positives
+            "ids": np.array([1, 2]),
+        },
+        2: {
+            "tracked_boxes": bboxes_gt_all_frames,  # 2 true positives
+            "ids": np.array([2, 1]),  # 2 reIDs, and 2 ID swaps
+        },
+    }
+
+    results = tracker_evaluate_interface.evaluate_tracking(
+        ground_truth_dict,
+        predicted_dict,
+    )
+
+    assert results["Frame Number"] == list(ground_truth_dict.keys())
+    assert results["Frame Index"] == list(predicted_dict.keys())
+    assert results["Total Ground Truth"] == [
+        val["bbox"].shape[0] for val in ground_truth_dict.values()
+    ]
+
+    assert results["True Positives"] == [1, 2, 2]
+    assert results["Missed Detections"] == [1, 0, 0]
+    assert results["False Positives"] == [1, 0, 0]
+    assert results["Number of Switches"] == [0, 0, 4]
+    assert results["MOTA"] == [0.0, 1.0, -1.0]  # per frame
+
+    # check that the output file with the tracking metrics exists
+    assert Path(
+        f"{tracker_evaluate_interface.tracking_output_dir}/"
+        f"{tracker_evaluate_interface.input_video_file_root}_tracking_metrics.csv"
+    ).exists()
