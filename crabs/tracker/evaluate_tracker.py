@@ -191,6 +191,7 @@ class TrackerEvaluate:
                     self.last_known_predicted_ids[gt_id] = pred_id
             return 0
 
+        # Initialise switch counter
         switch_counter = 0
 
         # Get GT IDs present in current and previous frame
@@ -203,83 +204,106 @@ class TrackerEvaluate:
         gt_ids_disappear = list(gt_ids_prev_frame - gt_ids_current_frame)
         gt_ids_appear = list(gt_ids_current_frame - gt_ids_prev_frame)
 
-        # Store used predicted IDs to avoid double counting
-        # In `used_pred_ids` we log IDs from either the current or the
-        # previous frame that have been involved in an already
-        # counted ID switch.
-        used_pred_ids = set()
 
         # Case 1: Objects that continue to exist according to GT
         for gt_id in gt_ids_cont:
-            previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
+            previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)  # this could be nan
             current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
 
-            # If previous and current prediction IDs are not NaN but
-            # they are different, count as an ID switch
-            if (
-                all(
-                    not np.isnan(x)  # type: ignore
-                    for x in [previous_pred_id, current_pred_id]
+            # If detected in current frame
+            if not np.isnan(current_pred_id):
+
+                # Check if detected in previous frame
+                previous_was_detected = not np.isnan(previous_pred_id)
+
+                # Does it match predicted ID in previous frame?
+                current_differs_from_previous = (
+                    previous_was_detected
+                    and current_pred_id != previous_pred_id
                 )
-                and current_pred_id != previous_pred_id
+
+                # Does it match last known (non-nan) predicted ID?
+                current_differs_from_historical = (
+                    not previous_was_detected
+                    and gt_id in self.last_known_predicted_ids
+                    and current_pred_id != self.last_known_predicted_ids[gt_id]
+                )
+
+                # If any of those is true, count as ID switch
+                if (
+                    current_differs_from_previous
+                    or current_differs_from_historical
+                ):
+                    switch_counter += 1
+
+                # Update the last known (non-nan) predicted ID to this GT ID
+                # if that predicted ID is not present
+                if current_pred_id not in self.last_known_predicted_ids.values():
+                    self.last_known_predicted_ids[gt_id] = current_pred_id
+
+        # # Case 2: Objects that disappear according to GT
+        # # (will be ID switch if the corresponding predicted ID )
+        # for gt_id in gt_ids_disappear:
+        #     previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
+
+        #     # Count as ID switch if the object was detected in the previous
+        #     # frame and the same ID exists in the current frame
+        #     if (
+        #         not np.isnan(previous_pred_id)
+        #         and previous_pred_id in gt_to_tracked_id_current_frame.values()
+        #         and previous_pred_id not in used_pred_ids
+        #     ):
+        #         switch_counter += 1
+        #         used_pred_ids.add(previous_pred_id)
+        #         # ------------why do we need this?
+
+        # Case 2: Objects that appear according to GT
+        for gt_id in gt_ids_appear:
+            current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
+
+            # Count as ID switch if object appears for the first time
+            # and the current pred ID is in previous frame
+            if (
+                not np.isnan(current_pred_id)
+                and gt_id not in self.last_known_predicted_ids
+                and current_pred_id in gt_to_tracked_id_previous_frame.values()
             ):
                 switch_counter += 1
-                used_pred_ids.add(current_pred_id)
 
-            # If the object was a missed detection in the previous frame
-            # but not in the current frame: count as ID switch if current
-            # prediction does not match historical
+                # update last known predicted ID
+                self.last_known_predicted_ids[gt_id] = current_pred_id
+
+            #  Count as ID switch if it doesn't match historical
             elif (
-                np.isnan(previous_pred_id)
-                and not np.isnan(current_pred_id)
+                not np.isnan(current_pred_id)
                 and gt_id in self.last_known_predicted_ids
                 and current_pred_id != self.last_known_predicted_ids[gt_id]
             ):
                 switch_counter += 1
 
-            # Update most recent predicted ID associated to this groundtruth ID
-            self.last_known_predicted_ids[gt_id] = current_pred_id
+            # # Exclude if missed detection in current frame
+            # if not np.isnan(current_pred_id):
+            #     # check if there was and ID switch wrt previous frame
+            #     if current_pred_id in gt_to_tracked_id_previous_frame.values():
+            #         if previous_pred_id not in used_pred_ids:
+            #             # ------------why do we need this if above?
+            #             #  why cant I combine them?
+            #             # why does it use previous_pred_id?
+            #             switch_counter += 1
 
-        # Case 2: Objects that disappear according to GT
-        # (will be ID switch if the corresponding predicted ID )
-        for gt_id in gt_ids_disappear:
-            previous_pred_id = gt_to_tracked_id_previous_frame.get(gt_id)
+            #     # if ID not immediately swapped from previous frame:
+            #     # check if predicted ID matches the last known one
+            #     elif gt_id in self.last_known_predicted_ids:
+            #         last_known_predicted_id = self.last_known_predicted_ids[
+            #             gt_id
+            #         ]
+            #         if current_pred_id != last_known_predicted_id:
+            #             switch_counter += 1
 
-            # Count as ID switch if the object was detected in the previous
-            # frame and the same ID exists in the current frame
-            if (
-                not np.isnan(previous_pred_id)
-                and previous_pred_id in gt_to_tracked_id_current_frame.values()
-                and previous_pred_id not in used_pred_ids
-            ):
-                switch_counter += 1
-                used_pred_ids.add(previous_pred_id)
-
-        # Case 3: Objects that appear according to GT
-        for gt_id in gt_ids_appear:
-            current_pred_id = gt_to_tracked_id_current_frame.get(gt_id)
-
-            # Count as ID switch if the object was detected in the current
-            # frame and:
-            # - the same ID exists in the previous frame
-            # - the last known predicted ID does not match the current predicted ID
-            if not np.isnan(current_pred_id):
-                if (
-                    current_pred_id in gt_to_tracked_id_previous_frame.values()
-                    and previous_pred_id not in used_pred_ids
-                ):
-                    switch_counter += 1
-                    used_pred_ids.add(previous_pred_id)
-
-                elif (
-                    gt_id in self.last_known_predicted_ids
-                    and current_pred_id != self.last_known_predicted_ids[gt_id]
-                ):
-                    switch_counter += 1
-
-                self.last_known_predicted_ids[gt_id] = current_pred_id
+            #     self.last_known_predicted_ids[gt_id] = current_pred_id
 
         return switch_counter
+
 
     def compute_mota_one_frame(
         self,
