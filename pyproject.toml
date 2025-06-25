@@ -6,7 +6,7 @@ authors = [
 ]
 description = "A toolkit for detecting and tracking crabs in the field."
 readme = "README.md"
-requires-python = ">=3.9.0"
+requires-python = ">=10.0"
 dynamic = ["version"]
 
 license = { text = "BSD-3-Clause" }
@@ -16,8 +16,8 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "Operating System :: POSIX",
     "License :: OSI Approved :: BSD License",
 ]
@@ -48,11 +48,6 @@ dev = [
     "check-manifest",
     "pooch",
     "tqdm",
-    # "codespell",
-    # "pandas-stubs",
-    # "types-attrs",
-    # "types-PyYAML",
-    # "types-requests",
 ]
 
 [project.scripts]
@@ -78,11 +73,6 @@ exclude = ["tests"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=crabs"
-
-# [tool.black]
-# target-version = ['py39', 'py310']
-# skip-string-normalization = false
-# line-length = 79
 
 [tool.setuptools_scm]
 
@@ -136,13 +126,13 @@ docstring-code-format = true # Also format code in docstrings
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py{39,310}
+envlist = py{310,311}
 isolated_build = True
 
 [gh-actions]
 python =
-    3.9: py39
     3.10: py310
+    3.11: py311
 
 [testenv]
 extras =
