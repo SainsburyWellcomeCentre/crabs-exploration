@@ -370,7 +370,7 @@ class TrackerEvaluate:
         self,
         ground_truth_dict: dict[int, dict[str, Any]],
         predicted_dict: dict[int, dict[str, Any]],
-    ) -> list[float]:
+    ) -> dict[str, Any]:
         """Evaluate tracking with the Multi-Object Tracking Accuracy metric.
 
         Parameters
@@ -384,9 +384,17 @@ class TrackerEvaluate:
 
         Returns
         -------
-        list[float]:
-            The computed MOTA (Multi-Object Tracking Accuracy) score for the
-            tracking performance.
+        dict[str, Any]:
+            A dictionary containing the evaluation results for each frame.
+            The keys are:
+            - "Frame Number": the list of frame numbers.
+            - "Frame Index": the list of frame indices.
+            - "Total Ground Truth": number of ground truth objects per frame.
+            - "True Positives": number of true positives per frame.
+            - "Missed Detections": number of missed detections per frame.
+            - "False Positives": number of false positives per frame.
+            - "Number of Switches": number of identity switches per frame.
+            - "MOTA": MOTA scores per frame.
 
         """
         # Initialise output variables
@@ -472,15 +480,24 @@ class TrackerEvaluate:
             results,
         )
 
-        return results["MOTA"]
+        return results
 
     def run_evaluation(self) -> None:
         """Run evaluation of tracking based on tracking ground truth."""
         ground_truth_dict = self.get_ground_truth_data()
-        mota_values = self.evaluate_tracking(
+        results = self.evaluate_tracking(
             ground_truth_dict,
             self.predicted_boxes_dict,
         )
 
-        overall_mota = np.mean(mota_values)
-        logging.info(f"Mean MOTA over all frames: {overall_mota}")
+        overall_mota = np.mean(results["MOTA"])
+        aggregated_mota = 1 - (
+            (
+                np.sum(results["Missed Detections"])
+                + np.sum(results["False Positives"])
+                + np.sum(results["Number of Switches"])
+            )
+            / np.sum(results["Total Ground Truth"])
+        )
+        logging.info(f"Mean MOTA: {overall_mota:.5f}")
+        logging.info(f"Aggregated MOTA: {aggregated_mota:.5f}")
