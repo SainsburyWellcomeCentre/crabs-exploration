@@ -29,7 +29,7 @@ To compute the number of identity switches (`IDS`) we inspect the set of true po
 - the number of **re-identifications**, that is, the number of times the same ground-truth ID maps to two different predicted IDs in the current and the previous frame. If the predicted ID in the previous frame is not defined (because it was a missed detection or because there was no ground-truth defined for it), we use the last predicted ID associated to that ground-truth ID if available.
 - the number of **identity swaps**, that is, the number of times the same predicted ID maps to two different ground-truth IDs in the current and previous frame.
 
-Note that this definition of identity switches is slightly different to some MOTA definitions, which only account for identity switches between consecutive frames. It is also different from other implementations, which define an "expected" predicted ID for each ground-truth ID. This "expected" predicted ID is the predicted ID that is most often (in terms of number of frames) associated to a ground-truth ID.
+Note that this definition of identity switches is slightly different to some other MOTA definitions, which only account for identity switches between consecutive frames. It is also different from other implementations, which define an "expected" predicted ID for each ground-truth ID. This "expected" predicted ID is the predicted ID that is most often (in terms of number of frames) associated to a ground-truth ID.
 
 ## References and useful resources
 

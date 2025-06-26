@@ -202,6 +202,7 @@ class TrackerEvaluate:
         # Count cases a current GT ID maps to different predicted IDs
         # in the current and in the previous frame / last seen frame
         # (ignore predicted IDs that are nan)
+        # (reIDs)
         for gt_id in gt_to_tracked_id_current_frame:
             pred_id_current_frame = gt_to_tracked_id_current_frame[gt_id]
             pred_id_previous_frame = gt_to_tracked_id_previous_frame.get(
