@@ -134,7 +134,9 @@ def test_detect_and_track_video(
 
     # check csv with tracking metrics exists
     tracking_metrics_csv = (
-        tmp_path / tracking_output_dir / "tracking_metrics_output.csv"
+        tmp_path
+        / tracking_output_dir
+        / f"{input_data_paths['video_root_name']}_tracking_metrics.csv"
     )
     assert (tracking_metrics_csv).exists()
 
