@@ -243,6 +243,13 @@ class Tracking:
         # Loop over frames
         frame_idx = 0
         while input_video_object.isOpened():
+            # Break if beyond end frame (mostly for debugging)
+            if (
+                self.args.max_frames_to_read
+                and frame_idx + 1 > self.args.max_frames_to_read
+            ):
+                break
+
             # Read frame
             ret, frame = input_video_object.read()
 
