@@ -40,12 +40,21 @@ def compute_precision_recall(
         precision and recall
 
     """
+    # evaluate detections using hungarian algorithm
     eval_results = evaluate_detections_hungarian(
         pred_dicts_batch, gt_dicts_batch, iou_threshold
     )
 
-    precision = eval_results["tp"] / (eval_results["tp"] + eval_results["fp"])
-    recall = eval_results["tp"] / (eval_results["tp"] + eval_results["fn"])
+    # compute precision and recall with division by zero handling
+    total_detections = eval_results["tp"] + eval_results["fp"]
+    total_gts = eval_results["tp"] + eval_results["fn"]
+
+    precision = (
+        (eval_results["tp"] / total_detections)
+        if total_detections > 0
+        else 0.0
+    )
+    recall = (eval_results["tp"] / total_gts) if total_gts > 0 else 0.0
 
     return precision, recall
 
@@ -59,10 +68,12 @@ def evaluate_detections_hungarian(
     ----------
     pred_dicts_batch : list
         A list of prediction dictionaries for each element in the batch
-        with keys 'boxes', 'labels', and 'scores'
+        with keys 'boxes', 'labels', and 'scores'. Note that only the
+        boxes are used for evaluation, not the labels or scores.
     gt_dicts_batch : list
         A list of ground truth dictionaries for each element in the batch
-        with keys 'image_id', 'boxes', 'labels'.
+        with keys 'image_id', 'boxes', 'labels'. Note that only the
+        boxes are used for evaluation, not the labels or the image_id.
     iou_threshold : float
         IoU threshold for considering a detection as true positive
 
@@ -132,82 +143,6 @@ def evaluate_detections_hungarian(
         "fp": false_positives.sum().item(),
         "fn": missed_detections.sum().item(),
     }
-
-
-# def compute_confusion_matrix_elements(
-#     targets: list, detections: list, ious_threshold: float
-# ) -> tuple[float, float, dict]:
-#     """Compute detection metrics.
-
-#     Compute true positive, false positive, and false negative values.
-
-#     Parameters
-#     ----------
-#     targets : list
-#         Ground truth annotations.
-#     detections : list
-#         Detected objects.
-#     ious_threshold  : float
-#         The threshold value for the intersection-over-union (IOU).
-#         Only detections whose IOU relative to the ground truth is above the
-#         threshold are true positive candidates.
-#     class_stats : dict
-#         Statistics or information about different classes.
-
-#     Returns
-#     -------
-#     Tuple[float, float]
-#         precision and recall
-
-#     """
-#     class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
-#     for target, detection in zip(targets, detections):
-#         gt_boxes = target["boxes"]
-#         pred_boxes = detection["boxes"]
-#         pred_labels = detection["labels"]
-
-#         ious = torchvision.ops.box_iou(pred_boxes, gt_boxes)
-
-#         max_ious, gt_idx_match = ious.max(dim=1)
-
-#         # Identify true positives, false positives, and false negatives
-#         for idx, iou in enumerate(max_ious):
-#             if iou.item() > ious_threshold:
-#                 pred_label = pred_labels[idx].item()
-#                 true_label = target["labels"][gt_idx_match[idx]].item()
-
-#                 if pred_label == true_label:
-#                     class_stats["crab"]["tp"] += 1
-#                 else:
-#                     class_stats["crab"]["fp"] += 1
-#             else:
-#                 class_stats["crab"]["fp"] += 1
-
-#         for gt_box_index, _ in enumerate(gt_boxes):
-#             found_match = False
-#             for idx, iou in enumerate(max_ious):
-#                 if (
-#                     iou.item() > ious_threshold
-#                     # we need this condition because the max overlap
-#                     # is not necessarily above the threshold
-#                     and gt_idx_match[idx] == gt_box_index
-#                     # the matching index is the index of the GT
-#                     # box with which it has max overlap
-#                 ):
-#                     # There's an IoU match and the matched index corresponds
-#                     # to the current target_box_index
-#                     found_match = True
-#                     break  # Exit loop, a match was found
-
-#             if not found_match:
-#                 # print(found_match)
-#                 class_stats["crab"]["fn"] += (
-#                     1  # Ground truth box has no corresponding detection
-#                 )
-
-#     precision, recall, class_stats = compute_precision_recall(class_stats)
-
-#     return precision, recall, class_stats
 
 
 def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
