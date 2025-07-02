@@ -6,6 +6,9 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+import scipy
+import torch
 import torchvision
 import yaml  # type: ignore
 
@@ -15,13 +18,21 @@ from crabs.detector.utils.detection import (
 )
 
 
-def compute_precision_recall(class_stats: dict) -> tuple[float, float, dict]:
+def compute_precision_recall(
+    pred_dicts_batch: list, gt_dicts_batch: list, iou_threshold: float
+) -> tuple[float, float]:
     """Compute precision and recall.
 
     Parameters
     ----------
-    class_stats : dict
-        Statistics or information about different classes.
+    pred_dicts_batch : list
+        A list of prediction dictionaries for each element in the batch
+        with keys 'boxes', 'labels', and 'scores'
+    gt_dicts_batch : list
+        A list of ground truth dictionaries for each element in the batch
+        with keys 'image_id', 'boxes', 'labels'.
+    iou_threshold : float
+        IoU threshold for considering a detection as true positive
 
     Returns
     -------
@@ -29,87 +40,174 @@ def compute_precision_recall(class_stats: dict) -> tuple[float, float, dict]:
         precision and recall
 
     """
-    for _, stats in class_stats.items():
-        precision = stats["tp"] / max(stats["tp"] + stats["fp"], 1)
-        recall = stats["tp"] / max(stats["tp"] + stats["fn"], 1)
+    eval_results = evaluate_detections_hungarian(
+        pred_dicts_batch, gt_dicts_batch, iou_threshold
+    )
 
-    return precision, recall, class_stats
+    precision = eval_results["tp"] / (eval_results["tp"] + eval_results["fp"])
+    recall = eval_results["tp"] / (eval_results["tp"] + eval_results["fn"])
+
+    return precision, recall
 
 
-def compute_confusion_matrix_elements(
-    targets: list, detections: list, ious_threshold: float
-) -> tuple[float, float, dict]:
-    """Compute detection metrics.
-
-    Compute true positive, false positive, and false negative values.
+def evaluate_detections_hungarian(
+    pred_dicts_batch: list, gt_dicts_batch: list, iou_threshold: float
+) -> dict:
+    """Evaluate detection performance using Hungarian algorithm for matching.
 
     Parameters
     ----------
-    targets : list
-        Ground truth annotations.
-    detections : list
-        Detected objects.
-    ious_threshold  : float
-        The threshold value for the intersection-over-union (IOU).
-        Only detections whose IOU relative to the ground truth is above the
-        threshold are true positive candidates.
-    class_stats : dict
-        Statistics or information about different classes.
+    pred_dicts_batch : list
+        A list of prediction dictionaries for each element in the batch
+        with keys 'boxes', 'labels', and 'scores'
+    gt_dicts_batch : list
+        A list of ground truth dictionaries for each element in the batch
+        with keys 'image_id', 'boxes', 'labels'.
+    iou_threshold : float
+        IoU threshold for considering a detection as true positive
 
     Returns
     -------
-    Tuple[float, float]
-        precision and recall
+    dict
+        Dictionary with keys "tp", "fp", and "fn"
+        - tp: number of true positives
+        - fp: number of false positives
+        - fn: number of missed detections (false negatives)
 
     """
-    class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
-    for target, detection in zip(targets, detections):
-        gt_boxes = target["boxes"]
-        pred_boxes = detection["boxes"]
-        pred_labels = detection["labels"]
+    # Concatenate detections and ground truth boxes across the batch
+    pred_bboxes = torch.cat(
+        [pred_dict["boxes"] for pred_dict in pred_dicts_batch]
+    )
+    gt_bboxes = torch.cat([gt_dict["boxes"] for gt_dict in gt_dicts_batch])
 
-        ious = torchvision.ops.box_iou(pred_boxes, gt_boxes)
+    # Initialize output arrays
+    true_positives = np.zeros(len(pred_bboxes), dtype=bool)
+    false_positives = np.zeros(len(pred_bboxes), dtype=bool)
+    matched_gts = np.zeros(len(gt_bboxes), dtype=bool)
+    missed_detections = np.zeros(len(gt_bboxes), dtype=bool)  # unmatched gts
 
-        max_ious, max_indices = ious.max(dim=1)
+    if len(pred_bboxes) > 0 and len(gt_bboxes) > 0:
+        # Convert to tensors for batch IoU computation
+        pred_tensor = torch.tensor(pred_bboxes[:, :4], dtype=torch.float32)
+        gt_tensor = torch.tensor(gt_bboxes, dtype=torch.float32)
 
-        # Identify true positives, false positives, and false negatives
-        for idx, iou in enumerate(max_ious):
-            if iou.item() > ious_threshold:
-                pred_class_idx = pred_labels[idx].item()
-                true_label = target["labels"][max_indices[idx]].item()
+        # Compute IoU matrix (pred_bboxes x gt_bboxes)
+        iou_matrix = (
+            torchvision.ops.box_iou(pred_tensor, gt_tensor).cpu().numpy()
+        )
 
-                if pred_class_idx == true_label:
-                    class_stats["crab"]["tp"] += 1
-                else:
-                    class_stats["crab"]["fp"] += 1
+        # Apply IoU threshold: set IoU below threshold to 0 (no match)
+        iou_matrix[iou_matrix < iou_threshold] = 0
+
+        # Use Hungarian algorithm to find optimal assignment
+        pred_indices, gt_indices = scipy.optimize.linear_sum_assignment(
+            iou_matrix, maximize=True
+        )
+
+        # Mark true positives and false positives based on optimal assignment
+        for pred_idx, gt_idx in zip(pred_indices, gt_indices, strict=True):
+            if iou_matrix[pred_idx, gt_idx] > 0:  # IoU above threshold
+                true_positives[pred_idx] = True
+                matched_gts[gt_idx] = True
             else:
-                class_stats["crab"]["fp"] += 1
+                false_positives[pred_idx] = True
 
-        for target_box_index, _target_box in enumerate(gt_boxes):
-            found_match = False
-            for idx, iou in enumerate(max_ious):
-                if (
-                    iou.item() > ious_threshold
-                    # we need this condition because the max overlap
-                    # is not necessarily above the threshold
-                    and max_indices[idx] == target_box_index
-                    # the matching index is the index of the GT
-                    # box with which it has max overlap
-                ):
-                    # There's an IoU match and the matched index corresponds
-                    # to the current target_box_index
-                    found_match = True
-                    break  # Exit loop, a match was found
+        # Mark unmatched predictions as false positives
+        false_positives[~true_positives] = True
 
-            if not found_match:
-                # print(found_match)
-                class_stats["crab"]["fn"] += (
-                    1  # Ground truth box has no corresponding detection
-                )
+        # Mark unmatched ground truth as missed detections
+        missed_detections[~matched_gts] = True
 
-    precision, recall, class_stats = compute_precision_recall(class_stats)
+    elif len(pred_bboxes) == 0 and len(gt_bboxes) > 0:
+        # No predictions, all ground truth are missed
+        missed_detections[:] = True
+    elif len(pred_bboxes) > 0 and len(gt_bboxes) == 0:
+        # No ground truth, all predictions are false positives
+        false_positives[:] = True
 
-    return precision, recall, class_stats
+    # Return sum as a dict
+    return {
+        "tp": true_positives.sum().item(),
+        "fp": false_positives.sum().item(),
+        "fn": missed_detections.sum().item(),
+    }
+
+
+# def compute_confusion_matrix_elements(
+#     targets: list, detections: list, ious_threshold: float
+# ) -> tuple[float, float, dict]:
+#     """Compute detection metrics.
+
+#     Compute true positive, false positive, and false negative values.
+
+#     Parameters
+#     ----------
+#     targets : list
+#         Ground truth annotations.
+#     detections : list
+#         Detected objects.
+#     ious_threshold  : float
+#         The threshold value for the intersection-over-union (IOU).
+#         Only detections whose IOU relative to the ground truth is above the
+#         threshold are true positive candidates.
+#     class_stats : dict
+#         Statistics or information about different classes.
+
+#     Returns
+#     -------
+#     Tuple[float, float]
+#         precision and recall
+
+#     """
+#     class_stats = {"crab": {"tp": 0, "fp": 0, "fn": 0}}
+#     for target, detection in zip(targets, detections):
+#         gt_boxes = target["boxes"]
+#         pred_boxes = detection["boxes"]
+#         pred_labels = detection["labels"]
+
+#         ious = torchvision.ops.box_iou(pred_boxes, gt_boxes)
+
+#         max_ious, gt_idx_match = ious.max(dim=1)
+
+#         # Identify true positives, false positives, and false negatives
+#         for idx, iou in enumerate(max_ious):
+#             if iou.item() > ious_threshold:
+#                 pred_label = pred_labels[idx].item()
+#                 true_label = target["labels"][gt_idx_match[idx]].item()
+
+#                 if pred_label == true_label:
+#                     class_stats["crab"]["tp"] += 1
+#                 else:
+#                     class_stats["crab"]["fp"] += 1
+#             else:
+#                 class_stats["crab"]["fp"] += 1
+
+#         for gt_box_index, _ in enumerate(gt_boxes):
+#             found_match = False
+#             for idx, iou in enumerate(max_ious):
+#                 if (
+#                     iou.item() > ious_threshold
+#                     # we need this condition because the max overlap
+#                     # is not necessarily above the threshold
+#                     and gt_idx_match[idx] == gt_box_index
+#                     # the matching index is the index of the GT
+#                     # box with which it has max overlap
+#                 ):
+#                     # There's an IoU match and the matched index corresponds
+#                     # to the current target_box_index
+#                     found_match = True
+#                     break  # Exit loop, a match was found
+
+#             if not found_match:
+#                 # print(found_match)
+#                 class_stats["crab"]["fn"] += (
+#                     1  # Ground truth box has no corresponding detection
+#                 )
+
+#     precision, recall, class_stats = compute_precision_recall(class_stats)
+
+#     return precision, recall, class_stats
 
 
 def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
