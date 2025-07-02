@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-import scipy
 import torch
-import torchvision
 import yaml  # type: ignore
+from scipy.optimize import linear_sum_assignment
+from torchvision import ops
 
 from crabs.detector.utils.detection import (
     prep_annotation_files,
@@ -99,27 +99,24 @@ def evaluate_detections_hungarian(
     missed_detections = np.zeros(len(gt_bboxes), dtype=bool)  # unmatched gts
 
     if len(pred_bboxes) > 0 and len(gt_bboxes) > 0:
-        # Convert to tensors for batch IoU computation
-        pred_tensor = torch.tensor(pred_bboxes[:, :4], dtype=torch.float32)
-        gt_tensor = torch.tensor(gt_bboxes, dtype=torch.float32)
-
         # Compute IoU matrix (pred_bboxes x gt_bboxes)
         iou_matrix = (
-            torchvision.ops.box_iou(pred_tensor, gt_tensor).cpu().numpy()
+            ops.box_iou(
+                torch.tensor(pred_bboxes, dtype=torch.float32),
+                torch.tensor(gt_bboxes, dtype=torch.float32),
+            )
+            .cpu()
+            .numpy()
         )
 
-        # Apply IoU threshold: set IoU below threshold to 0 (no match)
-        iou_matrix[iou_matrix < iou_threshold] = 0
-
         # Use Hungarian algorithm to find optimal assignment
-        pred_indices, gt_indices = scipy.optimize.linear_sum_assignment(
+        pred_indices, gt_indices = linear_sum_assignment(
             iou_matrix, maximize=True
         )
 
         # Mark true positives and false positives based on optimal assignment
         for pred_idx, gt_idx in zip(pred_indices, gt_indices, strict=True):
-            if iou_matrix[pred_idx, gt_idx] > 0:  # IoU above threshold
-                true_positives[pred_idx] = True
+            if iou_matrix[pred_idx, gt_idx] > iou_threshold:
                 matched_gts[gt_idx] = True
             else:
                 false_positives[pred_idx] = True
