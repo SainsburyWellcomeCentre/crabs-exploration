@@ -103,12 +103,13 @@ def evaluate_detections_hungarian(
         iou_matrix = ops.box_iou(pred_bboxes, gt_bboxes).cpu().numpy()
 
         # Use Hungarian algorithm to find optimal assignment
+        # note: pred_indices.shape == gt_indices.shape (both are 1D arrays)
         pred_indices, gt_indices = linear_sum_assignment(
             iou_matrix, maximize=True
         )
 
         # Mark true positives and false positives based on optimal assignment
-        for pred_idx, gt_idx in zip(pred_indices, gt_indices, strict=True):
+        for pred_idx, gt_idx in zip(pred_indices, gt_indices):
             if iou_matrix[pred_idx, gt_idx] > iou_threshold:
                 true_positives[pred_idx] = True
                 matched_gts[gt_idx] = True
