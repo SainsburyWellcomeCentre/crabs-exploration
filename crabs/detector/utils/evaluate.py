@@ -100,14 +100,7 @@ def evaluate_detections_hungarian(
 
     if len(pred_bboxes) > 0 and len(gt_bboxes) > 0:
         # Compute IoU matrix (pred_bboxes x gt_bboxes)
-        iou_matrix = (
-            ops.box_iou(
-                torch.tensor(pred_bboxes, dtype=torch.float32),
-                torch.tensor(gt_bboxes, dtype=torch.float32),
-            )
-            .cpu()
-            .numpy()
-        )
+        iou_matrix = ops.box_iou(pred_bboxes, gt_bboxes).cpu().numpy()
 
         # Use Hungarian algorithm to find optimal assignment
         pred_indices, gt_indices = linear_sum_assignment(
