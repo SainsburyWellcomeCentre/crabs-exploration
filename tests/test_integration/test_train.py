@@ -1,3 +1,4 @@
+import multiprocessing
 import subprocess
 from pathlib import Path
 
@@ -6,6 +7,12 @@ import numpy as np
 import pooch
 import pytest
 import yaml
+
+# Set the start method to fork to avoid issues with macOS-13 CI tests
+# failing with "RuntimeError: Please call `iter(combined_loader)` first"
+# when num_workers > 0, Python 3.10 and macOS-13.
+# https://github.com/pytorch/pytorch/issues/46648
+multiprocessing.set_start_method("fork")
 
 
 @pytest.fixture()
