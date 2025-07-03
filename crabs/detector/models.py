@@ -227,13 +227,6 @@ class FasterRCNN(LightningModule):
     ) -> dict[str, Union[float, int]]:
         """Define the validation step for the model."""
         outputs = self.val_test_step(batch)
-
-        # log to screen
-        logging.info(
-            f"batch {batch_idx} Precision: {outputs['precision']:.4f},"
-            f"batch {batch_idx} Recall: {outputs['recall']:.4f}"
-        )
-
         self.accumulate_epoch_metrics(outputs, "validation")
         return outputs
 
