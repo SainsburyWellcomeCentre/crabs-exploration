@@ -10,7 +10,9 @@ from torchvision.models.detection import (
     fasterrcnn_resnet50_fpn_v2,
 )
 
-from crabs.detector.utils.evaluate import compute_confusion_matrix_elements
+from crabs.detector.utils.evaluate import (
+    compute_precision_recall,
+)
 
 
 class FasterRCNN(LightningModule):
@@ -214,9 +216,10 @@ class FasterRCNN(LightningModule):
         images, targets = batch
         predictions = self.model(images)
 
-        precision, recall, _ = compute_confusion_matrix_elements(
-            targets, predictions, self.config["iou_threshold"]
+        precision, recall = compute_precision_recall(
+            predictions, targets, self.config["iou_threshold"]
         )
+
         return {"precision": precision, "recall": recall}
 
     def validation_step(
