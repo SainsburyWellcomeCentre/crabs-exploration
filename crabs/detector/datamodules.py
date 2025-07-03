@@ -121,6 +121,11 @@ class CrabsDataModule(LightningDataModule):
         """
         test_transforms = [
             transforms.ToImage(),
+            # transforms.ClampBoundingBoxes(),
+            transforms.SanitizeBoundingBoxes(
+                min_size=self.config["clamp_and_sanitize_bboxes"]["min_size"],
+                labels_getter=None,  # only bboxes are sanitized
+            ),
             transforms.ToDtype(torch.float32, scale=True),
         ]
         return transforms.Compose(test_transforms)
