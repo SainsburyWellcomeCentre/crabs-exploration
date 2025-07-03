@@ -13,12 +13,14 @@ def input_data_paths(pooch_registry: pooch.Pooch, tmp_path: Path):
 
     The data is fetched from the pooch registry.
     """
-    # Create a directory with black small frames under tmp_path
-    black_frames_dir = tmp_path / "black_frames"
+    # Create a sample dataset directory with black small frames at tmp_path
+    # (note the package assumes the frames are in a subdirectory
+    # called "frames")
+    black_frames_dir = tmp_path / "frames"
     black_frames_dir.mkdir(parents=True, exist_ok=False)
     for i in range(100):
         black_frame = np.zeros((10, 10, 3), dtype=np.uint8)
-        cv2.imwrite(black_frames_dir / f"{i:08d}.jpg", black_frame)
+        cv2.imwrite(str(black_frames_dir / f"{i:08d}.png"), black_frame)
 
     # Get an annotation file from pooch for 100 frames
     annotation_file = pooch_registry.fetch(
@@ -26,12 +28,12 @@ def input_data_paths(pooch_registry: pooch.Pooch, tmp_path: Path):
     )
 
     return {
-        "dataset_dir": black_frames_dir,
+        "dataset_dir": black_frames_dir.parent,
         "annotation_file": annotation_file,
         "seed_n": "42",
         "accelerator": "cpu",
         "experiment_name": "test_train_detector",
-        "limit_train_batches": "0.01",
+        "limit_train_batches": "0.1",
     }
 
 
@@ -45,7 +47,7 @@ def test_train_detector(input_data_paths: dict, tmp_path: Path):
         f"--accelerator={input_data_paths['accelerator']}",
         f"--experiment_name={input_data_paths['experiment_name']}",
         "--log_data_augmentation",
-        "--fast_dev_run",
+        "--fast_dev_run",  # suppresses logging and checkpointing
         f"--limit_train_batches={input_data_paths['limit_train_batches']}",
     ]
 
@@ -54,6 +56,8 @@ def test_train_detector(input_data_paths: dict, tmp_path: Path):
         main_command,
         check=True,
         cwd=tmp_path,
+        text=True,
+        capture_output=True,
         # set cwd to Pytest's temporary directory
         # so the output is saved there
     )
@@ -62,7 +66,10 @@ def test_train_detector(input_data_paths: dict, tmp_path: Path):
     assert completed_process.returncode == 0
 
     # check mlflow folder is created
+    assert (tmp_path / "ml-runs").exists()
 
-    # check data augmentation is logged
-
-    # check model is trained?
+    # check the training stopped early
+    assert (
+        "`Trainer.fit` stopped: `max_steps=1` reached."
+        in completed_process.stderr
+    )
