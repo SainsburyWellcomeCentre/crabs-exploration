@@ -117,6 +117,7 @@ def evaluate_detections_hungarian(
         # Mark true positives and false positives based on optimal assignment
         for pred_idx, gt_idx in zip(pred_indices, gt_indices, strict=True):
             if iou_matrix[pred_idx, gt_idx] > iou_threshold:
+                true_positives[pred_idx] = True
                 matched_gts[gt_idx] = True
             else:
                 false_positives[pred_idx] = True

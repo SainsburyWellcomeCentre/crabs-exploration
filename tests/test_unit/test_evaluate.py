@@ -31,15 +31,18 @@ def test_evaluate_detections_hungarian():
             "labels": torch.tensor([1, 1]),
             "scores": torch.tensor([0.5083, 0.4805]),
         }
-    ]
+    ]  # IOU of box_2 and box_2 + delta_box is 0.2478
 
     results = evaluate_detections_hungarian(
         detections_dicts_batch, gt_dicts_batch, ious_threshold
     )
 
-    assert results["tp"] == 1
-    assert results["fp"] == 1
-    assert results["fn"] == 2
+    assert results == {"tp": 1, "fp": 1, "fn": 2}
+    assert (
+        results["tp"] + results["fp"]
+        == detections_dicts_batch[0]["boxes"].shape[0]
+    )
+    assert results["tp"] + results["fn"] == gt_dicts_batch[0]["boxes"].shape[0]
 
 
 @pytest.mark.parametrize(
