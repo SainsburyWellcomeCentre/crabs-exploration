@@ -10,7 +10,7 @@
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-4%3
+#SBATCH --array=0-17%5
 
 
 # NOTE on SBATCH command for array jobs
@@ -36,7 +36,7 @@ set -o pipefail  # make the pipe fail if any part of it fails
 
 # List of models to evaluate: define MLFLOW_CKPTS_FOLDER and CKPT_FILENAME
 
-# Example 1: to evaluate all epoch-checkpoints of an MLflow
+# Example 1: to evaluate all epoch-checkpoints of an MLflow run
 # MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/7a6d5551ca974d578a293928d6385d5a/checkpoints
 # CKPT_FILENAME=*.ckpt
 
@@ -48,12 +48,45 @@ set -o pipefail  # make the pipe fail if any part of it fails
 # MLFLOW_CKPTS_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/*/checkpoints
 # CKPT_FILENAME=checkpoint-epoch=*.ckpt
 
+# Example 4: evaluate the last checkpoint of a subset of runs within the same MLflow experiment ID
+# only a subset of runs within the same MLflow experiment ID
+# SUBDIRS=(
+# "4314a56a1d694470919d0e5d3fb28011"
+# "bddcbc789a5e4d0b87831f0ced69c2c6"
+# "daa05ded0ea047388c9134bf044061c5"
+# "0caf492170f84307b36454a6c1ca6548"
+# "0cf4cbb6f6d1425589fcf5237934970b"
+# "fdcf88fcbcc84fbeb94b45ca6b6f8914"
+# "9a2ad4384a4744dd98eb2ea98309d78b"
+# "73228cd3af1541d3b577f50b92d128b0"
+# "4acc37206b1e4f679d535c837bee2c2f"
+# "db6488b2b8e54a189f41f30615e33ed8"
+# "7b84327d61124b718dfd73e94bbfffa0"
+# "75583ec227e3444ab692b99c64795325"
+# "9e7ad02420974208a54ef273ba2f8746"
+# "7d72cb88c184457d886deed76e7c4678"
+# "f348d9d196934073bece1b877cbc4d38"
+# "496364e602f84bba8f324366d714f6ba"
+# "879d2f77e2b24adcb06b87d2fede6a04"
+# "c9c03407befd42c0b97a0f923942aabb"
+# )
+# MLFLOW_CKPTS_FOLDER="/ceph/zoo/users/sminano/ml-runs-all/ml-runs/617393114420881798/"
+# CKPT_FILENAME=last.ckpt
+
+# # Find files and store in array LIST_CKPT_FILES
+# mapfile -t LIST_CKPT_FILES < <(
+#     for dir in "${SUBDIRS[@]}"; do
+#         find "$MLFLOW_CKPTS_FOLDER$dir/checkpoints" -name "$CKPT_FILENAME" -type f
+#     done
+# )
+
 # NOTE: if any of the paths have spaces, put the path in quotes, but stopping and re-starting at the wildcard.
 # e.g.: "/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/"*"/checkpoints"
 # e.g.: "checkpoint-epoch="*".ckpt"
 
-MLFLOW_CKPTS_FOLDER="/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/7a6d5551ca974d578a293928d6385d5a/checkpoints"
-CKPT_FILENAME="checkpoint-epoch="*".ckpt"
+# Define models to evaluate (example 2)
+MLFLOW_CKPTS_FOLDER="/ceph/zoo/users/sminano/ml-runs-all/ml-runs/617393114420881798/"*"/checkpoints"
+CKPT_FILENAME=last.ckpt
 mapfile -t LIST_CKPT_FILES < <(find $MLFLOW_CKPTS_FOLDER -type f -name $CKPT_FILENAME)
 
 # model to evaluate in this job
@@ -68,6 +101,9 @@ MLFLOW_FOLDER=/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch
 
 # version of the codebase
 GIT_BRANCH=main
+
+# dataset and eval config
+EVAL_CONFIG_FILE=/ceph/zoo/users/sminano/cluster_eval_config.yaml
 
 # --------------------
 # Check inputs
@@ -136,9 +172,9 @@ evaluate-detector  \
  --trained_model_path $CKPT_PATH \
  --accelerator gpu \
  --mlflow_folder $MLFLOW_FOLDER \
+ --config_file $EVAL_CONFIG_FILE \
  $USE_TEST_SET_FLAG
 echo "-----"
-
 
 # -----------------------------
 # Delete virtual environment
