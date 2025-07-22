@@ -4,7 +4,7 @@ import argparse
 import ast
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -19,7 +19,9 @@ from crabs.detector.utils.detection import (
 
 
 def compute_precision_recall(
-    pred_dicts_batch: list, gt_dicts_batch: list, iou_threshold: float | list
+    pred_dicts_batch: list,
+    gt_dicts_batch: list,
+    iou_threshold: Union[float, list],
 ) -> tuple[float, float]:
     """Compute precision and recall.
 
@@ -82,7 +84,9 @@ def compute_precision_recall(
 
 
 def evaluate_detections_hungarian(
-    pred_dicts_batch: list, gt_dicts_batch: list, iou_threshold: float | list
+    pred_dicts_batch: list,
+    gt_dicts_batch: list,
+    iou_threshold: Union[float, list],
 ) -> dict:
     """Evaluate detection performance using Hungarian algorithm for matching.
 
