@@ -19,7 +19,7 @@ from crabs.detector.utils.detection import (
 
 
 def compute_precision_recall(
-    pred_dicts_batch: list, gt_dicts_batch: list, iou_threshold: float
+    pred_dicts_batch: list, gt_dicts_batch: list, iou_threshold: float | list
 ) -> tuple[float, float]:
     """Compute precision and recall.
 
@@ -31,7 +31,7 @@ def compute_precision_recall(
     gt_dicts_batch : list
         A list of ground truth dictionaries for each element in the batch
         with keys 'image_id', 'boxes', 'labels'.
-    iou_threshold : float
+    iou_threshold : float | list
         IoU threshold for considering a detection as true positive
 
     Returns
@@ -40,27 +40,49 @@ def compute_precision_recall(
         precision and recall
 
     """
-    # evaluate detections using hungarian algorithm
-    eval_results = evaluate_detections_hungarian(
-        pred_dicts_batch, gt_dicts_batch, iou_threshold
-    )
+    # get list of IoU thresholds
+    if isinstance(iou_threshold, list):
+        list_iou_th = iou_threshold
+    else:
+        list_iou_th = [iou_threshold]
 
-    # compute precision and recall with division by zero handling
-    total_detections = eval_results["tp"] + eval_results["fp"]
-    total_gts = eval_results["tp"] + eval_results["fn"]
+    precision_per_iou_th = []
+    recall_per_iou_th = []
+    for iou_th in list_iou_th:
+        # compute true positives, false positives, and missed detections
+        # in the batch using hungarian algorithm
+        eval_results = evaluate_detections_hungarian(
+            pred_dicts_batch, gt_dicts_batch, iou_th
+        )
 
-    precision = (
-        (eval_results["tp"] / total_detections)
-        if total_detections > 0
-        else 0.0
-    )
-    recall = (eval_results["tp"] / total_gts) if total_gts > 0 else 0.0
+        # compute precision and recall in the batch
+        total_detections = eval_results["tp"] + eval_results["fp"]
+        total_gts = eval_results["tp"] + eval_results["fn"]
+
+        precision = (
+            (eval_results["tp"] / total_detections)
+            if total_detections > 0
+            else 0.0  # handle division by zero
+        )
+        recall = (
+            (eval_results["tp"] / total_gts)
+            if total_gts > 0
+            else 0.0  # handle division by zero
+        )
+
+        # append results for this IoU threshold
+        precision_per_iou_th.append(precision)
+        recall_per_iou_th.append(recall)
+
+    # compute average across IoU thresholds
+    precision = np.mean(precision_per_iou_th)
+    recall = np.mean(recall_per_iou_th)
 
     return precision, recall
 
 
 def evaluate_detections_hungarian(
-    pred_dicts_batch: list, gt_dicts_batch: list, iou_threshold: float
+    pred_dicts_batch: list, gt_dicts_batch: list, iou_threshold: float | list
 ) -> dict:
     """Evaluate detection performance using Hungarian algorithm for matching.
 
@@ -74,16 +96,16 @@ def evaluate_detections_hungarian(
         A list of ground truth dictionaries for each element in the batch
         with keys 'image_id', 'boxes', 'labels'. Note that only the
         boxes are used for evaluation, not the labels or the image_id.
-    iou_threshold : float
+    iou_threshold : float | list
         IoU threshold for considering a detection as true positive
 
     Returns
     -------
     dict
         Dictionary with keys "tp", "fp", and "fn"
-        - tp: number of true positives
-        - fp: number of false positives
-        - fn: number of missed detections (false negatives)
+        - tp: number of true positives in the batch
+        - fp: number of false positives in the batch
+        - fn: number of missed detections (false negatives) in the batch
 
     """
     # Concatenate detections and ground truth boxes across the batch
