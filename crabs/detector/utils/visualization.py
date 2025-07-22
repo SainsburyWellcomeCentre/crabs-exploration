@@ -110,7 +110,7 @@ def draw_detections(
         image_with_boxes = image.copy()
 
         # plot ground truth boxes
-        target_boxes = annotation["boxes"].detach().cpu().numpy()
+        target_boxes = annotation["boxes"].cpu()
 
         for i in range(target_boxes.shape[0]):
             draw_bbox(
@@ -122,24 +122,21 @@ def draw_detections(
 
         # plot predicted boxes
         if prediction:
-            pred_score = prediction["scores"].cpu().numpy()
-            pred_boxes = prediction["boxes"].cpu().numpy()
-            pred_class_str = [
-                coco_list[i]
-                for i in list(prediction["labels"].detach().cpu().numpy())
-            ]
+            # get data
+            pred_score = prediction["scores"].cpu()
+            pred_boxes = prediction["boxes"].cpu()
+            pred_class_str = [coco_list[i] for i in prediction["labels"]]
 
             # -------------
             # Compute IoU matrix (pred_bboxes x gt_bboxes)
             if text_label_type == "iou":
                 iou_matrix = (
-                    ops.box_iou(prediction["boxes"], annotation["boxes"])
-                    .cpu()
-                    .numpy()
+                    ops.box_iou(pred_boxes, target_boxes).cpu().numpy()
                 )
                 iou_values = np.max(iou_matrix, axis=1)
             # ------
 
+            # plot predicted boxes
             for i in range(pred_boxes.shape[0]):
                 if pred_score[i] > (score_threshold or 0):
                     # determine text label
@@ -168,6 +165,7 @@ def save_images_with_boxes(
     trained_model: torch.nn.Module,
     output_dir: str,
     score_threshold: float,
+    text_label_type: Optional[str] = "score",
 ) -> None:
     """Save images with bounding boxes drawn around detected objects.
 
@@ -182,6 +180,9 @@ def save_images_with_boxes(
         The directory name will be added a timestamp.
     score_threshold : float
         Threshold for object detection.
+    text_label_type : str, optional
+        Whether to display the score ('score') or the IoU ('iou') alongside the
+        bounding box. Default is 'score'.
 
     Returns
     -------
@@ -209,7 +210,7 @@ def save_images_with_boxes(
             detections = trained_model(imgs)
 
             imgs_with_boxes = draw_detections(
-                imgs, annotations, detections, score_threshold
+                imgs, annotations, detections, score_threshold, text_label_type
             )
 
             for img_id, img_with_boxes in enumerate(imgs_with_boxes):
