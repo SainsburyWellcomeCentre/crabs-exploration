@@ -8,7 +8,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torchvision import tv_tensors
+from torchvision import ops, tv_tensors
 from torchvision.transforms.v2 import functional as F
 from torchvision.utils import draw_bounding_boxes, draw_segmentation_masks
 
@@ -75,6 +75,7 @@ def draw_detections(
     annotations: dict,
     detections: Optional[dict[Any, Any]] = None,
     score_threshold: Optional[float] = None,
+    text_label_type: Optional[str] = "score",
 ) -> list[np.ndarray]:
     """Draw the results based on the detection.
 
@@ -88,6 +89,9 @@ def draw_detections(
         Detected objects.
     score_threshold : float, optional
         The confidence threshold for detection scores.
+    text_label_type : str, optional
+        Whether to display the score or the IoU alongside the bounding box.
+        Default is 'score'.
 
     Returns
     -------
@@ -105,6 +109,7 @@ def draw_detections(
         image = (image * 255).astype("uint8")
         image_with_boxes = image.copy()
 
+        # plot ground truth boxes
         target_boxes = [
             [(i[0], i[1]), (i[2], i[3])]
             for i in list(label["boxes"].detach().cpu().numpy())
@@ -117,10 +122,10 @@ def draw_detections(
                 ((target_boxes[i][1])[0], (target_boxes[i][1])[1]),
                 colour=(0, 255, 0),  # RGB format
             )
+
+        # plot predicted boxes
         if prediction:
             pred_score = list(prediction["scores"].detach().cpu().numpy())
-            pred_t = [pred_score.index(x) for x in pred_score][-1]
-
             pred_class = [
                 coco_list[i]
                 for i in list(prediction["labels"].detach().cpu().numpy())
@@ -133,11 +138,42 @@ def draw_detections(
                 )
             ]
 
-            pred_boxes = pred_boxes[: pred_t + 1]
-            pred_class = pred_class[: pred_t + 1]
+            # -------------
+            # Compute IoU matrix (pred_bboxes x gt_bboxes)
+            iou_matrix = (
+                ops.box_iou(
+                    torch.tensor(
+                        np.array(
+                            [
+                                np.array(pred).reshape(1, -1)
+                                for pred in pred_boxes
+                            ]
+                        ).squeeze()
+                    ),
+                    torch.tensor(
+                        np.array(
+                            [
+                                np.array(pred).reshape(1, -1)
+                                for pred in target_boxes
+                            ]
+                        ).squeeze()
+                    ),
+                )
+                .cpu()
+                .numpy()
+            )
+            iou_values = np.max(iou_matrix, axis=1)
+            # ------
+
             for i in range(len(pred_boxes)):
                 if pred_score[i] > (score_threshold or 0):
-                    label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
+                    # determine text label
+                    if text_label_type == "score":
+                        label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
+                    elif text_label_type == "iou":
+                        label_text = f"IOU: {iou_values[i]:.2f}"
+
+                    # draw bounding box
                     draw_bbox(
                         image_with_boxes,
                         (
