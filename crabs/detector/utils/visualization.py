@@ -102,7 +102,7 @@ def draw_detections(
     coco_list = COCO_INSTANCE_CATEGORY_NAMES
 
     list_images_with_boxes = []
-    for image, label, prediction in zip(
+    for image, annotation, prediction in zip(
         imgs, annotations, detections or [None] * len(imgs)
     ):
         image = image.cpu().numpy().transpose(1, 2, 0)
@@ -110,80 +110,51 @@ def draw_detections(
         image_with_boxes = image.copy()
 
         # plot ground truth boxes
-        target_boxes = [
-            [(i[0], i[1]), (i[2], i[3])]
-            for i in list(label["boxes"].detach().cpu().numpy())
-        ]
+        target_boxes = annotation["boxes"].detach().cpu().numpy()
 
-        for i in range(len(target_boxes)):
+        for i in range(target_boxes.shape[0]):
             draw_bbox(
                 image_with_boxes,
-                ((target_boxes[i][0])[0], (target_boxes[i][0])[1]),
-                ((target_boxes[i][1])[0], (target_boxes[i][1])[1]),
+                (target_boxes[i, 0], target_boxes[i, 1]),
+                (target_boxes[i, 2], target_boxes[i, 3]),
                 colour=(0, 255, 0),  # RGB format
             )
 
         # plot predicted boxes
         if prediction:
-            pred_score = list(prediction["scores"].detach().cpu().numpy())
-            pred_class = [
+            pred_score = prediction["scores"].cpu().numpy()
+            pred_boxes = prediction["boxes"].cpu().numpy()
+            pred_class_str = [
                 coco_list[i]
                 for i in list(prediction["labels"].detach().cpu().numpy())
             ]
 
-            pred_boxes = [
-                [(i[0], i[1]), (i[2], i[3])]
-                for i in list(
-                    prediction["boxes"].detach().cpu().detach().numpy()
-                )
-            ]
-
             # -------------
             # Compute IoU matrix (pred_bboxes x gt_bboxes)
-            iou_matrix = (
-                ops.box_iou(
-                    torch.tensor(
-                        np.array(
-                            [
-                                np.array(pred).reshape(1, -1)
-                                for pred in pred_boxes
-                            ]
-                        ).squeeze()
-                    ),
-                    torch.tensor(
-                        np.array(
-                            [
-                                np.array(pred).reshape(1, -1)
-                                for pred in target_boxes
-                            ]
-                        ).squeeze()
-                    ),
+            if text_label_type == "iou":
+                iou_matrix = (
+                    ops.box_iou(prediction["boxes"], annotation["boxes"])
+                    .cpu()
+                    .numpy()
                 )
-                .cpu()
-                .numpy()
-            )
-            iou_values = np.max(iou_matrix, axis=1)
+                iou_values = np.max(iou_matrix, axis=1)
             # ------
 
-            for i in range(len(pred_boxes)):
+            for i in range(pred_boxes.shape[0]):
                 if pred_score[i] > (score_threshold or 0):
                     # determine text label
                     if text_label_type == "score":
-                        label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
+                        label_text = (
+                            f"{pred_class_str[i]}: {pred_score[i]:.2f}"
+                        )
                     elif text_label_type == "iou":
                         label_text = f"IOU: {iou_values[i]:.2f}"
 
                     # draw bounding box
                     draw_bbox(
                         image_with_boxes,
-                        (
-                            (pred_boxes[i][0])[0],
-                            (pred_boxes[i][0])[1],
-                        ),
-                        (
-                            (pred_boxes[i][1])[0],
-                            (pred_boxes[i][1])[1],
-                        ),
+                        (pred_boxes[i, 0], pred_boxes[i, 1]),
+                        (pred_boxes[i, 2], pred_boxes[i, 3]),
                         (255, 0, 0),  # RGB format
                         label_text,
                     )
