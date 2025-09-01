@@ -8,7 +8,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from torchvision import tv_tensors
+from torchvision import ops, tv_tensors
 from torchvision.transforms.v2 import functional as F
 from torchvision.utils import draw_bounding_boxes, draw_segmentation_masks
 
@@ -75,6 +75,7 @@ def draw_detections(
     annotations: dict,
     detections: Optional[dict[Any, Any]] = None,
     score_threshold: Optional[float] = None,
+    text_label_type: Optional[str] = "score",
 ) -> list[np.ndarray]:
     """Draw the results based on the detection.
 
@@ -88,6 +89,9 @@ def draw_detections(
         Detected objects.
     score_threshold : float, optional
         The confidence threshold for detection scores.
+    text_label_type : str, optional
+        Whether to display the score or the IoU alongside the bounding box.
+        Default is 'score'.
 
     Returns
     -------
@@ -98,56 +102,56 @@ def draw_detections(
     coco_list = COCO_INSTANCE_CATEGORY_NAMES
 
     list_images_with_boxes = []
-    for image, label, prediction in zip(
+    for image, annotation, prediction in zip(
         imgs, annotations, detections or [None] * len(imgs)
     ):
         image = image.cpu().numpy().transpose(1, 2, 0)
         image = (image * 255).astype("uint8")
         image_with_boxes = image.copy()
 
-        target_boxes = [
-            [(i[0], i[1]), (i[2], i[3])]
-            for i in list(label["boxes"].detach().cpu().numpy())
-        ]
+        # plot ground truth boxes
+        target_boxes = annotation["boxes"].cpu()
 
-        for i in range(len(target_boxes)):
+        for i in range(target_boxes.shape[0]):
             draw_bbox(
                 image_with_boxes,
-                ((target_boxes[i][0])[0], (target_boxes[i][0])[1]),
-                ((target_boxes[i][1])[0], (target_boxes[i][1])[1]),
+                (target_boxes[i, 0], target_boxes[i, 1]),
+                (target_boxes[i, 2], target_boxes[i, 3]),
                 colour=(0, 255, 0),  # RGB format
             )
+
+        # plot predicted boxes
         if prediction:
-            pred_score = list(prediction["scores"].detach().cpu().numpy())
-            pred_t = [pred_score.index(x) for x in pred_score][-1]
+            # get data
+            pred_score = prediction["scores"].cpu()
+            pred_boxes = prediction["boxes"].cpu()
+            pred_class_str = [coco_list[i] for i in prediction["labels"]]
 
-            pred_class = [
-                coco_list[i]
-                for i in list(prediction["labels"].detach().cpu().numpy())
-            ]
-
-            pred_boxes = [
-                [(i[0], i[1]), (i[2], i[3])]
-                for i in list(
-                    prediction["boxes"].detach().cpu().detach().numpy()
+            # -------------
+            # Compute IoU matrix (pred_bboxes x gt_bboxes)
+            if text_label_type == "iou":
+                iou_matrix = (
+                    ops.box_iou(pred_boxes, target_boxes).cpu().numpy()
                 )
-            ]
+                iou_values = np.max(iou_matrix, axis=1)
+            # ------
 
-            pred_boxes = pred_boxes[: pred_t + 1]
-            pred_class = pred_class[: pred_t + 1]
-            for i in range(len(pred_boxes)):
+            # plot predicted boxes
+            for i in range(pred_boxes.shape[0]):
                 if pred_score[i] > (score_threshold or 0):
-                    label_text = f"{pred_class[i]}: {pred_score[i]:.2f}"
+                    # determine text label
+                    if text_label_type == "score":
+                        label_text = (
+                            f"{pred_class_str[i]}: {pred_score[i]:.2f}"
+                        )
+                    elif text_label_type == "iou":
+                        label_text = f"IOU: {iou_values[i]:.2f}"
+
+                    # draw bounding box
                     draw_bbox(
                         image_with_boxes,
-                        (
-                            (pred_boxes[i][0])[0],
-                            (pred_boxes[i][0])[1],
-                        ),
-                        (
-                            (pred_boxes[i][1])[0],
-                            (pred_boxes[i][1])[1],
-                        ),
+                        (pred_boxes[i, 0], pred_boxes[i, 1]),
+                        (pred_boxes[i, 2], pred_boxes[i, 3]),
                         (255, 0, 0),  # RGB format
                         label_text,
                     )
@@ -161,6 +165,7 @@ def save_images_with_boxes(
     trained_model: torch.nn.Module,
     output_dir: str,
     score_threshold: float,
+    text_label_type: Optional[str] = "score",
 ) -> None:
     """Save images with bounding boxes drawn around detected objects.
 
@@ -175,6 +180,9 @@ def save_images_with_boxes(
         The directory name will be added a timestamp.
     score_threshold : float
         Threshold for object detection.
+    text_label_type : str, optional
+        Whether to display the score ('score') or the IoU ('iou') alongside the
+        bounding box. Default is 'score'.
 
     Returns
     -------
@@ -202,7 +210,7 @@ def save_images_with_boxes(
             detections = trained_model(imgs)
 
             imgs_with_boxes = draw_detections(
-                imgs, annotations, detections, score_threshold
+                imgs, annotations, detections, score_threshold, text_label_type
             )
 
             for img_id, img_with_boxes in enumerate(imgs_with_boxes):
