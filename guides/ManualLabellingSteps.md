@@ -141,12 +141,13 @@ If we are launching the tool for the first time for a new project:
 - On the left panel, under `Attributes`, select the `Region attributes` tab.
 - In the text field for `attribute name`, write the name of the supercategory
   - We use `animal` to be consistent with the original COCO dataset.
+  - Alternatively, to leave the supercategory empty you can press spacebar and set it to `" "`.
 - Click on the `+` symbol to add `animal` to the list of region attributes.
   - The full list of defined supercategories is shown in the dropdown immediately below the input text field -- in our case it's only one.
 - From the fields that appear after clicking `+`, click on `Type` and select `dropdown`.
   - If you now select a bounding box in the image, a dropdown menu to define its category shows up.
 - In the table below,:
-  - add `0` under `id` - we select `0` but this can be any number that we map to the category `crab`.
+  - add `1` under `id` - we select `1` but this can be any number that we map to the category `crab`. Usually the `category_id = 0` is reserved for the "background" category.
   - add `crab` under `description` - this will set the `category` for the bounding box.
   - select the radio button under `def` - this sets all annotations to be `crabs` by default. If we don't do these none of the annotations will be labelled.
 - To visualise the Annotator Editor for the current frame, press `spacebar`
@@ -220,7 +221,7 @@ Under **annotations**, we have a list of the annotations we have defined. In our
 - image_id: id of the image it is defined on,
 - bbox: the format is [top left x position, top left y position, width, height], in absolute, floating-point coordinates,
 - area: width x height of the bounding box,
-- category_id: id of its category (specified in the categories section),
+- category_id: id of its category (specified in the categories section). Usually the `category_id = 0` is reserved for the "background" category.
 - segmentation: a list of polygon vertices around the object. If only bounding bboxes are defined, it seems from [here](https://www.section.io/engineering-education/understanding-coco-dataset/#segmentation) that these are defined as:
   ```
   [xmin, ymin, xmin, ymin + ymax, xmin + xmax, ymin + ymax, xmin + xmax, ymax].
@@ -230,7 +231,7 @@ Under **annotations**, we have a list of the annotations we have defined. In our
 
 Under **categories**, we have a list of the categories we have defined. Each one will have:
 
-- id: each category id must be unique (among the rest of the categories). Non-negative integers only.
-  - According to the [COCO CameraTrap format](https://github.com/microsoft/CameraTraps/blob/main/data_management/README.md), the category_id = 0 is reserved for the class "empty" (is this true for the general COCO dataset format too?)
+- id: each category id must be unique (among the rest of the categories). Non-negative integers only. Usually the `category_id = 0` is reserved for the "background" category.
+  - According to the [COCO CameraTrap format](https://github.com/microsoft/CameraTraps/blob/main/data_management/README.md), the `category_id = 0` is reserved for the class "empty"
 - supercategory: the supercategory this category belongs to
 - name: a descriptive name for this category.
