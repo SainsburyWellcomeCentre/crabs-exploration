@@ -147,11 +147,30 @@ If we are launching the tool for the first time for a new project:
 - From the fields that appear after clicking `+`, click on `Type` and select `dropdown`.
   - If you now select a bounding box in the image, a dropdown menu to define its category shows up.
 - In the table below,:
-  - add `1` under `id` - we select `1` but this can be any number that we map to the category `crab`. Usually the `category_id = 0` is reserved for the "background" category.
-  - add `crab` under `description` - this will set the `category` for the bounding box.
-  - select the radio button under `def` - this sets all annotations to be `crabs` by default. If we don't do these none of the annotations will be labelled.
+  - Add `1` under `id` - we select `1` but this can be any number that we map to the category `crab`. Usually the `category_id = 0` is reserved for the "background" category.
+  - Add `crab` under `description` - this will set the `category` for the bounding box.
+  - Select the radio button under `def` - this sets all annotations to be `crabs` by default. If we don't do these none of the annotations will be labelled.
 - To visualise the Annotator Editor for the current frame, press `spacebar`
   - The dropdown menu for a bounding box does not show up if annotator editor is visible.
+
+### To define a "File Attribute":
+We don't usually define file attributes in our annotation workflow, the following steps are mainly for reference.
+
+A file attribute is an attribute associated to each image file. This may be useful for example to log the image attributes such as width and height, especially if these values vary across the dataset.
+
+To define a file attribute:
+- On the left panel, under `Attributes`, select the `File attributes` tab.
+- In the text field for `attribute name`, write the name of the attribute (e.g. "width" for logging the image width).
+- Click on the `+` symbol to add the attribute to the list of available file attributes.
+- From the fields that appear after clicking `+`, click on `Type` and select `dropdown`.
+- In the table that appears:
+  - Add all the possible values for the attribute under `id`, one on each row.
+  - If you would like to set one of the values as the default, select the radio button under `def` for that row.
+- To log a file attribute valuefor an image:
+  - Bring up the Annotator Editor for the current image by pressing `spacebar`
+  - Select the `File Annotations` tab
+  - You will see a table where the added file attribute is shown as a column, and the possible values for the attribute are shown as a dropdown menu.
+  - Select the value you want to set for the current image from the dropdown menu.
 
 ### 6. Export the annotations
 
