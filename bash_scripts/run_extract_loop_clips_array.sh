@@ -22,14 +22,11 @@ set -o pipefail
 # ---------------------
 # Define variables
 # ----------------------
-CSV_PATH="/ceph/zoo/users/sminano/crabs-exploration/loop-frames-ffmpeg.csv"
-INPUT_DIR="/ceph/zoo/users/sminano/escape_clips_sample"
+CSV_PATH="/ceph/zoo/users/sminano/CrabsField/crab-loops/loop-frames-ffmpeg.csv"
+INPUT_DIR="/ceph/zoo/users/sminano/crabs_input_videos_sample"  # /ceph/zoo/raw/CrabField/ramalhete_2023
 
 OUTPUT_DIR="/ceph/zoo/users/sminano/crab_loops_clips"
 mkdir -p $OUTPUT_DIR  # create if it doesnt exist
-
-# Python script location
-SCRIPT_PATH="/ceph/zoo/users/sminano/crabs-exploration/scripts/extract_clips.py"
 
 # location of SLURM logs
 LOG_DIR=$OUTPUT_DIR/logs
@@ -38,6 +35,11 @@ mkdir -p $LOG_DIR  # create if it doesnt exist
 # Version of the codebase
 # TODO: point to branch with extract_clips script
 GIT_BRANCH=main
+
+# Python script location
+# TODO: make an entrypoint?
+SCRIPT_PATH="/ceph/zoo/users/sminano/crabs-exploration/scripts/extract_clips.py"
+
 
 # --------------------
 # Check inputs
@@ -94,7 +96,8 @@ python $SCRIPT_PATH \
     --csv_path $CSV_PATH \
     --input_dir $INPUT_DIR \
     --output_dir $OUTPUT_DIR \
-    --array_task_id $SLURM_ARRAY_TASK_ID
+    --array_task_id $SLURM_ARRAY_TASK_ID \
+    --verify_frames
 
 echo "Completed extraction of clip number $SLURM_ARRAY_TASK_ID"
 echo "--------------------------------------------------------"
