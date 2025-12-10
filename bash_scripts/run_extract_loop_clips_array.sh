@@ -34,12 +34,14 @@ mkdir -p $LOG_DIR  # create if it doesnt exist
 
 # Version of the codebase
 # TODO: point to branch with extract_clips script
-GIT_BRANCH=main
+GIT_BRANCH=smg/extract-clips
 
 # Python script location
 # TODO: make an entrypoint?
-SCRIPT_PATH="/ceph/zoo/users/sminano/crabs-exploration/scripts/extract_clips.py"
+# SCRIPT_PATH="/ceph/zoo/users/sminano/crabs-exploration/scripts/extract_clips.py"
 
+# Whether to verify frame count of extracted clips
+VERIFY_FRAMES=true
 
 # --------------------
 # Check inputs
@@ -88,16 +90,25 @@ echo "Git branch: $GIT_BRANCH"
 conda list crabs
 echo "-----"
 
+# ---------------------------------------
+# Set flags based on boolean variables
+# ---------------------------------------
+if [ "$VERIFY_FRAMES" = "true" ]; then
+    VERIFY_FRAMES_FLAG="--verify_frames"
+else
+    VERIFY_FRAMES_FLAG=""
+fi
+
 
 # -------------------------
 # Run extraction script
 # -------------------------
-python $SCRIPT_PATH \
+extract-loops \
     --csv_path $CSV_PATH \
     --input_dir $INPUT_DIR \
     --output_dir $OUTPUT_DIR \
     --array_task_id $SLURM_ARRAY_TASK_ID \
-    --verify_frames
+    $VERIFY_FRAMES_FLAG
 
 echo "Completed extraction of clip number $SLURM_ARRAY_TASK_ID"
 echo "--------------------------------------------------------"
