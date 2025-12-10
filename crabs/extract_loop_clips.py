@@ -28,7 +28,7 @@ def main(args: argparse.Namespace) -> None:
     if args.slurm_array_task_id is not None:
         row = df.iloc[args.slurm_array_task_id]
 
-        print(f"Processing clip {args.slurm_array_task_id}/{len(df)}: {row['loop_clip_name']}")
+        print(f"Processing clip {args.slurm_array_task_id}+1/{len(df)}: {row['loop_clip_name']}")
         extract_clip_and_verify_count(row, args)
 
     # If no slurm_array_task_id is provided, process all rows (for local testing) 
@@ -72,9 +72,12 @@ def extract_clip_and_verify_count(row: pd.Series, args: argparse.Namespace) -> N
         print(f"Expected frame count: {expected_frame_count}")
         print(f"Actual frame count: {actual_frame_count}")
         if frame_count_ok:
-            print(f"Frame count OK for clip {row['loop_clip_name']}")
+            print(f"Frame count OK")
         else:
-            print(f"Frame count MISMATCH for clip {row['loop_clip_name']}")
+            raise RuntimeError(
+                f"Frame count mismatch for clip {row['loop_clip_name']}: "
+                f"expected {expected_frame_count}, got {actual_frame_count}"
+            )
            
 
 def extract_single_clip(row: pd.Series, input_dir: str | Path, output_dir: str | Path) -> None:
@@ -118,6 +121,7 @@ def extract_single_clip(row: pd.Series, input_dir: str | Path, output_dir: str |
     # Prepare ffmpeg command
     ffmpeg_command = [
         "ffmpeg", 
+        "-n", # do not overwrite if output file exists
         "-i", str(input_video_path),
         "-ss", str(row['loop_START_seconds_ffmpeg']),
         "-to", str(row['loop_END_seconds_ffmpeg']),
@@ -133,7 +137,11 @@ def extract_single_clip(row: pd.Series, input_dir: str | Path, output_dir: str |
     print(' '.join(ffmpeg_command))
 
     # run command
-    subprocess.run(ffmpeg_command, check=True)
+    subprocess.run(
+        ffmpeg_command, 
+        check=True, 
+        stdin=subprocess.DEVNULL, # throw an error if ffmpeg tries to prompt for input
+    )
 
 
 def verify_frame_count(input_clip: str | Path, expected_frame_count: int) -> tuple[bool, int]:
@@ -166,6 +174,9 @@ def verify_frame_count(input_clip: str | Path, expected_frame_count: int) -> tup
         "-of", "csv=p=0",  # output as .csv without headers
         str(input_clip)
     ]
+
+    # print command to logs
+    print(' '.join(ffprobe_command))
 
     # Run ffprobe and capture output
     result = subprocess.run(
