@@ -113,6 +113,13 @@ def extract_single_clip(row: pd.Series, input_dir: str | Path, output_dir: str |
     input_video_path = Path(input_dir) / row['video_parent_directory'] / row['video_name']
     output_video_path = Path(output_dir) / row['loop_clip_name']
 
+    # Check if output file already exists
+    if output_video_path.exists():
+        raise FileExistsError(
+            f"Output file already exists: {output_video_path}. "
+            "Please remove it or use a different output path."
+        )
+
     # If input video path does not exist, check if it
     # does with switched-case extension
     if not input_video_path.exists():
