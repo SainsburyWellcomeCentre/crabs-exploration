@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -p cpu # partition (or gpu if needed)
+#SBATCH -p gpu # partition (or gpu if needed)
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 2
 #SBATCH --mem 8G
@@ -9,10 +9,10 @@
 #SBATCH -e slurm_extract.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-234%10  # 235 rows in CSV, max 10 jobs at once
+#SBATCH --array=0-2%10  # 235 rows in csv, max 10 jobs at once
 
 # NOTE: Adjust --array=0-N%M where:
-# - N = number of rows in CSV minus 1 (0-indexed)
+# - N = number of rows in csv minus 1 (0-indexed)
 # - M = max concurrent jobs
 
 set -e
@@ -22,7 +22,7 @@ set -o pipefail
 # ---------------------
 # Define variables
 # ----------------------
-CSV_PATH="/ceph/zoo/users/sminano/CrabsField/crab-loops/loop-frames-ffmpeg.csv"
+CSV_PATH="/ceph/zoo/users/sminano/mini-loop-frames-ffmpeg.csv"
 INPUT_DIR="/ceph/zoo/users/sminano/crabs_input_videos_sample"  # /ceph/zoo/raw/CrabField/ramalhete_2023
 
 OUTPUT_DIR="/ceph/zoo/users/sminano/crab_loops_clips"
@@ -33,14 +33,9 @@ LOG_DIR=$OUTPUT_DIR/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
 
 # Version of the codebase
-# TODO: point to branch with extract_clips script
 GIT_BRANCH=smg/extract-clips
 
-# Python script location
-# TODO: make an entrypoint?
-# SCRIPT_PATH="/ceph/zoo/users/sminano/crabs-exploration/scripts/extract_clips.py"
-
-# Whether to verify frame count of extracted clips
+# Whether to verify frame count after extracting the clips
 VERIFY_FRAMES=true
 
 # --------------------
@@ -104,22 +99,23 @@ fi
 # Run extraction script
 # -------------------------
 extract-loops \
-    --csv_path $CSV_PATH \
+    --csv_filepath $CSV_PATH \
     --input_dir $INPUT_DIR \
     --output_dir $OUTPUT_DIR \
-    --array_task_id $SLURM_ARRAY_TASK_ID \
+    --slurm_array_task_id $SLURM_ARRAY_TASK_ID \
     $VERIFY_FRAMES_FLAG
 
-echo "Completed extraction of clip number $SLURM_ARRAY_TASK_ID"
+echo "Completed extraction of clip with task ID = $SLURM_ARRAY_TASK_ID"
 echo "--------------------------------------------------------"
-
-# ------------------
-# Copy logs to LOG_DIR
-# -------------------
-mv slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.{err,out} /$LOG_DIR
 
 # -----------------------------
 # Cleanup
 # ----------------------------
 conda deactivate
 conda remove --prefix $ENV_PREFIX --all -y
+
+# ------------------
+# Copy logs to LOG_DIR
+# -------------------
+mv slurm_extract.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out} $LOG_DIR
+
