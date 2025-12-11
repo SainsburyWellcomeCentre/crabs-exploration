@@ -28,7 +28,7 @@ def main(args: argparse.Namespace) -> None:
     if args.slurm_array_task_id is not None:
         row = df.iloc[args.slurm_array_task_id]
 
-        print(f"Processing clip {args.slurm_array_task_id}+1/{len(df)}: {row['loop_clip_name']}")
+        print(f"Processing clip {args.slurm_array_task_id+1}/{len(df)}: {row['loop_clip_name']}")
         extract_clip_and_verify_count(row, args)
 
     # If no slurm_array_task_id is provided, process all rows (for local testing) 
@@ -134,7 +134,8 @@ def extract_single_clip(row: pd.Series, input_dir: str | Path, output_dir: str |
     ]
 
     # print command to logs
-    print(' '.join(ffmpeg_command))
+    print('Command:')
+    print('\t' + ' '.join(ffmpeg_command))
 
     # run command
     subprocess.run(
@@ -164,6 +165,8 @@ def verify_frame_count(input_clip: str | Path, expected_frame_count: int) -> tup
     ------
     subprocess.CalledProcessError: if the ffprobe command fails.
     """
+    print("Verifying frame count in output")
+
     # Prepare ffprobe command to count frames
     ffprobe_command = [
         "ffprobe",
@@ -176,7 +179,8 @@ def verify_frame_count(input_clip: str | Path, expected_frame_count: int) -> tup
     ]
 
     # print command to logs
-    print(' '.join(ffprobe_command))
+    print('Command')
+    print('\t' + ' '.join(ffprobe_command))
 
     # Run ffprobe and capture output
     result = subprocess.run(
