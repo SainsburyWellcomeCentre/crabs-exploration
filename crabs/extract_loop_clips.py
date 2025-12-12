@@ -126,12 +126,28 @@ def extract_single_clip(row: pd.Series, input_dir: str | Path, output_dir: str |
         input_video_path = switch_case_in_video_extension(input_video_path)
 
     # Prepare ffmpeg command
+    # output seeking: (slower but reliable)
+    # ffmpeg_command = [
+    #     "ffmpeg", 
+    #     "-n", # do not overwrite if output file exists
+    #     "-i", str(input_video_path),
+    #     "-ss", str(row['loop_START_seconds_ffmpeg']),
+    #     "-to", str(row['loop_END_seconds_ffmpeg']),
+    #     "-c:v", "libx264", 
+    #     "-pix_fmt", "yuv420p",
+    #     "-preset", "superfast", 
+    #     "-crf", "15",
+    #     "-fps_mode", "passthrough",  # to preserve frame count
+    #     str(output_video_path)
+    # ]
+
+    # input seeking
     ffmpeg_command = [
         "ffmpeg", 
         "-n", # do not overwrite if output file exists
+        "-ss", str(row['loop_START_seconds_ffmpeg']), # this will be time=0 for the `-to` argument
         "-i", str(input_video_path),
-        "-ss", str(row['loop_START_seconds_ffmpeg']),
-        "-to", str(row['loop_END_seconds_ffmpeg']),
+        "-to", str(row['loop_END_seconds_ffmpeg'] - row['loop_START_seconds_ffmpeg']), # this is now duration (closed interval?)
         "-c:v", "libx264", 
         "-pix_fmt", "yuv420p",
         "-preset", "superfast", 
