@@ -1,9 +1,12 @@
-import subprocess
-import pandas as pd
-from pathlib import Path
-import os
+"""Extract loop clips from input videos using ffmpeg."""
+
 import argparse
+import subprocess
 import sys
+from pathlib import Path
+
+import pandas as pd
+
 
 def main(args: argparse.Namespace) -> None:
     """Read input csv and extract loop clips defined per row.
@@ -16,9 +19,13 @@ def main(args: argparse.Namespace) -> None:
         Arguments parsed from command line. Should contain:
         - csv_filepath: path to the input csv file.
         - input_dir: path to the input directory containing the input videos.
-        - output_dir: path to the output directory for the extracted loop clips.
-        - slurm_array_task_id: SLURM array task ID (0-indexed). If not provided, the script processes all clips.
-        - verify_frames: whether to verify frame count of the extracted clips matches the value in the csv file.
+        - output_dir: path to the output directory for the extracted loop
+          clips.
+        - slurm_array_task_id: SLURM array task ID (0-indexed). If not
+          provided, the script processes all clips.
+        - verify_frames: whether to verify frame count of the extracted clips
+          matches the value in the csv file.
+
     """
     # Read csv as dataframe
     df = pd.read_csv(args.csv_filepath)
@@ -28,19 +35,27 @@ def main(args: argparse.Namespace) -> None:
     if args.slurm_array_task_id is not None:
         row = df.iloc[args.slurm_array_task_id]
 
-        print(f"Processing clip {args.slurm_array_task_id+1}/{len(df)}: {row['loop_clip_name']}")
+        print(
+            f"Processing clip {args.slurm_array_task_id + 1}/{len(df)}: "
+            f"{row['loop_clip_name']}"
+        )
         extract_clip_and_verify_count(row, args)
 
-    # If no slurm_array_task_id is provided, process all rows (for local testing) 
+    # If no slurm_array_task_id is provided, process all rows
+    # (for local testing)
     else:
-        print(f"Processing all {len(df)} rows in csv file: {args.csv_filepath}")
-        for idx, row in df.iterrows():
+        print(
+            f"Processing all {len(df)} rows in csv file: {args.csv_filepath}"
+        )
+        for _, row in df.iterrows():
             extract_clip_and_verify_count(row, args)
 
 
-def extract_clip_and_verify_count(row: pd.Series, args: argparse.Namespace) -> None:
+def extract_clip_and_verify_count(
+    row: pd.Series, args: argparse.Namespace
+) -> None:
     """Extract clip for input row and verify frame count.
-    
+
     Parameters
     ----------
     row : pandas.Series
@@ -48,13 +63,16 @@ def extract_clip_and_verify_count(row: pd.Series, args: argparse.Namespace) -> N
     args : argparse.Namespace
         Arguments parsed from command line. Should contain:
         - input_dir: path to the input directory containing the input videos.
-        - output_dir: path to the output directory for the extracted loop clips.
-        - verify_frames: whether to verify frame count of the extracted clips matches the value in the csv file.
+        - output_dir: path to the output directory for the extracted loop
+          clips.
+        - verify_frames: whether to verify frame count of the extracted clips
+          matches the value in the csv file.
 
     Raises
     ------
     FileNotFoundError: if the input video path does not exist.
     subprocess.CalledProcessError: if the ffmpeg command fails.
+
     """
     # extract clip for input row
     extract_single_clip(row, args.input_dir, args.output_dir)
@@ -62,37 +80,47 @@ def extract_clip_and_verify_count(row: pd.Series, args: argparse.Namespace) -> N
     # verify frame count
     if args.verify_frames:
         # Compute expected frame count
-        expected_frame_count = row['loop_END_frame_ffmpeg']-row['loop_START_frame_ffmpeg'] + 1 # both included
+        expected_frame_count = (
+            row["loop_END_frame_ffmpeg"] - row["loop_START_frame_ffmpeg"] + 1
+        )  # both included
 
         # Verify frame count matches csv expected value
         frame_count_ok, actual_frame_count = verify_frame_count(
-            Path(args.output_dir) / row['loop_clip_name'],
+            Path(args.output_dir) / row["loop_clip_name"],
             expected_frame_count,
         )
         print(f"Expected frame count: {expected_frame_count}")
         print(f"Actual frame count: {actual_frame_count}")
         if frame_count_ok:
-            print(f"Frame count OK")
+            print("Frame count OK")
         else:
             raise RuntimeError(
                 f"Frame count mismatch for clip {row['loop_clip_name']}: "
                 f"expected {expected_frame_count}, got {actual_frame_count}"
             )
-           
 
-def extract_single_clip(row: pd.Series, input_dir: str | Path, output_dir: str | Path) -> None:
+
+def extract_single_clip(
+    row: pd.Series, input_dir: str | Path, output_dir: str | Path
+) -> None:
     """Extract clip using data in row.
-    
+
     Parameters
     ----------
     row : pandas.Series
-        Row in the input csv file containing the loop clip definition. It should contain the following columns:
-        - video_parent_directory: name of the parent directory of the input video. It is usually a subdirectory 
-          of the input directory that refers to the date of the experiments (e.g. `09.08.2023-Day2`).
+        Row in the input csv file containing the loop clip definition. It
+        should contain the following columns:
+        - video_parent_directory: name of the parent directory of the input
+          video. It is usually a subdirectory
+          of the input directory that refers to the date of the experiments
+          (e.g. `09.08.2023-Day2`).
         - video_name: name of the input video.
-        - loop_clip_name: name of the output clip. It includes the file extension (e.g. `.mp4`).
-        - loop_START_seconds_ffmpeg: timestamp in seconds for the first frame to include in the output clip.
-        - loop_END_seconds_ffmpeg: timestamp in seconds for the last frame to include in the output clip.
+        - loop_clip_name: name of the output clip. It includes the file
+          extension (e.g. `.mp4`).
+        - loop_START_seconds_ffmpeg: timestamp in seconds for the first frame
+          to include in the output clip.
+        - loop_END_seconds_ffmpeg: timestamp in seconds for the last frame to
+          include in the output clip.
     input_dir : str | Path
         Path to the input directory containing the input videos.
     output_dir : str | Path
@@ -105,13 +133,16 @@ def extract_single_clip(row: pd.Series, input_dir: str | Path, output_dir: str |
 
     Notes
     -----
-    The ffmpeg command assumes frame numbering starts at 1 (1-based indexing). If the input video path does not exist, 
-    we additionally check if it exists with the switched-case extension (e.g. `.MOV` instead of `.mov`).
+    The ffmpeg command assumes frame numbering starts at 1 (1-based indexing).
+    If the input video path does not exist, we additionally check if it exists
+    with the switched-case extension (e.g. `.MOV` instead of `.mov`).
 
     """
     # Get paths to input and output videos
-    input_video_path = Path(input_dir) / row['video_parent_directory'] / row['video_name']
-    output_video_path = Path(output_dir) / row['loop_clip_name']
+    input_video_path = (
+        Path(input_dir) / row["video_parent_directory"] / row["video_name"]
+    )
+    output_video_path = Path(output_dir) / row["loop_clip_name"]
 
     # Check if output file already exists
     if output_video_path.exists():
@@ -128,49 +159,67 @@ def extract_single_clip(row: pd.Series, input_dir: str | Path, output_dir: str |
     # Prepare ffmpeg command
     # output seeking: (slower but reliable)
     # ffmpeg_command = [
-    #     "ffmpeg", 
+    #     "ffmpeg",
     #     "-n", # do not overwrite if output file exists
     #     "-i", str(input_video_path),
     #     "-ss", str(row['loop_START_seconds_ffmpeg']),
     #     "-to", str(row['loop_END_seconds_ffmpeg']),
-    #     "-c:v", "libx264", 
+    #     "-c:v", "libx264",
     #     "-pix_fmt", "yuv420p",
-    #     "-preset", "superfast", 
+    #     "-preset", "superfast",
     #     "-crf", "15",
     #     "-fps_mode", "passthrough",  # to preserve frame count
     #     str(output_video_path)
     # ]
 
     # input seeking
+    # ATT! the origin of time for the `-to` argument changes from the
+    # beginning of the video to the start of the loop clip (i.e. the `-ss`
+    # argument)
     ffmpeg_command = [
-        "ffmpeg", 
-        "-n", # do not overwrite if output file exists
-        "-ss", str(row['loop_START_seconds_ffmpeg']), # this will be time=0 for the `-to` argument
-        "-i", str(input_video_path),
-        "-to", str(row['loop_END_seconds_ffmpeg'] - row['loop_START_seconds_ffmpeg']), # this is now duration (closed interval?)
-        "-c:v", "libx264", 
-        "-pix_fmt", "yuv420p",
-        "-preset", "superfast", 
-        "-crf", "15",
-        "-fps_mode", "passthrough",  # to preserve frame count
-        str(output_video_path)
+        "ffmpeg",
+        "-n",  # do not overwrite if output file exists
+        "-ss",
+        str(
+            row["loop_START_seconds_ffmpeg"]
+        ),  # this will be time=0 for the `-to` argument
+        "-i",
+        str(input_video_path),
+        "-to",
+        str(
+            row["loop_END_seconds_ffmpeg"] - row["loop_START_seconds_ffmpeg"]
+        ),  # this is now duration (closed interval?)
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-preset",
+        "superfast",
+        "-crf",
+        "15",
+        "-fps_mode",
+        "passthrough",  # to preserve frame count
+        str(output_video_path),
     ]
 
     # print command to logs
-    print('Command:')
-    print('\t' + ' '.join(ffmpeg_command))
+    print("Command:")
+    print("\t" + " ".join(ffmpeg_command))
 
     # run command
     subprocess.run(
-        ffmpeg_command, 
-        check=True, 
-        stdin=subprocess.DEVNULL, # throw an error if ffmpeg tries to prompt for input
+        ffmpeg_command,
+        check=True,
+        stdin=subprocess.DEVNULL,
+        # throw an error if ffmpeg tries to prompt for input
     )
 
 
-def verify_frame_count(input_clip: str | Path, expected_frame_count: int) -> tuple[bool, int]:
+def verify_frame_count(
+    input_clip: str | Path, expected_frame_count: int
+) -> tuple[bool, int]:
     """Verify that the frame count of input clip matches the expected value.
-    
+
     Parameters
     ----------
     input_clip : str
@@ -181,52 +230,51 @@ def verify_frame_count(input_clip: str | Path, expected_frame_count: int) -> tup
     Returns
     -------
     tuple: (boolean, int)
-        - boolean: True if the frame count matches the expected value, False otherwise.
+        - boolean: True if the frame count matches the expected value, False
+          otherwise.
         - int: the frame count returned by ffprobe.
 
     Raises
     ------
     subprocess.CalledProcessError: if the ffprobe command fails.
+
     """
     print("Verifying frame count in output")
 
     # Prepare ffprobe command to count frames
     ffprobe_command = [
         "ffprobe",
-        "-v", "error",
-        "-select_streams", "v:0",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
         "-count_frames",
-        "-show_entries", "stream=nb_read_frames",
-        "-of", "csv=p=0",  # output as .csv without headers
-        str(input_clip)
+        "-show_entries",
+        "stream=nb_read_frames",
+        "-of",
+        "csv=p=0",  # output as .csv without headers
+        str(input_clip),
     ]
 
     # print command to logs
-    print('Command')
-    print('\t' + ' '.join(ffprobe_command))
+    print("Command")
+    print("\t" + " ".join(ffprobe_command))
 
     # Run ffprobe and capture output
     result = subprocess.run(
-        ffprobe_command, 
-        capture_output=True, 
-        text=True, 
-        check=True
+        ffprobe_command, capture_output=True, text=True, check=True
     )
-    
+
     # Parse output
     actual_frame_count = int(result.stdout.strip())
-    
+
     # Return boolean and actual frame counts
-    return (
-        actual_frame_count == expected_frame_count,
-        actual_frame_count
-    )
+    return (actual_frame_count == expected_frame_count, actual_frame_count)
 
 
 def switch_case_in_video_extension(file_path: str | Path) -> Path:
-    """
-    Check if the input file path with the switched-case extension exists.
-    
+    """Check if the input file path with the switched-case extension exists.
+
     Parameters
     ----------
     file_path : str | Path
@@ -235,21 +283,22 @@ def switch_case_in_video_extension(file_path: str | Path) -> Path:
     Returns
     -------
     Path
-        The input file path with the switched-case extension if 
+        The input file path with the switched-case extension if
         it exists.
 
     Raises
     ------
     FileNotFoundError
         If the input file path with the switched-case extension does not exist.
+
     """
     # Compute alternative filepath with switched-case extension
-    extension = file_path.suffix
+    extension = Path(file_path).suffix
     if extension.islower():
-        alternative_path =  file_path.with_suffix(extension.upper())
+        alternative_path = Path(file_path).with_suffix(extension.upper())
     elif extension.isupper():
-        alternative_path =  file_path.with_suffix(extension.lower())
-    
+        alternative_path = Path(file_path).with_suffix(extension.lower())
+
     # If alternative path exists, return it
     if alternative_path.exists():
         return alternative_path
@@ -264,7 +313,7 @@ def switch_case_in_video_extension(file_path: str | Path) -> Path:
 
 def parse_args(args: list[str]) -> argparse.Namespace:
     """Parse command line arguments for the loop clips extraction.
-    
+
     Parameters
     ----------
     args : list[str]
@@ -274,41 +323,47 @@ def parse_args(args: list[str]) -> argparse.Namespace:
     -------
     argparse.Namespace
         Arguments parsed from command line.
+
     """
     # Define argument parser
     parser = argparse.ArgumentParser(
         description="Extract video clips as defined in input CSV using ffmpeg"
     )
     parser.add_argument(
-        "--csv_filepath", 
-        type=str, 
-        required=True, 
-        help="Path to CSV file with clip definitions"
+        "--csv_filepath",
+        type=str,
+        required=True,
+        help="Path to CSV file with clip definitions",
     )
     parser.add_argument(
-        "--input_dir", 
-        type=str, 
-        required=True, 
-        help="Directory containing input videos"
+        "--input_dir",
+        type=str,
+        required=True,
+        help="Directory containing input videos",
     )
     parser.add_argument(
-        "--output_dir", 
-        type=str, 
-        required=True, 
-        help="Directory for output clips"
+        "--output_dir",
+        type=str,
+        required=True,
+        help="Directory for output clips",
     )
     parser.add_argument(
-        "--slurm_array_task_id", 
-        type=int, 
-        default=None, 
-        help="SLURM array task ID (0-indexed). If not provided, the script processes all clips."
+        "--slurm_array_task_id",
+        type=int,
+        default=None,
+        help=(
+            "SLURM array task ID (0-indexed). If not provided, "
+            "the script processes all clips."
+        ),
     )
     parser.add_argument(
-        "--verify_frames", 
-        action="store_true",  # the value is False by default, and becomes True when the flag is provided
-        help="Verify frame count of clip matches csv value "
+        "--verify_frames",
+        action="store_true",
+        # the value is False by default, and becomes
+        # True when the flag is provided
+        help="Verify frame count of clip matches csv value ",
     )
-    
+
     return parser.parse_args(args)
 
 
@@ -316,6 +371,7 @@ def app_wrapper():
     """Wrap function for extracting loop clips."""
     args = parse_args(sys.argv[1:])
     main(args)
+
 
 if __name__ == "__main__":
     app_wrapper()
