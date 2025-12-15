@@ -158,37 +158,15 @@ def extract_single_clip(
 
     # Prepare ffmpeg command
     # output seeking: (slower but reliable)
-    # ffmpeg_command = [
-    #     "ffmpeg",
-    #     "-n", # do not overwrite if output file exists
-    #     "-i", str(input_video_path),
-    #     "-ss", str(row['loop_START_seconds_ffmpeg']),
-    #     "-to", str(row['loop_END_seconds_ffmpeg']),
-    #     "-c:v", "libx264",
-    #     "-pix_fmt", "yuv420p",
-    #     "-preset", "superfast",
-    #     "-crf", "15",
-    #     "-fps_mode", "passthrough",  # to preserve frame count
-    #     str(output_video_path)
-    # ]
-
-    # input seeking
-    # ATT! the origin of time for the `-to` argument changes from the
-    # beginning of the video to the start of the loop clip (i.e. the `-ss`
-    # argument)
     ffmpeg_command = [
         "ffmpeg",
         "-n",  # do not overwrite if output file exists
-        "-ss",
-        str(
-            row["loop_START_seconds_ffmpeg"]
-        ),  # this will be time=0 for the `-to` argument
         "-i",
         str(input_video_path),
+        "-ss",
+        str(row["loop_START_seconds_ffmpeg"]),
         "-to",
-        str(
-            row["loop_END_seconds_ffmpeg"] - row["loop_START_seconds_ffmpeg"]
-        ),  # this is now duration (closed interval?)
+        str(row["loop_END_seconds_ffmpeg"]),
         "-c:v",
         "libx264",
         "-pix_fmt",
@@ -201,6 +179,36 @@ def extract_single_clip(
         "passthrough",  # to preserve frame count
         str(output_video_path),
     ]
+
+    # # input seeking
+    # # ATT! the origin of time for the `-to` argument changes from the
+    # # beginning of the video to the start of the loop clip (i.e. the `-ss`
+    # # argument)
+    # ffmpeg_command = [
+    #     "ffmpeg",
+    #     "-n",  # do not overwrite if output file exists
+    #     "-ss",
+    #     str(
+    #         row["loop_START_seconds_ffmpeg"]
+    #     ),  # this will be time=0 for the `-to` argument
+    #     "-i",
+    #     str(input_video_path),
+    #     "-to",
+    #     str(
+    #         row["loop_END_seconds_ffmpeg"] - row["loop_START_seconds_ffmpeg"]
+    #     ),  # this is now duration (closed interval?)
+    #     "-c:v",
+    #     "libx264",
+    #     "-pix_fmt",
+    #     "yuv420p",
+    #     "-preset",
+    #     "superfast",
+    #     "-crf",
+    #     "15",
+    #     "-fps_mode",
+    #     "passthrough",  # to preserve frame count
+    #     str(output_video_path),
+    # ]
 
     # print command to logs
     print("Command:")
