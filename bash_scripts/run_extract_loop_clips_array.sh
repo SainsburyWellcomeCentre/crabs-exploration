@@ -9,7 +9,7 @@
 #SBATCH -e slurm_extract.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-2%10  # 235 rows in csv, max 10 jobs at once
+#SBATCH --array=0-234%10  # 235 rows in csv, max 10 jobs at once
 
 # NOTE: Adjust --array=0-N%M where:
 # - N = number of rows in csv minus 1 (0-indexed)
@@ -22,10 +22,10 @@ set -o pipefail
 # ---------------------
 # Define variables
 # ----------------------
-CSV_PATH="/ceph/zoo/users/sminano/mini-loop-frames-ffmpeg.csv"
-INPUT_DIR="/ceph/zoo/users/sminano/crabs_input_videos_sample"  # /ceph/zoo/raw/CrabField/ramalhete_2023
+CSV_PATH="/ceph/zoo/users/sminano/CrabsField/crab-loops/loop-frames-ffmpeg.csv"
+INPUT_DIR="/ceph/zoo/raw/CrabField/ramalhete_2023"
 
-OUTPUT_DIR="/ceph/zoo/users/sminano/crab_loops_clips"
+OUTPUT_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops"
 mkdir -p $OUTPUT_DIR  # create if it doesnt exist
 
 # location of SLURM logs
@@ -118,4 +118,3 @@ conda remove --prefix $ENV_PREFIX --all -y
 # Copy logs to LOG_DIR
 # -------------------
 mv slurm_extract.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out} $LOG_DIR
-
