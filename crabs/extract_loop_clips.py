@@ -156,6 +156,10 @@ def extract_single_clip(
     if not input_video_path.exists():
         input_video_path = switch_case_in_video_extension(input_video_path)
 
+    # Compute an epsilon of 1/4 frame duration to ensure the start and end
+    # frames of the clip are included in the output
+    epsilon = 0.25 / row["fps"]
+
     # Prepare ffmpeg command
     # output seeking: (slower but reliable)
     ffmpeg_command = [
@@ -163,10 +167,10 @@ def extract_single_clip(
         "-n",  # do not overwrite if output file exists
         "-i",
         str(input_video_path),
-        "-ss",
-        str(row["loop_START_seconds_ffmpeg"]),
-        "-to",
-        str(row["loop_END_seconds_ffmpeg"]),
+        "-ss",  # include frame if frame_PTS >= -ss
+        str(row["loop_START_frame_ffmpeg_PTS"] - epsilon),
+        "-to",  # include frame if frame_PTS < -to
+        str(row["loop_END_frame_ffmpeg_PTS"] + epsilon),
         "-c:v",
         "libx264",
         "-pix_fmt",
@@ -179,36 +183,6 @@ def extract_single_clip(
         "passthrough",  # to preserve frame count
         str(output_video_path),
     ]
-
-    # # input seeking
-    # # ATT! the origin of time for the `-to` argument changes from the
-    # # beginning of the video to the start of the loop clip (i.e. the `-ss`
-    # # argument)
-    # ffmpeg_command = [
-    #     "ffmpeg",
-    #     "-n",  # do not overwrite if output file exists
-    #     "-ss",
-    #     str(
-    #         row["loop_START_seconds_ffmpeg"]
-    #     ),  # this will be time=0 for the `-to` argument
-    #     "-i",
-    #     str(input_video_path),
-    #     "-to",
-    #     str(
-    #         row["loop_END_seconds_ffmpeg"] - row["loop_START_seconds_ffmpeg"]
-    #     ),  # this is now duration (closed interval?)
-    #     "-c:v",
-    #     "libx264",
-    #     "-pix_fmt",
-    #     "yuv420p",
-    #     "-preset",
-    #     "superfast",
-    #     "-crf",
-    #     "15",
-    #     "-fps_mode",
-    #     "passthrough",  # to preserve frame count
-    #     str(output_video_path),
-    # ]
 
     # print command to logs
     print("Command:")
