@@ -4,7 +4,7 @@
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 2
 #SBATCH --mem 8G
-#SBATCH -t 0-12:00 # time (D-HH:MM)
+#SBATCH -t 0-20:00 # time (D-HH:MM)
 #SBATCH -o slurm_extract.%A-%a.%N.out
 #SBATCH -e slurm_extract.%A-%a.%N.err
 #SBATCH --mail-type=ALL
