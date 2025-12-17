@@ -160,6 +160,18 @@ def extract_single_clip(
     # frames of the clip are included in the output
     epsilon = 0.25 / row["fps"]
 
+    # print csv input values to log
+    print("Input values:")
+    print(
+        "\t loop_START_frame_ffmpeg_PTS: "
+        f"{str(row['loop_START_frame_ffmpeg_PTS'])}"
+    )
+    print(
+        "\t loop_END_frame_ffmpeg_PTS: "
+        f"{str(row['loop_END_frame_ffmpeg_PTS'])}"
+    )
+    print(f"\t epsilon: {str(epsilon)}")
+
     # Prepare ffmpeg command
     # output seeking: (slower but reliable)
     ffmpeg_command = [
