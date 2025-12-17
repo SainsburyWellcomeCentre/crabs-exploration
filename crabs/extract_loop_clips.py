@@ -156,9 +156,9 @@ def extract_single_clip(
     if not input_video_path.exists():
         input_video_path = switch_case_in_video_extension(input_video_path)
 
-    # Compute an epsilon of 1/4 frame duration to ensure the start and end
+    # Compute an epsilon of 1/2 frame duration to ensure the start and end
     # frames of the clip are included in the output
-    epsilon = 0.25 / row["fps"]
+    epsilon = 0.5 / row["fps"]
 
     # print csv input values to log
     print("Input values:")
