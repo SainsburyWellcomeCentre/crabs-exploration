@@ -118,3 +118,6 @@ conda remove --prefix $ENV_PREFIX --all -y
 # Copy logs to LOG_DIR
 # -------------------
 mv slurm_extract.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out} $LOG_DIR
+
+# make logs read only
+chmod 444 $LOG_DIR/slurm_extract.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out}
