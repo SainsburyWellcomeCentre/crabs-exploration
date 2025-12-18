@@ -356,7 +356,7 @@ def parse_args(args: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--epsilon_frame_fraction",
-        type=str,
+        type=float,
         required=True,
         help=(
             "Fraction of frame duration to use as buffer around the PTS of the"
