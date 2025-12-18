@@ -38,6 +38,11 @@ GIT_BRANCH=smg/extract-clips
 # Whether to verify frame count after extracting the clips
 VERIFY_FRAMES=true
 
+# Fraction of frame duration to use as buffer around the PTS of the
+# clip start and end frames. This is to ensure both frames are
+# included in the output clip. PTS=timestamp for the start of the frame.
+EPSILON_FRAME_FRACTION=0.25
+
 # --------------------
 # Check inputs
 # --------------------
@@ -102,6 +107,7 @@ extract-loops \
     --csv_filepath $CSV_PATH \
     --input_dir $INPUT_DIR \
     --output_dir $OUTPUT_DIR \
+    --epsilon_frame_fraction $EPSILON_FRAME_FRACTION \
     --slurm_array_task_id $SLURM_ARRAY_TASK_ID \
     $VERIFY_FRAMES_FLAG
 

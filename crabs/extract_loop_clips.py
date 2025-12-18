@@ -75,7 +75,12 @@ def extract_clip_and_verify_count(
 
     """
     # extract clip for input row
-    extract_single_clip(row, args.input_dir, args.output_dir)
+    extract_single_clip_from_csv_row(
+        row,
+        args.input_dir,
+        args.output_dir,
+        args.epsilon_frame_fraction,
+    )
 
     # verify frame count
     if args.verify_frames:
@@ -100,8 +105,11 @@ def extract_clip_and_verify_count(
             )
 
 
-def extract_single_clip(
-    row: pd.Series, input_dir: str | Path, output_dir: str | Path
+def extract_single_clip_from_csv_row(
+    row: pd.Series,
+    input_dir: str | Path,
+    output_dir: str | Path,
+    epsilon_frame_fraction: float,
 ) -> None:
     """Extract clip using data in row.
 
@@ -117,14 +125,19 @@ def extract_single_clip(
         - video_name: name of the input video.
         - loop_clip_name: name of the output clip. It includes the file
           extension (e.g. `.mp4`).
-        - loop_START_seconds_ffmpeg: timestamp in seconds for the first frame
-          to include in the output clip.
-        - loop_END_seconds_ffmpeg: timestamp in seconds for the last frame to
-          include in the output clip.
+        - fps: frame rate for the input video.
+        - loop_START_frame_ffmpeg_PTS: timestamp in seconds for the start of
+          the first frame to include in the output clip.
+        - loop_START_frame_ffmpeg_PTS: timestamp in seconds for the start of
+          the last frame to include in the output clip.
     input_dir : str | Path
         Path to the input directory containing the input videos.
     output_dir : str | Path
         Path to the output directory for the extracted loop clips.
+    epsilon_frame_fraction: float
+        Fraction of frame duration to use as buffer around the PTS of the
+        clip start and end frames. This is to ensure both frames are
+        included in the output clip.
 
     Raises
     ------
@@ -156,9 +169,9 @@ def extract_single_clip(
     if not input_video_path.exists():
         input_video_path = switch_case_in_video_extension(input_video_path)
 
-    # Compute an epsilon of 1/2 frame duration to ensure the start and end
+    # Compute an epsilon of x frame duration to ensure the start and end
     # frames of the clip are included in the output
-    epsilon = 0.5 / row["fps"]
+    epsilon = epsilon_frame_fraction / row["fps"]
 
     # print csv input values to log
     print("Input values:")
@@ -340,6 +353,16 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         type=str,
         required=True,
         help="Directory for output clips",
+    )
+    parser.add_argument(
+        "--epsilon_frame_fraction",
+        type=str,
+        required=True,
+        help=(
+            "Fraction of frame duration to use as buffer around the PTS of the"
+            "clip start and end frames. This is to ensure both frames are"
+            "included in the output clip."
+        ),
     )
     parser.add_argument(
         "--slurm_array_task_id",
