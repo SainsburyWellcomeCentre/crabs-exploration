@@ -154,13 +154,6 @@ detect-and-track-video  \
 echo "Completed tracking of clip with task ID = $SLURM_ARRAY_TASK_ID"
 echo "--------------------------------------------------------"
 
-# -----------------------------
-# Cleanup
-# ----------------------------
-conda deactivate
-conda remove --prefix $ENV_PREFIX --all -y
-
-
 # -------------------------------------------
 # Copy tracking config to output directory
 # -------------------------------------------
@@ -183,3 +176,9 @@ mv slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,ou
 
 # make logs read only
 chmod 444 $LOG_DIR/slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out}
+
+# -----------------------------
+# Cleanup
+# ----------------------------
+conda deactivate
+conda remove --prefix $ENV_PREFIX --all -y
