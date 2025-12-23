@@ -35,7 +35,7 @@ set -o pipefail  # make the pipe fail if any part of it fails
 # ----------------------
 
 # Path to the trained model
-CKPT_PATH="/ceph/zoo/users/sminano/ml-runs-all/ml-runs/317777717624044570/40b1688a76d94bd08175cb380d0a6e0e/checkpoints/last.ckpt"
+CKPT_PATH="/ceph/zoo/users/sminano/ml-runs-all/ml-runs/617393114420881798/4acc37206b1e4f679d535c837bee2c2f/checkpoints/last.ckpt"
 
 # Path to the tracking config file
 TRACKING_CONFIG_FILE="/ceph/zoo/users/sminano/cluster_tracking_config.yaml"
@@ -45,17 +45,21 @@ TRACKING_CONFIG_FILE="/ceph/zoo/users/sminano/cluster_tracking_config.yaml"
 # e.g.: "/ceph/zoo/users/sminano/ml-runs-all/ml-runs-scratch/763954951706829194/"*"/checkpoints"
 # e.g.: "checkpoint-epoch="*".ckpt"
 # List of videos to run inference on
-VIDEOS_DIR="/ceph/zoo/users/sminano/escape_clips_all"
-VIDEO_FILENAME=*.mov
+VIDEOS_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops"
+VIDEO_FILENAME=*.mp4
 mapfile -t LIST_VIDEOS < <(find $VIDEOS_DIR -type f -name $VIDEO_FILENAME)
 
 
 # Set output directory name
 # by default under current working directory
-OUTPUT_DIR_NAME="tracking_output_slurm_$SLURM_ARRAY_JOB_ID"
+OUTPUT_DIR_NAME="loops_tracking_above_10th_percentile_slurm_$SLURM_ARRAY_JOB_ID"
+
+# location of SLURM logs
+LOG_DIR=$OUTPUT_DIR_NAME/logs
+mkdir -p $LOG_DIR  # create if it doesnt exist
 
 # Select optional output
-SAVE_VIDEO=true
+SAVE_VIDEO=false
 SAVE_FRAMES=false
 
 
@@ -147,9 +151,19 @@ detect-and-track-video  \
     $SAVE_FRAMES_FLAG  \
     $SAVE_VIDEO_FLAG
 
+echo "Completed tracking of clip with task ID = $SLURM_ARRAY_TASK_ID"
+echo "--------------------------------------------------------"
+
+# -----------------------------
+# Cleanup
+# ----------------------------
+conda deactivate
+conda remove --prefix $ENV_PREFIX --all -y
 
 
-# copy tracking config to output directory
+# -------------------------------------------
+# Copy tracking config to output directory
+# -------------------------------------------
 shopt -s extglob  # Enable extended globbing
 
 # get tracking config filename without extension
@@ -162,11 +176,10 @@ cp "$TRACKING_CONFIG_FILE" "$SLURM_SUBMIT_DIR"/"$OUTPUT_DIR_NAME"/"$INPUT_VIDEO_
 echo "Copied $TRACKING_CONFIG_FILE to $OUTPUT_DIR_NAME"
 
 
-# -----------------------------
-# Delete virtual environment
-# ----------------------------
-conda deactivate
-conda remove \
-    --prefix $ENV_PREFIX \
-    --all \
-    -y
+# ---------------------
+# Copy logs to LOG_DIR
+# ---------------------
+mv slurm_detect.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out} $LOG_DIR
+
+# make logs read only
+chmod 444 $LOG_DIR/slurm_detect.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out}
