@@ -179,7 +179,7 @@ echo "Copied $TRACKING_CONFIG_FILE to $OUTPUT_DIR_NAME"
 # ---------------------
 # Copy logs to LOG_DIR
 # ---------------------
-mv slurm_detect.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out} $LOG_DIR
+mv slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out} $LOG_DIR
 
 # make logs read only
-chmod 444 $LOG_DIR/slurm_detect.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out}
+chmod 444 $LOG_DIR/slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out}
