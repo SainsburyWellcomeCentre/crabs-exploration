@@ -29,13 +29,13 @@ jobs:
       matrix:
         # Run all supported Python versions on linux
         os: [ubuntu-latest]
-        python-version: ["3.9", "3.10"]
+        python-version: ["3.10", "3.11"]
         # Include 1 Intel macos (15) and 1 "Apple chip" macos (latest)
         include:
           - os: macos-15-intel # intel macOS
-            python-version: "3.10"
+            python-version: "3.11"
           - os: macos-latest  # "Apple chip" macOS
-            python-version: "3.10"
+            python-version: "3.11"
     steps:
       - name: Cache test data
         uses: actions/cache@v4
