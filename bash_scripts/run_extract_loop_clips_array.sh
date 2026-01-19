@@ -72,7 +72,7 @@ ENV_PREFIX=$TMPDIR/$ENV_NAME
 conda create \
     --prefix $ENV_PREFIX \
     -y \
-    python=3.10
+    python=3.12
 
 # activate environment
 source activate $ENV_PREFIX

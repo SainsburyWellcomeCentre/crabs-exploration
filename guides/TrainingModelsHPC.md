@@ -155,7 +155,7 @@
      - Create and activate a conda environment.
        ```
        module load miniconda
-       conda create -n mlflow-env python=3.10 mlflow -y
+       conda create -n mlflow-env python=3.12 mlflow -y
        conda activate mlflow-env
        ```
      - Run `mlflow` to visualise the results logged to the `ml-runs` folder.
