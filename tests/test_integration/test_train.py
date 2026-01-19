@@ -37,9 +37,9 @@ def input_data_paths(pooch_registry: pooch.Pooch, tmp_path: Path):
 
     # Modify the config file to have num_workers = 0 and
     # save it at tmp_path
-    # This is to avoid issues with macOS-13 CI tests failing with
+    # This is to avoid issues with macos-15-intel CI tests failing with
     # "RuntimeError: Please call `iter(combined_loader)` first"
-    # when num_workers > 0, Python 3.9 and macOS-13.
+    # when num_workers > 0, Python 3.9 and macos-15-intel.
     # https://github.com/pytorch/pytorch/issues/46648
     reference_config["num_workers"] = 0
     config_file = tmp_path / "config.yaml"

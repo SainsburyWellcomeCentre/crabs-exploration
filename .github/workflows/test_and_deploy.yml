@@ -44,18 +44,18 @@ jobs:
             ~/.crabs-exploration-test-data/*
           key: cached-test-data
           enableCrossOsArchive: true
-      - name: Run all tests except marked slow (if macos-13)
-        # this is because we observed macos-13 runners in CI
+      - name: Run all tests except marked slow (if macos-15-intel)
+        # this is because we observed macos-15-intel runners in CI
         # are sometimes x2 as slow as the others. See
         # https://github.com/actions/runner-images/issues/3885#issuecomment-1848423579
-        if: matrix.os == 'macos-13'
+        if: matrix.os == 'macos-15-intel'
         uses: neuroinformatics-unit/actions/test@v2
         with:
           python-version: ${{ matrix.python-version }}
           secret-codecov-token: ${{ secrets.CODECOV_TOKEN }}
           tox-args: "-- -m 'not slow'"
-      - name: Run all tests (if not macos-13)
-        if: matrix.os != 'macos-13'
+      - name: Run all tests (if not macos-15-intel)
+        if: matrix.os != 'macos-15-intel'
         uses: neuroinformatics-unit/actions/test@v2
         with:
           python-version: ${{ matrix.python-version }}
