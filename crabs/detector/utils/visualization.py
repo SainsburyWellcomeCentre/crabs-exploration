@@ -2,7 +2,7 @@
 
 import os
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import cv2
 import matplotlib.pyplot as plt
@@ -23,7 +23,7 @@ def draw_bbox(
     top_left: tuple[float, float],
     bottom_right: tuple[float, float],
     colour: tuple,
-    label_text: Optional[str] = None,
+    label_text: str | None = None,
 ) -> None:
     """Draw bounding boxes on the image based on detection results.
 
@@ -73,9 +73,9 @@ def draw_bbox(
 def draw_detections(
     imgs: list,
     annotations: dict,
-    detections: Optional[dict[Any, Any]] = None,
-    score_threshold: Optional[float] = None,
-    text_label_type: Optional[str] = "score",
+    detections: dict[Any, Any] | None = None,
+    score_threshold: float | None = None,
+    text_label_type: str | None = "score",
 ) -> list[np.ndarray]:
     """Draw the results based on the detection.
 
@@ -103,7 +103,7 @@ def draw_detections(
 
     list_images_with_boxes = []
     for image, annotation, prediction in zip(
-        imgs, annotations, detections or [None] * len(imgs)
+        imgs, annotations, detections or [None] * len(imgs), strict=False
     ):
         image = image.cpu().numpy().transpose(1, 2, 0)
         image = (image * 255).astype("uint8")
@@ -165,7 +165,7 @@ def save_images_with_boxes(
     trained_model: torch.nn.Module,
     output_dir: str,
     score_threshold: float,
-    text_label_type: Optional[str] = "score",
+    text_label_type: str | None = "score",
 ) -> None:
     """Save images with bounding boxes drawn around detected objects.
 
@@ -223,7 +223,7 @@ def save_images_with_boxes(
 
 
 def plot_sample(  # noqa: C901
-    imgs: list, row_title: Optional[str] = None, **imshow_kwargs
+    imgs: list, row_title: str | None = None, **imshow_kwargs
 ):
     """Plot a sample (image & annotations) from a dataset.
 

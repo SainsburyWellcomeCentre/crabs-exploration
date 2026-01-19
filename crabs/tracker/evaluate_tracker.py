@@ -3,7 +3,7 @@
 import csv
 import logging
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 
@@ -162,8 +162,8 @@ class TrackerEvaluate:
 
     def count_identity_switches(
         self,
-        gt_to_tracked_id_previous_frame: Optional[dict[int, int]],
-        gt_to_tracked_id_current_frame: dict[int, Union[int, float]],
+        gt_to_tracked_id_previous_frame: dict[int, int] | None,
+        gt_to_tracked_id_current_frame: dict[int, int | float],
     ) -> int:
         """Count the number of identity switches between two sets of IDs.
 
@@ -272,8 +272,8 @@ class TrackerEvaluate:
         self,
         gt_data: dict[str, np.ndarray],
         pred_data: dict[str, np.ndarray],
-        gt_to_tracked_id_previous_frame: Optional[dict[int, int]],
-    ) -> tuple[float, int, int, int, int, int, dict[int, Union[int, float]]]:
+        gt_to_tracked_id_previous_frame: dict[int, int] | None,
+    ) -> tuple[float, int, int, int, int, int, dict[int, int | float]]:
         """Evaluate MOTA (Multiple Object Tracking Accuracy).
 
         Parameters
@@ -317,7 +317,7 @@ class TrackerEvaluate:
         }
 
         # Loop through detections
-        for pred_box, pred_id in zip(pred_boxes, pred_ids):
+        for pred_box, pred_id in zip(pred_boxes, pred_ids, strict=False):
             best_iou = 0.0
             index_gt_best_match = None
 
@@ -411,7 +411,7 @@ class TrackerEvaluate:
         }
 
         # Initialise previous frame ID map to track ID switches
-        gt_to_tracked_id_previous_frame: Optional[dict] = None
+        gt_to_tracked_id_previous_frame: dict | None = None
 
         # Check that the number of frames in the ground truth and predictions
         # are the same, print warning if not

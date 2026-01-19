@@ -3,7 +3,7 @@
 import json
 import os
 import tempfile
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import torch
 from pycocotools.coco import COCO
@@ -21,8 +21,8 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         self,
         list_img_dirs: list[str],
         list_annotation_files: list[str],
-        transforms: Optional[Callable] = None,
-        list_exclude_files: Optional[list[str]] = None,
+        transforms: Callable | None = None,
+        list_exclude_files: list[str] | None = None,
     ):
         """Construct a concatenated dataset of CocoDetection datasets.
 
@@ -49,7 +49,7 @@ class CrabsCocoDetection(torch.utils.data.ConcatDataset):
         # Create list of transformed-COCO datasets
         list_datasets = []
         for img_dir, annotation_file in zip(
-            list_img_dirs, list_annotation_files
+            list_img_dirs, list_annotation_files, strict=False
         ):
             # create "default" COCO dataset
             dataset_coco = CocoDetection(

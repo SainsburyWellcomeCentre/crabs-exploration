@@ -76,7 +76,7 @@ def test_via_json_combine(
     via_json_2_dict = read_json_file(via_json_2)
 
     # combine JSONs 1 and 2
-    timestamp_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+    timestamp_str = datetime.datetime.now(tz=datetime.UTC).strftime(
         "%d%m%Y_%H%M%S"
     )
     via_json_combined = combine_multiple_via_jsons(
@@ -157,7 +157,7 @@ def test_via_json_combine_default_dir(
     via_default_dir = "/sample/VIA/project/directory"
 
     # Combine JSONs 1 and 2
-    timestamp_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+    timestamp_str = datetime.datetime.now(tz=datetime.UTC).strftime(
         "%d%m%Y_%H%M%S"
     )
     via_json_combined = combine_multiple_via_jsons(
@@ -203,7 +203,7 @@ def test_via_json_combine_non_full_default_dir(
     via_default_dir = tmp_path.stem
 
     # Combine JSONs 1 and 2
-    timestamp_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+    timestamp_str = datetime.datetime.now(tz=datetime.UTC).strftime(
         "%d%m%Y_%H%M%S"
     )
     with pytest.raises(ValueError):
@@ -239,7 +239,7 @@ def test_via_json_combine_project_name(
     via_project_name = "TEST"
 
     # Combine JSONs 1 and 2
-    timestamp_str = datetime.datetime.now(tz=datetime.timezone.utc).strftime(
+    timestamp_str = datetime.datetime.now(tz=datetime.UTC).strftime(
         "%d%m%Y_%H%M%S"
     )
     via_json_combined = combine_multiple_via_jsons(

@@ -16,8 +16,6 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-from typing import Optional
-
 import numpy as np
 
 
@@ -49,7 +47,7 @@ def linear_assignment(cost_matrix: np.ndarray) -> np.ndarray:
         from scipy.optimize import linear_sum_assignment
 
         x, y = linear_sum_assignment(cost_matrix)
-        return np.array(list(zip(x, y)))
+        return np.array(list(zip(x, y, strict=False)))
 
 
 def iou_batch(bb_test: np.ndarray, bb_gt: np.ndarray) -> np.ndarray:
@@ -119,9 +117,7 @@ def convert_bbox_to_z(bbox: np.ndarray) -> np.ndarray:
     return np.array([x, y, s, r]).reshape((4, 1))
 
 
-def convert_x_to_bbox(
-    x: np.ndarray, score: Optional[float] = None
-) -> np.ndarray:
+def convert_x_to_bbox(x: np.ndarray, score: float | None = None) -> np.ndarray:
     """Convert a bounding box from center form to corner form.
 
     Center form is [x, y, s, r] and corner form is [x1, y1, x2, y2].

@@ -100,3 +100,7 @@ venv/
 model/
 ml-runs/
 lightning_logs
+
+
+# env variables
+.env

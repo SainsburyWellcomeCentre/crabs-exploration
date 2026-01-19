@@ -1,6 +1,6 @@
 """Utils for hyperparameter optimisation with Optuna."""
 
-from typing import Callable
+from collections.abc import Callable
 
 import optuna
 

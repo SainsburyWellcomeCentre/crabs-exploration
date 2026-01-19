@@ -14,7 +14,7 @@ A toolkit for detecting and tracking crabs in the field.
 
 `crabs` uses neural networks to detect and track multiple crabs in the field. The detection model is based on the [Faster R-CNN](https://arxiv.org/abs/1506.01497) architecture. The tracking model is based on the [SORT](https://github.com/abewley/sort) tracking algorithm.
 
-The package supports Python 3.9 or 3.10, and is tested on Linux and MacOS.
+The package supports Python 3.11 or 3.12, and is tested on Linux and MacOS.
 
 We highly recommend running `crabs` on a machine with a dedicated graphics device, such as an NVIDIA GPU or an Apple M1+ chip.
 
@@ -30,7 +30,7 @@ git clone https://github.com/SainsburyWellcomeCentre/crabs-exploration.git
 Then, navigate to the root directory of the repository and install the `crabs` package in a conda environment:
 
 ```bash
-conda create -n crabs-env python=3.10 -y
+conda create -n crabs-env python=3.12 -y
 conda activate crabs-env
 pip install .
 ```

@@ -6,7 +6,7 @@ authors = [
 ]
 description = "A toolkit for detecting and tracking crabs in the field."
 readme = "README.md"
-requires-python = ">=3.9.0"
+requires-python = ">=3.11.0"
 dynamic = ["version"]
 
 license = { text = "BSD-3-Clause" }
@@ -16,14 +16,14 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Operating System :: POSIX",
     "License :: OSI Approved :: BSD License",
 ]
 dependencies = [
     "opencv-python",
-    "sleap[pypi]==1.3.3",
+    "sleap[nn]",  # works with python>3.11
     "typer",
     "timecode",
     "torch",
@@ -33,6 +33,7 @@ dependencies = [
     "lightning==2.5.0",  # see https://github.com/Lightning-AI/pytorch-lightning/pull/20669
     "mlflow",
     "optuna",
+    "numpy<2"
 ]
 
 [project.optional-dependencies]
@@ -61,6 +62,7 @@ combine-annotations = "crabs.bboxes_labelling.combine_and_format_annotations:app
 train-detector = "crabs.detector.train_model:app_wrapper"
 evaluate-detector = "crabs.detector.evaluate_model:app_wrapper"
 detect-and-track-video = "crabs.tracker.track_video:app_wrapper"
+extract-loops = "crabs.extract_loop_clips:app_wrapper"
 # verify-videos-and-extract-samples
 # extract-additional-channels
 
@@ -78,11 +80,9 @@ exclude = ["tests"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=crabs"
-
-# [tool.black]
-# target-version = ['py39', 'py310']
-# skip-string-normalization = false
-# line-length = 79
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
 
 [tool.setuptools_scm]
 
@@ -136,13 +136,13 @@ docstring-code-format = true # Also format code in docstrings
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py{39,310}
+envlist = py{311,312}
 isolated_build = True
 
 [gh-actions]
 python =
-    3.9: py39
-    3.10: py310
+    3.11: py311
+    3.12: py312
 
 [testenv]
 extras =

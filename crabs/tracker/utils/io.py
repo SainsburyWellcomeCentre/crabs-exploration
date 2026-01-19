@@ -78,6 +78,7 @@ def write_tracked_detections_to_csv(
             tracked_bboxes_dict[frame_idx]["tracked_boxes"],
             tracked_bboxes_dict[frame_idx]["ids"],
             tracked_bboxes_dict[frame_idx]["scores"],
+            strict=False,
         ):
             # extract shape
             xmin, ymin, xmax, ymax = bbox
@@ -110,6 +111,7 @@ def write_frame_to_output_video(
     for bbox, id in zip(
         tracked_bboxes_one_frame["tracked_boxes"],
         tracked_bboxes_one_frame["ids"],
+        strict=False,
     ):
         xmin, ymin, xmax, ymax = bbox
 
