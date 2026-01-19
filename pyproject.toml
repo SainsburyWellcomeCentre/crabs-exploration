@@ -22,7 +22,7 @@ classifiers = [
     "License :: OSI Approved :: BSD License",
 ]
 dependencies = [
-    "opencv-python",
+    "opencv-python-headless",
     "sleap[nn]",  # works with python>3.11
     "typer",
     "timecode",
