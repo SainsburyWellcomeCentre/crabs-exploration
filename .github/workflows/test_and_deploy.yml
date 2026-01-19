@@ -52,7 +52,7 @@ jobs:
         shell: bash -l {0}
         run: |
           sudo apt-get update
-          sudo apt-get install libglapi-mesa libegl-mesa0 libegl1 libopengl0 libgl1-mesa-glx
+          sudo apt-get install libglapi-mesa libegl-mesa0 libegl1 libopengl0 libgl1
       - name: Run all tests
         uses: neuroinformatics-unit/actions/test@v2
         with:
