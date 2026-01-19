@@ -137,7 +137,7 @@ docstring-code-format = true # Also format code in docstrings
 [tool.tox]
 legacy_tox_ini = """
 [tox]
-envlist = py{39,310}
+envlist = py{310,311}
 isolated_build = True
 
 [gh-actions]
