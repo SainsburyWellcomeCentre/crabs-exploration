@@ -30,11 +30,11 @@ jobs:
         # Run all supported Python versions on linux
         os: [ubuntu-latest]
         python-version: ["3.11", "3.12"]
-        # Include 1 Intel macos (15) and 1 "Apple chip" macos (latest)
+        # Include 1 Intel macos (15) and 1 Apple chip macos (latest)
         include:
           - os: macos-15-intel # intel macOS
             python-version: "3.12"
-          - os: macos-latest  # "Apple chip" macOS
+          - os: macos-latest  # Apple chip macOS
             python-version: "3.12"
     steps:
       - name: Cache test data
@@ -44,18 +44,16 @@ jobs:
             ~/.crabs-exploration-test-data/*
           key: cached-test-data
           enableCrossOsArchive: true
-      - name: Run all tests except marked slow (if macos-15-intel)
-        # this is because we observed macos-15-intel runners in CI
-        # are sometimes x2 as slow as the others. See
-        # https://github.com/actions/runner-images/issues/3885#issuecomment-1848423579
-        if: matrix.os == 'macos-15-intel'
-        uses: neuroinformatics-unit/actions/test@v2
-        with:
-          python-version: ${{ matrix.python-version }}
-          secret-codecov-token: ${{ secrets.CODECOV_TOKEN }}
-          tox-args: "-- -m 'not slow'"
-      - name: Run all tests (if not macos-15-intel)
-        if: matrix.os != 'macos-15-intel'
+      # Install necessary OpenGL packages for Ubuntu only
+      # https://github.com/conda-forge/opencv-feedstock/issues/401
+      # https://github.com/talmolab/sleap/pull/1909
+      - name: Install OpenGL libraries (Ubuntu only)
+        if: runner.os == 'Linux'
+        shell: bash -l {0}
+        run: |
+          sudo apt-get update
+          sudo apt-get install libglapi-mesa libegl-mesa0 libegl1 libopengl0 libgl1-mesa-glx
+      - name: Run all tests
         uses: neuroinformatics-unit/actions/test@v2
         with:
           python-version: ${{ matrix.python-version }}
