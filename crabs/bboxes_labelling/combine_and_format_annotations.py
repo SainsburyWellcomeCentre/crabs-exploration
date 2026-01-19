@@ -1,7 +1,6 @@
 """Script to combine and format annotations."""
 
 from pathlib import Path
-from typing import Optional
 
 import typer
 
@@ -17,9 +16,9 @@ app = typer.Typer(rich_markup_mode="rich")
 @app.command()
 def combine_VIA_and_convert_to_COCO(
     parent_dir_via_jsons: str,
-    exclude_pattern: Optional[str] = None,
-    via_default_dir: Optional[str] = None,
-    via_project_name: Optional[str] = None,
+    exclude_pattern: str | None = None,
+    via_default_dir: str | None = None,
+    via_project_name: str | None = None,
 ) -> str:
     r"""Combine a list of VIA JSON files into one and convert to COCO format.
 

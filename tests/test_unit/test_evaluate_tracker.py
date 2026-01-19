@@ -78,6 +78,7 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
         for bbox, expected_bbox in zip(
             ground_truth_dict[expected_frame_number]["bbox"],
             expected_frame_data["bbox"],
+            strict=False,
         ):
             assert np.allclose(
                 bbox, expected_bbox

@@ -1,7 +1,5 @@
 """DataModule for the crabs data."""
 
-from typing import Optional
-
 import torch
 import torchvision
 import torchvision.transforms.v2 as transforms
@@ -25,7 +23,7 @@ class CrabsDataModule(LightningDataModule):
         list_img_dirs: list[str],
         list_annotation_files: list[str],
         config: dict,
-        split_seed: Optional[int] = None,
+        split_seed: int | None = None,
         no_data_augmentation: bool = False,
     ):
         """Initialise the CrabsDataModule."""
@@ -146,7 +144,7 @@ class CrabsDataModule(LightningDataModule):
             tuples.
 
         """
-        return tuple(zip(*batch))
+        return tuple(zip(*batch, strict=False))
 
     def _compute_splits(
         self,

@@ -13,7 +13,6 @@ import pprint
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import typer
@@ -338,7 +337,7 @@ def extract_frames_to_label_from_video(
 def compute_and_extract_frames_to_label(
     list_video_locations: list[str],
     output_path: str = ".",
-    output_subdir: Optional[str] = None,
+    output_subdir: str | None = None,
     video_extensions: tuple[str] = ("mp4",),
     initial_samples: int = 200,
     sample_method: str = "stride",  # choices=["random", "stride"],

@@ -1,7 +1,7 @@
 """LightningModule for Faster R-CNN for object detection."""
 
 import logging
-from typing import Any, Union
+from typing import Any
 
 import torch
 from lightning import LightningModule
@@ -107,7 +107,7 @@ class FasterRCNN(LightningModule):
         getattr(self, f"{dataset_str}_step_outputs")["num_batches"] += 1
 
     def compute_precision_recall_epoch(
-        self, step_outputs: dict[str, Union[float, int]], log_str: str
+        self, step_outputs: dict[str, float | int], log_str: str
     ) -> tuple[float, float]:
         """Compute and log mean precision and recall for the current epoch."""
         # compute mean precision and recall
@@ -208,7 +208,7 @@ class FasterRCNN(LightningModule):
 
     def val_test_step(
         self, batch: tuple[torch.Tensor, torch.Tensor]
-    ) -> dict[str, Union[float, int]]:
+    ) -> dict[str, float | int]:
         """Perform inference on a validation or test batch.
 
         Computes precision and recall.
@@ -224,7 +224,7 @@ class FasterRCNN(LightningModule):
 
     def validation_step(
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
-    ) -> dict[str, Union[float, int]]:
+    ) -> dict[str, float | int]:
         """Define the validation step for the model."""
         outputs = self.val_test_step(batch)
         self.accumulate_epoch_metrics(outputs, "validation")
@@ -232,7 +232,7 @@ class FasterRCNN(LightningModule):
 
     def test_step(
         self, batch: tuple[torch.Tensor, torch.Tensor], batch_idx: int
-    ) -> dict[str, Union[float, int]]:
+    ) -> dict[str, float | int]:
         """Define the test step for the model."""
         outputs = self.val_test_step(batch)
         self.accumulate_epoch_metrics(outputs, "test")

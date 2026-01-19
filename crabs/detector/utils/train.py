@@ -1,14 +1,13 @@
 """Utils used in training."""
 
 import logging
-from typing import Optional
 
 import torch
 
 DEFAULT_ANNOTATIONS_FILENAME = "VIA_JSON_combined_coco_gen.json"
 
 
-def get_checkpoint_type(checkpoint_path: Optional[str]) -> Optional[str]:
+def get_checkpoint_type(checkpoint_path: str | None) -> str | None:
     """Get checkpoint type (full or weights) from the checkpoint path."""
     checkpoint = torch.load(checkpoint_path)  # fails if path doesn't exist
     if all(

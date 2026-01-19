@@ -5,7 +5,7 @@ import datetime
 import logging
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from lightning.pytorch.loggers import MLFlowLogger
@@ -70,7 +70,9 @@ def prep_annotation_files(
 
     # if a list of annotation files/filepaths is passed
     else:
-        for annot, dataset in zip(input_annotation_files, dataset_dirs):
+        for annot, dataset in zip(
+            input_annotation_files, dataset_dirs, strict=False
+        ):
             # if the annotation is only filename:
             # assume file is under 'annotation' directory
             if Path(annot).name == annot:
@@ -246,7 +248,7 @@ def slurm_logs_as_artifacts(logger: MLFlowLogger, slurm_job_id: str):
 
 
 def bbox_tensors_to_COCO_dict(
-    bbox_tensors: torch.Tensor, list_img_filenames: Optional[list] = None
+    bbox_tensors: torch.Tensor, list_img_filenames: list | None = None
 ) -> dict:
     """Convert list of bounding boxes as tensors to COCO-crab format.
 

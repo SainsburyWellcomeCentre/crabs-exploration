@@ -1,7 +1,6 @@
 import re
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import pooch
@@ -73,7 +72,7 @@ def test_detect_and_track_video(
     input_data_paths: dict,
     tmp_path: Path,
     flags_to_append: list,
-    no_timestamp_flag: Optional[str],
+    no_timestamp_flag: str | None,
 ):
     """Test the detect-and-track-video entry point when groundtruth is passed.
 

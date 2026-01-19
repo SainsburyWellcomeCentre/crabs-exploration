@@ -4,7 +4,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 def read_json_file(
@@ -37,11 +37,11 @@ def read_json_file(
 
 def combine_multiple_via_jsons(
     list_input_json_files: list,
-    exclude_pattern: Optional[str] = None,
+    exclude_pattern: str | None = None,
     json_out_filename: str = "VIA_JSON_combined.json",
-    json_out_dir: Optional[str] = None,
-    via_default_dir: Optional[str] = None,
-    via_project_name: Optional[str] = None,
+    json_out_dir: str | None = None,
+    via_default_dir: str | None = None,
+    via_project_name: str | None = None,
 ) -> str:
     r"""Combine all the input VIA JSON files into one.
 
@@ -159,8 +159,8 @@ DEFAULT_CRAB_CATEGORY = {"id": 1, "name": "crab", "supercategory": "animal"}
 def convert_via_json_to_coco(
     json_file_path: str,
     coco_category: dict = DEFAULT_CRAB_CATEGORY,
-    coco_out_filename: Optional[str] = None,
-    coco_out_dir: Optional[str] = None,
+    coco_out_filename: str | None = None,
+    coco_out_dir: str | None = None,
 ) -> str:
     """Convert annotation data for one category from VIA-JSON format to COCO.
 

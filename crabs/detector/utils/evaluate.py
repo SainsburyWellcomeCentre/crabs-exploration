@@ -4,7 +4,6 @@ import argparse
 import ast
 import sys
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -21,7 +20,7 @@ from crabs.detector.utils.detection import (
 def compute_precision_recall(
     pred_dicts_batch: list,
     gt_dicts_batch: list,
-    iou_threshold: Union[float, list],
+    iou_threshold: float | list,
 ) -> tuple[float, float]:
     """Compute precision and recall.
 
@@ -86,7 +85,7 @@ def compute_precision_recall(
 def evaluate_detections_hungarian(
     pred_dicts_batch: list,
     gt_dicts_batch: list,
-    iou_threshold: Union[float, list],
+    iou_threshold: float | list,
 ) -> dict:
     """Evaluate detection performance using Hungarian algorithm for matching.
 
@@ -135,7 +134,7 @@ def evaluate_detections_hungarian(
         )
 
         # Mark true positives and false positives based on optimal assignment
-        for pred_idx, gt_idx in zip(pred_indices, gt_indices):
+        for pred_idx, gt_idx in zip(pred_indices, gt_indices, strict=False):
             if iou_matrix[pred_idx, gt_idx] > iou_threshold:
                 true_positives[pred_idx] = True
                 matched_gts[gt_idx] = True
@@ -198,7 +197,7 @@ def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
 
 
 def get_config_from_ckpt(
-    config_file: Optional[str], trained_model_path: str
+    config_file: str | None, trained_model_path: str
 ) -> dict:
     """Get config from checkpoint if config is not passed as a CLI argument."""
     # If config in CLI arguments: used passed config

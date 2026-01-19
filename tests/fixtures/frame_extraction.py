@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 import pytest
 import typer
@@ -72,7 +71,9 @@ def cli_inputs_list(cli_inputs_dict: dict) -> list:
                 list_kys_modified.append("--" + k)
 
         list_cli_args = []
-        for ky, val in zip(list_kys_modified, input_params.values()):
+        for ky, val in zip(
+            list_kys_modified, input_params.values(), strict=False
+        ):
             if isinstance(val, list):
                 list_cli_args.append(str(ky))
                 for elem in val:
@@ -113,7 +114,7 @@ def mock_extract_frames_app(
     def mock_combine_and_format_annotations(
         list_video_locations: list[str],
         output_path: str = cli_inputs_dict["output-path"],
-        output_subdir: Optional[str] = None,
+        output_subdir: str | None = None,
         video_extensions: list[str] = cli_inputs_dict["video-extensions"],
         initial_samples: int = cli_inputs_dict["initial-samples"],
         sample_method: str = "stride",

@@ -59,7 +59,9 @@ def test_prep_annotation_files_with_filenames(
     input_datasets, input_annotation_files
 ):
     expected_annot_paths = []
-    for dataset_dir, annot_file in zip(input_datasets, input_annotation_files):
+    for dataset_dir, annot_file in zip(
+        input_datasets, input_annotation_files, strict=False
+    ):
         expected_annot_paths.append(
             str(Path(dataset_dir) / "annotations" / annot_file)
         )

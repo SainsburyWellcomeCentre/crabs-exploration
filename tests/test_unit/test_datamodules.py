@@ -207,6 +207,7 @@ def test_get_train_transform(
     for train_tr, expected_train_tr in zip(
         train_transforms.transforms,
         expected_train_transforms.transforms,
+        strict=False,
     ):
         # we skip the attribute `_labels_getter` of `SanitizeBoundingBoxes`
         # because it points to a lambda function, which does not have a
@@ -248,6 +249,7 @@ def test_get_test_val_transform(
     for test_val_tr, expected_test_val_tr in zip(
         test_val_transforms.transforms,
         expected_test_val_transforms.transforms,
+        strict=False,
     ):
         assert test_val_tr.__dict__ == expected_test_val_tr.__dict__
 
@@ -372,7 +374,9 @@ def test_compute_splits(
     # Compute lists of image IDs per dataset
     image_ids_per_dataset = {}
     for dataset, dataset_str in zip(
-        [train_dataset, test_dataset, val_dataset], ["train", "test", "val"]
+        [train_dataset, test_dataset, val_dataset],
+        ["train", "test", "val"],
+        strict=False,
     ):
         image_ids_per_dataset[dataset_str] = [
             sample[1]["image_id"] for sample in dataset

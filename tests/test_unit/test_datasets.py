@@ -63,7 +63,9 @@ def test_exclude_files(list_datasets, list_annotations, n_files_to_exclude):
 
     # Determine images to exclude
     list_exclude_files = []
-    for dataset, n_excl in zip(full_dataset.datasets, n_exclude_per_dataset):
+    for dataset, n_excl in zip(
+        full_dataset.datasets, n_exclude_per_dataset, strict=False
+    ):
         coco_object = dataset.coco
         list_files_in_dataset = [
             im["file_name"] for im in coco_object.dataset["images"]
