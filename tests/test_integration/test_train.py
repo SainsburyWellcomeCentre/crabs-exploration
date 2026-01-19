@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import pooch
 import pytest
+import yaml
 
 
 @pytest.fixture()
@@ -31,24 +32,24 @@ def input_data_paths(pooch_registry: pooch.Pooch, tmp_path: Path):
     reference_config_file = (
         Path(__file__).parents[2] / "crabs/detector/config/faster_rcnn.yaml"
     )
-    # with open(reference_config_file) as f:
-    #     reference_config = yaml.safe_load(f)
+    with open(reference_config_file) as f:
+        reference_config = yaml.safe_load(f)
 
-    # # Modify the config file to have num_workers = 0 and
-    # # save it at tmp_path
-    # # This is to avoid issues with macos-15-intel CI tests failing with
-    # # "RuntimeError: Please call `iter(combined_loader)` first"
-    # # when num_workers > 0, Python 3.9 and macos-15-intel.
-    # # https://github.com/pytorch/pytorch/issues/46648
-    # reference_config["num_workers"] = 0
-    # config_file = tmp_path / "config.yaml"
-    # with open(config_file, "w") as f:
-    #     yaml.dump(reference_config, f)
+    # Modify the config file to have num_workers = 0 and
+    # save it at tmp_path
+    # This is to avoid issues with macos-15-intel CI tests failing with
+    # "RuntimeError: Please call `iter(combined_loader)` first"
+    # when num_workers > 0.
+    # https://github.com/pytorch/pytorch/issues/46648
+    reference_config["num_workers"] = 0
+    config_file = tmp_path / "config.yaml"
+    with open(config_file, "w") as f:
+        yaml.dump(reference_config, f)
 
     return {
         "dataset_dir": black_frames_dir.parent,
         "annotation_file": annotation_file,
-        "config_file": reference_config_file,
+        "config_file": config_file,
         "seed_n": "42",
         "accelerator": "cpu",
         "experiment_name": "test_train_detector",
