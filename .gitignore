@@ -104,3 +104,7 @@ lightning_logs
 
 # env variables
 .env
+
+
+# uv
+uv.lock
