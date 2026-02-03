@@ -1,8 +1,37 @@
 """Script to create a video with tracked bounding boxes."""
 
+import os
 from pathlib import Path
 
 import cv2
+import matplotlib.pyplot as plt
+from movement.io import load_bboxes
+from tqdm import tqdm
+
+
+def get_distinct_colors():
+    """Generate 100+ distinct colors from matplotlib qualitative colormaps."""
+    # Use colormaps that don't overlap with each other
+    colormaps = [
+        "tab20",
+        "tab20b",
+        "tab20c",
+        "Set1",
+        "Set2",
+        "Set3",
+        "Dark2",
+        "Accent",
+    ]
+    colors = []
+    for cmap_name in colormaps:
+        cmap = plt.get_cmap(cmap_name)
+        n_colors = cmap.N
+        for i in range(n_colors):
+            rgba = cmap(i)
+            # Convert from RGB (0-1) to BGR (0-255) for OpenCV
+            bgr = (int(rgba[2] * 255), int(rgba[1] * 255), int(rgba[0] * 255))
+            colors.append(bgr)
+    return colors
 
 
 def create_opencv_video(
@@ -27,25 +56,28 @@ def create_opencv_video(
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")  # Codec for mp4
     out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
 
-    # bboxes format
-    rectangle_color = (0, 255, 0)  # Green color in BGR format
+    # Get distinct colors for each individual
+    colors = get_distinct_colors()
 
     # Get list of frames
     if not list_frame_idcs:
         list_frame_idcs = range(n_frames)
 
     # Plot trajectories per frame
-    for frame_idx in list_frame_idcs:
+    for frame_idx in tqdm(list_frame_idcs):
         # read frame
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
         ret, frame = cap.read()
 
         if ret:
             # plot frame
-            cv2.imshow(f"frame {frame_idx}", frame)
+            # cv2.imshow(f"frame {frame_idx}", frame)
 
             # plot bbox of each individual
             for ind_idx in list_individuals_idcs:
+                # Get color for this individual
+                color_indiv = colors[ind_idx % len(colors)]
+
                 # add title with frame number
                 cv2.putText(
                     frame,
@@ -62,34 +94,21 @@ def create_opencv_video(
                 )
 
                 # if position is not nan, plot bbox with ID
-                centre = ds.position[frame_idx, ind_idx, :]
+                centre = ds.position[frame_idx, :, ind_idx]
                 if not centre.isnull().any().item():
-                    top_left = centre - ds.shape[frame_idx, ind_idx, :] / 2
-                    bottom_right = centre + ds.shape[frame_idx, ind_idx, :] / 2
+                    top_left = centre - ds.shape[frame_idx, :, ind_idx] / 2
+                    bottom_right = centre + ds.shape[frame_idx, :, ind_idx] / 2
                     cv2.rectangle(
                         frame,
                         tuple(int(x) for x in top_left),
                         tuple(int(x) for x in bottom_right),
-                        rectangle_color,
+                        color_indiv,
                         3,  # rectangle_thickness
                     )
 
-                    # add ID
-                    cv2.putText(
-                        frame,
-                        str(ind_idx),
-                        tuple(
-                            int(x) for x in bottom_right
-                        ),  # location of text bottom left
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        2,  # fontsize
-                        rectangle_color,
-                        6,  # thickness
-                        cv2.LINE_AA,
-                    )
-
-                # add past trajectory in green -- drawMarker?
-                past_trajectory = ds.position[:frame_idx, ind_idx, :]
+                # add past trajectory with individual's color,
+                # including current frame
+                past_trajectory = ds.position[: frame_idx + 1, :, ind_idx]
                 for t in past_trajectory:
                     # skip if nan
                     if t.isnull().any().item():
@@ -99,12 +118,14 @@ def create_opencv_video(
                         frame,
                         (int(x), int(y)),  # centre
                         3,  # radius
-                        (0, 255, 0),  # BGR
+                        color_indiv,
                         -1,
                     )
 
-                # add future trajectory in grey -- drawMarker?
-                fut_trajectory = ds.position[frame_idx:, ind_idx, :]
+                # add future trajectory with faded individual's color
+                fut_trajectory = ds.position[frame_idx + 1 :, :, ind_idx]
+                # Create faded color (50% brightness)
+                # faded_color = tuple(int(c * 0.5) for c in color_indiv)
                 for t in fut_trajectory:
                     if t.isnull().any().item():
                         continue
@@ -113,7 +134,7 @@ def create_opencv_video(
                         frame,
                         (int(x), int(y)),  # centre
                         3,  # radius
-                        (255, 255, 255),  # BGR
+                        (255, 255, 255),  # white #faded_color,
                         -1,
                     )
 
@@ -131,55 +152,39 @@ def create_opencv_video(
 
 
 if __name__ == "__main__":
-    from movement.io import load_bboxes
-
-    # load input data
-    groundtruth_csv_corrected = (
-        "/Users/sofia/arc/project_Zoo_crabs/escape_clips/"
-        "04.09.2023-04-Right_RE_test_corrected_ST_csv_SM_corrected.csv"
+    # input/output locations
+    input_data_dir = (
+        "/Users/sofia/arc/project_Zoo_crabs/videos_presentation_Tiago/"
+        "tracking_output_above_10th_percentile_slurm_1249954"
+    )
+    output_data_dir = Path(
+        "/Users/sofia/arc/project_Zoo_crabs/videos_presentation_Tiago/output"
     )
 
-    pred_csv = (
-        "/Users/sofia/arc/project_Zoo_crabs/escape_clips/"
-        "crabs_track_output_selected_clips/04.09.2023-04-Right_RE_test/predicted_tracks.csv"  # noqa
+    list_escape_clips = sorted(
+        [
+            Path(file).stem
+            for file in os.listdir(input_data_dir)
+            if file.endswith(".mp4")
+        ]
     )
+    for escape_clip_name in list_escape_clips[-1:]:
+        input_video = Path(input_data_dir) / f"{escape_clip_name}.mp4"
+        pred_csv = Path(input_data_dir) / f"{escape_clip_name}_tracks.csv"
 
-    input_video = (
-        "/Users/sofia/arc/project_Zoo_crabs/escape_clips/crabs_track_output_selected_clips/"  # noqa
-        "04.09.2023-04-Right_RE_test/04.09.2023-04-Right_RE_test.mp4"
-    )
+        # Read predictions as a movement dataset
+        ds_pred = load_bboxes.from_via_tracks_file(
+            pred_csv, fps=None, use_frame_numbers_from_file=False
+        )
+        list_individuals_idcs = list(range(len(ds_pred.individuals)))
 
-    # Read corrected ground truth as a movement dataset
-    ds_gt = load_bboxes.from_via_tracks_file(
-        groundtruth_csv_corrected, fps=None, use_frame_numbers_from_file=False
-    )
-
-    # Read predictions as a movement dataset
-    ds_pred = load_bboxes.from_via_tracks_file(
-        pred_csv, fps=None, use_frame_numbers_from_file=False
-    )
-
-    # # Create ground truth video
-    # list_individuals_idcs = [32]
-    # for id in list_individuals_idcs:
-    #     output_video_path = str(Path(__file__).parent / f"gt_id_{id}.mp4")
-    #     # ground truth video
-    #     create_opencv_video(
-    #         ds=ds_gt,
-    #         input_video=input_video,
-    #         output_video_path=output_video_path,
-    #         list_individuals_idcs=list_individuals_idcs,
-    #     )
-
-    # Create prediction video
-    list_individuals_idcs = [22]
-    output_video_path = str(
-        Path(__file__).parent
-        / f"pred_id_{'_'.join([str(el) for el in list_individuals_idcs])}.mp4"
-    )
-    create_opencv_video(
-        ds=ds_pred,
-        input_video=input_video,
-        output_video_path=output_video_path,
-        list_individuals_idcs=list_individuals_idcs,
-    )
+        # Create prediction video
+        output_video_path = (
+            output_data_dir / f"{escape_clip_name}_bboxes_tracks.mp4"
+        )
+        create_opencv_video(
+            ds=ds_pred,
+            input_video=input_video,
+            output_video_path=output_video_path,
+            list_individuals_idcs=list_individuals_idcs,
+        )
