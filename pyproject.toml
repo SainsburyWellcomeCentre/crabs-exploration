@@ -23,17 +23,19 @@ classifiers = [
 ]
 dependencies = [
     "opencv-python",
-    "sleap[nn]",  # works with python>3.11
+    "sleap[nn]", # works with python>3.11
     "typer",
     "timecode",
     "torch",
     "torchvision",
     "pycocotools",
     "filterpy",
-    "lightning==2.5.0",  # see https://github.com/Lightning-AI/pytorch-lightning/pull/20669
+    "lightning==2.5.0", # see https://github.com/Lightning-AI/pytorch-lightning/pull/20669
     "mlflow",
     "optuna",
-    "numpy<2"
+    "numpy>=2.0.0",
+    "movement @ git+https://github.com/neuroinformatics-unit/movement.git@smg/parquet-bboxes",
+    "numba>=0.59",
 ]
 
 [project.optional-dependencies]
@@ -68,7 +70,7 @@ extract-loops = "crabs.extract_loop_clips:app_wrapper"
 
 
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=77", "wheel", "setuptools_scm[toml]>=8"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
