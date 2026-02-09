@@ -1,8 +1,8 @@
 # %%
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -23,119 +23,173 @@ csv_metadata_path = "/Users/sofia/arc/project_Zoo_crabs/CrabsField/crab-loops/lo
 # %%
 # Helper functions
 
-def load_ds_and_add_metadata(via_tracks_file_path, df_metadata):
-    """Read movement dataset and add metadata."""
+
+def group_files_per_video(
+    files_dir: str | Path,
+    glob_pattern: str,
+    parse_video_fn: Callable,
+):
+    """Group filepaths per video.
+
+    Parameters
+    ----------
+    files_dir : str | Path
+        Path to directory containing files
+    glob_pattern : str
+        Glob pattern to match files in directory
+    parse_video_fn: Callable
+        Function to parse video name from file path
+
+    Returns
+    -------
+        grouped_by_key: dict
+            Dictionary with video name as key and list of filepaths as value.
+            We convert the defaultdict to a dict to prevent key typos creating
+            a new key and empty list.
+
+    """
+    files = sorted(Path(files_dir).glob(glob_pattern))
+    grouped_by_key = defaultdict(list)
+    for f in files:
+        video_name = parse_video_fn(f)
+        grouped_by_key[video_name].append(str(f))
+        # make serializable to save later
+    return dict(grouped_by_key)
+
+
+def via_tracks_to_video_filename(via_tracks_path: str | Path) -> str:
+    """Return video filename without extension from VIA tracks file path."""
+    return Path(via_tracks_path).stem.split("-Loop")[0]
+
+
+def via_tracks_to_clip_filename(via_tracks_path: str | Path) -> str:
+    """Return clip filename with extension from VIA tracks filepath.
+
+    Parameters
+    ----------
+    via_tracks_path : str | Path
+        Path to VIA tracks file
+
+    Returns
+    -------
+    clip_filename : str
+        Clip filename (e.g. "04.09.2023-01-Right-Loop05.mp4")
+
+    """
+    return Path(via_tracks_path).stem.removesuffix("_tracks") + ".mp4"
+
+
+def clip_filename_to_clip_id(clip_filename: str | Path) -> str:
+    """Return clip ID (Loop09) from clip filename."""
+    return Path(str(clip_filename).rsplit("-")[-1]).stem
+
+
+def load_ds_and_add_metadata(
+    via_tracks_file_path: str | Path, df_metadata: pd.DataFrame
+) -> xr.Dataset:
+    """Read VIA tracks and metadata as `movement` dataset.
+
+    Args:
+        via_tracks_file_path: Path to VIA tracks file
+        df_metadata: DataFrame with metadata
+
+    Returns:
+        ds: movement dataset with metadata
+
+    """
     # Load VIA tracks file as movement dataset
     ds = load_bboxes.from_via_tracks_file(via_tracks_file_path)
 
-    # Get metadata from csv
-    clip_name = (
-        Path(ds.attrs["source_file"]).stem.removesuffix("_tracks") + ".mp4"
-    )
-
     # Extract metadata for this row
-    row = df_metadata[df_metadata["loop_clip_name"] == clip_name]
-    global_clip_start_frame_0idx = row["loop_START_frame_ffmpeg"].item() - 1
-    global_clip_end_frame_0idx = row["loop_END_frame_ffmpeg"].item() - 1
-    global_escape_start_frame_0idx = row[
-        "escape_START_frame_0_based_idx"
-    ].item()
-    escape_type = row["escape_type"].item()
-    fps = row["fps"].item()  # cast to float32?
+    clip_filename = via_tracks_to_clip_filename(ds.attrs["source_file"])
+    row = df_metadata.loc[
+        df_metadata["loop_clip_name"] == clip_filename
+    ].squeeze()
+    global_clip_start_frame_0idx = row["loop_START_frame_ffmpeg"] - 1
+    global_clip_end_frame_0idx = row["loop_END_frame_ffmpeg"] - 1
+    global_escape_start_frame_0idx = row["escape_START_frame_0_based_idx"]
 
-    # Add metadata to ds
     # Add clip dimension
-    ds = ds.expand_dims({"clip_id": [Path(clip_name).stem.rsplit("-", 1)[-1]]})
+    ds = ds.expand_dims({"clip_id": [clip_filename_to_clip_id(clip_filename)]})
 
     # Add clip start and end as dimensionless coordinates
-    # as non-dim coordinates because they are categorical metadata
-    # of each clip, not a measure quantity
+    # (as non-dim coordinates because they are categorical metadata
+    # of each clip, not a measure quantity; after concatenating
+    # along clip_id they become non-index coordinates, so they wont
+    # interfere with alignment)
     ds = ds.assign_coords(
-        {
-            "clip_start_frame_0idx": global_clip_start_frame_0idx,
-            "clip_end_frame_0idx": global_clip_end_frame_0idx,
-            "clip_escape_start_frame_0idx": global_escape_start_frame_0idx,
-            "clip_escape_type": escape_type.lower(),
-        }
+        clip_start_frame_0idx=global_clip_start_frame_0idx,
+        clip_end_frame_0idx=global_clip_end_frame_0idx,
+        clip_escape_start_frame_0idx=global_escape_start_frame_0idx,
+        clip_escape_type=row["escape_type"].lower(),
     )
 
-    # Add fps as attributes (TODO: assign per video instead)
-    ds.attrs["fps"] = fps
-
-    # Add state array along time dimension
-    local_escape_start_frame = (
+    # Add escape state array along time dimension
+    local_escape_start_frame_0idx = (
         global_escape_start_frame_0idx - global_clip_start_frame_0idx
     )
-    ds["escape_state"] = (
-        "time",
-        np.r_[
-            np.zeros(local_escape_start_frame - 1, dtype=np.float16),
-            np.ones(
-                ds.time.shape[0] - (local_escape_start_frame - 1),
-                dtype=np.float16,
-            ),
-        ],
-    )
-
-    # Add attributes with unique name?
+    # float16 (not int/bool) to allow for NaN padding after
+    # concatenating along clip_id
+    escape_state = np.zeros(ds.time.shape[0], dtype=np.float16)
+    escape_state[local_escape_start_frame_0idx:] = 1.0
+    ds["escape_state"] = ("time", escape_state)
 
     return ds
-
-
-def get_map_video_to_files(via_tracks_dir, via_tracks_glob_pattern):
-    """Return dict from video name to files."""
-    # Get list of VIA track files
-    list_files = sorted(
-        list(Path(via_tracks_dir).glob(via_tracks_glob_pattern))
-    )
-
-    # Get mapping from video name to files
-    # ----------
-    # Can i make this more general?
-    map_video_to_files = defaultdict(list)
-    for f in list_files:
-        map_video_to_files[Path(f).stem.split("-Loop")[0]].append(f)
-    # ----------
-    return map_video_to_files
 
 
 # %%
 # Build concatenated datasets per video
 
 df_metadata = pd.read_csv(csv_metadata_path)
-map_video_to_files = get_map_video_to_files(via_tracks_dir, "*.csv")
+map_video_to_filepaths_and_clips = group_files_per_video(
+    via_tracks_dir,
+    "*.csv",
+    parse_video_fn=via_tracks_to_video_filename,
+)
 
-list_ds_videos = []
 # Loop thru videos and files
-for video_id, files in map_video_to_files.items():
-    # --------
-    # Get clip names (e.g "Loop09")
-    # Can I make this more general?
-    clip_names = [Path(f).stem.rsplit("-")[-1].split("_")[0] for f in files]
-    # ----------
-
+list_ds_videos = []
+for video_id, clip_files in map_video_to_filepaths_and_clips.items():
     # Get list of chunked datasets for each file
-    list_ds_chunked = [load_ds_and_add_metadata(f, df_metadata) for f in files]
+    list_ds_chunked = [
+        load_ds_and_add_metadata(file, df_metadata) for file in clip_files
+    ]
 
-    # Concatenate along "loop" dimension
+    # Concatenate along "clip_id" dimension
     # (the output will be a chunked / dask dataset,
     # a dataset with dask dataarrays)
     ds_combined = xr.concat(
         list_ds_chunked,
         dim="clip_id",
         join="outer",
-        # change how attrs are retained
     )
 
-    # Add attributes
-    ds_combined.attrs["source_file"] = [str(f) for f in files]
+    # Get fps for this video from metadata
+    # (all clips in the same video should share the same fps)
+    video_fps_values = df_metadata.loc[
+        df_metadata["video_name"].str.removesuffix(".mov") == video_id, "fps"
+    ]
+    if video_fps_values.nunique() != 1:
+        raise ValueError(
+            f"Expected uniform fps for video '{video_id}', "
+            f"got {video_fps_values.unique()}"
+        )
+    ds_combined.attrs["fps"] = video_fps_values.iloc[0]
 
+    # Add all source files as attributes
+    # (by default only the first ds attrs is retained
+    # in the concat output)
+    ds_combined.attrs["video_id"] = video_id
+    ds_combined.attrs["source_file"] = clip_files
+
+    # Append to list of datasets
     list_ds_videos.append(ds_combined)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Plot centroid one clip
 # video_name = "04.09.2023-01-Right"
+# Q: is there a faster way to plot rather than looping thru individuals?
 ds_loop = list_ds_videos[2].isel(clip_id=0)
 
 # plot all individuals
@@ -154,14 +208,15 @@ for i, ind in enumerate(ds_loop.individuals):
         ds_loop.position.where(ds_loop.escape_state == 1.0, drop=True),
         individual=ind,
         ax=ax,
-        c='r',
+        c="r",
     )
 ax.invert_yaxis()
 ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 ax.set_aspect("equal")
-ax.set_title(f"{ds_loop.clip_id.values.item()} - {ds_loop.escape_type.values.item()}")
-
+ax.set_title(
+    f"{ds_loop.clip_id.values.item()} - {ds_loop.escape_type.values.item()}"
+)
 
 
 # %%%%%%%%%
@@ -209,10 +264,18 @@ ax.set_aspect("equal")
 print(ds_video.isel(clip_id=1).escape_type.values.item())
 
 # Get loops with "spontaneous" escape
-print(ds_video.where(ds_video.escape_type == "spontaneous", drop=True).clip_id.values)
+print(
+    ds_video.where(
+        ds_video.escape_type == "spontaneous", drop=True
+    ).clip_id.values
+)
 
 # Get loops with "triggered" escape
-print(ds_video.where(ds_video.escape_type == "triggered", drop=True).clip_id.values)
+print(
+    ds_video.where(
+        ds_video.escape_type == "triggered", drop=True
+    ).clip_id.values
+)
 
 
 # %%
