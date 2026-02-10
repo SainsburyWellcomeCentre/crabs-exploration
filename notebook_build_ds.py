@@ -10,19 +10,19 @@ import xarray as xr
 from movement.io import load_bboxes
 from movement.plots import plot_centroid_trajectory
 
-# %%
+# %%%%%%%%%
+# Input data
 via_tracks_dir = "/Users/sofia/arc/project_Zoo_crabs/loops_tracking_above_10th_percentile_slurm_1825237_SAMPLE"
 csv_metadata_path = "/Users/sofia/arc/project_Zoo_crabs/CrabsField/crab-loops/loop-frames-ffmpeg.csv"
 
 # Can I fetch csv data from GIN?
 
-# %%
+# %%#%%%%%%%%%
 %matplotlib widget
 
 
 # %%
 # Helper functions
-
 
 def group_files_per_video(
     files_dir: str | Path,
@@ -53,12 +53,23 @@ def group_files_per_video(
     for f in files:
         video_name = parse_video_fn(f)
         grouped_by_key[video_name].append(str(f))
-        # make serializable to save later
+        # str to make it serializable to save later
     return dict(grouped_by_key)
 
 
 def via_tracks_to_video_filename(via_tracks_path: str | Path) -> str:
-    """Return video filename without extension from VIA tracks file path."""
+    """Return video filename without extension from VIA tracks file path.
+
+    Parameters
+    ----------
+    via_tracks_path : str | Path
+        Path to VIA tracks file
+
+    Returns
+    -------
+    video_filename : str
+        Video filename without extension (e.g. "04.09.2023-01-Right")
+    """
     return Path(via_tracks_path).stem.split("-Loop")[0]
 
 
@@ -80,21 +91,33 @@ def via_tracks_to_clip_filename(via_tracks_path: str | Path) -> str:
 
 
 def clip_filename_to_clip_id(clip_filename: str | Path) -> str:
-    """Return clip ID (Loop09) from clip filename."""
+    """Return clip ID (Loop09) from clip filename.
+
+    Parameters
+    ----------
+    clip_filename : str | Path
+        Clip filename (e.g. "04.09.2023-01-Right-Loop05.mp4")
+
+    Returns
+    -------
+    clip_id : str
+        Clip ID (e.g. "Loop05")
+
+    """
     return Path(str(clip_filename).rsplit("-")[-1]).stem
 
 
 def load_ds_and_add_metadata(
     via_tracks_file_path: str | Path, df_metadata: pd.DataFrame
 ) -> xr.Dataset:
-    """Read VIA tracks and metadata as `movement` dataset.
+    """Read VIA tracks and metadata as a `movement` dataset.
 
     Args:
         via_tracks_file_path: Path to VIA tracks file
         df_metadata: DataFrame with metadata
 
     Returns:
-        ds: movement dataset with metadata
+        ds: movement bounding boxes dataset with metadata
 
     """
     # Load VIA tracks file as movement dataset
@@ -112,11 +135,11 @@ def load_ds_and_add_metadata(
     # Add clip dimension
     ds = ds.expand_dims({"clip_id": [clip_filename_to_clip_id(clip_filename)]})
 
-    # Add clip start and end as dimensionless coordinates
-    # (as non-dim coordinates because they are categorical metadata
+    # Add clip start, end, escape start and type as dimensionless coordinates
+    # (because they are categorical metadata
     # of each clip, not a measure quantity; after concatenating
-    # along clip_id they become non-index coordinates, so they wont
-    # interfere with alignment)
+    # along clip_id they become non-index coordinates mirroring clip_id,
+    # so they wont interfere with alignment)
     ds = ds.assign_coords(
         clip_start_frame_0idx=global_clip_start_frame_0idx,
         clip_end_frame_0idx=global_clip_end_frame_0idx,
@@ -137,17 +160,20 @@ def load_ds_and_add_metadata(
     return ds
 
 
-# %%
+# %%%%%%%%%%%%%%%%%%%%%%%%
 # Build concatenated datasets per video
 
+# Read metadata dataframe
 df_metadata = pd.read_csv(csv_metadata_path)
+
+# Group VIA tracks files per video
 map_video_to_filepaths_and_clips = group_files_per_video(
     via_tracks_dir,
     "*.csv",
     parse_video_fn=via_tracks_to_video_filename,
 )
 
-# Loop thru videos and files
+# Concatenate clips from the same video into one dataset
 list_ds_videos = []
 for video_id, clip_files in map_video_to_filepaths_and_clips.items():
     # Get list of chunked datasets for each file
@@ -189,23 +215,78 @@ for video_id, clip_files in map_video_to_filepaths_and_clips.items():
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Plot centroid one clip
 # video_name = "04.09.2023-01-Right"
-# Q: is there a faster way to plot rather than looping thru individuals?
-ds_loop = list_ds_videos[2].isel(clip_id=0)
 
+# Select a clip
+ds_clip = list_ds_videos[0].isel(clip_id=0)
+
+# Pre-compute individual -> color mapping
+colors = plt.cm.tab20.colors
+color_map = {
+    ind.item(): colors[i % len(colors)]
+    for i, ind in enumerate(ds_clip.individuals)
+}
+
+# Outbound data (escape_state == 0)
+pos_out = ds_clip.position.where(ds_clip.escape_state == 0.0, drop=True)
+pos_out_flat = pos_out.stack(flat=("time", "individuals")).dropna("flat")
+
+# color assignment per individual
+ind_labels = pos_out_flat.individuals.values
+c_out = np.array([color_map[ind] for ind in ind_labels])
+
+# Inbound data (escape_state == 1)
+pos_in = ds_clip.position.where(ds_clip.escape_state == 1.0, drop=True)
+pos_in_flat = pos_in.stack(flat=("time", "individuals")).dropna("flat")
+
+# color assignment per individual
+ind_labels = pos_in_flat.individuals.values
+c_in = np.array([color_map[ind] for ind in ind_labels])
+
+
+fig, ax = plt.subplots(1,1)
+ax.scatter(
+    pos_out_flat.sel(space="x").values,
+    pos_out_flat.sel(space="y").values,
+    marker="o",c=c_out, s=15,
+)
+
+ax.scatter(
+    pos_in_flat.sel(space="x").values,
+    pos_in_flat.sel(space="y").values,
+    marker="o",c="r", s=15,
+)
+
+# add a ring around red marker
+ax.scatter(
+    pos_in_flat.sel(space="x").values,
+    pos_in_flat.sel(space="y").values,
+     marker="x", facecolors=c_in, s=1,
+)
+
+ax.invert_yaxis()
+ax.set_xlabel("x (pixels)")
+ax.set_ylabel("y (pixels)")
+ax.set_aspect("equal")
+ax.set_title(
+    f"{ds_clip.clip_id.values.item()} - {ds_clip.clip_escape_type.values.item()}"
+)
+
+
+#%%
 # plot all individuals
 fig, ax = plt.subplots()
 colors = plt.cm.tab20.colors
-for i, ind in enumerate(ds_loop.individuals):
+for i, ind in enumerate(ds_clip.individuals):
     # plot outbound
     plot_centroid_trajectory(
-        ds_loop.position.where(ds_loop.escape_state == 0.0, drop=True),
+        ds_clip.position.where(ds_clip.escape_state == 0.0, drop=True),
         individual=ind,
         ax=ax,
         c=colors[i % len(colors)],
     )
     # plot inbound
     plot_centroid_trajectory(
-        ds_loop.position.where(ds_loop.escape_state == 1.0, drop=True),
+        ds_clip.position.where(ds_clip.escape_state == 1.0, drop=True),
         individual=ind,
         ax=ax,
         c="r",
@@ -215,7 +296,7 @@ ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 ax.set_aspect("equal")
 ax.set_title(
-    f"{ds_loop.clip_id.values.item()} - {ds_loop.escape_type.values.item()}"
+    f"{ds_clip.clip_id.values.item()} - {ds_clip.clip_escape_type.values.item()}"
 )
 
 
@@ -247,7 +328,7 @@ ax.set_aspect("equal")
 # ax.set_title(video_name)
 
 # %%
-# plot all paths for one video
+# plot all trajectories in one video
 fig, ax = plt.subplots()
 ax.scatter(
     position_flat.sel(space="x").values,
