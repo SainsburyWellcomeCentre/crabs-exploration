@@ -14,8 +14,8 @@ from movement.io import load_bboxes
 via_tracks_dir = "/Users/sofia/arc/project_Zoo_crabs/loops_tracking_above_10th_percentile_slurm_1825237_SAMPLE"
 csv_metadata_path = "/Users/sofia/arc/project_Zoo_crabs/CrabsField/crab-loops/loop-frames-ffmpeg.csv"
 
-# Can I fetch csv data from GIN?
 
+# output
 zarr_store_path = "all_trials_per_video.zarr"
 
 
@@ -106,10 +106,35 @@ def clip_filename_to_clip_id(clip_filename: str | Path) -> str:
     return Path(str(clip_filename).rsplit("-")[-1]).stem
 
 
-def load_ds_add_metadata_chunk(
-    via_tracks_file_path: str | Path, df_metadata: pd.DataFrame, chunks=None
+def add_video_attrs(ds_combined, df_metadata):
+    """Add video data to dataset."""
+    # Get fps for this video from metadata
+    # (all clips in the same video should share the same fps)
+    video_fps_values = df_metadata.loc[
+        df_metadata["video_name"].str.removesuffix(".mov") == video_id, "fps"
+    ]
+    if video_fps_values.nunique() != 1:
+        raise ValueError(
+            f"Expected uniform fps for video '{video_id}', "
+            f"got {video_fps_values.unique()}"
+        )
+    ds_combined.attrs["fps"] = video_fps_values.iloc[0]
+
+    # Add all source files as attributes
+    # (by default only the first ds attrs is retained
+    # in the concat output)
+    ds_combined.attrs["video_id"] = video_id
+    ds_combined.attrs["source_file"] = clip_files
+
+    return ds_combined
+
+
+def load_extended_ds_chunked(
+    via_tracks_file_path: str | Path,
+    df_metadata: pd.DataFrame,
+    chunks=None,
 ) -> xr.Dataset:
-    """Read VIA tracks and metadata as a `movement` dataset.
+    """Read VIA tracks and metadata as a chunked `movement` dataset.
 
     Parameters
     ----------
@@ -141,22 +166,8 @@ def load_ds_add_metadata_chunk(
     global_clip_end_frame_0idx = row["loop_END_frame_ffmpeg"] - 1
     global_escape_start_frame_0idx = row["escape_START_frame_0_based_idx"]
 
-    # Add clip dimension
-    ds = ds.expand_dims({"clip_id": [clip_filename_to_clip_id(clip_filename)]})
-
-    # Add clip start, end, escape start and type as dimensionless coordinates
-    # (because they are categorical metadata
-    # of each clip, not a measure quantity; after concatenating
-    # along clip_id they become non-index coordinates mirroring clip_id,
-    # so they wont interfere with alignment)
-    ds = ds.assign_coords(
-        clip_start_frame_0idx=global_clip_start_frame_0idx,
-        # clip_end_frame_0idx=global_clip_end_frame_0idx,
-        # clip_escape_start_frame_0idx=global_escape_start_frame_0idx,
-        # clip_escape_type=row["escape_type"].lower(),
-    )
-
-    # Add escape state array along time dimension
+    # -------------------------
+    # Add escape_state as data variable
     local_escape_start_frame_0idx = (
         global_escape_start_frame_0idx - global_clip_start_frame_0idx
     )
@@ -166,11 +177,58 @@ def load_ds_add_metadata_chunk(
     escape_state[local_escape_start_frame_0idx:] = 1.0
     ds["escape_state"] = ("time", escape_state)
 
-    # Chunk the dataset
+    # -------------------------
+    # Add clip dimension and associated coordinates
+    ds = ds.expand_dims("clip_id")
+    ds = ds.assign_coords(
+        clip_id=np.array(
+            [clip_filename_to_clip_id(clip_filename)], dtype=str
+        )
+    )
+
+    # Add clip start, end, escape start and type as dimensionless coordinates
+    # (because they are categorical metadata
+    # of each clip, not a measure quantity; after concatenating
+    # along clip_id they become non-index coordinates mirroring clip_id,
+    # so they wont interfere with alignment)
+    ds = ds.assign_coords(
+        clip_start_frame_0idx=(
+            "clip_id",
+            [global_clip_start_frame_0idx],
+        ),
+        clip_end_frame_0idx=(
+            "clip_id",
+            [global_clip_end_frame_0idx],
+        ),
+        clip_escape_start_frame_0idx=(
+            "clip_id",
+            [global_escape_start_frame_0idx],
+        ),
+        clip_escape_type=("clip_id", [row["escape_type"].lower()]),
+    )
+    # To make them with index:
+    # ds = ds.set_xindex(
+    #     [
+    #         "clip_start_frame_0idx",
+    #         "clip_end_frame_0idx",
+    #         "clip_escape_start_frame_0idx",
+    #         "clip_escape_type",
+    #     ]
+    # )
+    # -------------------------
+
+    # Chunk the clip dataset
     # (underlying arrays become dask arrays)
-    # TODO: Ensure scalar coordinates are not chunked
+    # This is to ensure that when concatenated they
+    # fit in memory
+    # TODO: Ensure scalar coordinates are not chunked?
     if chunks is None:
-        chunks = {"time": 1000, "individuals": -1, "space": -1}
+        chunks = {
+            "time": 1000,
+            "space": -1,
+            "individuals": -1,
+            "clip_id": -1,
+        }
 
     return ds.chunk(chunks)
 
@@ -179,8 +237,7 @@ def load_ds_add_metadata_chunk(
 # Build dataset
 
 # Initialise zarr store
-root = zarr.open_group(zarr_store_path, mode="w")
-
+root = zarr.open_group(zarr_store_path, mode="w-")
 
 # Read metadata dataframe
 df_metadata = pd.read_csv(csv_metadata_path)
@@ -192,13 +249,11 @@ map_video_to_filepaths_and_clips = group_files_per_video(
     parse_video_fn=via_tracks_to_video_filename,
 )
 
-
 # Concatenate clips from the same video into one dataset
-list_ds_videos = []
 for video_id, clip_files in map_video_to_filepaths_and_clips.items():
     # Get list of chunked datasets for each file
     list_ds_chunked = [
-        load_ds_add_metadata_chunk(file, df_metadata) for file in clip_files
+        load_extended_ds_chunked(file, df_metadata) for file in clip_files
     ]
 
     # Concatenate along "clip_id" dimension
@@ -208,29 +263,12 @@ for video_id, clip_files in map_video_to_filepaths_and_clips.items():
         list_ds_chunked,
         dim="clip_id",
         join="outer",
+        coords="different",
+        compat="equals",
     )
 
-
-    # Get fps for this video from metadata
-    # (all clips in the same video should share the same fps)
-    video_fps_values = df_metadata.loc[
-        df_metadata["video_name"].str.removesuffix(".mov") == video_id, "fps"
-    ]
-    if video_fps_values.nunique() != 1:
-        raise ValueError(
-            f"Expected uniform fps for video '{video_id}', "
-            f"got {video_fps_values.unique()}"
-        )
-    ds_combined.attrs["fps"] = video_fps_values.iloc[0]
-
-    # Add all source files as attributes
-    # (by default only the first ds attrs is retained
-    # in the concat output)
-    ds_combined.attrs["video_id"] = video_id
-    ds_combined.attrs["source_file"] = clip_files
-
-    # Append to list of datasets
-    # list_ds_videos.append(ds_combined)
+    # Add video attributes and fps
+    ds_combined = add_video_attrs(ds_combined, df_metadata)
 
     # Rechunk to uniform sizes before saving to zarr
     # (chunk boundaries after concatenating are
@@ -242,48 +280,51 @@ for video_id, clip_files in map_video_to_filepaths_and_clips.items():
             "time": 1000,
             "space": -1,
             "individuals": -1,
-            # "clip_start_frame_0idx": 1,
-            # "clip_end_frame_0idx": 1,
-            # "clip_escape_start_frame_0idx": 1,
-            # "clip_escape_type": 1,
         }
         # -1 meaning all dimensions are included in a chunk
     )
 
-    # # Use encoding to control how non-index coordinates
-    # # are chunked
-    # non_index_coords = [
-    #     c for c in ds_combined.coords if c not in ds_combined.indexes
-    # ]
-    # for coord in non_index_coords:
-    #     ds_combined[coord] = ds_combined[coord].load()
-
-    # Save to zarr under video group
-    # encoding = {
-    #     "position": {"chunks": (1, 1000, -1, -1)},
-    #     "shape": {"chunks": (1, 1000, -1, -1)},
-    #     "confidence": {"chunks": (1, 1000, -1)},
-    #     "escape_state": {"chunks": (1, 1000)},
-    #     "clip_start_frame_0idx": {"chunks": (1)},
-    #     "clip_end_frame_0idx": {"chunks": (1)},
-    #     "clip_escape_start_frame_0idx": {"chunks": (1)},
-    #     "clip_escape_type": {"chunks": (1)},
-    # }
-    # ds_combined.chunk(
-    #     chunks={
-    #         "clip_id": 1,
-    #         "time": 1000,
-    #         "space": -1,
-    #         "individuals": -1,
-    #     },
-    # )
-    # non_index_coord_chunked = ds_combined.from_array(
-    #     ds_combined["clip_start_frame_0idx"].values, chunks=(1)
-    # )
-    # ds_combined = ds_combined.assign_coords(
-    #     clip_start_frame_0idx=(["clip_id"], non_index_coord_chunked)
-    # )
-
-    ds_combined.to_zarr(root.store, group=f"{video_id}", consolidated=True)
+    # Save to zarr
+    ds_combined.attrs["data_vars_order"] = list(ds_combined.data_vars)
+    ds_combined.to_zarr(
+        store=root.store,
+        group=f"{video_id}",
+        # consolidated=False,  # ok?
+    )
 
 # %%
+dt = xr.open_datatree(
+    "all_trials_per_video.zarr",
+    engine="zarr",
+    chunks={},
+)
+
+# %%
+# With non-indexed coords:
+
+# To load "clip_id" coordinates
+# .compute returns a new object, .load modifies in place
+for node in dt.leaves:
+    node.coords["clip_id"].load()
+
+
+# %%
+# how to get all "triggered" from one video?
+ds = dt["04.09.2023-01-Right"].to_dataset()
+ds.where(ds.clip_escape_type == "triggereed", drop=True)
+
+# To order data variables
+ds = dt["04.09.2023-01-Right"].to_dataset()
+ds = ds[ds.attrs["data_vars_order"]]
+
+# to show stats of confidence values per clip
+ds.confidence.mean().compute()
+ds.confidence.std().compute()
+ds.confidence.min().compute()
+ds.confidence.max().compute()
+ds.confidence.median(dim=("time", "individuals")).compute()
+
+
+# %%
+
+dt["04.09.2023-01-Right"].coords["clip_id"]

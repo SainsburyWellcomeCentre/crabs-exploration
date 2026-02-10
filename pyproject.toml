@@ -36,6 +36,7 @@ dependencies = [
     "numpy>=2.0.0",
     "movement @ git+https://github.com/neuroinformatics-unit/movement.git@smg/parquet-bboxes",
     "numba>=0.59",
+    "dask"
 ]
 
 [project.optional-dependencies]
