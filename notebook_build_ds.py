@@ -3,12 +3,11 @@ from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
+import zarr
 from movement.io import load_bboxes
-from movement.plots import plot_centroid_trajectory
 
 # %%%%%%%%%
 # Input data
@@ -17,12 +16,12 @@ csv_metadata_path = "/Users/sofia/arc/project_Zoo_crabs/CrabsField/crab-loops/lo
 
 # Can I fetch csv data from GIN?
 
-# %%#%%%%%%%%%
-%matplotlib widget
+zarr_store_path = "all_trials_per_video.zarr"
 
 
 # %%
 # Helper functions
+
 
 def group_files_per_video(
     files_dir: str | Path,
@@ -107,17 +106,27 @@ def clip_filename_to_clip_id(clip_filename: str | Path) -> str:
     return Path(str(clip_filename).rsplit("-")[-1]).stem
 
 
-def load_ds_and_add_metadata(
-    via_tracks_file_path: str | Path, df_metadata: pd.DataFrame
+def load_ds_add_metadata_chunk(
+    via_tracks_file_path: str | Path, df_metadata: pd.DataFrame, chunks=None
 ) -> xr.Dataset:
     """Read VIA tracks and metadata as a `movement` dataset.
 
-    Args:
-        via_tracks_file_path: Path to VIA tracks file
-        df_metadata: DataFrame with metadata
+    Parameters
+    ----------
+    via_tracks_file_path : str | Path
+        Path to VIA tracks file
+    df_metadata : pd.DataFrame
+        Dataframe containing metadata for all clips
+    chunks : dict, optional
+        Dictionary specifying chunk sizes for each dimension, by default None
+         (if None, default chunk size of 1000 along time dimension is used)
 
-    Returns:
-        ds: movement bounding boxes dataset with metadata
+    Returns
+    -------
+    ds : xr.Dataset
+        Dataset containing movement data from VIA tracks file, with
+        added metadata as coordinates and attributes. The dataset is
+        chunked according to the specified chunk sizes.
 
     """
     # Load VIA tracks file as movement dataset
@@ -142,9 +151,9 @@ def load_ds_and_add_metadata(
     # so they wont interfere with alignment)
     ds = ds.assign_coords(
         clip_start_frame_0idx=global_clip_start_frame_0idx,
-        clip_end_frame_0idx=global_clip_end_frame_0idx,
-        clip_escape_start_frame_0idx=global_escape_start_frame_0idx,
-        clip_escape_type=row["escape_type"].lower(),
+        # clip_end_frame_0idx=global_clip_end_frame_0idx,
+        # clip_escape_start_frame_0idx=global_escape_start_frame_0idx,
+        # clip_escape_type=row["escape_type"].lower(),
     )
 
     # Add escape state array along time dimension
@@ -157,11 +166,21 @@ def load_ds_and_add_metadata(
     escape_state[local_escape_start_frame_0idx:] = 1.0
     ds["escape_state"] = ("time", escape_state)
 
-    return ds
+    # Chunk the dataset
+    # (underlying arrays become dask arrays)
+    # TODO: Ensure scalar coordinates are not chunked
+    if chunks is None:
+        chunks = {"time": 1000, "individuals": -1, "space": -1}
+
+    return ds.chunk(chunks)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%
-# Build concatenated datasets per video
+# Build dataset
+
+# Initialise zarr store
+root = zarr.open_group(zarr_store_path, mode="w")
+
 
 # Read metadata dataframe
 df_metadata = pd.read_csv(csv_metadata_path)
@@ -173,12 +192,13 @@ map_video_to_filepaths_and_clips = group_files_per_video(
     parse_video_fn=via_tracks_to_video_filename,
 )
 
+
 # Concatenate clips from the same video into one dataset
 list_ds_videos = []
 for video_id, clip_files in map_video_to_filepaths_and_clips.items():
     # Get list of chunked datasets for each file
     list_ds_chunked = [
-        load_ds_and_add_metadata(file, df_metadata) for file in clip_files
+        load_ds_add_metadata_chunk(file, df_metadata) for file in clip_files
     ]
 
     # Concatenate along "clip_id" dimension
@@ -189,6 +209,7 @@ for video_id, clip_files in map_video_to_filepaths_and_clips.items():
         dim="clip_id",
         join="outer",
     )
+
 
     # Get fps for this video from metadata
     # (all clips in the same video should share the same fps)
@@ -209,169 +230,60 @@ for video_id, clip_files in map_video_to_filepaths_and_clips.items():
     ds_combined.attrs["source_file"] = clip_files
 
     # Append to list of datasets
-    list_ds_videos.append(ds_combined)
+    # list_ds_videos.append(ds_combined)
 
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Plot centroid one clip
-# video_name = "04.09.2023-01-Right"
-
-# Select a clip
-ds_clip = list_ds_videos[0].isel(clip_id=0)
-
-# Pre-compute individual -> color mapping
-colors = plt.cm.tab20.colors
-color_map = {
-    ind.item(): colors[i % len(colors)]
-    for i, ind in enumerate(ds_clip.individuals)
-}
-
-# Outbound data (escape_state == 0)
-pos_out = ds_clip.position.where(ds_clip.escape_state == 0.0, drop=True)
-pos_out_flat = pos_out.stack(flat=("time", "individuals")).dropna("flat")
-
-# color assignment per individual
-ind_labels = pos_out_flat.individuals.values
-c_out = np.array([color_map[ind] for ind in ind_labels])
-
-# Inbound data (escape_state == 1)
-pos_in = ds_clip.position.where(ds_clip.escape_state == 1.0, drop=True)
-pos_in_flat = pos_in.stack(flat=("time", "individuals")).dropna("flat")
-
-# color assignment per individual
-ind_labels = pos_in_flat.individuals.values
-c_in = np.array([color_map[ind] for ind in ind_labels])
-
-
-fig, ax = plt.subplots(1,1)
-ax.scatter(
-    pos_out_flat.sel(space="x").values,
-    pos_out_flat.sel(space="y").values,
-    marker="o",c=c_out, s=15,
-)
-
-ax.scatter(
-    pos_in_flat.sel(space="x").values,
-    pos_in_flat.sel(space="y").values,
-    marker="o",c="r", s=15,
-)
-
-# add a ring around red marker
-ax.scatter(
-    pos_in_flat.sel(space="x").values,
-    pos_in_flat.sel(space="y").values,
-     marker="x", facecolors=c_in, s=1,
-)
-
-ax.invert_yaxis()
-ax.set_xlabel("x (pixels)")
-ax.set_ylabel("y (pixels)")
-ax.set_aspect("equal")
-ax.set_title(
-    f"{ds_clip.clip_id.values.item()} - {ds_clip.clip_escape_type.values.item()}"
-)
-
-
-#%%
-# plot all individuals
-fig, ax = plt.subplots()
-colors = plt.cm.tab20.colors
-for i, ind in enumerate(ds_clip.individuals):
-    # plot outbound
-    plot_centroid_trajectory(
-        ds_clip.position.where(ds_clip.escape_state == 0.0, drop=True),
-        individual=ind,
-        ax=ax,
-        c=colors[i % len(colors)],
+    # Rechunk to uniform sizes before saving to zarr
+    # (chunk boundaries after concatenating are
+    # defined by the length of each "loop", and so
+    # they are non-uniform. We need to rechunk here)
+    ds_combined = ds_combined.chunk(
+        {
+            "clip_id": 1,
+            "time": 1000,
+            "space": -1,
+            "individuals": -1,
+            # "clip_start_frame_0idx": 1,
+            # "clip_end_frame_0idx": 1,
+            # "clip_escape_start_frame_0idx": 1,
+            # "clip_escape_type": 1,
+        }
+        # -1 meaning all dimensions are included in a chunk
     )
-    # plot inbound
-    plot_centroid_trajectory(
-        ds_clip.position.where(ds_clip.escape_state == 1.0, drop=True),
-        individual=ind,
-        ax=ax,
-        c="r",
-    )
-ax.invert_yaxis()
-ax.set_xlabel("x (pixels)")
-ax.set_ylabel("y (pixels)")
-ax.set_aspect("equal")
-ax.set_title(
-    f"{ds_clip.clip_id.values.item()} - {ds_clip.clip_escape_type.values.item()}"
-)
 
+    # # Use encoding to control how non-index coordinates
+    # # are chunked
+    # non_index_coords = [
+    #     c for c in ds_combined.coords if c not in ds_combined.indexes
+    # ]
+    # for coord in non_index_coords:
+    #     ds_combined[coord] = ds_combined[coord].load()
 
-# %%%%%%%%%
-# Plot occupancy for all clips in same video
+    # Save to zarr under video group
+    # encoding = {
+    #     "position": {"chunks": (1, 1000, -1, -1)},
+    #     "shape": {"chunks": (1, 1000, -1, -1)},
+    #     "confidence": {"chunks": (1, 1000, -1)},
+    #     "escape_state": {"chunks": (1, 1000)},
+    #     "clip_start_frame_0idx": {"chunks": (1)},
+    #     "clip_end_frame_0idx": {"chunks": (1)},
+    #     "clip_escape_start_frame_0idx": {"chunks": (1)},
+    #     "clip_escape_type": {"chunks": (1)},
+    # }
+    # ds_combined.chunk(
+    #     chunks={
+    #         "clip_id": 1,
+    #         "time": 1000,
+    #         "space": -1,
+    #         "individuals": -1,
+    #     },
+    # )
+    # non_index_coord_chunked = ds_combined.from_array(
+    #     ds_combined["clip_start_frame_0idx"].values, chunks=(1)
+    # )
+    # ds_combined = ds_combined.assign_coords(
+    #     clip_start_frame_0idx=(["clip_id"], non_index_coord_chunked)
+    # )
 
-# select video
-ds_video = list_ds_videos[2]
-
-# prepare data
-# flatten to just time and space coords
-position_flat = ds_video.position.stack(
-    flat_dim=("clip_id", "time", "individuals")
-).dropna("flat_dim")
-
-
-# plot for all clips in video
-fig, ax = plt.subplots()
-ax.hist2d(
-    position_flat.sel(space="x").values,
-    position_flat.sel(space="y").values,
-    bins=[200, 100],
-    cmap="viridis",
-)
-ax.invert_yaxis()
-ax.set_xlabel("x (pixels)")
-ax.set_ylabel("y (pixels)")
-ax.set_aspect("equal")
-# ax.set_title(video_name)
+    ds_combined.to_zarr(root.store, group=f"{video_id}", consolidated=True)
 
 # %%
-# plot all trajectories in one video
-fig, ax = plt.subplots()
-ax.scatter(
-    position_flat.sel(space="x").values,
-    position_flat.sel(space="y").values,
-)
-ax.invert_yaxis()
-ax.set_xlabel("x (pixels)")
-ax.set_ylabel("y (pixels)")
-ax.set_aspect("equal")
-
-
-# %%%%%%%%%%%%%
-# Get escape type for loop at index 1
-print(ds_video.isel(clip_id=1).escape_type.values.item())
-
-# Get loops with "spontaneous" escape
-print(
-    ds_video.where(
-        ds_video.escape_type == "spontaneous", drop=True
-    ).clip_id.values
-)
-
-# Get loops with "triggered" escape
-print(
-    ds_video.where(
-        ds_video.escape_type == "triggered", drop=True
-    ).clip_id.values
-)
-
-
-# %%
-# Can you promote a non-dimension coordinate to dimension coordinate?
-
-# Make clip_start_frame_0idx the dimension coordinate instead of clip
-# ds_reindexed = ds_video.swap_dims({'clip_id': 'clip_start_frame_0idx'})
-
-# Now this works:
-# ds_reindexed.sel(clip_start_frame_0idx=79174)
-
-# %%%%%%%%%%%%%
-# Other:
-# - compute path length per individual?
-# - filter by pathlength?
-# - plot all distances to starting point (e.g. if starting point in burrow)
-#   for all "loop00"
-# - what do I do with a datatree...?
