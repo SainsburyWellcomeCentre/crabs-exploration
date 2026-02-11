@@ -5,8 +5,8 @@
 #SBATCH --ntasks-per-node 2
 #SBATCH --mem 8G
 #SBATCH -t 0-20:00 # time (D-HH:MM)
-#SBATCH -o slurm_extract.%A-%a.%N.out
-#SBATCH -e slurm_extract.%A-%a.%N.err
+#SBATCH -o slurm_array.%A-%a.%N.out
+#SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
 #SBATCH --array=0-26%9  # 27 videos, max 9 jobs at once
@@ -25,8 +25,8 @@ set -o pipefail
 VIA_TRACKS_DIR="/ceph/zoo/users/sminano/loops_tracking_above_10th_percentile_slurm_1825237_2071125_2071084"
 METADATA_CSV="/ceph/zoo/users/sminano/CrabsField/crab-loops/loop-frames-ffmpeg.csv"
 
-ZARR_STORE_OUTPUT=/ceph/zoo/users/sminano/CrabTracks.zarr
-ZARR_STORE_MODE='a'
+ZARR_STORE_OUTPUT="/ceph/zoo/users/sminano/CrabTracks-slurm$SLURM_ARRAY_JOB_ID.zarr"
+ZARR_STORE_MODE="a"
 
 # location of SLURM logs
 LOG_DIR=$ZARR_STORE_OUTPUT/logs
@@ -34,6 +34,10 @@ mkdir -p $LOG_DIR  # create if it doesnt exist
 
 # Version of the codebase
 GIT_BRANCH=smg/convert-to-zarr
+
+
+echo "Zarr store: $ZARR_STORE_OUTPUT"
+echo "Zarr mode: $ZARR_STORE_MODE"
 
 # --------------------
 # Check inputs
@@ -104,7 +108,7 @@ conda remove --prefix $ENV_PREFIX --all -y
 # ------------------
 # Copy logs to LOG_DIR
 # -------------------
-mv slurm_extract.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out} $LOG_DIR
+mv slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out} $LOG_DIR
 
 # make logs read only
-chmod 444 $LOG_DIR/slurm_extract.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out}
+chmod 444 $LOG_DIR/slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out}
