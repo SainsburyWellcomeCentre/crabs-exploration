@@ -38,7 +38,7 @@ warnings.filterwarnings(
 DEFAULT_CHUNKS = {"time": 1000, "space": -1, "individuals": -1, "clip_id": -1}
 
 
-def load_extended_ds_chunked(
+def load_ds_chunked(
     via_tracks_file_path: str | Path,
     df_metadata: pd.DataFrame,
     chunks=None,
@@ -122,10 +122,30 @@ def load_extended_ds_chunked(
 
 
 def get_video_dataset(
-    video_id: str, clip_files: list[str], df_metadata: pd.DataFrame
+    video_id: str, via_track_files: list[str], df_metadata: pd.DataFrame
 ) -> xr.Dataset:
-    """Load, concatenate, and prepare dataset for a single video."""
-    list_ds = [load_extended_ds_chunked(f, df_metadata) for f in clip_files]
+    """Load, concatenate, and prepare dataset for a single video.
+
+    Parameters
+    ----------
+    video_id : str
+        Video ID (e.g. "04.09.2023-01-Right")
+    via_track_files : list[str]
+        List of VIA track file paths for this video
+    df_metadata : pd.DataFrame
+        Dataframe containing metadata for all clips
+
+    Returns
+    -------
+    ds : xr.Dataset
+        movement dataset containing VIA tracks file for a single video, with
+        added video attributes (source files, video_id and fps).
+
+    """
+    # Get list of chunked datasets per clip
+    list_ds = [load_ds_chunked(f, df_metadata) for f in via_track_files]
+
+    # Concatenate all clip ds along clip_id dimension
     ds = xr.concat(
         list_ds,
         dim="clip_id",
@@ -133,7 +153,11 @@ def get_video_dataset(
         coords="different",
         compat="equals",
     )
-    ds = add_video_attrs(video_id, clip_files, df_metadata, ds)
+
+    # Add video-level attributes (fps, source files, video_id)
+    ds = add_video_attrs(video_id, via_track_files, df_metadata, ds)
+
+    # return chunked dataset
     return ds.chunk(DEFAULT_CHUNKS)
 
 
@@ -155,10 +179,10 @@ def group_files_per_video(
 
     Returns
     -------
-        grouped_by_key: dict
-            Dictionary with video name as key and list of filepaths as value.
-            We convert the defaultdict to a dict to prevent key typos creating
-            a new key and empty list.
+    grouped_by_key : dict
+        Dictionary with video name as key and list of filepaths as value.
+        We convert the defaultdict to a dict to prevent key typos creating
+        a new key and empty list.
 
     """
     files = sorted(Path(files_dir).glob(glob_pattern))
@@ -177,6 +201,7 @@ def via_tracks_to_video_filename(via_tracks_path: str | Path) -> str:
     ----------
     via_tracks_path : str | Path
         Path to VIA tracks file
+        (e.g. "path/to/04.09.2023-01-Right-Loop05_tracks.csv")
 
     Returns
     -------
@@ -194,6 +219,7 @@ def via_tracks_to_clip_filename(via_tracks_path: str | Path) -> str:
     ----------
     via_tracks_path : str | Path
         Path to VIA tracks file
+        (e.g. "path/to/04.09.2023-01-Right-Loop05_tracks.csv")
 
     Returns
     -------
@@ -205,7 +231,7 @@ def via_tracks_to_clip_filename(via_tracks_path: str | Path) -> str:
 
 
 def clip_filename_to_clip_id(clip_filename: str | Path) -> str:
-    """Return clip ID (Loop09) from clip filename.
+    """Return clip ID from clip filename.
 
     Parameters
     ----------
@@ -221,15 +247,15 @@ def clip_filename_to_clip_id(clip_filename: str | Path) -> str:
     return Path(str(clip_filename).rsplit("-")[-1]).stem
 
 
-def add_video_attrs(video_id, clip_files, df_metadata, ds_combined):
+def add_video_attrs(video_id, via_track_files, df_metadata, ds_combined):
     """Add video data to dataset.
 
     Parameters
     ----------
     video_id : str
         Video ID (e.g. "04.09.2023-01-Right")
-    clip_files : list[str]
-        List of clip file paths for this video
+    via_track_files : list[str]
+        List of VIA track file paths for this video
     df_metadata : pd.DataFrame
         Dataframe containing metadata for all clips
     ds_combined : xr.Dataset
@@ -258,7 +284,7 @@ def add_video_attrs(video_id, clip_files, df_metadata, ds_combined):
     # (by default only the first ds attrs is retained
     # in the concat output)
     ds_combined.attrs["video_id"] = video_id
-    ds_combined.attrs["source_file"] = clip_files
+    ds_combined.attrs["source_file"] = via_track_files
 
     return ds_combined
 
