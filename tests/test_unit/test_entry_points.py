@@ -12,6 +12,8 @@ import pytest
         "train-detector",
         "evaluate-detector",
         "detect-and-track-video",
+        "extract-loops",
+        "create-zarr-dataset",
     ],
 )
 def test_smoke(cli_command: str) -> None:
