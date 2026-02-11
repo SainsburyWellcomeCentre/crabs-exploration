@@ -65,10 +65,9 @@ combine-annotations = "crabs.bboxes_labelling.combine_and_format_annotations:app
 train-detector = "crabs.detector.train_model:app_wrapper"
 evaluate-detector = "crabs.detector.evaluate_model:app_wrapper"
 detect-and-track-video = "crabs.tracker.track_video:app_wrapper"
-extract-loops = "crabs.extract_loop_clips:app_wrapper"
-# verify-videos-and-extract-samples
-# extract-additional-channels
-
+# support utils
+extract-loops = "crabs.utils.extract_loop_clips:app_wrapper"
+create-zarr-dataset = "crabs.utils.create_zarr_dataset:app_wrapper"
 
 [build-system]
 requires = ["setuptools>=77", "wheel", "setuptools_scm[toml]>=8"]
