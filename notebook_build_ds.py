@@ -68,6 +68,7 @@ def via_tracks_to_video_filename(via_tracks_path: str | Path) -> str:
     -------
     video_filename : str
         Video filename without extension (e.g. "04.09.2023-01-Right")
+
     """
     return Path(via_tracks_path).stem.split("-Loop")[0]
 
@@ -181,9 +182,7 @@ def load_extended_ds_chunked(
     # Add clip dimension and associated coordinates
     ds = ds.expand_dims("clip_id")
     ds = ds.assign_coords(
-        clip_id=np.array(
-            [clip_filename_to_clip_id(clip_filename)], dtype=str
-        )
+        clip_id=np.array([clip_filename_to_clip_id(clip_filename)], dtype=str)
     )
 
     # Add clip start, end, escape start and type as dimensionless coordinates
@@ -192,29 +191,21 @@ def load_extended_ds_chunked(
     # along clip_id they become non-index coordinates mirroring clip_id,
     # so they wont interfere with alignment)
     ds = ds.assign_coords(
-        clip_start_frame_0idx=(
+        clip_first_frame_0idx=(
             "clip_id",
             [global_clip_start_frame_0idx],
         ),
-        clip_end_frame_0idx=(
+        clip_last_frame_0idx=(
             "clip_id",
             [global_clip_end_frame_0idx],
         ),
-        clip_escape_start_frame_0idx=(
+        clip_escape_first_frame_0idx=(
             "clip_id",
             [global_escape_start_frame_0idx],
         ),
         clip_escape_type=("clip_id", [row["escape_type"].lower()]),
     )
-    # To make them with index:
-    # ds = ds.set_xindex(
-    #     [
-    #         "clip_start_frame_0idx",
-    #         "clip_end_frame_0idx",
-    #         "clip_escape_start_frame_0idx",
-    #         "clip_escape_type",
-    #     ]
-    # )
+
     # -------------------------
 
     # Chunk the clip dataset
@@ -291,40 +282,3 @@ for video_id, clip_files in map_video_to_filepaths_and_clips.items():
         group=f"{video_id}",
         # consolidated=False,  # ok?
     )
-
-# %%
-dt = xr.open_datatree(
-    "all_trials_per_video.zarr",
-    engine="zarr",
-    chunks={},
-)
-
-# %%
-# With non-indexed coords:
-
-# To load "clip_id" coordinates
-# .compute returns a new object, .load modifies in place
-for node in dt.leaves:
-    node.coords["clip_id"].load()
-
-
-# %%
-# how to get all "triggered" from one video?
-ds = dt["04.09.2023-01-Right"].to_dataset()
-ds.where(ds.clip_escape_type == "triggereed", drop=True)
-
-# To order data variables
-ds = dt["04.09.2023-01-Right"].to_dataset()
-ds = ds[ds.attrs["data_vars_order"]]
-
-# to show stats of confidence values per clip
-ds.confidence.mean().compute()
-ds.confidence.std().compute()
-ds.confidence.min().compute()
-ds.confidence.max().compute()
-ds.confidence.median(dim=("time", "individuals")).compute()
-
-
-# %%
-
-dt["04.09.2023-01-Right"].coords["clip_id"]
