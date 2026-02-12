@@ -3,7 +3,7 @@
 #SBATCH -p gpu # partition (or gpu if needed)
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 2
-#SBATCH --mem 16G
+#SBATCH --mem 64G
 #SBATCH -t 0-20:00 # time (D-HH:MM)
 #SBATCH -o slurm_array.%A-%a.%N.out
 #SBATCH -e slurm_array.%A-%a.%N.err
@@ -99,6 +99,8 @@ echo "zarr_mode_store: $ZARR_MODE_STORE"
 echo "zarr_mode_group: $ZARR_MODE_GROUP"
 echo "via_tracks_glob_pattern: $VIA_TRACKS_GLOB_PATTERN"
 
+# to time and log memory usage, prepend
+# /usr/bin/time -v to the command
 create-zarr-dataset  \
     --via_tracks_dir $VIA_TRACKS_DIR \
     --metadata_csv $METADATA_CSV \
