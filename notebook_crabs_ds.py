@@ -1,11 +1,13 @@
 """Demo notebook for working with crab dataset."""
 
 # %%
+import os
 import random
 from collections import defaultdict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import psutil
 import xarray as xr
 import zarr
 from movement.io import load_bboxes
@@ -22,7 +24,71 @@ xr.set_options(display_expand_attrs=False)
 # Read dataset as a datatree
 
 dt = xr.open_datatree(
-    "all_trials_per_video.zarr",
+    "all_trials_per_video_1.zarr",
+    engine="zarr",
+    chunks={},
+)
+
+
+# %%
+# If dataset saved with group being video/clip, to concatenate per video:
+# Create a new DataTree where each video becomes a leaf node
+# with concatenated clips
+dt_restructured = xr.DataTree()
+
+for video_name in dt.children:
+    # Get all clips for this video and concatenate them
+    dt_video = dt[video_name]
+
+    # Concatenate all clip datasets along the clip_id dimension
+    ds_video = xr.concat(
+        [clip_node.to_dataset() for clip_node in dt_video.leaves],
+        dim="clip_id",
+        join="outer",
+        coords="different",
+        compat="equals",
+    )
+
+    # Add video attributes
+    # ....
+
+    # Rechunk after concatenating
+    ds_video = ds_video.chunk(
+        {"time": 1000, "space": -1, "individuals": -1, "clip_id": 1}
+    )
+
+    # Add this dataset as a leaf in the new DataTree
+    dt_restructured[video_name] = xr.DataTree(ds_video)
+
+# Save the restructured DataTree to a new zarr store
+dt_restructured.to_zarr(
+    "all_trials_per_video_restructured.zarr",
+    mode="w-",
+)
+
+print("Restructured zarr store saved successfully!")
+
+
+# %%%%%%%%%%%%%
+# # Compare memory before and after loading dask array
+# process = psutil.Process(os.getpid())
+
+# # Check memory before
+# mem_before = process.memory_info().rss / 1_000_000_000
+# print(f"Memory before: {mem_before:.2f} GB")
+
+# # Load the data
+# ds_loaded = ds.load()
+
+# # Check memory after
+# mem_after = process.memory_info().rss / 1_000_000_000
+# print(f"Memory after: {mem_after:.2f} GB")
+# print(f"Memory increase: {(mem_after - mem_before):.2f} GB")
+
+
+# %%
+dt = xr.open_datatree(
+    "all_trials_per_video_restructured.zarr",
     engine="zarr",
     chunks={},
 )
@@ -47,6 +113,39 @@ for node in dt.leaves:
             f"{node.path}: dims={dict(node.sizes)}, "
             f"vars={list(node.data_vars)}"
         )
+
+
+# %%
+# With non-indexed coords:
+
+# To load "clip_id" coordinates
+# .compute returns a new object, .load modifies in place
+for node in dt.leaves:
+    node.coords["clip_id"].load()
+
+
+# %%
+# how to get all "triggered" from one video?
+ds = dt["04.09.2023-01-Right"].to_dataset()
+ds.where(ds.clip_escape_type == "triggered", drop=True)
+
+# To order data variables
+ds = dt["04.09.2023-01-Right"].to_dataset()
+ds = ds[ds.attrs["data_vars_order"]]
+
+# to show stats of confidence values per clip
+ds.confidence.mean().compute()
+ds.confidence.std().compute()
+ds.confidence.min().compute()
+ds.confidence.max().compute()
+ds.confidence.median(dim=("time", "individuals")).compute()
+
+
+# %%
+
+dt["04.09.2023-01-Right"].coords["clip_id"]
+
+# %%
 
 
 # %%%%%%%%%%%%%
@@ -98,24 +197,30 @@ ind_labels = pos_in_flat.individuals.values
 c_in = np.array([color_map[ind] for ind in ind_labels])
 
 
-fig, ax = plt.subplots(1,1)
+fig, ax = plt.subplots(1, 1)
 ax.scatter(
     pos_out_flat.sel(space="x").values,
     pos_out_flat.sel(space="y").values,
-    marker="o",c=c_out, s=15,
+    marker="o",
+    c=c_out,
+    s=15,
 )
 
 ax.scatter(
     pos_in_flat.sel(space="x").values,
     pos_in_flat.sel(space="y").values,
-    marker="o",c="r", s=15,
+    marker="o",
+    c="r",
+    s=15,
 )
 
 # add a ring around red marker
 ax.scatter(
     pos_in_flat.sel(space="x").values,
     pos_in_flat.sel(space="y").values,
-     marker="x", facecolors=c_in, s=1,
+    marker="x",
+    facecolors=c_in,
+    s=1,
 )
 
 ax.invert_yaxis()
@@ -127,7 +232,7 @@ ax.set_title(
 )
 
 
-#%%
+# %%
 # plot all individuals
 fig, ax = plt.subplots()
 colors = plt.cm.tab20.colors
