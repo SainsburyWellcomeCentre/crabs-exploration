@@ -35,14 +35,15 @@ warnings.filterwarnings(
     ),
 )
 
-# DEFAULT_CHUNKS = {"time": 1000, "space": -1, "individuals": -1, "clip_id": 1}
+DEFAULT_CHUNKS = {"time": 1000, "space": -1, "individuals": -1, "clip_id": -1}
 
 
-def load_extended_ds(
+def load_ds_chunked(
     via_tracks_file_path: str | Path,
     df_metadata: pd.DataFrame,
+    chunks=None,
 ) -> xr.Dataset:
-    """Read VIA tracks and metadata as a `movement` dataset.
+    """Read VIA tracks and metadata as a chunked `movement` dataset.
 
     Parameters
     ----------
@@ -50,19 +51,23 @@ def load_extended_ds(
         Path to VIA tracks file
     df_metadata : pd.DataFrame
         Dataframe containing metadata for all clips
+    chunks : dict, optional
+        Dictionary specifying chunk sizes for each dimension, by default None
+         (if None, default chunk size of 1000 along time dimension is used)
 
     Returns
     -------
     ds : xr.Dataset
         Dataset containing movement data from VIA tracks file, with
-        added metadata as coordinates and attributes.
+        added metadata as coordinates and attributes. The dataset is
+        chunked according to the specified chunk sizes.
 
     """
     # Load VIA tracks file as movement dataset
     ds = load_bboxes.from_via_tracks_file(via_tracks_file_path)
 
     # Extract metadata for this row
-    clip_filename = _via_tracks_to_clip_filename(ds.attrs["source_file"])
+    clip_filename = via_tracks_to_clip_filename(ds.attrs["source_file"])
     row = df_metadata.loc[df_metadata["loop_clip_name"] == clip_filename].iloc[
         0
     ]
@@ -70,6 +75,7 @@ def load_extended_ds(
     global_clip_end_frame_0idx = row["loop_END_frame_ffmpeg"] - 1
     global_escape_start_frame_0idx = row["escape_START_frame_0_based_idx"]
 
+    # -------------------------
     # Add escape_state as data variable
     local_escape_start_frame_0idx = (
         global_escape_start_frame_0idx - global_clip_start_frame_0idx
@@ -80,10 +86,11 @@ def load_extended_ds(
     escape_state[local_escape_start_frame_0idx:] = 1.0
     ds["escape_state"] = ("time", escape_state)
 
+    # -------------------------
     # Add clip dimension and associated coordinates
     ds = ds.expand_dims("clip_id")
     ds = ds.assign_coords(
-        clip_id=np.array([_clip_filename_to_clip_id(clip_filename)], dtype=str)
+        clip_id=np.array([clip_filename_to_clip_id(clip_filename)], dtype=str)
     )
 
     # Add clip start, end, escape start and type
@@ -101,17 +108,60 @@ def load_extended_ds(
             "clip_id",
             [global_escape_start_frame_0idx],
         ),
-        clip_escape_type=(
-            "clip_id",
-            np.array([row["escape_type"].lower()], dtype="<U11"),
-        ),
+        clip_escape_type=("clip_id", [row["escape_type"].lower()]),
     )
 
     # -------------------------
-    return ds
+
+    # Chunk the dataset for the clip
+    # (underlying arrays become dask arrays)
+    # This is to ensure that when concatenated they
+    # fit in memory
+    chunks = chunks or DEFAULT_CHUNKS
+    return ds.chunk(chunks)
 
 
-def _group_files_per_video(
+def get_video_dataset(
+    video_id: str, via_track_files: list[str], df_metadata: pd.DataFrame
+) -> xr.Dataset:
+    """Load, concatenate, and prepare dataset for a single video.
+
+    Parameters
+    ----------
+    video_id : str
+        Video ID (e.g. "04.09.2023-01-Right")
+    via_track_files : list[str]
+        List of VIA track file paths for this video
+    df_metadata : pd.DataFrame
+        Dataframe containing metadata for all clips
+
+    Returns
+    -------
+    ds : xr.Dataset
+        movement dataset containing VIA tracks file for a single video, with
+        added video attributes (source files, video_id and fps).
+
+    """
+    # Get list of chunked datasets per clip
+    list_ds = [load_ds_chunked(f, df_metadata) for f in via_track_files]
+
+    # Concatenate all clip ds along clip_id dimension
+    ds = xr.concat(
+        list_ds,
+        dim="clip_id",
+        join="outer",
+        coords="different",
+        compat="equals",
+    )
+
+    # Add video-level attributes (fps, source files, video_id)
+    ds = add_video_attrs(video_id, via_track_files, df_metadata, ds)
+
+    # return chunked dataset
+    return ds.chunk(DEFAULT_CHUNKS)
+
+
+def group_files_per_video(
     files_dir: str | Path,
     glob_pattern: str,
     parse_video_fn: Callable,
@@ -144,7 +194,7 @@ def _group_files_per_video(
     return dict(grouped_by_key)
 
 
-def _via_tracks_to_video_filename(via_tracks_path: str | Path) -> str:
+def via_tracks_to_video_filename(via_tracks_path: str | Path) -> str:
     """Return video filename without extension from VIA tracks file path.
 
     Parameters
@@ -162,7 +212,7 @@ def _via_tracks_to_video_filename(via_tracks_path: str | Path) -> str:
     return Path(via_tracks_path).stem.split("-Loop")[0]
 
 
-def _via_tracks_to_clip_filename(via_tracks_path: str | Path) -> str:
+def via_tracks_to_clip_filename(via_tracks_path: str | Path) -> str:
     """Return clip filename with extension from VIA tracks filepath.
 
     Parameters
@@ -180,7 +230,7 @@ def _via_tracks_to_clip_filename(via_tracks_path: str | Path) -> str:
     return Path(via_tracks_path).stem.removesuffix("_tracks") + ".mp4"
 
 
-def _clip_filename_to_clip_id(clip_filename: str | Path) -> str:
+def clip_filename_to_clip_id(clip_filename: str | Path) -> str:
     """Return clip ID from clip filename.
 
     Parameters
@@ -197,8 +247,29 @@ def _clip_filename_to_clip_id(clip_filename: str | Path) -> str:
     return Path(str(clip_filename).rsplit("-")[-1]).stem
 
 
-def _get_video_fps(video_id: str, df_metadata: pd.DataFrame) -> float:
-    """Extract video fps from metadata dataframe."""
+def add_video_attrs(video_id, via_track_files, df_metadata, ds_combined):
+    """Add video data to dataset.
+
+    Parameters
+    ----------
+    video_id : str
+        Video ID (e.g. "04.09.2023-01-Right")
+    via_track_files : list[str]
+        List of VIA track file paths for this video
+    df_metadata : pd.DataFrame
+        Dataframe containing metadata for all clips
+    ds_combined : xr.Dataset
+        movement dataset containing VIA tracks file for a single video.
+
+    Returns
+    -------
+    ds_combined : xr.Dataset
+        movement dataset containing VIA tracks file for a single video, with
+        added video attributes (source files, video_id and fps).
+
+    """
+    # Get fps for this video from metadata
+    # (all clips in the same video should share the same fps)
     video_fps_values = df_metadata.loc[
         df_metadata["video_name"].str.removesuffix(".mov") == video_id, "fps"
     ]
@@ -207,37 +278,15 @@ def _get_video_fps(video_id: str, df_metadata: pd.DataFrame) -> float:
             f"Expected uniform fps for video '{video_id}', "
             f"got {video_fps_values.unique()}"
         )
-    return video_fps_values.iloc[0]
+    ds_combined.attrs["fps"] = video_fps_values.iloc[0]
 
+    # Add all source files as attributes
+    # (by default only the first ds attrs is retained
+    # in the concat output)
+    ds_combined.attrs["video_id"] = video_id
+    ds_combined.attrs["source_file"] = via_track_files
 
-def _get_encoding_for_chunks(
-    ds: xr.Dataset, chunk_sizes: dict[str, int]
-) -> dict:
-    """Generate encoding dict for zarr chunking.
-
-    Parameters
-    ----------
-    ds : xr.Dataset
-        Dataset to generate encoding for
-    chunk_sizes : dict[str, int]
-        Mapping from dimension name to chunk size. Use -1 for full dimension.
-
-    Returns
-    -------
-    encoding : dict
-        Encoding dict suitable for ds.to_zarr(encoding=...)
-    """
-    encoding = {}
-    for var in ds.data_vars:
-        var_chunks = []
-        for dim in ds[var].dims:
-            chunk_size = chunk_sizes.get(dim, -1)
-            if chunk_size == -1:
-                var_chunks.append(ds.sizes[dim])
-            else:
-                var_chunks.append(chunk_size)
-        encoding[var] = {"chunks": tuple(var_chunks)}
-    return encoding
+    return ds_combined
 
 
 def main(args):
@@ -253,38 +302,34 @@ def main(args):
     df_metadata = pd.read_csv(args.metadata_csv)
 
     # Group VIA tracks files per video
-    map_video_to_filepaths_and_clips = _group_files_per_video(
+    map_video_to_filepaths_and_clips = group_files_per_video(
         args.via_tracks_dir,
         args.via_tracks_glob_pattern,
-        parse_video_fn=_via_tracks_to_video_filename,
+        parse_video_fn=via_tracks_to_video_filename,
     )
 
-    # Append video clip datasets to each zarr group
-    for video_id, clip_files in map_video_to_filepaths_and_clips.items():
-        for i, f in enumerate(clip_files):
-            # Read VIA tracks file as extended movement dataset
-            ds_clip = load_extended_ds(f, df_metadata)
+    # Concatenate clips from the same video into one dataset
+    pbar = tqdm(map_video_to_filepaths_and_clips.items())
+    for video_id, clip_files in pbar:
+        # Log info
+        pbar.set_description(f"Processing {video_id}")
 
-            # Get clip_id from the dataset
-            clip_id = ds_clip.clip_id.values[0]
+        # Get video dataset
+        ds_combined = get_video_dataset(video_id, clip_files, df_metadata)
 
-            # Write each clip as a separate subgroup
-            encoding = _get_encoding_for_chunks(ds_clip, {"time": 1000})
-            ds_clip.to_zarr(
-                root.store,
-                group=f"{video_id}/{clip_id}",
-                mode="w",
-                encoding=encoding,
-            )
+        # Rechunk to uniform sizes before saving to zarr
+        # (chunk boundaries after concatenating are
+        # defined by the length of each "clip_id", and so
+        # they are non-uniform. We need to rechunk here)
+        ds_combined = ds_combined.chunk({**DEFAULT_CHUNKS, "clip_id": 1})
 
-        # THIS DOESNT WORK AS INTENDED
-        # Add video-level attributes after all clips are written
-        # (when you open a zarr group with mode="r+" and modify .attrs,
-        # those changes are written directly to the store's metadata )
-        group = zarr.open_group(root.store, path=video_id, mode="r+")
-        group.attrs["video_id"] = video_id
-        group.attrs["source_file"] = clip_files
-        group.attrs["fps"] = _get_video_fps(video_id, df_metadata)
+        # Save group to zarr
+        ds_combined.attrs["data_vars_order"] = list(ds_combined.data_vars)
+        ds_combined.to_zarr(
+            store=root.store,
+            group=f"{video_id}",
+            mode=args.zarr_mode_group,
+        )
 
 
 def parse_args(args: list[str]) -> argparse.Namespace:
@@ -335,7 +380,7 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--zarr_mode_group",  # ----> remove?
+        "--zarr_mode_group",
         type=str,
         default="w-",
         help=(
