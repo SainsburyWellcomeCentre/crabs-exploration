@@ -304,7 +304,7 @@ def main(args):
     # Group VIA tracks files per video
     map_video_to_filepaths_and_clips = group_files_per_video(
         args.via_tracks_dir,
-        "*.csv",
+        args.via_tracks_glob_pattern,
         parse_video_fn=via_tracks_to_video_filename,
     )
 
