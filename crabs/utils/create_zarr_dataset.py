@@ -296,7 +296,7 @@ def main(args):
     and then saved as a group within a zarr dataset.
     """
     # Initialise zarr store
-    root = zarr.open_group(args.zarr_store, mode=args.zarr_mode)
+    root = zarr.open_group(args.zarr_store, mode=args.zarr_mode_store)
 
     # Read metadata dataframe
     df_metadata = pd.read_csv(args.metadata_csv)
@@ -323,12 +323,12 @@ def main(args):
         # they are non-uniform. We need to rechunk here)
         ds_combined = ds_combined.chunk({**DEFAULT_CHUNKS, "clip_id": 1})
 
-        # Save to zarr
+        # Save group to zarr
         ds_combined.attrs["data_vars_order"] = list(ds_combined.data_vars)
         ds_combined.to_zarr(
             store=root.store,
             group=f"{video_id}",
-            # consolidated=False,  # ok?
+            mode=args.zarr_mode_group,
         )
 
 
@@ -369,7 +369,7 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         help="Path to the zarr store to create",
     )
     parser.add_argument(
-        "--zarr_mode",
+        "--zarr_mode_store",
         type=str,
         default="w-",
         help=(
@@ -377,6 +377,17 @@ def parse_args(args: list[str]) -> argparse.Namespace:
             "Default: 'w-' (will fail if store exists)."
             "Use 'w' to overwrite existing store "
             "and 'a' to append to existing store."
+        ),
+    )
+    parser.add_argument(
+        "--zarr_mode_group",
+        type=str,
+        default="w-",
+        help=(
+            "Mode to write to zarr group. "
+            "Default: 'w-' (will fail if group exists)."
+            "Use 'w' to overwrite existing group "
+            "and 'a' to append to existing group."
         ),
     )
     parser.add_argument(

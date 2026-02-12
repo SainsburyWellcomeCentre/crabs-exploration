@@ -26,7 +26,8 @@ VIA_TRACKS_DIR="/ceph/zoo/users/sminano/loops_tracking_above_10th_percentile_slu
 METADATA_CSV="/ceph/zoo/users/sminano/CrabsField/crab-loops/loop-frames-ffmpeg.csv"
 
 ZARR_STORE_OUTPUT="/ceph/zoo/users/sminano/CrabTracks-slurm$SLURM_ARRAY_JOB_ID.zarr"
-ZARR_STORE_MODE="a"
+ZARR_MODE_STORE="a"    # a => append if store exists
+ZARR_MODE_GROUP="w-"  # w- => throw error if writing to existing group
 
 # location of SLURM logs
 LOG_DIR=$ZARR_STORE_OUTPUT/logs
@@ -35,9 +36,6 @@ mkdir -p $LOG_DIR  # create if it doesnt exist
 # Version of the codebase
 GIT_BRANCH=smg/convert-to-zarr
 
-
-echo "Zarr store: $ZARR_STORE_OUTPUT"
-echo "Zarr mode: $ZARR_STORE_MODE"
 
 # --------------------
 # Check inputs
@@ -91,13 +89,23 @@ echo "-----"
 # -------------------------
 VIDEO_NAME=${LIST_VIDEOS[$SLURM_ARRAY_TASK_ID]}
 VIDEO_NAME_NO_EXT=${VIDEO_NAME%.mov} # remove .mov suffix
+VIA_TRACKS_GLOB_PATTERN="$VIDEO_NAME_NO_EXT*.csv" # needs quotes
+
+# Log arguments
+echo "via_tracks_dir: $VIA_TRACKS_DIR"
+echo "metadata_csv: $METADATA_CSV"
+echo "zarr_store: $ZARR_STORE_OUTPUT"
+echo "zarr_mode_store: $ZARR_MODE_STORE"
+echo "zarr_mode_group: $ZARR_MODE_GROUP"
+echo "via_tracks_glob_pattern: $VIA_TRACKS_GLOB_PATTERN"
 
 create-zarr-dataset  \
     --via_tracks_dir $VIA_TRACKS_DIR \
     --metadata_csv $METADATA_CSV \
     --zarr_store $ZARR_STORE_OUTPUT \
-    --zarr_mode $ZARR_STORE_MODE \
-    --via_tracks_glob_pattern "${VIDEO_NAME_NO_EXT}*.csv"
+    --zarr_mode_store $ZARR_MODE_STORE \
+    --zarr_mode_group $ZARR_MODE_GROUP \
+    --via_tracks_glob_pattern "$VIA_TRACKS_GLOB_PATTERN"  # with quotes
 
 # -----------------------------
 # Cleanup
