@@ -1,16 +1,17 @@
+import re
+from contextlib import nullcontext as does_not_raise
 from pathlib import Path
 
-import dask
 import pandas as pd
 import pytest
 
 from crabs.utils.create_zarr_dataset import (
-    clip_filename_to_clip_id,
-    get_video_dataset,
-    group_files_per_video,
-    load_ds_chunked,
-    via_tracks_to_clip_filename,
-    via_tracks_to_video_filename,
+    _clip_filename_to_clip_id,
+    _get_video_fps,
+    _group_files_per_video,
+    _via_tracks_to_clip_filename,
+    _via_tracks_to_video_filename,
+    load_extended_ds,
 )
 
 
@@ -48,13 +49,15 @@ def sample_via_tracks_file_factory(tmp_path):
 
 @pytest.fixture
 def sample_metadata_df_factory():
-    """Create a mock metadata dataframe.
-
-    It should include the mock VIA tracks file.
-    """
+    """Return as factory of metadata dataframes."""
 
     def _sample_metadata_df(list_clip_names):
+        """Create a mock metadata dataframe for the input VIA track files."""
         n_clips = len(list_clip_names)
+        list_video_names = [
+            re.sub(r"-Loop\d+_tracks\.csv$", "", f.name) + ".mov"
+            for f in list_clip_names
+        ]
         return pd.DataFrame(
             {
                 "loop_clip_name": list_clip_names,
@@ -62,7 +65,7 @@ def sample_metadata_df_factory():
                 "loop_END_frame_ffmpeg": [200] * n_clips,  # 1-indexed
                 "escape_START_frame_0_based_idx": [150] * n_clips,  # 0-indexed
                 "escape_type": ["spontaneous"] * n_clips,
-                "video_name": ["04.09.2023-01-Right.mov"] * n_clips,
+                "video_name": list_video_names,
                 "fps": [30.0] * n_clips,
             }
         )
@@ -75,15 +78,15 @@ def test_filename_parsing_functions():
     via_tracks_path = "path/to/04.09.2023-01-Right-Loop05_tracks.csv"
 
     # Test video filename extraction
-    video_name = via_tracks_to_video_filename(via_tracks_path)
+    video_name = _via_tracks_to_video_filename(via_tracks_path)
     assert video_name == "04.09.2023-01-Right"
 
     # Test clip filename extraction
-    clip_name = via_tracks_to_clip_filename(via_tracks_path)
+    clip_name = _via_tracks_to_clip_filename(via_tracks_path)
     assert clip_name == "04.09.2023-01-Right-Loop05.mp4"
 
     # Test clip ID extraction
-    clip_id = clip_filename_to_clip_id(clip_name)
+    clip_id = _clip_filename_to_clip_id(clip_name)
     assert clip_id == "Loop05"
 
 
@@ -99,8 +102,8 @@ def test_group_files_per_video(tmp_path):
         (tmp_path / f).touch()
 
     # Group files
-    map_videos_to_files = group_files_per_video(
-        tmp_path, "*.csv", via_tracks_to_video_filename
+    map_videos_to_files = _group_files_per_video(
+        tmp_path, "*.csv", _via_tracks_to_video_filename
     )
 
     assert len(map_videos_to_files) == 2
@@ -110,10 +113,10 @@ def test_group_files_per_video(tmp_path):
     assert len(map_videos_to_files["04.09.2023-02-Right"]) == 1
 
 
-def test_load_ds_chunked(
+def test_load_extended_ds(
     sample_via_tracks_file_factory, sample_metadata_df_factory
 ):
-    """Test loading VIA tracks with metadata as extended dataset."""
+    """Test loading VIA tracks with metadata as a `movement` dataset."""
     # Sample VIA tracks file
     via_tracks_filename = "04.09.2023-01-Right-Loop05_tracks.csv"
     via_tracks_path = sample_via_tracks_file_factory(via_tracks_filename)
@@ -123,11 +126,7 @@ def test_load_ds_chunked(
     df_metadata = sample_metadata_df_factory(clip_name)
 
     # Load dataset for this clip chunked
-    ds = load_ds_chunked(
-        via_tracks_path,
-        df_metadata,
-        chunks={"time": 100, "space": -1, "individuals": -1, "clip_id": -1},
-    )
+    ds = load_extended_ds(via_tracks_path, df_metadata)
 
     # Check escape_state is a data var
     assert "escape_state" in ds.data_vars
@@ -141,48 +140,60 @@ def test_load_ds_chunked(
     assert "clip_escape_first_frame_0idx" in ds.coords
     assert "clip_escape_type" in ds.coords
 
-    # Verify chunking
-    assert ds.chunks is not None
 
-
-def test_get_video_dataset(sample_via_tracks_file_factory):
-    """Test definition of video dataset from multiple clips."""
-    # Define input VIA track files
-    video_id = "04.09.2023-01-Right"
-    via_track_files = [
-        sample_via_tracks_file_factory(f"{video_id}-Loop05_tracks.csv"),
-        sample_via_tracks_file_factory(f"{video_id}-Loop06_tracks.csv"),
+@pytest.mark.parametrize(
+    "list_files, expected_exception",
+    [
+        (
+            [
+                "04.09.2023-01-Right-Loop00_tracks.csv",
+                "05.09.2023-01-Right-Loop01_tracks.csv",
+            ],
+            does_not_raise(),
+        ),  # each row has a different video and different fps - this is OK
+        (
+            [
+                "04.09.2023-01-Right-Loop00_tracks.csv",
+                "04.09.2023-01-Right-Loop01_tracks.csv",
+            ],
+            pytest.raises(ValueError),
+        ),  # both rows come from the same video, should be same fps
+    ],
+)
+def test_get_video_fps(
+    list_files,
+    expected_exception,
+    sample_via_tracks_file_factory,
+    sample_metadata_df_factory,
+):
+    # Build mock metadata dataframe
+    list_paths_to_files = [
+        sample_via_tracks_file_factory(f) for f in list_files
     ]
+    df_metadata = sample_metadata_df_factory(list_paths_to_files)
 
-    # Build sample metadata dataframe including those files
-    video_clip_names = [
-        f.name.replace("_tracks.csv", ".mp4") for f in via_track_files
-    ]
-    df_metadata = pd.DataFrame(
-        {
-            "loop_clip_name": video_clip_names,
-            "loop_START_frame_ffmpeg": [100, 201],  # 1-indexed
-            "loop_END_frame_ffmpeg": [200, 300],  # 1-indexed
-            "escape_START_frame_0_based_idx": [150] * 2,  # 0-indexed
-            "escape_type": ["triggered", "spontaneous"],
-            "video_name": [f"{video_id}.mov"] * 2,
-            "fps": [30.0] * 2,
-        }
-    )
+    # Assign different fps to first and second file
+    df_metadata.loc[0, "fps"] = 30.0
+    df_metadata.loc[1, "fps"] = 25.0
 
-    # Get video dataset for the input VIA track files and metadata
-    ds = get_video_dataset(video_id, via_track_files, df_metadata)
+    # Get video_id from the first file
+    video_id = _via_tracks_to_video_filename(list_paths_to_files[0])
 
-    # Check dimensions
-    assert "clip_id" in ds.dims
-    assert ds.dims["clip_id"] == len(via_track_files)
+    # Extract fps for that video_id
+    with expected_exception as exc_info:
+        fps = _get_video_fps(video_id, df_metadata)
 
-    # Check attributes
-    assert ds.attrs["video_id"] == video_id
-    assert ds.attrs["source_file"] == via_track_files
-    assert "fps" in ds.attrs
+    if not exc_info:
+        assert fps == pytest.approx(30.0)
+    else:
+        assert f"Expected uniform fps for video '{video_id}'" in str(
+            exc_info.value
+        )
 
-    # Verify the data variables are dask arrays
-    assert ds.chunks is not None
-    for var in ds.data_vars:
-        assert isinstance(ds[var].data, dask.array.Array)
+
+def test_create_temp_zarr_store():
+    pass
+
+
+def test_create_final_zarr_store():
+    pass
