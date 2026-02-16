@@ -1,12 +1,13 @@
 """Combine VIA tracks files into a single zarr dataset.
 
-VIA track files per video are combined into a single movement dataset,
-and then saved as a group within a zarr dataset.
-
-
+We first create a temporary zarr store with each group holding the movement
+dataset for a single clip. Then we read from that store and restructure it so
+that each group holds the movement dataset for a single video, which is the
+concatenation of all the clip datasets within that video.
 """
 
 import argparse
+import shutil
 import sys
 import warnings
 from collections import defaultdict
@@ -19,7 +20,6 @@ import xarray as xr
 import zarr
 from movement.io import load_bboxes
 from tqdm import tqdm
-import shutil
 
 # Suppress Zarr V3 warnings
 warnings.filterwarnings(
@@ -36,14 +36,20 @@ warnings.filterwarnings(
     ),
 )
 
-# DEFAULT_CHUNKS = {"time": 1000, "space": -1, "individuals": -1, "clip_id": 1}
+
+DEFAULT_CHUNK_SIZES = {
+    "time": 1000,
+    "space": -1,
+    "individuals": -1,
+    "clip_id": 1,
+}
 
 
 def load_extended_ds(
     via_tracks_file_path: str | Path,
     df_metadata: pd.DataFrame,
 ) -> xr.Dataset:
-    """Read VIA tracks and metadata as a `movement` dataset.
+    """Combine VIA tracks file and metadata as a `movement` dataset.
 
     Parameters
     ----------
@@ -56,7 +62,7 @@ def load_extended_ds(
     -------
     ds : xr.Dataset
         Dataset containing movement data from VIA tracks file, with
-        added metadata as coordinates and attributes.
+        added metadata as coordinates and data variables.
 
     """
     # Load VIA tracks file as movement dataset
@@ -75,13 +81,13 @@ def load_extended_ds(
     local_escape_start_frame_0idx = (
         global_escape_start_frame_0idx - global_clip_start_frame_0idx
     )
-    # float16 (not int/bool) to allow for NaN padding after
+    # we use float16 (not int/bool) to allow for NaN padding after
     # concatenating along clip_id
     escape_state = np.zeros(ds.time.shape[0], dtype=np.float16)
     escape_state[local_escape_start_frame_0idx:] = 1.0
     ds["escape_state"] = ("time", escape_state)
 
-    # Add clip dimension and associated coordinates
+    # Add clip_id dimension and associated coordinates
     ds = ds.expand_dims("clip_id")
     ds = ds.assign_coords(
         clip_id=np.array([_clip_filename_to_clip_id(clip_filename)], dtype=str)
@@ -108,7 +114,6 @@ def load_extended_ds(
         ),
     )
 
-    # -------------------------
     return ds
 
 
@@ -141,7 +146,7 @@ def _group_files_per_video(
     for f in files:
         video_name = parse_video_fn(f)
         grouped_by_key[video_name].append(str(f))
-        # str to make it serializable to save later
+        # str to make it serializable when saving later
     return dict(grouped_by_key)
 
 
@@ -175,6 +180,7 @@ def _get_video_fps(video_id: str, df_metadata: pd.DataFrame) -> float:
     video_fps_values = df_metadata.loc[
         df_metadata["video_name"].str.removesuffix(".mov") == video_id, "fps"
     ]
+    # all clips in the df for this video should have same fps
     if video_fps_values.nunique() != 1:
         raise ValueError(
             f"Expected uniform fps for video '{video_id}', "
@@ -183,55 +189,52 @@ def _get_video_fps(video_id: str, df_metadata: pd.DataFrame) -> float:
     return video_fps_values.iloc[0]
 
 
-def _get_encoding_for_chunks(
-    ds: xr.Dataset, chunk_sizes: dict[str, int]
-) -> dict:
-    """Generate encoding dict for zarr chunking.
+def create_temp_zarr_store(
+    temp_zarr_store: str,
+    temp_zarr_mode_store: str,
+    temp_zarr_mode_group: str,
+    via_tracks_dir: str | Path,
+    via_tracks_glob_pattern: str,
+    metadata_csv: str | Path,
+) -> tuple[Path, dict]:
+    """Create a temporary zarr store.
 
-    Parameters
-    ----------
-    ds : xr.Dataset
-        Dataset to generate encoding for
-    chunk_sizes : dict[str, int]
-        Mapping from dimension name to chunk size. Use -1 for full dimension.
+    We define a temporary zarr store with groups = f"{video_id}/{clip_id}"
+    (i.e., each group holding the `movement` dataset for a single clip).
+    This way, we only have ~1 clip in memory as a `movement` dataset at a
+    time.
 
-    Returns
-    -------
-    encoding : dict
-        Encoding dict suitable for ds.to_zarr(encoding=...)
+    We later restructure this temporary store as one with
+    groups = f"{video_id}", with each group holding the `movement`
+    dataset for a single video. This flatter structure is preferred for easier
+    user interaction with the dataset. We do the zarr store creation in two
+    steps to avoid out-of-memory issues that would occur when concatenating
+    all clip datasets per video if all clips were in memory at the same time.
 
     """
-    encoding = {}
-    for var in ds.data_vars:
-        var_chunks = []
-        for dim in ds[var].dims:
-            chunk_size = chunk_sizes.get(dim, -1)
-            if chunk_size == -1:
-                var_chunks.append(ds.sizes[dim])
-            else:
-                var_chunks.append(chunk_size)
-        encoding[var] = {"chunks": tuple(var_chunks)}
-    return encoding
-
-
-def create_proto_zarr_store(args, temp_store):
     # Initialise zarr store
-    root = zarr.open_group(temp_store, mode=args.zarr_mode_store)
+    root = zarr.open_group(temp_zarr_store, mode=temp_zarr_mode_store)
 
     # Read metadata dataframe
-    df_metadata = pd.read_csv(args.metadata_csv)
+    df_metadata = pd.read_csv(metadata_csv)
 
     # Group VIA tracks files per video
     map_video_to_filepaths_and_clips = _group_files_per_video(
-        args.via_tracks_dir,
-        args.via_tracks_glob_pattern,
+        via_tracks_dir,
+        via_tracks_glob_pattern,
         parse_video_fn=_via_tracks_to_video_filename,
     )
 
     # Loop thru videos
     map_video_to_attrs = {}
-    for video_id, clip_files in map_video_to_filepaths_and_clips.items():
-        # Loop thru clips
+    pbar_videos = tqdm(map_video_to_filepaths_and_clips.items())
+    for video_id, clip_files in pbar_videos:
+        pbar_videos.set_description(
+            f"Temporary processing of clips in video {video_id}"
+        )
+
+        # Loop thru clips,
+        # add each video_id/clip_id as a group
         for f in clip_files:
             # Read VIA tracks file as extended movement dataset
             ds_clip = load_extended_ds(f, df_metadata)
@@ -240,12 +243,12 @@ def create_proto_zarr_store(args, temp_store):
             clip_id = ds_clip.clip_id.values[0]
 
             # Write each clip as a separate subgroup
-            encoding = _get_encoding_for_chunks(ds_clip, {"time": 1000})
+            ds_clip = ds_clip.chunk(DEFAULT_CHUNK_SIZES)
             ds_clip.to_zarr(
                 root.store,
                 group=f"{video_id}/{clip_id}",
-                mode="w",
-                encoding=encoding,
+                mode=temp_zarr_mode_group,
+                # encoding=encoding,
             )
 
         # Save attrs for this video
@@ -254,36 +257,42 @@ def create_proto_zarr_store(args, temp_store):
             "fps": _get_video_fps(video_id, df_metadata),
         }
 
-    return root.store_path, map_video_to_attrs
+    # Get path to temp store
+    temp_path = Path(str(root.store_path).replace("file://", ""))
+
+    return temp_path, map_video_to_attrs
 
 
-def main(args):
-    """Create zarr dataset from VIA track files.
+def create_final_zarr_store(
+    temp_zarr_store: str | Path,
+    map_video_to_attrs: dict,
+    zarr_store: str | Path,
+    zarr_mode_store: str,
+    zarr_mode_group: str,
+):
+    """Create final zarr store from a temporary one.
 
-    VIA track files per video are combined into a single movement dataset,
-    and then saved as a group within a zarr dataset.
+    In the final zarr store, each group holds the `movement` dataset for a
+    single video, which is the concatenation of all the clip datasets
+    for that video. We also add the video-level attributes to the video
+    dataset.
+
     """
-    temp_store = f"{args.zarr_store}.temp"
-    zarr_store_path, map_video_to_attrs = create_proto_zarr_store(
-        args, temp_store
-    )
-
-    # ---------------------
-    # Create final zarr store
-
     # Read temporary zarr store
     dt = xr.open_datatree(
-        zarr_store_path,
+        temp_zarr_store,
         engine="zarr",
         chunks={},
     )
     # Initialise final store on disk
-    final_root = zarr.open_group(args.zarr_store, mode=args.zarr_mode_store)
+    final_root = zarr.open_group(zarr_store, mode=zarr_mode_store)
 
-    # Write one video at a time to store
-    # Only one video's dask graph exists at a time
-    for video_name in tqdm(dt.children, desc="Processing videos"):
-        # Get all clips for this video and concatenate them
+    # Write one video at a time to final store
+    pbar = tqdm(dt.children)
+    for video_name in pbar:
+        pbar.set_description(f"Final processing of video {video_name}")
+
+        # Get sub-datatree with all clips for this video
         dt_video = dt[video_name]
 
         # Concatenate all clip datasets along the clip_id dimension
@@ -294,7 +303,6 @@ def main(args):
             coords="different",
             compat="equals",
         )
-        print(type(ds_video["position"].data))  # dask.array or numpy.ndarray?
 
         # Add video attributes
         ds_video.attrs = {
@@ -302,34 +310,51 @@ def main(args):
             "video_id": video_name,
         }
 
-        # Rechunk after concatenating
-        ds_video = ds_video.chunk(
-            {"time": 1000, "space": -1, "individuals": -1, "clip_id": 1}
-        )
-
-        # Add this dataset as a leaf in the new DataTree
-        # dt_restructured[video_name] = xr.DataTree(ds_video)
+        # Rechunk the dask dataset currently in memory
+        # to align dask chunks with desired Zarr chunks
+        ds_video = ds_video.chunk(DEFAULT_CHUNK_SIZES)
 
         # Save to zarr store
-        encoding = _get_encoding_for_chunks(
-            ds_video, 
-            {"time": 1000, "space": -1, "individuals": -1, "clip_id": 1}
+        # (xarray will automatically use the dask chunk sizes as the
+        # zarr chunk sizes when writing to disk.)
+        ds_video.to_zarr(
+            final_root.store,
+            group=video_name,
+            mode=zarr_mode_group,
         )
-        ds_video.to_zarr(final_root.store, group=video_name, mode="w", encoding=encoding)
 
-    # # Save the restructured DataTree to a new zarr store
-    # dt_restructured.to_zarr(
-    #     final_root.store,
-    #     mode="w-",
-    # )
 
-    print("Restructured zarr store saved successfully!")
-    # ----------------------
+def main(args):
+    """Create zarr dataset from VIA track files.
+
+    In the final dataset, each video is a group. To do this without
+    OOM issues, we first create a temporary zarr store with each group
+    being a clip, then read from that store and restructure it.
+    """
+    # Create temporary zarr store, with each group
+    # holding the `movement` dataset for a single clip
+    temp_zarr_store, map_video_to_attrs = create_temp_zarr_store(
+        f"{args.zarr_store}.temp",
+        temp_zarr_mode_store=args.zarr_mode_store,
+        temp_zarr_mode_group=args.zarr_mode_group,
+        via_tracks_dir=args.via_tracks_dir,
+        via_tracks_glob_pattern=args.via_tracks_glob_pattern,
+        metadata_csv=args.metadata_csv,
+    )
+
+    # Create final zarr store
+    create_final_zarr_store(
+        temp_zarr_store,
+        map_video_to_attrs,
+        zarr_store=args.zarr_store,
+        zarr_mode_store=args.zarr_mode_store,
+        zarr_mode_group=args.zarr_mode_group,
+    )
 
     # Delete temp store
-    if Path(temp_store).exists():
+    if Path(temp_zarr_store).exists():
         try:
-            shutil.rmtree(temp_store)
+            shutil.rmtree(temp_zarr_store)
         except Exception as e:
             print(f"Warning: Failed to delete temp store: {e}")
 
@@ -368,7 +393,12 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         "--zarr_store",
         type=str,
         required=True,
-        help="Path to the zarr store to create",
+        help=(
+            "Path to the zarr store to create. "
+            "The final zarr store will be created at this path, "
+            "and a temporary zarr store will be created at <zarr_store>.temp "
+            "during processing and deleted at the end."
+        ),
     )
     parser.add_argument(
         "--zarr_mode_store",
@@ -376,17 +406,22 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         default="w-",
         help=(
             "Mode to open zarr store with. "
+            "It applies to both the temporary and final zarr store. "
             "Default: 'w-' (will fail if store exists)."
             "Use 'w' to overwrite existing store "
             "and 'a' to append to existing store."
+            "If running an array job in the cluster, where each job creates "
+            "a zarr group for a single video, use 'a' to append to the same "
+            "store across jobs."
         ),
     )
     parser.add_argument(
-        "--zarr_mode_group",  # ----> remove?
+        "--zarr_mode_group",
         type=str,
         default="w-",
         help=(
             "Mode to write to zarr group. "
+            "It applies to both the temporary and final zarr group. "
             "Default: 'w-' (will fail if group exists)."
             "Use 'w' to overwrite existing group "
             "and 'a' to append to existing group."

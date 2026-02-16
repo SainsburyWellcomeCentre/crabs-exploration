@@ -111,4 +111,6 @@ uv.lock
 # cursor
 .cursor/
 
+# zarr stores
 *.zarr
+*.zarr.*
