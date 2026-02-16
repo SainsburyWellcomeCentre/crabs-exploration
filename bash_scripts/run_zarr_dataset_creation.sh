@@ -105,6 +105,7 @@ create-zarr-dataset  \
     --via_tracks_dir $VIA_TRACKS_DIR \
     --metadata_csv $METADATA_CSV \
     --zarr_store $ZARR_STORE_OUTPUT \
+    --temp_zarr_store "${ZARR_STORE_OUTPUT}.task${SLURM_ARRAY_TASK_ID}.temp" \
     --zarr_mode_store $ZARR_MODE_STORE \
     --zarr_mode_group $ZARR_MODE_GROUP \
     --via_tracks_glob_pattern "$VIA_TRACKS_GLOB_PATTERN"  # with quotes

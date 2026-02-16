@@ -288,7 +288,9 @@ def create_final_zarr_store(
     final_root = zarr.open_group(zarr_store, mode=zarr_mode_store)
 
     # Write one video at a time to final store
-    pbar = tqdm(dt.children)
+    # Only process videos handled by this job, not all videos in the
+    # shared temp store (which may include videos from concurrent jobs)
+    pbar = tqdm(map_video_to_attrs)
     for video_name in pbar:
         pbar.set_description(f"Final processing of video {video_name}")
 
@@ -334,7 +336,7 @@ def main(args):
     # Create temporary zarr store, with each group
     # holding the `movement` dataset for a single clip
     temp_zarr_store, map_video_to_attrs = create_temp_zarr_store(
-        f"{args.zarr_store}.temp",
+        temp_zarr_store=args.temp_zarr_store,
         temp_zarr_mode_store=args.zarr_mode_store,
         temp_zarr_mode_group=args.zarr_mode_group,
         via_tracks_dir=args.via_tracks_dir,
@@ -396,8 +398,21 @@ def parse_args(args: list[str]) -> argparse.Namespace:
         help=(
             "Path to the zarr store to create. "
             "The final zarr store will be created at this path, "
-            "and a temporary zarr store will be created at <zarr_store>.temp "
+            "and a temporary zarr store will be created as "
+            "<temp_zarr_store>.temp "
             "during processing and deleted at the end."
+        ),
+    )
+    parser.add_argument(
+        "--temp_zarr_store",
+        type=str,
+        default=None,
+        help=(
+            "Path to the temporary zarr store to create. "
+            "This store is created "
+            "during processing and deleted at the end."
+            "By default, it is set to <zarr_store>.temp "
+            "(i.e., same path as final store with .temp suffix)."
         ),
     )
     parser.add_argument(
@@ -441,6 +456,11 @@ def parse_args(args: list[str]) -> argparse.Namespace:
 def app_wrapper():
     """Wrap function for extracting loop clips."""
     args = parse_args(sys.argv[1:])
+
+    # Set default temp zarr store path if not provided
+    if args.temp_zarr_store is None:
+        args.temp_zarr_store = f"{str(args.zarr_store)}.temp"
+
     main(args)
 
 
