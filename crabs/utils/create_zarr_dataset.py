@@ -253,7 +253,7 @@ def create_temp_zarr_store(
 
         # Save attrs for this video
         map_video_to_attrs[video_id] = {
-            "source_file": clip_files,
+            "source_file": sorted(clip_files),
             "fps": _get_video_fps(video_id, df_metadata),
         }
 

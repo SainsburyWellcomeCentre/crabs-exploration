@@ -11,6 +11,7 @@ from crabs.utils.create_zarr_dataset import (
     _group_files_per_video,
     _via_tracks_to_clip_filename,
     _via_tracks_to_video_filename,
+    create_temp_zarr_store,
     load_extended_ds,
 )
 
@@ -51,12 +52,16 @@ def sample_via_tracks_file_factory(tmp_path):
 def sample_metadata_df_factory():
     """Return as factory of metadata dataframes."""
 
-    def _sample_metadata_df(list_clip_names):
+    def _sample_metadata_df(list_via_track_filepaths):
         """Create a mock metadata dataframe for the input VIA track files."""
+        list_clip_names = [
+            Path(p).name.removesuffix("_tracks.csv") + ".mp4"
+            for p in list_via_track_filepaths
+        ]
         n_clips = len(list_clip_names)
         list_video_names = [
-            re.sub(r"-Loop\d+_tracks\.csv$", "", f.name) + ".mov"
-            for f in list_clip_names
+            re.sub(r"-Loop\d+_tracks\.csv$", "", Path(f).name) + ".mov"
+            for f in list_via_track_filepaths
         ]
         return pd.DataFrame(
             {
@@ -122,8 +127,10 @@ def test_load_extended_ds(
     via_tracks_path = sample_via_tracks_file_factory(via_tracks_filename)
 
     # Define metadata df that contains the clip for the VIA tracks file
-    clip_name = via_tracks_filename.replace("_tracks.csv", ".mp4")
-    df_metadata = sample_metadata_df_factory(clip_name)
+    # list_clip_filepath = [
+    #     Path(str(via_tracks_path).replace("_tracks.csv", ".mp4"))
+    # ]
+    df_metadata = sample_metadata_df_factory([via_tracks_path])
 
     # Load dataset for this clip chunked
     ds = load_extended_ds(via_tracks_path, df_metadata)
@@ -191,9 +198,64 @@ def test_get_video_fps(
         )
 
 
-def test_create_temp_zarr_store():
-    pass
+def test_create_temp_zarr_store(
+    tmp_path, sample_via_tracks_file_factory, sample_metadata_df_factory
+):
+    """Test creation of temporary zarr store from VIA tracks files."""
+    # Create a set of VIA tracks files for two different videos
+    list_via_paths = [
+        sample_via_tracks_file_factory(fname)
+        for fname in [
+            "04.09.2023-01-Right-Loop00_tracks.csv",
+            "04.09.2023-01-Right-Loop01_tracks.csv",
+            "05.09.2023-01-Right-Loop00_tracks.csv",
+            "05.09.2023-01-Right-Loop01_tracks.csv",
+        ]
+    ]
+
+    # Create metadata CSV for those files
+    df_metadata = sample_metadata_df_factory(list_via_paths)
+    metadata_csv = tmp_path / "metadata.csv"
+    df_metadata.to_csv(metadata_csv, index=False)
+
+    # Define temp zarr store path
+    temp_zarr_path = tmp_path / "temp_store.zarr"
+
+    # Create temp zarr store
+    temp_zarr_store_path, map_video_to_attrs = create_temp_zarr_store(
+        temp_zarr_store=str(temp_zarr_path),
+        temp_zarr_mode_store="w-",
+        temp_zarr_mode_group="w-",
+        via_tracks_dir=Path(list_via_paths[0]).parent,
+        # all created in same dir
+        via_tracks_glob_pattern="*_tracks.csv",
+        # exclude metadata.csv!
+        metadata_csv=metadata_csv,
+    )
+
+    # Check output
+    list_expected_video_ids = ["04.09.2023-01-Right", "05.09.2023-01-Right"]
+    assert temp_zarr_store_path.exists()
+    assert list(map_video_to_attrs.keys()) == list_expected_video_ids
+    assert all(
+        sorted(map_video_to_attrs[video_id].keys()) == ["fps", "source_file"]
+        for video_id in list_expected_video_ids
+    )
+    assert all(
+        map_video_to_attrs[video_id]["fps"] == pytest.approx(30.0)
+        for video_id in list_expected_video_ids
+    )
+    assert map_video_to_attrs["04.09.2023-01-Right"]["source_file"] == [
+        f.as_posix() for f in list_via_paths[0:2]
+    ]
+    assert map_video_to_attrs["05.09.2023-01-Right"]["source_file"] == [
+        f.as_posix() for f in list_via_paths[2:4]
+    ]
 
 
 def test_create_final_zarr_store():
+    pass
+
+
+def test_main():
     pass
