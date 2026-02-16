@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+import xarray as xr
+import zarr
 
 from crabs.utils.create_zarr_dataset import (
     _clip_filename_to_clip_id,
@@ -11,6 +13,7 @@ from crabs.utils.create_zarr_dataset import (
     _group_files_per_video,
     _via_tracks_to_clip_filename,
     _via_tracks_to_video_filename,
+    create_final_zarr_store,
     create_temp_zarr_store,
     load_extended_ds,
 )
@@ -233,9 +236,18 @@ def test_create_temp_zarr_store(
         metadata_csv=metadata_csv,
     )
 
-    # Check output
-    list_expected_video_ids = ["04.09.2023-01-Right", "05.09.2023-01-Right"]
+    # Check temporary zarr store structure
     assert temp_zarr_store_path.exists()
+    root = zarr.open_group(temp_zarr_store_path, mode="r")
+    all_clip_groups = [
+        f"{video_id}/{clip_id}"
+        for video_id in root.group_keys()
+        for clip_id in root[video_id].group_keys()
+    ]
+    assert len(all_clip_groups) == 4  # one per VIA tracks file
+
+    # Check video attributes
+    list_expected_video_ids = ["04.09.2023-01-Right", "05.09.2023-01-Right"]
     assert list(map_video_to_attrs.keys()) == list_expected_video_ids
     assert all(
         sorted(map_video_to_attrs[video_id].keys()) == ["fps", "source_file"]
@@ -253,8 +265,72 @@ def test_create_temp_zarr_store(
     ]
 
 
-def test_create_final_zarr_store():
-    pass
+def test_create_final_zarr_store(
+    tmp_path, sample_via_tracks_file_factory, sample_metadata_df_factory
+):
+    """Test creation of final zarr store from temp zarr store."""
+    # Create a set of VIA tracks files for two different videos
+    list_via_paths = [
+        sample_via_tracks_file_factory(fname)
+        for fname in [
+            "04.09.2023-01-Right-Loop00_tracks.csv",
+            "04.09.2023-01-Right-Loop01_tracks.csv",
+            "05.09.2023-01-Right-Loop00_tracks.csv",
+        ]
+    ]
+
+    # Create metadata CSV for those files
+    df_metadata = sample_metadata_df_factory(list_via_paths)
+    metadata_csv = tmp_path / "metadata.csv"
+    df_metadata.to_csv(metadata_csv, index=False)
+
+    # Define temp and final zarr store paths
+    temp_zarr_path = tmp_path / "temp_store.zarr"
+    final_zarr_path = tmp_path / "final_store.zarr"
+
+    # Create temp zarr store first
+    temp_zarr_store_path, map_video_to_attrs = create_temp_zarr_store(
+        temp_zarr_store=str(temp_zarr_path),
+        temp_zarr_mode_store="w-",
+        temp_zarr_mode_group="w-",
+        via_tracks_dir=Path(list_via_paths[0]).parent,
+        via_tracks_glob_pattern="*_tracks.csv",
+        metadata_csv=metadata_csv,
+    )
+
+    # Create final zarr store from temp store
+    create_final_zarr_store(
+        temp_zarr_store=temp_zarr_store_path,
+        map_video_to_attrs=map_video_to_attrs,
+        zarr_store=final_zarr_path,
+        zarr_mode_store="w-",
+        zarr_mode_group="w-",
+    )
+
+    # Check final store and verify structure
+    assert final_zarr_path.exists()
+    dt = xr.open_datatree(final_zarr_path, engine="zarr")
+
+    # Check groups correspond to videos
+    list_expected_video_ids = ["04.09.2023-01-Right", "05.09.2023-01-Right"]
+    assert sorted(dt.children.keys()) == sorted(list_expected_video_ids)
+
+    # Check each video dataset contains expected clips
+    ds_video_1 = dt["04.09.2023-01-Right"].to_dataset()
+    assert ds_video_1.sizes["clip_id"] == 2  # Loop00 and Loop01
+
+    ds_video_2 = dt["05.09.2023-01-Right"].to_dataset()
+    assert ds_video_2.sizes["clip_id"] == 1  # Loop00 only
+
+    # Check video attributes are added to dataset 1
+    assert ds_video_1.attrs["video_id"] == "04.09.2023-01-Right"
+    assert ds_video_1.attrs["fps"] == pytest.approx(30.0)
+    assert "source_file" in ds_video_1.attrs
+
+    # Check video attributes are added to dataset 2
+    assert ds_video_2.attrs["video_id"] == "05.09.2023-01-Right"
+    assert ds_video_2.attrs["fps"] == pytest.approx(30.0)
+    assert "source_file" in ds_video_2.attrs
 
 
 def test_main():
