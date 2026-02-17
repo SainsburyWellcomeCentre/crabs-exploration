@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "opencv-python",
-    "sleap[nn]", # works with python>3.11
+    "sleap-nn",  # works with python>3.11
     "typer",
     "timecode",
     "torch",
@@ -37,8 +37,9 @@ dependencies = [
     "movement @ git+https://github.com/neuroinformatics-unit/movement.git@smg/parquet-bboxes",
     # Remove movement pin after PR 769 is merged
     # https://github.com/neuroinformatics-unit/movement/pull/769
-    "dask"
+    "numba>=0.60.0",
 ]
+
 
 [project.optional-dependencies]
 dev = [
