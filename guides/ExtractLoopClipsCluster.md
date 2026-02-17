@@ -21,7 +21,7 @@
 
     If there are issues with the files being downloaded as placeholder files, run `gin download --content`. See the [GIN guide](https://howto.neuroinformatics.dev/open_science/GIN-repositories.html#download-a-gin-dataset) for further details.
 
-    Copy the fullpath to the spreadsheet at `CrabsField/crab-loops/loop-frames-ffmpeg.csv`, since we will need it to set the `CSV_PATH` variable in the bash script.
+    Copy the full path to the spreadsheet at `CrabsField/crab-loops/loop-frames-ffmpeg.csv`, since we will need it to set the `CSV_PATH` variable in the bash script.
 
 
 3.  **Download the extract-loops bash script from the 🦀 repository**
@@ -31,7 +31,7 @@
     curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/run_extract_loop_clips_array.sh > run_extract_loop_clips_array.sh
     ```
 
-    This bash script launches a SLURM array job that extracts loop clips on an array of videos. The version of the bash script downloaded is the one at the tip of the `main` branch in the [🦀 repository](https://github.com/SainsburyWellcomeCentre/crabs-exploration).
+    This bash script launches a SLURM array job that extracts loop clips on an array of videos. With the command above, he version of the bash script downloaded is the one at the tip of the `main` branch in the [🦀 repository](https://github.com/SainsburyWellcomeCentre/crabs-exploration).
 
 
 > [!TIP]
