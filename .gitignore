@@ -106,6 +106,7 @@ lightning_logs
 .env
 
 # uv
+.venv/
 uv.lock
 
 # cursor
