@@ -86,7 +86,7 @@ Because the large files in the dataset are **locked**, this command will downloa
 >   gin remotes
 >   >> origin: ssh://git@gin.g-node.org:22/SainsburyWellcomeCentre/CrabLabels [default]
 >   ```
->
+> Check the [GIN-CLI tool reference](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#add-a-remote-to-the-current-repository-for-uploading-and-downloading) for more details on how to manage remotes.
 
 ## Basic commands
 
