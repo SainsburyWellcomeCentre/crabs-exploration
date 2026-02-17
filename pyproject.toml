@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "opencv-python",
-    "sleap-nn",  # works with python>3.11
+    "sleap[nn]",  # works with python>3.11
     "typer",
     "timecode",
     "torch",
