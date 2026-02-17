@@ -63,7 +63,7 @@
     To launch a job, use the `sbatch` command with the path to the bash script:
 
     ```
-    sbatch <path/to/run_create_zarr_dataset.sh>
+    sbatch path/to/run_create_zarr_dataset.sh
     ```
 
 6.  **Check the status of the job**
@@ -88,16 +88,15 @@
 
     1. If a job does not complete successfuly, its SLURM logs won't be copied across to the final zarr store. For traceability, it is recommended to first move the logs from the failed jobs to a separate directory under the `store_1` root directory (for example `store_1/logs_failed`). For example, for a failed job with array job ID `2382788` and job index `3`, we would run the following commands to copy the failed logs across:
 
-    ```bash
-    # create a directory for the failed logs
-    mkdir /path/to/store_1.zarr/logs_failed
+        ```bash
+        # create a directory for the failed logs
+        mkdir /path/to/store_1.zarr/logs_failed
 
-    # From the directory from which the `sbatch` command was run,
-    # run the following command to move the failed logs across
-    mv slurm_array.2382788-3.gpu-380-16.* /path/to/store_1.zarr/logs_failed/
-    ```
-
-    This will copy across both `.out` and `.err` logs for the failed job.
+        # From the directory from which the `sbatch` command was run,
+        # run the following command to move the failed logs across
+        mv slurm_array.2382788-3.gpu-380-16.* /path/to/store_1.zarr/logs_failed/
+        ```
+        This will copy across both `.out` and `.err` logs for the failed job.
 
     2. Edit the bash script to run on the failed jobs only. First, edit the `#SBATCH --array=...` line in the bash script to specify the failed job indices only, as a comma-separate list (e.g., `#SBATCH --array=0,5,7-9%m` for failed jobs with indices 0, 5, 7, 8 and 9, with `m` being the maximum anumber of simultaneous jobs allowed). For more details about the syntax of the `--array` option, see the [SBATCH documentation](https://slurm.schedmd.com/sbatch.html#OPT_array).
 
@@ -107,23 +106,23 @@
 
     5. Merge the two zarr stores. To do this, we first move the video directories from `store_2` to `store_1`. This can be done using the `mv` command or drag-and-dropping the folders in a file explorer.
 
-> [!CAUTION]
-> Remember to move across **just** the video directories (i.e. the zarr store groups), and not the metadata JSON file `zarr.json` at the root directory of `store_2`. Otherwise, we may overwrite the metadata JSON file of `store_1`!
+    > [!CAUTION]
+    > Remember to move across **just** the video directories (i.e. the zarr store groups), and not the metadata JSON file `zarr.json` at the root directory of `store_2`. Otherwise, we may overwrite the metadata JSON file of `store_1`!
 
     6. Finally, we update the metadata JSON file in the root group of `store_1` (i.e. the `zarr.json` file) to reflect the total number of videos processed. To do this, we can use the `zarr.consolidate_metadata` function, which updates the metadata JSON file based on the current structure of the zarr store:
 
-    ```python
-    import zarr
-    zarr.consolidate_metadata("/path/to/store_1.zarr")
-    ```
+        ```python
+        import zarr
+        zarr.consolidate_metadata("/path/to/store_1.zarr")
+        ```
 
     7. We can use `xarray` to inspect the merged zarr store and verify that it contains the expected number of videos.
 
-    ```python
-    import xarray as xr
-    dt = xr.open_datatree(path_store_1, engine="zarr", chunks={})
-    print(f"Total groups: {len(dt)}") # should match the total number of videos processed
-    ```
+        ```python
+        import xarray as xr
+        dt = xr.open_datatree(path_store_1, engine="zarr", chunks={})
+        print(f"Total groups: {len(dt)}") # should match the total number of videos processed
+        ```
 
 
 ### Some useful SLURM commands

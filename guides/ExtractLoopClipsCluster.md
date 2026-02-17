@@ -69,7 +69,7 @@
     To launch a job, use the `sbatch` command with the path to the bash script:
 
     ```
-    sbatch <path/to/run_extract_loop_clips_array.sh>
+    sbatch path/to/run_extract_loop_clips_array.sh
     ```
 
 6.  **Check the status of the job**
