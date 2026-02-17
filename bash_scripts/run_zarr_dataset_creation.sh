@@ -3,7 +3,7 @@
 #SBATCH -p gpu # partition (or gpu if needed)
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 2
-#SBATCH --mem 64G
+#SBATCH --mem 8G
 #SBATCH -t 0-20:00 # time (D-HH:MM)
 #SBATCH -o slurm_array.%A-%a.%N.out
 #SBATCH -e slurm_array.%A-%a.%N.err
