@@ -30,10 +30,7 @@ jobs:
         # Run all supported Python versions on linux
         os: [ubuntu-latest]
         python-version: ["3.11", "3.12"]
-        # Include 1 Intel macos (15) and 1 Apple chip macos (latest)
         include:
-          - os: macos-15-intel # intel macOS
-            python-version: "3.12"
           - os: macos-latest  # Apple chip macOS
             python-version: "3.12"
     steps:

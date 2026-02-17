@@ -38,6 +38,8 @@ dependencies = [
     # Remove movement pin after PR 769 is merged
     # https://github.com/neuroinformatics-unit/movement/pull/769
     "numba>=0.60.0",
+    # to avoid conflict between movement and sleap-nn;
+    # numba is installed via xarray[accel] from movement
 ]
 
 
