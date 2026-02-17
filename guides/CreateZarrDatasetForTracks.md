@@ -76,7 +76,7 @@
 > [!TIP]
 > The `create-zarr-dataset` command first creates a temporary zarr store where each group (i.e. each subdirectory in the zarr store) is a video clip. It then restructures this store into a more convenient final version, in which each group is a video and all clips per video are concatenated. As a result, you may see temporary zarr datasets being created at the selected output location while the job is running (usually with a name such as `CrabTracks-slurm12345.zarr.task8.temp`, for a SLURM job with an array job ID `12345` and index `8`).
 
-6. **Expected output**
+7. **Expected output**
 
     If the array job runs successfully, a zarr dataset named `CrabTracks-slurm<SLURM_ARRAY_JOB_ID>.zarr` will be generated in the location specified by `ZARR_STORE_OUTPUT`. Each group in the zarr dataset will correspond to a `movement` [bounding box dataset](https://movement.neuroinformatics.dev/latest/user_guide/movement_dataset.html) containing all tracks for one video.
 
@@ -88,7 +88,7 @@ Sometimes some of the jobs in the array job fail due to non reproducible issues 
 
 1. **Edit the bash script to run on the failed jobs only**
 
-    First, edit the `#SBATCH --array=...` line in the bash script to specify the failed job indices only, as a comma-separate list (e.g., `#SBATCH --array=0,5,7-9%m` for failed jobs with indices 0, 5, 7, 8 and 9, with `m` being the maximum anumber of simultaneous jobs allowed). For more details about the syntax of the `--array` option, see the [SBATCH documentation](https://slurm.schedmd.com/sbatch.html#OPT_array).
+    First, edit the `#SBATCH --array=...` line in the bash script to specify the failed job indices only, as a comma-separate list (e.g., `#SBATCH --array=0,5,7-9%m` for failed jobs with indices 0, 5, 7, 8 and 9, with `m` being the maximum number of jobs that can run simultaneously). For more details about the syntax of the `--array` option, see the [SBATCH documentation](https://slurm.schedmd.com/sbatch.html#OPT_array).
 
     Next, comment out the if-clause in the `Check inputs` section of the bash script, which throws an error if the number of input VIA track files in the provided directory does not match the number of jobs in the array job. This is because we want to re-run only a subset of the jobs in the array, so the number of input files will be larger than the number of jobs and we need to skip this check.
 
@@ -111,7 +111,7 @@ Sometimes some of the jobs in the array job fail due to non reproducible issues 
     curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/merge_zarr_datasets.sh > merge_zarr_datasets.sh
     ```
 
-    Then edit the script to set the `STORE_1` and `STORE_2` variables to the paths of `store_1` and `store_2` respectively, and run the script:
+    Then edit the downloaded script to set the `STORE_1` and `STORE_2` variables to the paths of `store_1` and `store_2` respectively, and run the script:
 
     ```bash
     srun path/to/merge_zarr_datasets.sh
@@ -119,7 +119,7 @@ Sometimes some of the jobs in the array job fail due to non reproducible issues 
 
     The script will:
     - Move any failed log files from the first run into a `logs_failed` directory under `store_1`.
-    - Rename `store_1` to a merged store, which includes the SLURM job IDs for `store_1` and `store_2` (e.g., `CrabTracks-slurm1234-slurm5678.zarr`).
+    - Rename `store_1` to a merged store name, which includes the SLURM job IDs for `store_1` and `store_2` (e.g., `CrabTracks-slurm1234-slurm5678.zarr`).
     - Move all video directories from `store_2` into the merged store.
     - Move the log files from `store_2/logs` into the merged store's `logs` directory.
     - Consolidate the metadata of the merged store (i.e., the `zarr.json` file) so that it includes the full set of videos.
@@ -131,7 +131,7 @@ Sometimes some of the jobs in the array job fail due to non reproducible issues 
 
     ```python
     import xarray as xr
-    dt = xr.open_datatree(path_store_1, engine="zarr", chunks={})
+    dt = xr.open_datatree(path_to_merged_store, engine="zarr", chunks={})
     print(f"Total groups: {len(dt)}") # should match the total number of videos processed
     ```
 
