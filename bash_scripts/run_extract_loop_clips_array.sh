@@ -22,7 +22,7 @@ set -o pipefail
 # ---------------------
 # Define variables
 # ----------------------
-CSV_PATH="/ceph/zoo/users/sminano/CrabsField/crab-loops/loop-frames-ffmpeg.csv"
+CSV_PATH="/ceph/zoo/users/sminano/CrabLabels/crab-loops/loop-frames-ffmpeg.csv"
 INPUT_DIR="/ceph/zoo/raw/CrabField/ramalhete_2023"
 
 OUTPUT_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops"

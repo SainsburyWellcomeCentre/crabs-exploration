@@ -15,14 +15,14 @@
 
 3. **Fetch input csv file**
 
-    We need to download the input csv file from the private [GIN repository](https://gin.g-node.org/SainsburyWellcomeCentre/CrabsField). To do that:
+    We need to download the input csv file from the private [GIN repository](https://gin.g-node.org/SainsburyWellcomeCentre/CrabLabels). To do that:
     1. Log into your GIN account running `gin login`
-    2. If the `CrabsField` data repository exists locally, `cd` to it and run `gin download` to get the latest version
-    3. If the `CrabsField` data repository does not exist locally, `cd` to the desired location and run `gin get SainsburyWellcomeCentre/CrabsField`.
+    2. If the `CrabLabels` data repository exists locally, `cd` to it and run `gin download` to get the latest version
+    3. If the `CrabLabels` data repository does not exist locally, `cd` to the desired location and run `gin get SainsburyWellcomeCentre/CrabLabels`.
 
     If there are issues with the files being downloaded as placeholder files, run `gin download --content`. See the [GIN guide](https://howto.neuroinformatics.dev/open_science/GIN-repositories.html#download-a-gin-dataset) for further details.
 
-    Copy the full path to the spreadsheet at `CrabsField/crab-loops/loop-frames-ffmpeg.csv`, since we will need it to set the `CSV_PATH` variable in the bash script.
+    Copy the full path to the spreadsheet at `CrabLabels/crab-loops/loop-frames-ffmpeg.csv`, since we will need it to set the `CSV_PATH` variable in the bash script.
 
 
 3.  **Download the extract-loops bash script from the 🦀 repository**
