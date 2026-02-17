@@ -84,31 +84,17 @@
 
 ### Re-running failed jobs
 
-Sometimes some of the jobs in the array job fail due to non reproducible issues with `miniconda` in the cluster. This leads to an incomplete zarr store (e.g. called `store_1`), that contains only a subset of the videos we wanted to process. In those cases, this is the recommended approach to re-run the failed jobs and merge the results with a previous array job.
+Sometimes some of the jobs in the array job fail due to non reproducible issues with `miniconda` in the cluster. This leads to an incomplete zarr store (that we will call `store_1` here), that contains only a subset of the videos we wanted to process. In those cases, this is the recommended approach to re-run the failed jobs and merge the results with a previous array job.
 
-1. **Copy failed log files across**
-
-    If a job does not complete successfuly, its SLURM logs won't be copied across to the final zarr store. For traceability, it is recommended to first move the logs from the failed jobs to a separate directory under the `store_1` root directory (for example `store_1/logs_failed`). For example, for a failed job with array job ID `2382788` and job index `3`, we would run the following commands to copy the failed logs across:
-
-    ```bash
-    # create a directory for the failed logs
-    mkdir /path/to/store_1.zarr/logs_failed
-
-    # From the directory from which the `sbatch` command was run,
-    # run the following command to move the failed logs across
-    mv slurm_array.2382788-3.gpu-380-16.* /path/to/store_1.zarr/logs_failed/
-    ```
-    This will copy across both `.out` and `.err` logs for the failed job.
-
-2. **Edit the bash script to run on the failed jobs only**
+1. **Edit the bash script to run on the failed jobs only**
 
     First, edit the `#SBATCH --array=...` line in the bash script to specify the failed job indices only, as a comma-separate list (e.g., `#SBATCH --array=0,5,7-9%m` for failed jobs with indices 0, 5, 7, 8 and 9, with `m` being the maximum anumber of simultaneous jobs allowed). For more details about the syntax of the `--array` option, see the [SBATCH documentation](https://slurm.schedmd.com/sbatch.html#OPT_array).
 
     Next, comment out the if-clause in the `Check inputs` section of the bash script, which throws an error if the number of input VIA track files in the provided directory does not match the number of jobs in the array job. This is because we want to re-run only a subset of the jobs in the array, so the number of input files will be larger than the number of jobs and we need to skip this check.
 
-4. **Run the edited bash script with `sbatch`**
+2. **Run the edited bash script with `sbatch`**
 
-    Run the edited bash script:
+    Run the edited bash script, to create a zarr dataset for the previously failed jobs:
 
     ```bash
     sbatch path/to/edited/run_create_zarr_dataset.sh
@@ -116,22 +102,30 @@ Sometimes some of the jobs in the array job fail due to non reproducible issues 
 
     If the array job runs successfully, a new zarr store (that we will call `store_2` here) will be generated.
 
-5. **Merge the two zarr stores**
+3. **Merge the two zarr stores**
 
-    To do this, we first move the video directories from `store_2` to `store_1`. This can be done using the `mv` command or drag-and-dropping the folders in a file explorer. Do not move the `zarr.json` file at the root directory of `store_2` -- it contains details for the failed jobs only and moving it across will overwrite the metadata of `store_1`.
+    To do this, we can use the auxiliary bash script `merge_zarr_datasets.sh` from the 🦀 repository, which merges two zarr stores by appending the groups of the second store (i.e., `store_2`) to the first store (i.e., `store_1`).
 
-    Next, we update the metadata JSON file in the root group of `store_1` (i.e. the `zarr.json` file) to reflect the total number of videos processed. To do this, we can use the `zarr.consolidate_metadata` function, which updates the metadata JSON file based on the current structure of the zarr store:
-
-    ```python
-    import zarr
-    zarr.consolidate_metadata("/path/to/store_1.zarr")
+    To download the script, run:
+    ```
+    curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/merge_zarr_datasets.sh > merge_zarr_datasets.sh
     ```
 
-> [!CAUTION]
->   Remember to move across **just** the video directories (i.e. the zarr store groups), and not the metadata JSON file `zarr.json` at the root directory of `store_2`. Otherwise, we may overwrite the metadata JSON file of `store_1`!
+    Then edit the script to set the `STORE_1` and `STORE_2` variables to the paths of `store_1` and `store_2` respectively, and run the script:
 
+    ```bash
+    srun path/to/merge_zarr_datasets.sh
+    ```
 
-7. **Check the results**
+    The script will:
+    - Move any failed log files from the first run into a `logs_failed` directory under `store_1`.
+    - Rename `store_1` to a merged store, which includes the SLURM job IDs for `store_1` and `store_2` (e.g., `CrabTracks-slurm1234-slurm5678.zarr`).
+    - Move all video directories from `store_2` into the merged store.
+    - Move the log files from `store_2/logs` into the merged store's `logs` directory.
+    - Consolidate the metadata of the merged store (i.e., the `zarr.json` file) so that it includes the full set of videos.
+    - Delete `store_2`.
+
+4. **Check the results**
 
     We can use `xarray` to inspect the merged zarr store and verify that it contains the expected number of videos.
 
