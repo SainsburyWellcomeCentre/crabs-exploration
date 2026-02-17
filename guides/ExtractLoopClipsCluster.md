@@ -14,6 +14,7 @@
     It may ask for your password twice. To set up SSH keys for the SWC cluster, see [this guide](https://howto.neuroinformatics.dev/programming/SSH-SWC-cluster.html#ssh-keys).
 
 3. **Fetch input csv file**
+
     We need to download the input csv file from the private [GIN repository](https://gin.g-node.org/SainsburyWellcomeCentre/CrabsField). To do that:
     1. Log into your GIN account running `gin login`
     2. If the `CrabsField` data repository exists locally, `cd` to it and run `gin download` to get the latest version
@@ -65,10 +66,10 @@
 
 5.  **Run the job using the SLURM scheduler**
 
-    To launch a job, use the `sbatch` command with the relevant training script:
+    To launch a job, use the `sbatch` command with the path to the bash script:
 
     ```
-    sbatch <path-to-extract-loop-clips-bash-script>
+    sbatch <path/to/run_extract_loop_clips_array.sh>
     ```
 
 6.  **Check the status of the job**
