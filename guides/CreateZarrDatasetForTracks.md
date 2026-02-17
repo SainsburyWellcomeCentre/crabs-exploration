@@ -106,8 +106,16 @@
 
     5. Merge the two zarr stores. To do this, we first move the video directories from `store_2` to `store_1`. This can be done using the `mv` command or drag-and-dropping the folders in a file explorer.
 
-      > [!CAUTION]
-      >   Remember to move across **just** the video directories (i.e. the zarr store groups), and not the metadata JSON file `zarr.json` at the root directory of `store_2`. Otherwise, we may overwrite the metadata JSON file of `store_1`!
+    <!-- We use an HTML element because admonitions are not parsed if indented,
+   and if it is unindented, it breaks list parsing (1, 1, 2...) and adds a
+   margin to all following list items. -->
+
+   <!-- markdownlint-disable MD033 -->
+   <div class="admonition caution inline end">
+   <p class="admonition-title">Caution</p>
+       Remember to move across <b>just</b> the video directories (i.e. the zarr store groups), and not the metadata JSON file <code>zarr.json</code> at the root directory of <code>store_2</code>. Otherwise, we may overwrite the metadata JSON file of <code>store_1</code>!
+   </div>
+   <!-- markdownlint-enable MD033 -->
 
     6. Finally, we update the metadata JSON file in the root group of `store_1` (i.e. the `zarr.json` file) to reflect the total number of videos processed. To do this, we can use the `zarr.consolidate_metadata` function, which updates the metadata JSON file based on the current structure of the zarr store:
 
