@@ -118,17 +118,18 @@ Sometimes some of the jobs in the array job fail due to non reproducible issues 
 
 5. **Merge the two zarr stores**
 
-    To do this, we first move the video directories from `store_2` to `store_1`. This can be done using the `mv` command or drag-and-dropping the folders in a file explorer.
+    To do this, we first move the video directories from `store_2` to `store_1`. This can be done using the `mv` command or drag-and-dropping the folders in a file explorer. Do not move the `zarr.json` file at the root directory of `store_2` -- it contains details for the failed jobs only and moving it across will overwrite the metadata of `store_1`.
 
-> [!CAUTION]
->   Remember to move across **just** the video directories (i.e. the zarr store groups), and not the metadata JSON file `zarr.json` at the root directory of `store_2`. Otherwise, we may overwrite the metadata JSON file of `store_1`!
-
-    Finally, we update the metadata JSON file in the root group of `store_1` (i.e. the `zarr.json` file) to reflect the total number of videos processed. To do this, we can use the `zarr.consolidate_metadata` function, which updates the metadata JSON file based on the current structure of the zarr store:
+    Next, we update the metadata JSON file in the root group of `store_1` (i.e. the `zarr.json` file) to reflect the total number of videos processed. To do this, we can use the `zarr.consolidate_metadata` function, which updates the metadata JSON file based on the current structure of the zarr store:
 
     ```python
     import zarr
     zarr.consolidate_metadata("/path/to/store_1.zarr")
     ```
+
+> [!CAUTION]
+>   Remember to move across **just** the video directories (i.e. the zarr store groups), and not the metadata JSON file `zarr.json` at the root directory of `store_2`. Otherwise, we may overwrite the metadata JSON file of `store_1`!
+
 
 7. **Check the results**
 
