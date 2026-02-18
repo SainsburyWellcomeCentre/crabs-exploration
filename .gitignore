@@ -104,3 +104,14 @@ lightning_logs
 
 # env variables
 .env
+
+# uv
+.venv/
+uv.lock
+
+# cursor
+.cursor/
+
+# zarr stores
+*.zarr
+*.zarr.*

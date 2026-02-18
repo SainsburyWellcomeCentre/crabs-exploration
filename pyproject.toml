@@ -30,11 +30,19 @@ dependencies = [
     "torchvision",
     "pycocotools",
     "filterpy",
-    "lightning==2.5.0",  # see https://github.com/Lightning-AI/pytorch-lightning/pull/20669
+    "lightning==2.5.0", # see https://github.com/Lightning-AI/pytorch-lightning/pull/20669
     "mlflow",
     "optuna",
-    "numpy<2"
+    "numpy>=2.0.0",
+    "movement @ git+https://github.com/neuroinformatics-unit/movement.git@smg/parquet-bboxes",
+    # Remove movement pin after PR 769 is merged
+    # https://github.com/neuroinformatics-unit/movement/pull/769
+    "dask",
+    "numba>=0.60.0",
+    # to avoid conflict between movement and sleap-nn;
+    # numba is installed via xarray[accel] from movement
 ]
+
 
 [project.optional-dependencies]
 dev = [
@@ -62,13 +70,12 @@ combine-annotations = "crabs.bboxes_labelling.combine_and_format_annotations:app
 train-detector = "crabs.detector.train_model:app_wrapper"
 evaluate-detector = "crabs.detector.evaluate_model:app_wrapper"
 detect-and-track-video = "crabs.tracker.track_video:app_wrapper"
-extract-loops = "crabs.extract_loop_clips:app_wrapper"
-# verify-videos-and-extract-samples
-# extract-additional-channels
-
+# support utils
+extract-loops = "crabs.utils.extract_loop_clips:app_wrapper"
+create-zarr-dataset = "crabs.utils.create_zarr_dataset:app_wrapper"
 
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=77", "wheel", "setuptools_scm[toml]>=8"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]

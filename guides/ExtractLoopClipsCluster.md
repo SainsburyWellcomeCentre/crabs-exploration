@@ -14,14 +14,15 @@
     It may ask for your password twice. To set up SSH keys for the SWC cluster, see [this guide](https://howto.neuroinformatics.dev/programming/SSH-SWC-cluster.html#ssh-keys).
 
 3. **Fetch input csv file**
-    We need to download the input csv file from the private [GIN repository](https://gin.g-node.org/SainsburyWellcomeCentre/CrabsField). To do that:
+
+    We need to download the input csv file from the private [GIN repository](https://gin.g-node.org/SainsburyWellcomeCentre/CrabLabels). To do that:
     1. Log into your GIN account running `gin login`
-    2. If the `CrabsField` data repository exists locally, `cd` to it and run `gin download` to get the latest version
-    3. If the `CrabsField` data repository does not exist locally, `cd` to the desired location and run `gin get SainsburyWellcomeCentre/CrabsField`.
+    2. If the `CrabLabels` data repository exists locally, `cd` to it and run `gin download` to get the latest version
+    3. If the `CrabLabels` data repository does not exist locally, `cd` to the desired location and run `gin get SainsburyWellcomeCentre/CrabLabels`.
 
     If there are issues with the files being downloaded as placeholder files, run `gin download --content`. See the [GIN guide](https://howto.neuroinformatics.dev/open_science/GIN-repositories.html#download-a-gin-dataset) for further details.
 
-    Copy the fullpath to the spreadsheet at `CrabsField/crab-loops/loop-frames-ffmpeg.csv`, since we will need it to set the `CSV_PATH` variable in the bash script.
+    Copy the full path to the spreadsheet at `CrabLabels/crab-loops/loop-frames-ffmpeg.csv`, since we will need it to set the `CSV_PATH` variable in the bash script.
 
 
 3.  **Download the extract-loops bash script from the 🦀 repository**
@@ -31,7 +32,7 @@
     curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/run_extract_loop_clips_array.sh > run_extract_loop_clips_array.sh
     ```
 
-    This bash script launches a SLURM array job that extracts loop clips on an array of videos. The version of the bash script downloaded is the one at the tip of the `main` branch in the [🦀 repository](https://github.com/SainsburyWellcomeCentre/crabs-exploration).
+    This bash script launches a SLURM array job that extracts loop clips on an array of videos. With the command above, he version of the bash script downloaded is the one at the tip of the `main` branch in the [🦀 repository](https://github.com/SainsburyWellcomeCentre/crabs-exploration).
 
 
 > [!TIP]
@@ -65,10 +66,10 @@
 
 5.  **Run the job using the SLURM scheduler**
 
-    To launch a job, use the `sbatch` command with the relevant training script:
+    To launch a job, use the `sbatch` command with the path to the bash script:
 
     ```
-    sbatch <path-to-extract-loop-clips-bash-script>
+    sbatch path/to/run_extract_loop_clips_array.sh
     ```
 
 6.  **Check the status of the job**

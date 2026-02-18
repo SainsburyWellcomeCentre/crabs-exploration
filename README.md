@@ -42,9 +42,9 @@ For development, we recommend installing the package in editable mode and with a
 pip install -e .[dev]  # or ".[dev]" if you are using zsh
 ```
 
-### CrabsField - Sept2023 dataset
+### CrabLabels - Sept2023 dataset
 
-We trained the detector model on our [CrabsField - Sept2023](https://gin.g-node.org/SainsburyWellcomeCentre/CrabsField) dataset. The dataset consists of 53041 annotations (bounding boxes) over 544 frames extracted from 28 videos of crabs in the field.
+We trained the detector model on our [CrabLabels - Sept2023](https://gin.g-node.org/SainsburyWellcomeCentre/CrabLabels) dataset. The dataset consists of 53041 annotations (bounding boxes) over 544 frames extracted from 28 videos of crabs in the field.
 
 The dataset is currently private. If you have access to the [GIN](https://gin.g-node.org/) repository, you can download the dataset using the GIN CLI tool. To set up the GIN CLI tool:
 1. Create [a GIN account](https://gin.g-node.org/user/sign_up).
@@ -60,13 +60,33 @@ The dataset is currently private. If you have access to the [GIN](https://gin.g-
 
 Then to download the dataset, run the following command from the directory you want the data to be in:
 ```
-gin get SainsburyWellcomeCentre/CrabsField
+gin get SainsburyWellcomeCentre/CrabLabels
 ```
 This command will clone the data repository to the current working directory, and download the large files in the dataset as lightweight placeholder files. To download the content of these placeholder files, run:
 ```
 gin download --content
 ```
 Because the large files in the dataset are **locked**, this command will download the content to the git annex subdirectory, and turn the placeholder files in the working directory into symlinks that point to that content. For more information on how to work with a GIN repository, see the corresponding [NIU HowTo guide](https://howto.neuroinformatics.dev/open_science/GIN-repositories.html).
+
+> [!TIP]
+> The repository with labelled data was renamed from `CrabsField` to `CrabLabels` in February 2025. If you downloaded the data repository before the renaming, you will need to update the remote. To do so, run the following commands from the local GIN data repository:
+>   ```bash
+>   # Show all remotes defined for the local repository
+>   gin remotes           
+>
+>   # Remove the remote pointing to the SainsburyWellcomeCentre/CrabsField repository
+>   # (here we assume the default name for the remote, "origin")
+>   gin remove-remote origin
+>
+>   # Add a new remote pointing to the SainsburyWellcomeCentre/CrabLabels repository
+>   # If it says the remote does not exist, double check path the remote's path
+>   gin add-remote origin gin:SainsburyWellcomeCentre/CrabLabels    
+>
+>   # Check the remote has been updated correctly
+>   gin remotes
+>   >> origin: ssh://git@gin.g-node.org:22/SainsburyWellcomeCentre/CrabLabels [default]
+>   ```
+> Check the [GIN-CLI tool reference](https://gin.g-node.org/G-Node/Info/wiki/GIN+CLI+Help#add-a-remote-to-the-current-repository-for-uploading-and-downloading) for more details on how to manage remotes.
 
 ## Basic commands
 
