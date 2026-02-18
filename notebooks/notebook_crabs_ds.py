@@ -1,4 +1,11 @@
-"""Demo notebook for working with crab dataset."""
+"""Demo notebook for working with crab dataset.
+
+
+
+Useful references:
+- https://docs.xarray.dev/en/latest/api/datatree.html
+
+"""
 
 # %%
 import os
@@ -12,166 +19,190 @@ import xarray as xr
 import zarr
 from movement.io import load_bboxes
 from movement.plots import plot_centroid_trajectory
+import numpy as np
 
 # Hide attributes globally
-xr.set_options(display_expand_attrs=False)
-
+xr.set_options(
+    display_expand_attrs=False, 
+    display_style='html',  # for readibility in dark mode
+)
 
 # %%
+%matplotlib widget
+
+# %%%%%%%%%%%%%%%%
 # Input data
 
+crabs_zarr_dataset = "/ceph/zoo/processed/CrabField/ramalhete_2023/CrabTracks-slurm2412462-slurm2423692.zarr"
+
+data_vars_order = [
+    "position",
+    "shape",
+    "confidence",
+    "escape_state",
+]
+
 # %%%%%%%%%%%%%
-# Read dataset as a datatree
+# Read dataset as an xarray datatree
 
 dt = xr.open_datatree(
-    "all_trials_per_video_1.zarr",
+    crabs_zarr_dataset,
     engine="zarr",
     chunks={},
 )
 
+print(dt)
 
-# %%
-# If dataset saved with group being video/clip, to concatenate per video:
-# Create a new DataTree where each video becomes a leaf node
-# with concatenated clips
-dt_restructured = xr.DataTree()
+# %%%%%%%%%%%%%%%
+# Inspect datatree
+print(f"Depth: {dt.depth}")
 
-for video_name in dt.children:
-    # Get all clips for this video and concatenate them
-    dt_video = dt[video_name]
+# Number of groups (i.e. videos)
+print(f"Number of groups: {len(dt.groups)}")
 
-    # Concatenate all clip datasets along the clip_id dimension
-    ds_video = xr.concat(
-        [clip_node.to_dataset() for clip_node in dt_video.leaves],
-        dim="clip_id",
-        join="outer",
-        coords="different",
-        compat="equals",
-    )
-
-    # Add video attributes
-    # ....
-
-    # Rechunk after concatenating
-    ds_video = ds_video.chunk(
-        {"time": 1000, "space": -1, "individuals": -1, "clip_id": 1}
-    )
-
-    # Add this dataset as a leaf in the new DataTree
-    dt_restructured[video_name] = xr.DataTree(ds_video)
-
-# Save the restructured DataTree to a new zarr store
-dt_restructured.to_zarr(
-    "all_trials_per_video_restructured.zarr",
-    mode="w-",
-)
-
-print("Restructured zarr store saved successfully!")
+# Print clips per video
+for ds_video in dt.leaves:
+    print(f"{ds_video.path}: {len(ds_video.clip_id)} clips")
 
 
-# %%%%%%%%%%%%%
-# # Compare memory before and after loading dask array
+
+
+
+# %%%%%%%%%%%%%%%
+# Inspect a single video
+ds_video = dt["04.09.2023-01-Right"]
+print(ds_video) # shows dask arrays unloaded
+
+# Load coordinates only
+# (any coord will do, we choose clip_id)
+# .load(): applies in-place,
+# .compute(): returns a new object 
+ds_video.coords['clip_id'].load()
+print(ds_video) 
+
+
+# Load all data
+# Compare memory before and after loading dask arrays into memory.
+# Check memory before
 # process = psutil.Process(os.getpid())
-
-# # Check memory before
 # mem_before = process.memory_info().rss / 1_000_000_000
 # print(f"Memory before: {mem_before:.2f} GB")
 
 # # Load the data
+# ds = dt["04.09.2023-01-Right"]
 # ds_loaded = ds.load()
 
 # # Check memory after
 # mem_after = process.memory_info().rss / 1_000_000_000
 # print(f"Memory after: {mem_after:.2f} GB")
-# print(f"Memory increase: {(mem_after - mem_before):.2f} GB")
+
+# %%%%%%%%%%%%%%%%
+# Inspect another video without loading all data
+ds_video2 = dt["04.09.2023-02-Right"].to_dataset()
+# reorder data vars
+ds_video2 = ds_video2[data_vars_order]
+print(ds_video2)  # shows dask arrays unloaded
+print('------------------------------')
+
+# Load coords only
+# NOTE: "time" coord is 0 when clip starts!
+ds_video2.coords['clip_id'].load()
+print(ds_video2)  # shows dask arrays unloaded, but coords loaded
+print('------------------------------')
+
+# Check dataset attributes
+print("Dataset attributes:")
+print(ds_video2.attrs)
+print('------------------------------')
+
+# %%
+# Inspect clips in video
+
+# How many clips?
+print(f"Video ID: {ds_video2.video_id}")
+print(f"Number of clips: {ds_video2.coords['clip_id'].size}")
+print(f"Escape types: {np.unique(ds_video2.clip_escape_type.values)}")
+print(
+    (f"Number of triggered clips: "
+    f"{ds_video2.where(ds_video2.clip_escape_type=='triggered', drop=True).coords['clip_id'].size}"))
+print(
+    (f"Number of spontaneous clips: "
+    f"{ds_video2.where(ds_video2.clip_escape_type=='spontaneous', drop=True).coords['clip_id'].size}"))
+
+# Get escape type for loop at index 1
+print(ds_video2.isel(clip_id=1).clip_escape_type.values.item())
+
 
 
 # %%
-dt = xr.open_datatree(
-    "all_trials_per_video_restructured.zarr",
-    engine="zarr",
-    chunks={},
+# Visualise clips in video as a bar plot
+# prepare for plot
+list_colors = [plt.get_cmap("tab20c").colors[i] for i in [2,3]]  # 2 colors
+escape_colors = {
+    "triggered": 'k',
+    "spontaneous": 'r',
+}
+bar_height_plot = 1
+bar_widths = (ds_video2.clip_last_frame_0idx.values - ds_video2.clip_first_frame_0idx.values) + 1
+bar_edges = ds_video2.clip_first_frame_0idx.values
+
+# plot horizontal bar plot
+fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+rects = ax.barh(
+    y=np.zeros_like(bar_widths),
+    width=bar_widths,
+    left=bar_edges,
+    height=bar_height_plot,
+    color=list_colors,
 )
+# add vertical lines for escape frames
+ax.vlines(
+    ds_video2.clip_escape_first_frame_0idx.values,
+    ymin=-bar_height_plot / 2,
+    ymax=bar_height_plot / 2,
+    color=[escape_colors[escape_type] for escape_type in ds_video2.clip_escape_type.values],
+    linestyle="--",
+)
+ax.set_xlim(0, ds_video2.clip_last_frame_0idx.values.max())
+ax.set_ylim(
+    -bar_height_plot / 2,
+    bar_height_plot / 2,
+)
+ax.set_xlabel("frames")
+ax.yaxis.set_visible(False)
 
-
-# %%%%%%%%%%%%%%
-# Inspect structure
-print(list(dt.children.keys()))  # ---> prints lists of videos
-print(f"Depth: {dt.depth}")  # 1
-
-# %%
-print("Flat list of all paths:")
-print(*dt.groups, sep="\n")
-
-print("List of leaf paths only:")
-print(*[node.path for node in dt.leaves], sep="\n")
-
-print("Inspect dimension of leaves:")
-for node in dt.leaves:
-    if node.has_data:
-        print(
-            f"{node.path}: dims={dict(node.sizes)}, "
-            f"vars={list(node.data_vars)}"
-        )
-
-
-# %%
-# With non-indexed coords:
-
-# To load "clip_id" coordinates
-# .compute returns a new object, .load modifies in place
-for node in dt.leaves:
-    node.coords["clip_id"].load()
-
-
-# %%
-# how to get all "triggered" from one video?
-ds = dt["04.09.2023-01-Right"].to_dataset()
-ds.where(ds.clip_escape_type == "triggered", drop=True)
-
-# To order data variables
-ds = dt["04.09.2023-01-Right"].to_dataset()
-ds = ds[ds.attrs["data_vars_order"]]
-
-# to show stats of confidence values per clip
-ds.confidence.mean().compute()
-ds.confidence.std().compute()
-ds.confidence.min().compute()
-ds.confidence.max().compute()
-ds.confidence.median(dim=("time", "individuals")).compute()
-
-
-# %%
-
-dt["04.09.2023-01-Right"].coords["clip_id"]
-
-# %%
-
+ax.set_aspect(25_000)
+ax.set_title(ds_video2.video_id)
 
 # %%%%%%%%%%%%%
-# Get escape type for loop at index 1
-print(ds_combined.isel(loop=1).escape_type.values.item())
+# Compute path length per individual
 
-# Get loops with "spontaneous" escape
-print(
-    ds_combined.where(
-        ds_combined.escape_type.compute() == "spontaneous", drop=True
-    )
-)
 
-# Get loops with "triggered" escape
-print(
-    ds_combined.where(
-        ds_combined.escape_type.compute() == "triggered", drop=True
-    )
-)
+# %%
+# Select one clip
+ds_clip = ds_video2.isel(clip_id=0)
+# or equivalently: ds_clip = ds_video2.sel(clip_id="Loop00")
+
+
+# to show stats of confidence values per clip
+ds_clip.confidence.mean().compute()
+ds_clip.confidence.std().compute()
+ds_clip.confidence.min().compute()
+ds_clip.confidence.max().compute()
+ds_clip.confidence.median(dim=("individuals")).compute()
+
+# for all video
+ds_video2.confidence.median(dim=("time", "individuals")).compute()
+
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Plot centroid one clip
+# Plot all individuals one clip
 # video_name = "04.09.2023-01-Right"
 
 # Select a clip
-ds_clip = list_ds_videos[0].isel(clip_id=0)
+ds_clip = ds_video2.isel(clip_id=0)
+ds_clip.escape_state.load() # to be able to index by escape state 
 
 # Pre-compute individual -> color mapping
 colors = plt.cm.tab20.colors
@@ -184,7 +215,7 @@ color_map = {
 pos_out = ds_clip.position.where(ds_clip.escape_state == 0.0, drop=True)
 pos_out_flat = pos_out.stack(flat=("time", "individuals")).dropna("flat")
 
-# color assignment per individual
+# color assignment per individual for outbound
 ind_labels = pos_out_flat.individuals.values
 c_out = np.array([color_map[ind] for ind in ind_labels])
 
@@ -192,7 +223,7 @@ c_out = np.array([color_map[ind] for ind in ind_labels])
 pos_in = ds_clip.position.where(ds_clip.escape_state == 1.0, drop=True)
 pos_in_flat = pos_in.stack(flat=("time", "individuals")).dropna("flat")
 
-# color assignment per individual
+# color assignment per individual for inbound
 ind_labels = pos_in_flat.individuals.values
 c_in = np.array([color_map[ind] for ind in ind_labels])
 
@@ -233,42 +264,39 @@ ax.set_title(
 
 
 # %%
-# plot all individuals
-fig, ax = plt.subplots()
-colors = plt.cm.tab20.colors
-for i, ind in enumerate(ds_clip.individuals):
-    # plot outbound
-    plot_centroid_trajectory(
-        ds_clip.position.where(ds_clip.escape_state == 0.0, drop=True),
-        individual=ind,
-        ax=ax,
-        c=colors[i % len(colors)],
-    )
-    # plot inbound
-    plot_centroid_trajectory(
-        ds_clip.position.where(ds_clip.escape_state == 1.0, drop=True),
-        individual=ind,
-        ax=ax,
-        c="r",
-    )
-ax.invert_yaxis()
-ax.set_xlabel("x (pixels)")
-ax.set_ylabel("y (pixels)")
-ax.set_aspect("equal")
-ax.set_title(
-    f"{ds_clip.clip_id.values.item()} - {ds_clip.clip_escape_type.values.item()}"
-)
+# plot all individuals --- much slower bc we loop per individual
+# fig, ax = plt.subplots()
+# colors = plt.cm.tab20.colors
+# for i, ind in enumerate(ds_clip.individuals):
+#     # plot outbound
+#     plot_centroid_trajectory(
+#         ds_clip.position.where(ds_clip.escape_state == 0.0, drop=True),
+#         individual=ind,
+#         ax=ax,
+#         c=colors[i % len(colors)],
+#     )
+#     # plot inbound
+#     plot_centroid_trajectory(
+#         ds_clip.position.where(ds_clip.escape_state == 1.0, drop=True),
+#         individual=ind,
+#         ax=ax,
+#         c="r",
+#     )
+# ax.invert_yaxis()
+# ax.set_xlabel("x (pixels)")
+# ax.set_ylabel("y (pixels)")
+# ax.set_aspect("equal")
+# ax.set_title(
+#     f"{ds_clip.clip_id.values.item()} - {ds_clip.clip_escape_type.values.item()}"
+# )
 
 
 # %%%%%%%%%
 # Plot occupancy for all clips in same video
 
-# select video
-ds_video = list_ds_videos[2]
-
 # prepare data
 # flatten to just time and space coords
-position_flat = ds_video.position.stack(
+position_flat = ds_video2.position.stack(
     flat_dim=("clip_id", "time", "individuals")
 ).dropna("flat_dim")
 
@@ -285,7 +313,7 @@ ax.invert_yaxis()
 ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 ax.set_aspect("equal")
-# ax.set_title(video_name)
+ax.set_title(ds_video2.video_id)
 
 # %%
 # plot all trajectories in one video
@@ -301,58 +329,26 @@ ax.set_aspect("equal")
 
 
 # %%%%%%%%%%%%%
-# Get escape type for loop at index 1
-print(ds_video.isel(clip_id=1).escape_type.values.item())
-
-# Get loops with "spontaneous" escape
-print(
-    ds_video.where(
-        ds_video.escape_type == "spontaneous", drop=True
-    ).clip_id.values
-)
-
-# Get loops with "triggered" escape
-print(
-    ds_video.where(
-        ds_video.escape_type == "triggered", drop=True
-    ).clip_id.values
-)
-
-
-# %%
-# Can you promote a non-dimension coordinate to dimension coordinate?
-
-# Make clip_start_frame_0idx the dimension coordinate instead of clip
-# ds_reindexed = ds_video.swap_dims({'clip_id': 'clip_start_frame_0idx'})
-
-# Now this works:
-# ds_reindexed.sel(clip_start_frame_0idx=79174)
-
-# %%%%%%%%%%%%%
-# Other:
-# - compute path length per individual?
-# - filter by pathlength?
-# - plot all distances to starting point (e.g. if starting point in burrow)
-#   for all "loop00"
-# - what do I do with a datatree...?
-
-
-# %%%%%%%%%%%%%
-# Operations
+# Datatree Operations
 
 # Most xarray computation methods also exist
 # as methods on datatree objects
 dt.mean(dim=["time", "individuals"])
 dt.std(dim="time").compute()  # .compute to get actual values
 
-# Datatree with all first loops
+# Datatree with all first clips of all videos
 # The arguments passed to the method are used for every node,
 # so the values of the arguments you pass might be valid
 # for one node and invalid for another
-dt.isel(loop=0)
+dt.isel(clip_id=0)
 
-# Datatree with the first 100 frames of all loops / clips
+# Datatree with the first 100 frames of all clips
 dt.sel(time=slice(0, 100))
+
+# Load all first videos per day into one datatree
+leaves_pattern = "*01-Right*"
+dt_subset_videos = dt.match(leaves_pattern)
+
 
 # Scale
 # Note: this would also scale confidence
@@ -371,9 +367,21 @@ def scale(ds, factor):
 dt.map_over_datasets(scale, 8)
 
 
-# Load all first videos per day into one datatree
-leaves_pattern = "*01-Right*"
-dt_subset_videos = dt.match(leaves_pattern)
-
-
 # %%
+# To promote a non-dimension coordinate to dimension coordinate
+
+# Make clip_start_frame_0idx the dimension coordinate instead of clip
+# ds_reindexed = ds_video.swap_dims({'clip_id': 'clip_start_frame_0idx'})
+
+# Now this works:
+# ds_reindexed.sel(clip_start_frame_0idx=79174)
+
+# %%%%%%%%%%%%%
+# Other:
+# - compute path length per individual?
+# - filter by pathlength?
+# - plot all distances to starting point (e.g. if starting point in burrow)
+#   for all "loop00"
+# - what do I do with a datatree...?
+
+
