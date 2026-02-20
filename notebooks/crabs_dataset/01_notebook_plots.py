@@ -391,7 +391,7 @@ for node in dt_subset_videos.leaves:
     del position  # free immediately
 
     mask = ~np.isnan(x) & ~np.isnan(y)
-    video_hist, _, _ = np.histogram2d(x[mask], y[mask], bins=bins)
+    video_hist, _, _ = np.histogram2d(x[mask], y[mask], bins=bins, density=False)
     final_hist += video_hist
 
     del x, y, mask
