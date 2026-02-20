@@ -23,7 +23,7 @@ set -o pipefail
 # Define variables
 # ----------------------
 VIA_TRACKS_DIR="/ceph/zoo/users/sminano/loops_tracking_above_10th_percentile_slurm_1825237_2071125_2071084"
-METADATA_CSV="/ceph/zoo/users/sminano/CrabLabels/crab-loops/loop-frames-ffmpeg.csv"
+METADATA_CSV="/ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/crab-loops/loop-frames-ffmpeg.csv"
 
 ZARR_STORE_OUTPUT="/ceph/zoo/users/sminano/CrabTracks-slurm$SLURM_ARRAY_JOB_ID.zarr"
 ZARR_MODE_STORE="a"    # a => append if store exists
@@ -34,7 +34,8 @@ LOG_DIR=$ZARR_STORE_OUTPUT/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
 
 # Version of the codebase
-GIT_BRANCH=smg/convert-to-zarr
+# TODO: change to main before merging
+GIT_BRANCH=smg/reset-individual-numbers-bef-merge
 
 
 # --------------------

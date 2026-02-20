@@ -25,9 +25,9 @@
 
 3.  **Download the create-zarr-dataset bash script from the 🦀 repository**
 
-    To do so, run the following command, which will download a bash script called `run_create_zarr_dataset.sh` to the current working directory.
+    To do so, run the following command, which will download a bash script called `run_zarr_dataset_creation.sh` to the current working directory.
     ```
-    curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/run_create_zarr_dataset.sh > run_create_zarr_dataset.sh
+    curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/run_zarr_dataset_creation.sh > run_zarr_dataset_creation.sh
     ```
 
     This bash script launches a SLURM array job to create a zarr dataset from a set of input VIA track files. Each job in the array processes files from a single video. With the command above, the version of the bash script downloaded is the one at the tip of the `main` branch in the [🦀 repository](https://github.com/SainsburyWellcomeCentre/crabs-exploration).
@@ -38,11 +38,11 @@
 >
 > - For example, to download the version of the file at the tip of a branch called `<BRANCH-NAME>`, edit the path above to replace `main` with `<BRANCH-NAME>`:
 >   ```
->   https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/<BRANCH-NAME>/bash_scripts/run_create_zarr_dataset.sh
+>   https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/<BRANCH-NAME>/bash_scripts/run_zarr_dataset_creation.sh
 >   ```
 > - To download the version of the file of a specific commit, replace `main` with `blob/<COMMIT-HASH>`:
 >   ```
->   https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/blob/<COMMIT-HASH>/bash_scripts/run_create_zarr_dataset.sh
+>   https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/blob/<COMMIT-HASH>/bash_scripts/run_zarr_dataset_creation.sh
 >   ```
 
 4. **Edit the bash script if required**
@@ -63,7 +63,7 @@
     To launch a job, use the `sbatch` command with the path to the bash script:
 
     ```
-    sbatch path/to/run_create_zarr_dataset.sh
+    sbatch path/to/run_zarr_dataset_creation.sh
     ```
 
 6.  **Check the status of the job**
@@ -97,7 +97,7 @@ Sometimes some of the jobs in the array job fail due to non reproducible issues 
     Run the edited bash script, to create a zarr dataset for the previously failed jobs:
 
     ```bash
-    sbatch path/to/edited/run_create_zarr_dataset.sh
+    sbatch path/to/edited/run_zarr_dataset_creation.sh
     ```
 
     If the array job runs successfully, a new zarr store (that we will call `store_2` here) will be generated.
