@@ -34,7 +34,8 @@ LOG_DIR=$ZARR_STORE_OUTPUT/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
 
 # Version of the codebase
-GIT_BRANCH=smg/convert-to-zarr
+# TODO: change to main before merging
+GIT_BRANCH=smg/reset-individual-numbers-bef-merge
 
 
 # --------------------
