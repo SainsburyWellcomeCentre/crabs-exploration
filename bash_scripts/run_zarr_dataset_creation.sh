@@ -64,7 +64,10 @@ module load miniconda
 ENV_NAME=crabs-zarr-$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID
 ENV_PREFIX=$TMPDIR/$ENV_NAME
 
-conda create \
+# set per-job cache under tmp dir to avoid
+# file locking conflict, from multiple conda processes
+# accessing the same cache
+CONDA_PKGS_DIRS=/tmp/conda-pkgs-$SLURM_JOB_ID conda create \
     --prefix $ENV_PREFIX \
     -y \
     python=3.12
