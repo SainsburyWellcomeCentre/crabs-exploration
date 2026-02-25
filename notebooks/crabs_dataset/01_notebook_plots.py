@@ -524,6 +524,15 @@ for dt_video in dt.match("06.09.2023*").leaves:
 
     # Convert img to PIL and then to bytes for plotly
     img_transposed = img.to_pil().transpose(Image.FLIP_TOP_BOTTOM)
+
+    # Save as PNG with transparent background (image_w x image_h, RGBA)
+    safe_video_id = re.sub(r'[\\/*?:"<>|]', "_", str(ds_video.video_id))
+    safe_video_id = safe_video_id.split(" ")[0]  # remove after first space
+    img_transposed.save(
+        f"/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/{safe_video_id}.png",
+        format="PNG",
+    )
+
     img_buffer = io.BytesIO()
     img_transposed.save(img_buffer, format="PNG")
     img_buffer.seek(0)
