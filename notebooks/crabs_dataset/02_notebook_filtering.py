@@ -44,7 +44,7 @@ image_h = 2160
 
 # NOTE: Filter by length, using a fraction
 # of clip length?
-min_frames_per_trajectory = 60*3 # video is 59.94 fps
+min_frames_per_trajectory = 59.94*3 # video is 59.94 fps
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Read dataset as an xarray datatree
@@ -81,7 +81,7 @@ def _to_df(pos, time_mask, individuals):
 
 
 # Plot one clip per window
-for clip_id in [3]:  # range(ds_video.clip_id.shape[0]):
+for clip_id in [2]:  # range(ds_video.clip_id.shape[0]):
     # Select a clip
     ds_clip = ds_video.isel(clip_id=clip_id)
 
@@ -270,3 +270,4 @@ for clip_id in [3]:  # range(ds_video.clip_id.shape[0]):
     )
 
     fig.show()
+# %%

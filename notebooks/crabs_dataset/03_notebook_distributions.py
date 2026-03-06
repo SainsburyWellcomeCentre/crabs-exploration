@@ -26,8 +26,6 @@ pio.renderers.default = "browser"
 
 # %%%%%%%%%%%%%%%%
 # Input data
-
-
 data_dir = Path("/Users/sofia/swc/CrabTracks")
 crabs_zarr_dataset = data_dir / "CrabTracks-slurm2412462-slurm2423692.zarr"
 
@@ -46,6 +44,8 @@ fps = 59.94
 # NOTE: Filter by length, using a fraction
 # of clip length?
 min_frames_per_trajectory = 60 * 3  # video is 59.94 fps
+
+frames_to_min = 1 / (fps*60)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Read dataset as an xarray datatree
@@ -143,19 +143,6 @@ ax[1, 0].set_ylim(0, 220)
 # remove empty subplot
 fig.delaxes(ax[1, 1])
 
-# %%%%%%%%%%%%%%%%%%%
-# Number of tracklets (individuals) per clip
-
-
-
-
-
-# Why is
-# (~ds.confidence.isnull()).any(dim='time').sum(dim='individuals').values.max != len(ds.individuals?
-
-
-
-
 
 # %%%%%%%%%%%%%%%%%%%%%%%%
 # Histogram number of samples per individual
@@ -176,21 +163,22 @@ for node in dt.leaves:
 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 plt.figure(figsize=(10, 6))
 plt.bar(
-    bin_centers,
+    bin_centers*frames_to_min,  # in min
     final_hist_counts_clips,
-    width=bin_edges[1] - bin_edges[0],
+    width=(bin_edges[1] - bin_edges[0])*frames_to_min,
     edgecolor="black",
 )
-plt.xlabel("Number of samples per individual")
+plt.xlabel("length of trajectory (min)")
 plt.ylabel("Count")
-plt.title("Histogram of samples per individual across all videos")
+plt.title("Length of trajectory per individual across all videos")
 plt.grid(axis="y", alpha=0.75)
-plt.ylim(0, 17500)
-plt.xlim(0, 7000)
+# plt.ylim(0, 17500)
+# plt.xlim(0, 7000)
+plt.xlim(0, 15)
 
 # %%
-plt.figure()
-plt.plot(bin_centers, final_hist_counts_clips)
-plt.xlabel("n samples in tracklet")
-plt.ylabel("Count")
+# plt.figure()
+# plt.plot(bin_centers, final_hist_counts_clips)
+# plt.xlabel("n samples in tracklet")
+# plt.ylabel("Count")
 # %%
