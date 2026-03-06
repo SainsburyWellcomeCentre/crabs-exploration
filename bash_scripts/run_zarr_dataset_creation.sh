@@ -22,20 +22,16 @@ set -o pipefail
 # ---------------------
 # Define variables
 # ----------------------
-VIA_TRACKS_DIR="/ceph/zoo/users/sminano/loops_tracking_above_10th_percentile_slurm_1825237_2071125_2071084"
-METADATA_CSV="/ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/crab-loops/loop-frames-ffmpeg.csv"
+# VIA_TRACKS_DIR="/ceph/zoo/users/sminano/loops_tracking_above_10th_percentile_slurm_1825237_2071125_2071084"
+# METADATA_CSV="/ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/crab-loops/loop-frames-ffmpeg.csv"
 
 ZARR_STORE_OUTPUT="/ceph/zoo/users/sminano/CrabTracks-slurm$SLURM_ARRAY_JOB_ID.zarr"
-ZARR_MODE_STORE="a"    # a => append if store exists
-ZARR_MODE_GROUP="w-"  # w- => throw error if writing to existing group
+# ZARR_MODE_STORE="a"    # a => append if store exists
+# ZARR_MODE_GROUP="w-"  # w- => throw error if writing to existing group
 
 # location of SLURM logs
 LOG_DIR=$ZARR_STORE_OUTPUT/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
-
-# Version of the codebase
-# TODO: change to main before merging
-GIT_BRANCH=smg/reset-individual-numbers-bef-merge
 
 
 # --------------------
@@ -55,39 +51,6 @@ if [[ $SLURM_ARRAY_TASK_COUNT -ne $N_VIDEOS ]]; then
     exit 1
 fi
 
-# -----------------------------
-# Create virtual environment
-# -----------------------------
-# TODO: replace with uv
-module load miniconda
-
-ENV_NAME=crabs-zarr-$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID
-ENV_PREFIX=$TMPDIR/$ENV_NAME
-
-# set per-job cache under tmp dir to avoid
-# file locking conflict, from multiple conda processes
-# accessing the same cache
-CONDA_PKGS_DIRS=/tmp/conda-pkgs-$SLURM_JOB_ID conda create \
-    --prefix $ENV_PREFIX \
-    -y \
-    python=3.12
-
-# activate environment
-source activate $ENV_PREFIX
-
-# install crabs package in virtual env
-python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
-
-# log pip and python locations
-echo $ENV_PREFIX
-which python
-which pip
-
-# print the version of crabs package (last number is the commit hash)
-echo "Git branch: $GIT_BRANCH"
-conda list crabs
-echo "-----"
-
 # -------------------------
 # Run extraction script
 # -------------------------
@@ -105,7 +68,7 @@ echo "via_tracks_glob_pattern: $VIA_TRACKS_GLOB_PATTERN"
 
 # to time and log memory usage, prepend
 # /usr/bin/time -v to the command
-create-zarr-dataset  \
+/usr/bin/time -v create-zarr-dataset  \
     --via_tracks_dir $VIA_TRACKS_DIR \
     --metadata_csv $METADATA_CSV \
     --zarr_store $ZARR_STORE_OUTPUT \
@@ -114,11 +77,6 @@ create-zarr-dataset  \
     --zarr_mode_group $ZARR_MODE_GROUP \
     --via_tracks_glob_pattern "$VIA_TRACKS_GLOB_PATTERN"  # with quotes
 
-# -----------------------------
-# Cleanup
-# ----------------------------
-conda deactivate
-conda remove --prefix $ENV_PREFIX --all -y
 
 # ------------------
 # Copy logs to LOG_DIR
