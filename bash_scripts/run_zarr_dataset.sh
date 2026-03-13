@@ -69,6 +69,10 @@ module load uv
 # (should be faster than /nfs/nhome/live/sminano/.cache/uv and
 # gets purged regularly)
 export UV_CACHE_DIR=/ceph/scratch/sminano/uv-cache
+# The uv cache and the env are on different filesystems (ceph vs tmpfs)
+# so we set link mode to copy across the necessary files,
+# instead of symlinking (which would not work across filesystems)
+export UV_LINK_MODE=copy
 export UV_HTTP_TIMEOUT=120  # seconds
 
 ENV_NAME=crabs-zarr-$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID
@@ -110,7 +114,7 @@ echo "via_tracks_glob_pattern: $VIA_TRACKS_GLOB_PATTERN"
 
 # to time and log memory usage, prepend
 # /usr/bin/time -v to the command
-/usr/bin/time -v create-zarr-dataset  \
+create-zarr-dataset  \
     --via_tracks_dir $VIA_TRACKS_DIR \
     --metadata_csv $METADATA_CSV \
     --zarr_store $ZARR_STORE_OUTPUT \
@@ -119,11 +123,6 @@ echo "via_tracks_glob_pattern: $VIA_TRACKS_GLOB_PATTERN"
     --zarr_mode_group $ZARR_MODE_GROUP \
     --via_tracks_glob_pattern "$VIA_TRACKS_GLOB_PATTERN"  # with quotes
 
-# -----------------------------
-# Cleanup
-# ----------------------------
-deactivate
-rm -rf $ENV_PREFIX
 
 # ------------------
 # Copy logs to LOG_DIR
@@ -132,3 +131,12 @@ mv slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,ou
 
 # make logs read only
 chmod 444 $LOG_DIR/slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out}
+
+# -----------------------------
+# Cleanup
+# ----------------------------
+deactivate
+rm -rf $ENV_PREFIX
+
+# prune cache
+uv prune cache
