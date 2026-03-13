@@ -137,6 +137,3 @@ chmod 444 $LOG_DIR/slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_
 # ----------------------------
 deactivate
 rm -rf $ENV_PREFIX
-
-# prune cache
-uv prune cache
