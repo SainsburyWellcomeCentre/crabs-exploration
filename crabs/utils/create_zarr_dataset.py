@@ -239,15 +239,13 @@ def create_temp_zarr_store(
 
     # Loop thru videos
     map_video_to_attrs = {}
-    pbar_videos = tqdm(map_video_to_filepaths_and_clips.items())
-    for video_id, clip_files in pbar_videos:
-        pbar_videos.set_description(
-            f"Temporary processing of clips in video {video_id}"
-        )
+    for video_id, clip_files in map_video_to_filepaths_and_clips.items():
+        print(f"Temporary processing of clips in video {video_id}")
 
         # Loop thru clips,
         # add each video_id/clip_id as a group
-        for f in clip_files:
+        pbar_clips = tqdm(clip_files)
+        for f in pbar_clips:
             # Read VIA tracks file as extended movement dataset
             ds_clip = load_extended_ds(f, df_metadata)
 
@@ -260,7 +258,6 @@ def create_temp_zarr_store(
                 root.store,
                 group=f"{video_id}/{clip_id}",
                 mode=temp_zarr_mode_group,
-                # encoding=encoding,
             )
 
         # Save attrs for this video
