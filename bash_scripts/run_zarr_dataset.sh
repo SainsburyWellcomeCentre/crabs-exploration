@@ -3,7 +3,7 @@
 #SBATCH -p gpu # partition (or gpu if needed)
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 2
-#SBATCH --mem 8G
+#SBATCH --mem 35G
 #SBATCH -t 0-20:00 # time (D-HH:MM)
 #SBATCH -o slurm_array.%A-%a.%N.out
 #SBATCH -e slurm_array.%A-%a.%N.err
@@ -23,7 +23,7 @@ set -o pipefail
 # Define variables
 # ----------------------
 VIA_TRACKS_DIR="/ceph/zoo/users/sminano/loops_tracking_above_10th_percentile_slurm_1825237_2071125_2071084"
-METADATA_CSV="/ceph/zoo/users/sminano/CrabLabels/crab-loops/loop-frames-ffmpeg.csv"
+METADATA_CSV="/ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/crab-loops/loop-frames-ffmpeg.csv"
 
 ZARR_STORE_OUTPUT="/ceph/zoo/users/sminano/CrabTracks-slurm$SLURM_ARRAY_JOB_ID.zarr"
 ZARR_MODE_STORE="a"    # a => append if store exists
@@ -34,7 +34,8 @@ LOG_DIR=$ZARR_STORE_OUTPUT/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
 
 # Version of the codebase
-GIT_BRANCH=smg/convert-to-zarr
+# TODO: change to main before merging
+GIT_BRANCH=smg/reset-individual-numbers-bef-merge
 
 
 # --------------------
@@ -54,25 +55,37 @@ if [[ $SLURM_ARRAY_TASK_COUNT -ne $N_VIDEOS ]]; then
     exit 1
 fi
 
-# -----------------------------
+# ---------------------------
 # Create virtual environment
-# -----------------------------
-# TODO: replace with uv
-module load miniconda
+# ---------------------------
+# We create a virtual environment for each job in the array,
+# under tmpdir, using uv. We create a separate environment per job
+# to avoid all jobs to race and run uv venv and uv pip install simultaneously,
+# which could cause issues.
+# Alternatively, we can use a two-job pattern
+module load uv
+
+# set uv cache dir to /ceph/scratch/sminano
+# (should be faster than /nfs/nhome/live/sminano/.cache/uv and
+# gets purged regularly)
+export UV_CACHE_DIR=/ceph/scratch/sminano/uv-cache
+# The uv cache and the env are on different filesystems (ceph vs tmpfs)
+# so we set link mode to copy across the necessary files,
+# instead of symlinking (which would not work across filesystems)
+export UV_LINK_MODE=copy
+export UV_HTTP_TIMEOUT=120  # seconds
 
 ENV_NAME=crabs-zarr-$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID
 ENV_PREFIX=$TMPDIR/$ENV_NAME
 
-conda create \
-    --prefix $ENV_PREFIX \
-    -y \
-    python=3.12
+# create virtual environment with uv
+uv venv $ENV_PREFIX --python 3.12
 
 # activate environment
-source activate $ENV_PREFIX
+source $ENV_PREFIX/bin/activate
 
 # install crabs package in virtual env
-python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
+uv pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
 # log pip and python locations
 echo $ENV_PREFIX
@@ -81,7 +94,7 @@ which pip
 
 # print the version of crabs package (last number is the commit hash)
 echo "Git branch: $GIT_BRANCH"
-conda list crabs
+uv pip show crabs
 echo "-----"
 
 # -------------------------
@@ -110,11 +123,6 @@ create-zarr-dataset  \
     --zarr_mode_group $ZARR_MODE_GROUP \
     --via_tracks_glob_pattern "$VIA_TRACKS_GLOB_PATTERN"  # with quotes
 
-# -----------------------------
-# Cleanup
-# ----------------------------
-conda deactivate
-conda remove --prefix $ENV_PREFIX --all -y
 
 # ------------------
 # Copy logs to LOG_DIR
@@ -123,3 +131,9 @@ mv slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,ou
 
 # make logs read only
 chmod 444 $LOG_DIR/slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out}
+
+# -----------------------------
+# Cleanup
+# ----------------------------
+deactivate
+rm -rf $ENV_PREFIX

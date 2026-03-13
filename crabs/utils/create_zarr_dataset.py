@@ -16,6 +16,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import psutil
 import xarray as xr
 import zarr
 from movement.io import load_bboxes
@@ -43,6 +44,12 @@ DEFAULT_CHUNK_SIZES = {
     "individuals": -1,
     "clip_id": 1,
 }
+
+
+def log_rss(label):
+    """Log resident set size (RSS) memory usage with a label."""
+    rss_gb = psutil.Process().memory_info().rss / 1024**3
+    print(f"[RSS] {rss_gb:.2f} GB — {label}", flush=True)
 
 
 def load_extended_ds(
@@ -189,6 +196,18 @@ def _get_video_fps(video_id: str, df_metadata: pd.DataFrame) -> float:
     return video_fps_values.iloc[0]
 
 
+def _renumber_individuals(ds: xr.Dataset, width: int) -> xr.Dataset:
+    """Reset numbers assigned to individuals in the input dataset.
+
+    Numbers are reset to range from 0 to N-1, with N being the maximum
+    number of individuals.
+    """
+    n = len(ds.individuals)
+    return ds.assign_coords(
+        individuals=[f"id_{i:0{width}d}" for i in range(n)]
+    )
+
+
 def create_temp_zarr_store(
     temp_zarr_store: str,
     temp_zarr_mode_store: str,
@@ -227,17 +246,21 @@ def create_temp_zarr_store(
 
     # Loop thru videos
     map_video_to_attrs = {}
-    pbar_videos = tqdm(map_video_to_filepaths_and_clips.items())
-    for video_id, clip_files in pbar_videos:
-        pbar_videos.set_description(
-            f"Temporary processing of clips in video {video_id}"
-        )
+    for video_id, clip_files in map_video_to_filepaths_and_clips.items():
+        print(f"Temporary processing of clips in video {video_id}")
 
         # Loop thru clips,
         # add each video_id/clip_id as a group
-        for f in clip_files:
+        pbar_clips = tqdm(clip_files)
+        for f in pbar_clips:
             # Read VIA tracks file as extended movement dataset
+            log_rss(f"before loading clip {f}")
             ds_clip = load_extended_ds(f, df_metadata)
+            log_rss(
+                f"after loading clip (time={ds_clip.sizes['time']}, "
+                f"ind={ds_clip.sizes['individuals']}, "
+                f"nbytes={ds_clip.nbytes / 1024**3:.2f} GB)"
+            )
 
             # Get clip_id from the dataset
             clip_id = ds_clip.clip_id.values[0]
@@ -248,8 +271,8 @@ def create_temp_zarr_store(
                 root.store,
                 group=f"{video_id}/{clip_id}",
                 mode=temp_zarr_mode_group,
-                # encoding=encoding,
             )
+            log_rss(f"after to_zarr clip {clip_id}")
 
         # Save attrs for this video
         map_video_to_attrs[video_id] = {
@@ -279,11 +302,14 @@ def create_final_zarr_store(
 
     """
     # Read temporary zarr store
+    log_rss("before open_datatree")
     dt = xr.open_datatree(
         temp_zarr_store,
         engine="zarr",
         chunks={},
     )
+    log_rss("after open_datatree")
+
     # Initialise final store on disk
     final_root = zarr.open_group(zarr_store, mode=zarr_mode_store)
 
@@ -297,14 +323,24 @@ def create_final_zarr_store(
         # Get sub-datatree with all clips for this video
         dt_video = dt[video_name]
 
+        # Prepare list of clips for individuals renumbering
+        list_clip_ds = [
+            clip_node.to_dataset() for clip_node in dt_video.leaves
+        ]
+        log_rss(f"after building list_clip_ds ({len(list_clip_ds)} clips)")
+
+        max_n_individuals = max(len(ds.individuals) for ds in list_clip_ds)
+        id_width = len(str(max_n_individuals - 1))
+
         # Concatenate all clip datasets along the clip_id dimension
         ds_video = xr.concat(
-            [clip_node.to_dataset() for clip_node in dt_video.leaves],
+            [_renumber_individuals(ds, id_width) for ds in list_clip_ds],
             dim="clip_id",
             join="outer",
             coords="different",
             compat="equals",
         )
+        log_rss("after xr.concat")
 
         # Add video attributes
         ds_video.attrs = {
@@ -315,6 +351,7 @@ def create_final_zarr_store(
         # Rechunk the dask dataset currently in memory
         # to align dask chunks with desired Zarr chunks
         ds_video = ds_video.chunk(DEFAULT_CHUNK_SIZES)
+        log_rss("after rechunk")
 
         # Save to zarr store
         # (xarray will automatically use the dask chunk sizes as the
@@ -324,6 +361,7 @@ def create_final_zarr_store(
             group=video_name,
             mode=zarr_mode_group,
         )
+        log_rss(f"after to_zarr {video_name}")
 
 
 def main(args):
@@ -343,6 +381,7 @@ def main(args):
         via_tracks_glob_pattern=args.via_tracks_glob_pattern,
         metadata_csv=args.metadata_csv,
     )
+    log_rss("after create_temp_zarr_store")
 
     # Create final zarr store
     create_final_zarr_store(
@@ -352,6 +391,7 @@ def main(args):
         zarr_mode_store=args.zarr_mode_store,
         zarr_mode_group=args.zarr_mode_group,
     )
+    log_rss("after create_final_zarr_store")
 
     # Delete temp store
     if Path(temp_zarr_store).exists():

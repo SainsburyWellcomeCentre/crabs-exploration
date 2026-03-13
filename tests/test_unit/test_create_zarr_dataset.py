@@ -11,6 +11,7 @@ from crabs.utils.create_zarr_dataset import (
     _clip_filename_to_clip_id,
     _get_video_fps,
     _group_files_per_video,
+    _renumber_individuals,
     _via_tracks_to_clip_filename,
     _via_tracks_to_video_filename,
     create_final_zarr_store,
@@ -333,5 +334,14 @@ def test_create_final_zarr_store(
     assert "source_file" in ds_video_2.attrs
 
 
-def test_main():
-    pass
+@pytest.mark.parametrize(
+    "width, expected_output",
+    [
+        (1, ["id_0", "id_1", "id_2"]),
+        (2, ["id_00", "id_01", "id_02"]),
+    ],
+)
+def test_renumber_individuals(width, expected_output):
+    ds = xr.Dataset(coords={"individuals": ["id_1", "id_3", "id_7"]})
+    result = _renumber_individuals(ds, width=width)
+    assert list(result.individuals.values) == expected_output
