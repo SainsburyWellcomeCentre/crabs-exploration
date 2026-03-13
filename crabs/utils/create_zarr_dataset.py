@@ -14,6 +14,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
+import dask
 import numpy as np
 import pandas as pd
 import psutil
@@ -208,6 +209,32 @@ def _renumber_individuals(ds: xr.Dataset, width: int) -> xr.Dataset:
     )
 
 
+def _write_ds_to_zarr_in_time_slices(
+    ds: xr.Dataset,
+    store,
+    group: str,
+    mode: str,
+    chunk_sizes: dict,
+):
+    """Write a dataset to zarr in time slices to limit resident memory.
+
+    Uses the synchronous dask scheduler to avoid concurrent chunk
+    buffers, and writes one time-slice at a time to limit how many
+    pages of the underlying numpy array become resident simultaneously.
+    """
+    n_frames = ds.sizes["time"]
+    time_slice = chunk_sizes["time"]
+
+    with dask.config.set(scheduler="synchronous"):
+        for i in range(0, n_frames, time_slice):
+            ds_slice = ds.isel(time=slice(i, i + time_slice))
+            ds_slice = ds_slice.chunk(chunk_sizes)
+            if i == 0:
+                ds_slice.to_zarr(store, group=group, mode=mode)
+            else:
+                ds_slice.to_zarr(store, group=group, append_dim="time")
+
+
 def create_temp_zarr_store(
     temp_zarr_store: str,
     temp_zarr_mode_store: str,
@@ -266,11 +293,12 @@ def create_temp_zarr_store(
             clip_id = ds_clip.clip_id.values[0]
 
             # Write each clip as a separate subgroup
-            ds_clip = ds_clip.chunk(DEFAULT_CHUNK_SIZES)
-            ds_clip.to_zarr(
+            _write_ds_to_zarr_in_time_slices(
+                ds_clip,
                 root.store,
                 group=f"{video_id}/{clip_id}",
                 mode=temp_zarr_mode_group,
+                chunk_sizes=DEFAULT_CHUNK_SIZES,
             )
             log_rss(f"after to_zarr clip {clip_id}")
 
@@ -356,11 +384,12 @@ def create_final_zarr_store(
         # Save to zarr store
         # (xarray will automatically use the dask chunk sizes as the
         # zarr chunk sizes when writing to disk.)
-        ds_video.to_zarr(
-            final_root.store,
-            group=video_name,
-            mode=zarr_mode_group,
-        )
+        with dask.config.set(scheduler="synchronous"):
+            ds_video.to_zarr(
+                final_root.store,
+                group=video_name,
+                mode=zarr_mode_group,
+            )
         log_rss(f"after to_zarr {video_name}")
 
 
