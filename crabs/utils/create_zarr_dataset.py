@@ -14,7 +14,6 @@ from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
-import dask
 import numpy as np
 import pandas as pd
 import psutil
@@ -218,21 +217,27 @@ def _write_ds_to_zarr_in_time_slices(
 ):
     """Write a dataset to zarr in time slices to limit resident memory.
 
-    Uses the synchronous dask scheduler to avoid concurrent chunk
-    buffers, and writes one time-slice at a time to limit how many
-    pages of the underlying numpy array become resident simultaneously.
+    For each chunk being processed, dask holds both the source numpy slice and
+    the compressed output buffer in memory simultaneously. With many chunks in
+    flight at once, this creates a large number of concurrent buffers.
+
+    Each iteration only materializes one time-chunk's worth of data plus
+    its compression buffers. After each to_zarr call completes, those
+    intermediate buffers become garbage-collectible. By feeding to_zarr
+    only one time-slice at a time, we force serialization to happen
+    sequentially, so at most one set of compression buffers exists at any
+    moment.
     """
     n_frames = ds.sizes["time"]
     time_slice = chunk_sizes["time"]
 
-    with dask.config.set(scheduler="synchronous"):
-        for i in range(0, n_frames, time_slice):
-            ds_slice = ds.isel(time=slice(i, i + time_slice))
-            ds_slice = ds_slice.chunk(chunk_sizes)
-            if i == 0:
-                ds_slice.to_zarr(store, group=group, mode=mode)
-            else:
-                ds_slice.to_zarr(store, group=group, append_dim="time")
+    for i in range(0, n_frames, time_slice):
+        ds_slice = ds.isel(time=slice(i, i + time_slice))
+        ds_slice = ds_slice.chunk(chunk_sizes)  # creates dask arrays
+        if i == 0:
+            ds_slice.to_zarr(store, group=group, mode=mode)
+        else:
+            ds_slice.to_zarr(store, group=group, append_dim="time")
 
 
 def create_temp_zarr_store(
@@ -384,12 +389,11 @@ def create_final_zarr_store(
         # Save to zarr store
         # (xarray will automatically use the dask chunk sizes as the
         # zarr chunk sizes when writing to disk.)
-        with dask.config.set(scheduler="synchronous"):
-            ds_video.to_zarr(
-                final_root.store,
-                group=video_name,
-                mode=zarr_mode_group,
-            )
+        ds_video.to_zarr(
+            final_root.store,
+            group=video_name,
+            mode=zarr_mode_group,
+        )
         log_rss(f"after to_zarr {video_name}")
 
 
