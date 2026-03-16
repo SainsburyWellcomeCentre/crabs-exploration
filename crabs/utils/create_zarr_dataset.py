@@ -7,9 +7,6 @@ concatenation of all the clip datasets within that video.
 """
 
 import argparse
-import ctypes
-import gc
-import platform
 import shutil
 import sys
 import warnings
@@ -39,20 +36,6 @@ warnings.filterwarnings(
         "not part in the Zarr format 3 specification.*"
     ),
 )
-
-
-def _trim_memory() -> None:
-    """Force release of freed memory back to the OS on Linux.
-
-    On Linux, glibc's allocator retains freed heap pages in its internal
-    free-list and does not return them to the OS until memory pressure forces
-    it to. Calling malloc_trim(0) explicitly scans those pages and issues
-    madvise(MADV_DONTNEED), so the kernel can reclaim them immediately.
-    This is a no-op on non-Linux platforms.
-    """
-    if platform.system() == "Linux":
-        gc.collect()
-        ctypes.CDLL(None).malloc_trim(0)
 
 
 DEFAULT_CHUNK_SIZES = {
@@ -280,7 +263,6 @@ def create_temp_zarr_store(
                     group=f"{video_id}/{clip_id}",
                     mode=temp_zarr_mode_group,
                 )
-            _trim_memory()
 
         # Save attrs for this video
         map_video_to_attrs[video_id] = {
@@ -365,7 +347,6 @@ def create_final_zarr_store(
                 group=video_name,
                 mode=zarr_mode_group,
             )
-        _trim_memory()
 
 
 def main(args):
