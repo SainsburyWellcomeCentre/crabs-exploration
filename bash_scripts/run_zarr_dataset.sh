@@ -87,6 +87,9 @@ source $ENV_PREFIX/bin/activate
 # install crabs package in virtual env
 uv pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
+# install memory profiler  (optional)
+# uv pip install memory_profiler
+
 # log pip and python locations
 echo $ENV_PREFIX
 which python
@@ -114,6 +117,7 @@ echo "via_tracks_glob_pattern: $VIA_TRACKS_GLOB_PATTERN"
 
 # to time and log memory usage, prepend
 # /usr/bin/time -v to the command
+# or: mprof run --output mprofile_task${SLURM_ARRAY_TASK_ID}.dat
 create-zarr-dataset  \
     --via_tracks_dir $VIA_TRACKS_DIR \
     --metadata_csv $METADATA_CSV \
