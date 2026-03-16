@@ -37,6 +37,9 @@ mkdir -p $LOG_DIR  # create if it doesnt exist
 # TODO: change to main before merging
 GIT_BRANCH=smg/reset-individual-numbers-bef-merge
 
+# Set to true to profile memory usage with mprof
+MPROF_FLAG=false
+
 
 # --------------------
 # Check inputs
@@ -87,8 +90,10 @@ source $ENV_PREFIX/bin/activate
 # install crabs package in virtual env
 uv pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
-# install memory profiler  (optional)
-# uv pip install memory_profiler
+# install memory_profiler if MPROF_FLAG is set
+if [[ "$MPROF_FLAG" == "true" ]]; then
+    uv pip install memory_profiler
+fi
 
 # log pip and python locations
 echo $ENV_PREFIX
@@ -115,10 +120,16 @@ echo "zarr_mode_store: $ZARR_MODE_STORE"
 echo "zarr_mode_group: $ZARR_MODE_GROUP"
 echo "via_tracks_glob_pattern: $VIA_TRACKS_GLOB_PATTERN"
 
+# Prepare mprof command if flag is set
+MPROF_PREFIX=""
+if [[ "$MPROF_FLAG" == "true" ]]; then
+    MPROF_PREFIX="mprof run --output $MPROF_DAT_FILE"
+fi
+MPROF_DAT_FILE=mprofile_slurm${SLURM_ARRAY_JOB_ID}_task${SLURM_ARRAY_TASK_ID}.dat
+
 # to time and log memory usage, prepend
 # /usr/bin/time -v to the command
-# or: mprof run --output mprofile_task${SLURM_ARRAY_TASK_ID}.dat
-create-zarr-dataset  \
+$MPROF_PREFIX create-zarr-dataset  \
     --via_tracks_dir $VIA_TRACKS_DIR \
     --metadata_csv $METADATA_CSV \
     --zarr_store $ZARR_STORE_OUTPUT \
@@ -135,6 +146,15 @@ mv slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,ou
 
 # make logs read only
 chmod 444 $LOG_DIR/slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out}
+
+# if using mprof, move the .dat file to LOG_DIR as well
+if [[ "$MPROF_FLAG" == "true" ]]; then
+    mv "$MPROF_DAT_FILE" $LOG_DIR
+
+    # make read-only
+    chmod 444 $LOG_DIR/$MPROF_DAT_FILE
+fi
+
 
 # -----------------------------
 # Cleanup
