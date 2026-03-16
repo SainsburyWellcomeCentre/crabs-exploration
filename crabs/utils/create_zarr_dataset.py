@@ -14,9 +14,9 @@ from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
+import dask
 import numpy as np
 import pandas as pd
-import psutil
 import xarray as xr
 import zarr
 from movement.io import load_bboxes
@@ -44,12 +44,6 @@ DEFAULT_CHUNK_SIZES = {
     "individuals": -1,
     "clip_id": 1,
 }
-
-
-def log_rss(label):
-    """Log resident set size (RSS) memory usage with a label."""
-    rss_gb = psutil.Process().memory_info().rss / 1024**3
-    print(f"[RSS] {rss_gb:.2f} GB — {label}", flush=True)
 
 
 def load_extended_ds(
@@ -208,38 +202,6 @@ def _renumber_individuals(ds: xr.Dataset, width: int) -> xr.Dataset:
     )
 
 
-def _write_ds_to_zarr_in_time_slices(
-    ds: xr.Dataset,
-    store,
-    group: str,
-    mode: str,
-    chunk_sizes: dict,
-):
-    """Write a dataset to zarr in time slices to limit resident memory.
-
-    For each chunk being processed, dask holds both the source numpy slice and
-    the compressed output buffer in memory simultaneously. With many chunks in
-    flight at once, this creates a large number of concurrent buffers.
-
-    Each iteration only materializes one time-chunk's worth of data plus
-    its compression buffers. After each to_zarr call completes, those
-    intermediate buffers become garbage-collectible. By feeding to_zarr
-    only one time-slice at a time, we force serialization to happen
-    sequentially, so at most one set of compression buffers exists at any
-    moment.
-    """
-    n_frames = ds.sizes["time"]
-    time_slice = chunk_sizes["time"]
-
-    for i in range(0, n_frames, time_slice):
-        ds_slice = ds.isel(time=slice(i, i + time_slice))
-        ds_slice = ds_slice.chunk(chunk_sizes)  # creates dask arrays
-        if i == 0:
-            ds_slice.to_zarr(store, group=group, mode=mode)
-        else:
-            ds_slice.to_zarr(store, group=group, append_dim="time")
-
-
 def create_temp_zarr_store(
     temp_zarr_store: str,
     temp_zarr_mode_store: str,
@@ -286,26 +248,21 @@ def create_temp_zarr_store(
         pbar_clips = tqdm(clip_files)
         for f in pbar_clips:
             # Read VIA tracks file as extended movement dataset
-            log_rss(f"before loading clip {f}")
             ds_clip = load_extended_ds(f, df_metadata)
-            log_rss(
-                f"after loading clip (time={ds_clip.sizes['time']}, "
-                f"ind={ds_clip.sizes['individuals']}, "
-                f"nbytes={ds_clip.nbytes / 1024**3:.2f} GB)"
-            )
 
             # Get clip_id from the dataset
             clip_id = ds_clip.clip_id.values[0]
 
             # Write each clip as a separate subgroup
-            _write_ds_to_zarr_in_time_slices(
-                ds_clip,
-                root.store,
-                group=f"{video_id}/{clip_id}",
-                mode=temp_zarr_mode_group,
-                chunk_sizes=DEFAULT_CHUNK_SIZES,
-            )
-            log_rss(f"after to_zarr clip {clip_id}")
+            # with synchronous to save one chunk at a time and limit
+            # memory usage from concurrent compression buffers.
+            ds_clip = ds_clip.chunk(DEFAULT_CHUNK_SIZES)
+            with dask.config.set(scheduler="synchronous"):
+                ds_clip.to_zarr(
+                    root.store,
+                    group=f"{video_id}/{clip_id}",
+                    mode=temp_zarr_mode_group,
+                )
 
         # Save attrs for this video
         map_video_to_attrs[video_id] = {
@@ -335,13 +292,11 @@ def create_final_zarr_store(
 
     """
     # Read temporary zarr store
-    log_rss("before open_datatree")
     dt = xr.open_datatree(
         temp_zarr_store,
         engine="zarr",
         chunks={},
     )
-    log_rss("after open_datatree")
 
     # Initialise final store on disk
     final_root = zarr.open_group(zarr_store, mode=zarr_mode_store)
@@ -360,7 +315,6 @@ def create_final_zarr_store(
         list_clip_ds = [
             clip_node.to_dataset() for clip_node in dt_video.leaves
         ]
-        log_rss(f"after building list_clip_ds ({len(list_clip_ds)} clips)")
 
         max_n_individuals = max(len(ds.individuals) for ds in list_clip_ds)
         id_width = len(str(max_n_individuals - 1))
@@ -373,7 +327,6 @@ def create_final_zarr_store(
             coords="different",
             compat="equals",
         )
-        log_rss("after xr.concat")
 
         # Add video attributes
         ds_video.attrs = {
@@ -384,17 +337,16 @@ def create_final_zarr_store(
         # Rechunk the dask dataset currently in memory
         # to align dask chunks with desired Zarr chunks
         ds_video = ds_video.chunk(DEFAULT_CHUNK_SIZES)
-        log_rss("after rechunk")
 
         # Save to zarr store
         # (xarray will automatically use the dask chunk sizes as the
         # zarr chunk sizes when writing to disk.)
-        ds_video.to_zarr(
-            final_root.store,
-            group=video_name,
-            mode=zarr_mode_group,
-        )
-        log_rss(f"after to_zarr {video_name}")
+        with dask.config.set(scheduler="synchronous"):
+            ds_video.to_zarr(
+                final_root.store,
+                group=video_name,
+                mode=zarr_mode_group,
+            )
 
 
 def main(args):
@@ -414,7 +366,6 @@ def main(args):
         via_tracks_glob_pattern=args.via_tracks_glob_pattern,
         metadata_csv=args.metadata_csv,
     )
-    log_rss("after create_temp_zarr_store")
 
     # Create final zarr store
     create_final_zarr_store(
@@ -424,7 +375,6 @@ def main(args):
         zarr_mode_store=args.zarr_mode_store,
         zarr_mode_group=args.zarr_mode_group,
     )
-    log_rss("after create_final_zarr_store")
 
     # Delete temp store
     if Path(temp_zarr_store).exists():
