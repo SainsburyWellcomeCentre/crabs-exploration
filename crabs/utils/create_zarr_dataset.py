@@ -341,12 +341,11 @@ def create_final_zarr_store(
         # Save to zarr store
         # (xarray will automatically use the dask chunk sizes as the
         # zarr chunk sizes when writing to disk.)
-        with dask.config.set(scheduler="synchronous"):
-            ds_video.to_zarr(
-                final_root.store,
-                group=video_name,
-                mode=zarr_mode_group,
-            )
+        ds_video.to_zarr(
+            final_root.store,
+            group=video_name,
+            mode=zarr_mode_group,
+        )
 
 
 def main(args):
