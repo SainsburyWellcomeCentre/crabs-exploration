@@ -14,7 +14,6 @@ from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 
-import dask
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -257,12 +256,11 @@ def create_temp_zarr_store(
             # with synchronous to save one chunk at a time and limit
             # memory usage from concurrent compression buffers.
             ds_clip = ds_clip.chunk(DEFAULT_CHUNK_SIZES)
-            with dask.config.set(scheduler="synchronous"):
-                ds_clip.to_zarr(
-                    root.store,
-                    group=f"{video_id}/{clip_id}",
-                    mode=temp_zarr_mode_group,
-                )
+            ds_clip.to_zarr(
+                root.store,
+                group=f"{video_id}/{clip_id}",
+                mode=temp_zarr_mode_group,
+            )
 
         # Save attrs for this video
         map_video_to_attrs[video_id] = {
