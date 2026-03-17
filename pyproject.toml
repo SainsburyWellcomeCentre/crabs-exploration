@@ -34,7 +34,8 @@ dependencies = [
     "mlflow",
     "optuna",
     "numpy>=2.0.0",
-    "movement",
+    "movement @ git+https://github.com/neuroinformatics-unit/movement.git@main",
+    # Remove pin after release
     "dask",
     "numba>=0.60.0",
     # to avoid conflict between movement and sleap-nn;
