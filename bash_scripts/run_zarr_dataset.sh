@@ -34,8 +34,7 @@ LOG_DIR=$ZARR_STORE_OUTPUT/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
 
 # Version of the codebase
-# TODO: change to main before merging
-GIT_BRANCH=smg/reset-individual-numbers-bef-merge
+GIT_BRANCH=main
 
 # Set to true to profile memory usage with mprof
 MPROF_FLAG=false
