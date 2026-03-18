@@ -104,26 +104,28 @@ Sometimes some of the jobs in the array job fail due to non reproducible issues 
 
 3. **Merge the two zarr stores**
 
-    To do this, we can use the auxiliary bash script `merge_zarr_datasets.sh` from the 🦀 repository, which merges two zarr stores by appending the groups of the second store (i.e., `store_2`) to the first store (i.e., `store_1`).
-
-    To download the script, run:
-    ```
-    curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/bash_scripts/merge_zarr_datasets.sh > merge_zarr_datasets.sh
-    ```
-
-    Then edit the downloaded script to set the `STORE_1` and `STORE_2` variables to the paths of `store_1` and `store_2` respectively, and run the script:
-
-    ```bash
-    srun path/to/merge_zarr_datasets.sh
-    ```
-
-    The script will:
+    To merge two zarr stores (i.e., `store_1` and `store_2`), we can follow these steps:
     - Move any failed log files from the first run into a `logs_failed` directory under `store_1`.
     - Rename `store_1` to a merged store name, which includes the SLURM job IDs for `store_1` and `store_2` (e.g., `CrabTracks-slurm1234-slurm5678.zarr`).
-    - Move all video directories from `store_2` into the merged store.
     - Move the log files from `store_2/logs` into the merged store's `logs` directory.
-    - Consolidate the metadata of the merged store (i.e., the `zarr.json` file) so that it includes the full set of videos.
-    - Delete `store_2`.
+    - Move all video directories from `store_2` into the merged store.
+    - Consolidate the metadata of the merged store (i.e., the `zarr.json` file) so that it includes the full set of videos. We can do this with the following code snippet:
+
+        ```python
+            import zarr
+            zarr.consolidate_metadata('path/to/merged/store.zarr')
+        ```
+    - Check the resulting zarr store is readable and contains the expected number of videos:
+
+        ```python
+        dt = xr.open_datatree(
+            'path/to/merged/store.zarr',
+            engine="zarr",
+            chunks={},
+        )
+        print(f"Total groups: {len(dt)}") # should match the total number of videos processed
+        ```
+    - If all looks good, delete `store_2`.
 
 4. **Check the results**
 
