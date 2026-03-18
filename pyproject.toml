@@ -34,9 +34,8 @@ dependencies = [
     "mlflow",
     "optuna",
     "numpy>=2.0.0",
-    "movement @ git+https://github.com/neuroinformatics-unit/movement.git@smg/parquet-bboxes",
-    # Remove movement pin after PR 769 is merged
-    # https://github.com/neuroinformatics-unit/movement/pull/769
+    "movement @ git+https://github.com/neuroinformatics-unit/movement.git@a0a858356aafd47b8dd2a8551200918e716ced6a",
+    # TODO: Remove pin after release
     "dask",
     "numba>=0.60.0",
     # to avoid conflict between movement and sleap-nn;
