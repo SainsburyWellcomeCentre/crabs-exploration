@@ -112,8 +112,8 @@ Sometimes some of the jobs in the array job fail due to non reproducible issues 
     - Consolidate the metadata of the merged store (i.e., the `zarr.json` file) so that it includes the full set of videos. We can do this with the following code snippet:
 
         ```python
-            import zarr
-            zarr.consolidate_metadata('path/to/merged/store.zarr')
+        import zarr
+        zarr.consolidate_metadata('path/to/merged/store.zarr')
         ```
     - Check the resulting zarr store is readable and contains the expected number of videos:
 
