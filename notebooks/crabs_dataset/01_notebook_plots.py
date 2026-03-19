@@ -13,7 +13,6 @@ import io
 import re
 from pathlib import Path
 
-import dask
 import datashader as ds
 import datashader.transfer_functions as tf
 import matplotlib.colors as mcolors
@@ -72,7 +71,7 @@ print(dt)
 
 # .to_dataset(): makes a copy
 # .ds(): returns a view, changes propagate to tree
-ds_video = dt["06.09.2023-01-Right"].ds
+ds_video = dt["06.09.2023-06-Right"].ds
 
 # prepare data for plot
 list_colors = [plt.get_cmap("tab20c").colors[i] for i in [2, 3]]  # 2 colors

@@ -65,7 +65,7 @@ for ds_video in dt.leaves:
 # - dimensions, coords and data variables
 
 # .to_dataset(): makes a copy
-# .ds(): returns a view, read-only
+# .ds: returns a view, read-only
 ds_video = dt["06.09.2023-01-Right"].to_dataset()
 ds_video = ds_video[data_vars_order]  # reorder data vars
 
@@ -221,6 +221,25 @@ dt_std["06.09.2023-01-Right"].position.isel(
     clip_id=0
 ).compute()  # .compute to get actual values
 
+# %%%%%%%%%%%%%%%%%%%%%%%
+# Get clip dataset with time coord and individuals spanning
+# only the length of the clip
+
+ds_clip = ds_video.isel(clip_id=0)  # time and individuals span full video
+
+# time and individuals coordinate spanning clip only
+ds_clip_reduced = ds_clip.dropna(dim="time", how="all").dropna(
+    dim="individuals", how="all"
+)
+
+# %%
+ds_clip0_reduced = ds_video.isel(clip_id=0).dropna(dim="time", how="all").dropna(
+    dim="individuals", how="all"
+)
+
+ds_clip1_reduced = ds_video.isel(clip_id=1).dropna(dim="time", how="all").dropna(
+    dim="individuals", how="all"
+)
 
 # %%%%%%%%%%%%%%%%
 # Get dataset for the first triggered clip in a video,
@@ -241,6 +260,8 @@ position_clip = (
     # drop empty individuals too!
 )
 
+
+# check time coordinates span only length of clip
 assert (
     len(position_clip.time)
     == position_clip.clip_last_frame_0idx.item()
@@ -248,23 +269,7 @@ assert (
     + 1
 )
 
-# %%
-# %%
-ds_clip = (
-    ds_video.where(
-        ds_video.clip_escape_type == "triggered", drop=True
-    )  # condition;
-    # drop=TRUE drops only clip_escape_type coordinates where condition
-    # is False (keeps time coordinates & others as in original video ds)
-    .isel(clip_id=0)  # select first triggered clip
-    .dropna(dim="time", how="all")
-    # drop time coordinates
-    # drops a time slice only if every single value in that slice
-    # is NaN, across all other dimensions.
-    .dropna(dim="individuals", how="all")
-    # drop empty individuals too!
-)
-
+# check length of non-escape
 assert (ds_clip.escape_state == 0).sum().values.item() == (
     ds_clip.clip_escape_first_frame_0idx - ds_clip.clip_first_frame_0idx
 ).item()
@@ -277,3 +282,10 @@ assert (ds_clip.escape_state == 0).sum().values.item() == (
 
 # Now this works:
 # ds_reindexed.sel(clip_start_frame_0idx=79174)
+
+# %%
+# Videos with less than 3 clips
+min_clips = 3
+small_groups = [
+    node for node in dt.leaves if node.ds.sizes["clip_id"] < min_clips
+]
