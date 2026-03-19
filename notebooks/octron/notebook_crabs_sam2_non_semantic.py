@@ -1,6 +1,6 @@
 """SAM2 for crab masks via OCTRON.
 
-Standalone script: pass bounding boxes as prompts to SAM2 via OCTRON, predict 
+Standalone script: pass bounding boxes as prompts to SAM2 via OCTRON, predict
 masks only in those regions, then export as YOLO detection training data.
 
 Input: a directory of PNG frames (sorted lexicographically as the frame sequence).
@@ -10,6 +10,7 @@ BBox format: (N, 4) float32 array of [x1, y1, x2, y2] in pixel coordinates
 
 Dependencies are auto-installed if the script is executed via uv run
 """
+
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
@@ -43,9 +44,9 @@ DATA_DIR = Path("/Users/sofia/swc/CrabLabels/sep2023-full")
 IMAGES_DIR = DATA_DIR / "frames"
 ANNOTATIONS_FILE = DATA_DIR / "annotations" / "VIA_JSON_combined_coco_gen.json"
 
-# Prediction params
-TEXT_PROMPT = "crab"  # set to None to not use
-CONF_THRESHOLD = 0.5
+# Label name
+# (used for output naming only, SAM2 doesn't do text grounding)
+LABEL_NAME = "crab"
 
 # Output dir
 OUTPUT_DIR = Path("./output")  # root output folder
@@ -55,6 +56,8 @@ OUTPUT_DIR = Path("./output")  # root output folder
 
 
 class ImageArrayLazy:
+    """A lazy array for images in a list."""
+
     def __init__(self, img_paths):
         self.img_paths = sorted(img_paths)
         # add image shape, assuming all have same as
@@ -70,7 +73,8 @@ class ImageArrayLazy:
 
     @property
     def shape(self):
-        return (len(self.img_paths), self.img_h, self.img_w, self.img_c)  # B, H, W, C
+        return (len(self.img_paths), self.img_h, self.img_w, self.img_c)
+        # B, H, W, C
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -163,7 +167,7 @@ annotation_dir = OUTPUT_DIR / data_hash
 annotation_dir.mkdir(parents=True, exist_ok=True)
 
 mask_zarr = create_image_zarr(
-    zarr_path=annotation_dir / f"{TEXT_PROMPT} masks.zarr",
+    zarr_path=annotation_dir / f"{LABEL_NAME} masks.zarr",
     num_frames=ds_bboxes.attrs["image_array"].shape[0],
     image_height=ds_bboxes.attrs["image_array"].shape[1],
     image_width=ds_bboxes.attrs["image_array"].shape[2],
@@ -173,39 +177,36 @@ mask_zarr = create_image_zarr(
 )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Run detection on all frames using prompts
-# and save results in OCTRON semantic zarr format.
+# Run per-frame box-prompted segmentation via add_new_points_or_box.
+# Each box produces one mask; no grounding or confidence filtering needed.
+
+img_h, img_w = image_array.shape[1], image_array.shape[2]
 
 for frame_idx, bboxes in map_frame_idx_to_boxes.items():
+    # Reset predictor state so object IDs don't accumulate across frames
+    # clears tracking related state so that obj_id starts 0 in next frame etc
+    predictor.reset_state()
 
-    # Detect in current frame
-    pred_masks, pred_scores, _class_idcs = predictor.detect(
-        frame_idx=frame_idx,
-        text=TEXT_PROMPT,
-        bboxes=bboxes.tolist(),
-        conf_threshold=CONF_THRESHOLD,
-    )
-    if pred_masks is None or pred_masks.shape[0] == 0:
-        print(f"Frame {frame_idx}: no detections above threshold")
+    # ------
+    # 0 = background
+    id_mask = np.zeros((img_h, img_w), dtype=np.int16)
+    for obj_id, box in enumerate(bboxes):
+        # box is [x1, y1, x2, y2] in pixel coords
+        _, _, video_res_masks = predictor.add_new_points_or_box(
+            frame_idx=frame_idx,
+            obj_id=obj_id,
+            box=box,
+        )
+        # video_res_masks are logits, so we use > 0.0 to get binary masks
+        # (num_objects, 1, H, W) logits — threshold to get binary
+        binary = (video_res_masks[obj_id, 0] > 0.0).cpu().numpy()
+        id_mask[(binary) & (id_mask == 0)] = obj_id + 1  # 1-based IDs
+
+    if id_mask.max() == 0:
+        print(f"Frame {frame_idx}: no objects segmented")
         continue
-    print(f"Frame {frame_idx}: detected {pred_masks.shape[0]} objects")
-
-    # Format result
-    # Inside the zarr (shape T×H×W, dtype int16, fill -1):
-    #   pixel value  0  = background
-    #   pixel value  1  = highest-confidence detection
-    #   pixel value  2  = second-highest, etc.
-    # Mirrors _handle_semantic_box_detection() in sam2_layer_callback.py
-    # (that file handles all predictor variants including SAM3 Mode B).
-
-    id_mask = np.zeros((H, W), dtype=np.int16)  # 0 = background
-
-    # Loop in order of descending score
-    sorted_indices = pred_scores.argsort(descending=True)
-    for k, det_idx in enumerate(sorted_indices):
-        binary = pred_masks[det_idx].cpu().numpy()
-        id_mask[(binary) & (id_mask == 0)] = k + 1  # 1-based, higher confidence first
-    # ------------
+    print(f"Frame {frame_idx}: segmented {int(id_mask.max())} objects")
+    # ---------------------
 
     # Save id_mask to zarr store
     mask_zarr[frame_idx] = id_mask
@@ -214,76 +215,78 @@ for frame_idx, bboxes in map_frame_idx_to_boxes.items():
     mark_frames_annotated(mask_zarr, frame_idx)
 
 
-print(f"Saved ID-encoded mask zarr to {annotation_dir / f'{TEXT_PROMPT} masks.zarr'}")
+print(
+    f"Saved ID-encoded mask zarr to {annotation_dir / f'{LABEL_NAME} masks.zarr'}"
+)
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Review in napari
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Generate YOLO detection training data.
 #
-# collect_labels() normally loads video via FastVideoReader + hashes the file,
-# which doesn't work for a directory of PNGs.  Instead we populate
-# yolo.label_dict manually with the numpy array and zarr masks already in memory.
+# # collect_labels() normally loads video via FastVideoReader + hashes the file,
+# # which doesn't work for a directory of PNGs.  Instead we populate
+# # yolo.label_dict manually with the numpy array and zarr masks already in memory.
 
-from octron.sam_octron.helpers.sam2_zarr import get_annotated_frames
-from octron.yolo_octron.yolo_octron import YOLO_octron
+# from octron.sam_octron.helpers.sam2_zarr import get_annotated_frames
+# from octron.yolo_octron.yolo_octron import YOLO_octron
 
-# %%
-yolo = YOLO_octron(project_path=OUTPUT_DIR, clean_training_dir=True)
-yolo.train_mode = "detect"
+# # %%
+# yolo = YOLO_octron(project_path=OUTPUT_DIR, clean_training_dir=True)
+# yolo.train_mode = "detect"
 
-# %%
-# Build label_dict manually — same structure that collect_labels() returns.
-# See octron/yolo_octron/helpers/training.py::collect_labels()
-#
-# Structure:
-#   label_dict[subfolder_path] = {
-#       label_id: {label, frames, masks, color, original_id},
-#       'video': indexable array  (video_data[frame_id] -> H×W×3 uint8),
-#       'video_file_path': Path,
-#   }
+# # %%
+# # Build label_dict manually — same structure that collect_labels() returns.
+# # See octron/yolo_octron/helpers/training.py::collect_labels()
+# #
+# # Structure:
+# #   label_dict[subfolder_path] = {
+# #       label_id: {label, frames, masks, color, original_id},
+# #       'video': indexable array  (video_data[frame_id] -> H×W×3 uint8),
+# #       'video_file_path': Path,
+# #   }
 
-loaded_masks, status = load_image_zarr(
-    zarr_path=annotation_dir / f"{TEXT_PROMPT} masks.zarr",
-    num_frames=T,
-    image_height=H,
-    image_width=W,
-    num_ch=None,
-    verbose=True,
-)
-assert status, "Failed to load mask zarr"
+# loaded_masks, status = load_image_zarr(
+#     zarr_path=annotation_dir / f"{LABEL_NAME} masks.zarr",
+#     num_frames=T,
+#     image_height=H,
+#     image_width=W,
+#     num_ch=None,
+#     verbose=True,
+# )
+# assert status, "Failed to load mask zarr"
 
-annotated_frames = get_annotated_frames(loaded_masks)
-print(f"Found {len(annotated_frames)} annotated frames")
+# annotated_frames = get_annotated_frames(loaded_masks)
+# print(f"Found {len(annotated_frames)} annotated frames")
 
-yolo.label_dict = {
-    annotation_dir.as_posix(): {
-        0: {
-            "label": TEXT_PROMPT,
-            "original_id": 0,
-            "frames": annotated_frames,
-            "masks": [loaded_masks],
-            "color": [1.0, 0.0, 0.0, 1.0],
-        },
-        "video": video_data,  # numpy array, indexable by frame
-        "video_file_path": VIDEO_PATH,
-    }
-}
+# yolo.label_dict = {
+#     annotation_dir.as_posix(): {
+#         0: {
+#             "label": LABEL_NAME,
+#             "original_id": 0,
+#             "frames": annotated_frames,
+#             "masks": [loaded_masks],
+#             "color": [1.0, 0.0, 0.0, 1.0],
+#         },
+#         "video": video_data,  # numpy array, indexable by frame
+#         "video_file_path": VIDEO_PATH,
+#     }
+# }
 
-# %%
-# Step 2: extract bboxes from id-encoded masks
-for _ in yolo.prepare_bboxes():
-    pass  # consumes the generator (prints progress via tqdm)
+# # %%
+# # Step 2: extract bboxes from id-encoded masks
+# for _ in yolo.prepare_bboxes():
+#     pass  # consumes the generator (prints progress via tqdm)
 
-# Step 3: train/val/test split
-yolo.prepare_split(training_fraction=0.7, validation_fraction=0.15, verbose=True)
+# # Step 3: train/val/test split
+# yolo.prepare_split(training_fraction=0.7, validation_fraction=0.15, verbose=True)
 
-# Step 4: export images + YOLO .txt label files
-for _ in yolo.create_training_data_detect(verbose=True):
-    pass
+# # Step 4: export images + YOLO .txt label files
+# for _ in yolo.create_training_data_detect(verbose=True):
+#     pass
 
-# Step 5: write YOLO config
-yolo.write_yolo_config(train_mode="detect")
+# # Step 5: write YOLO config
+# yolo.write_yolo_config(train_mode="detect")
 
-print(f"YOLO training data ready at: {yolo.data_path}")
-print(f"YOLO config written to: {yolo.config_path}")
+# print(f"YOLO training data ready at: {yolo.data_path}")
+# print(f"YOLO config written to: {yolo.config_path}")
