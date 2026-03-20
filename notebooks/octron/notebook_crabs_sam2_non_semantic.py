@@ -20,20 +20,25 @@ Dependencies are auto-installed if the script is executed via uv run
 # ]
 # ///
 # %%
+import math
+from datetime import datetime
 from pathlib import Path
 
+import napari
 import numpy as np
+import xarray as xr
+import zarr
 from ethology.io.annotations import load_bboxes
-from octron.sam_octron.helpers.build_sam2_octron import build_sam2_octron
 from octron.sam_octron.helpers.sam2_zarr import (
     create_image_zarr,
     mark_frames_annotated,
 )
 from PIL import Image
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+from skimage.measure import regionprops
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
+
 
 # Predictor
 SAM_OCTRON_LOCAL_DIR = Path(
@@ -56,8 +61,9 @@ ANNOTATIONS_FILE = DATA_DIR / "annotations" / "VIA_JSON_combined_coco_gen.json"
 LABEL_NAME = "crab"
 
 # Output dir
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 OUTPUT_DIR = Path(
-    "/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/notebooks"
+    f"/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/output_{timestamp}"
 )  # root output folder
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -86,6 +92,24 @@ class ImageArrayLazy:
         # B, H, W, C
 
 
+def ellipses_from_labels(label_image):
+    """Return list of ellipse arrays for napari Shapes layer."""
+    ellipses_yx = []
+    for prop in regionprops(label_image):
+        cy, cx = prop.centroid
+        a = prop.major_axis_length / 2
+        b = prop.minor_axis_length / 2
+        theta = prop.orientation
+        # in radians, counter-clockwise from horizontal
+        # scikit-image's orientation is measured from the row axis
+        # Sample points around the ellipse
+        t = np.linspace(0, 2 * math.pi, 60)
+        ey = cy + a * np.cos(t) * np.cos(theta) - b * np.sin(t) * np.sin(theta)
+        ex = cx + a * np.cos(t) * np.sin(theta) + b * np.sin(t) * np.cos(theta)
+        ellipses_yx.append(np.column_stack([ey, ex]))
+    return ellipses_yx
+
+
 # %%%%%%%%%%%%%%%%%%%%%%
 # Read groundtruth as ethology annotation dataset
 ds_bboxes = load_bboxes.from_files(
@@ -108,28 +132,27 @@ ds_bboxes.attrs["image_array"] = image_array
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load predictor
-# use instead:?
-# image_predictor = SAM2ImagePredictor.from_pretrained(
-#   "facebook/sam2.1-hiera-base-plus"
-# )
-model, device = build_sam2_octron(
-    config_file_path=SAM2_CONFIG_PATH,
-    ckpt_path=SAM2_CKPT_PATH,
+image_predictor = SAM2ImagePredictor.from_pretrained(
+    "facebook/sam2.1-hiera-base-plus", device="mps"
 )
+# model, device = build_sam2_octron(
+#     config_file_path=SAM2_CONFIG_PATH,
+#     ckpt_path=SAM2_CKPT_PATH,
+# )
 
-image_predictor = SAM2ImagePredictor(model)
+# image_predictor = SAM2ImagePredictor(model)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Define per-frame exemplar bboxes from groundtruth
 
 # corner 1 is min x, min y
-# corner 2 is max x, max y -- check!
+# corner 2 is max x, max y
 x1y1 = ds_bboxes.position - ds_bboxes.shape / 2
 x2y2 = ds_bboxes.position + ds_bboxes.shape / 2
 
-# Each key is a frame index; value is an (N, 4) float32 array [x1, y1, x2, y2].
-
+# Each key is a frame index;
+# value is an (N, 4) float32 array [x1, y1, x2, y2].
 map_frame_idx_to_boxes = {
     idx: np.c_[
         x1y1.sel(image_id=idx).dropna(dim="id", how="all").values.T,
@@ -140,139 +163,185 @@ map_frame_idx_to_boxes = {
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Initialise zarr store for output masks
-data_hash = DATA_DIR.name
-annotation_dir = OUTPUT_DIR / data_hash
-annotation_dir.mkdir(parents=True, exist_ok=True)
+data_id_str = DATA_DIR.name
+output_masks_dir = OUTPUT_DIR / data_id_str
+output_masks_dir.mkdir(parents=True, exist_ok=True)
 
 mask_zarr = create_image_zarr(
-    zarr_path=annotation_dir / f"{LABEL_NAME} masks.zarr",
+    zarr_path=output_masks_dir / f"{LABEL_NAME} masks.zarr",
     num_frames=ds_bboxes.attrs["image_array"].shape[0],
     image_height=ds_bboxes.attrs["image_array"].shape[1],
     image_width=ds_bboxes.attrs["image_array"].shape[2],
     fill_value=-1,
     dtype="int16",
-    video_hash_abbrev=data_hash,
+    video_hash_abbrev=data_id_str,
 )
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Run per-frame box-prompted segmentation via add_new_points_or_box.
-# Each box produces one mask; no grounding or confidence filtering needed.
 
-img_h, img_w = image_array.shape[1], image_array.shape[2]
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Process images in batches, predict masks, save to zarr store
 
-for frame_idx, bboxes in map_frame_idx_to_boxes.items():
-    # Compute image embeddings
-    image_predictor.set_image(image_array[frame_idx])
+batch_size = 2  # samples
+n_frames = len(ds_bboxes.image_id)
+img_h, img_w = ds_bboxes.attrs["image_array"].shape[1:3]
 
-    # Initialise id_mask:
-    # an integer array (H, W) where each pixel stores which object "owns" it
+# loop thru images
+for idx in range(0, n_frames, batch_size):
+    # Adjust batch size if required
+    actual_batch_size = min(batch_size, n_frames - idx)
+
+    # Initialise id_mask for this batch
+    # an integer array (B, H, W) where each pixel stores which object "owns" it
     # 0 = background, rest are 1-based object instance IDs
-    id_mask = np.zeros((img_h, img_w), dtype=np.int16)
+    id_mask_batch = np.zeros((actual_batch_size, img_h, img_w), dtype=np.int16)
 
-    # Loop thru boxes to predict each mask
-    for box_id, box in enumerate(bboxes):
-        # Predict mask for a single box
-        # XYXY format
-        masks, _scores, _low_res_logits = image_predictor.predict(
-            box=box,
-            multimask_output=False,
-            return_logits=False,
-        )  # masks is (1,H,W) if multimask_output=False
+    # Compute embeddings for image batch
+    image_batch = [image_array[idx + i] for i in range(actual_batch_size)]
+    image_predictor.set_image_batch(image_batch)
 
-        # assign object ID where mask is True and
-        # id is currently background
-        id_mask[masks[0].astype(bool) & (id_mask == 0)] = box_id + 1
+    # Compute list of of bboxes — list of (N_i, 4) arrays, one per image
+    boxes_batch = [
+        map_frame_idx_to_boxes[f_i]
+        for f_i in range(idx, idx + actual_batch_size)
+    ]
 
-    if id_mask.max() == 0:
-        print(f"Frame {frame_idx}: no objects segmented")
-        continue
-    print(
-        f"Frame {frame_idx}: segmented {int(id_mask.max())}/{bboxes.shape[0]} objects"
+    # Predict batch of masks
+    # masks_batch is a list — one (N, 1, H, W) array per image
+    # where N is number of boxes
+    masks_batch, scores_batch, _ = image_predictor.predict_batch(
+        box_batch=boxes_batch,
+        multimask_output=False,
     )
 
+    # Convert boolean masks to ID-encoded masks OCTRON expects
+    # (higher ID wins in overlap)
+    for idx_rel_batch in range(actual_batch_size):
+        # Get masks for one frame
+        masks_one_frame = masks_batch[idx_rel_batch].squeeze(
+            axis=1
+        )  # (N, H, W)
+
+        # Convert boolean mask to 1-based integer mask per object ID
+        n_objects = masks_one_frame.shape[0]
+        obj_ids = np.arange(1, n_objects + 1, dtype=np.int16)[:, None, None]
+        id_mask_batch[idx_rel_batch] = (masks_one_frame * obj_ids).max(axis=0)
+
+        print(
+            f"Frame {idx + idx_rel_batch}: "
+            f"{n_objects} masks / {boxes_batch[idx_rel_batch].shape[0]} boxes"
+        )
+
     # Save id_mask to zarr store
-    mask_zarr[frame_idx] = id_mask
+    mask_zarr[idx : idx + actual_batch_size] = id_mask_batch
 
     # Mark frames as annotated in zarr store attributes
-    mark_frames_annotated(mask_zarr, frame_idx)
-
+    for frame_idx in range(idx, idx + actual_batch_size):
+        mark_frames_annotated(mask_zarr, frame_idx)
 
 print(
-    f"Saved ID-encoded mask zarr to {annotation_dir / f'{LABEL_NAME} masks.zarr'}"
+    f"Saved ID-encoded mask zarr to {output_masks_dir / f'{LABEL_NAME} masks.zarr'}"
 )
-# %%%%%%%%%%%%%%%%%%%%%%%
-# Review in napari
 
+# %%%%%%%%%%%%%%%%%%%%%%%
+# Load masks from zarr store
+
+# mask_store = zarr.open_group(
+#     annotation_dir / f"{LABEL_NAME} masks.zarr", mode="r"
+# )
+# mask_data = mask_store["masks"]
+
+# mask_data = xr.open_zarr(
+#     "/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/output/sep2023-full/crab masks.zarr"
+# )
+zarr_groups = zarr.open(output_masks_dir / f"{LABEL_NAME} masks.zarr", mode="r")
+mask_data = zarr_groups["masks"]
+
+# %%%%%%%%%%%%%%%%%%%%%
+# Load frames and masks in napari viewer
+viewer = napari.Viewer()
+viewer.add_image(image_array, name="image")
+viewer.add_labels(np.asarray(mask_data), name=f"{LABEL_NAME} masks")
+
+
+# build all ellipses array for napari Shapes layer
+all_ellipses = []
+for frame_idx in range(mask_data.shape[0]):
+    frame_ellipses = ellipses_from_labels(np.asarray(mask_data[frame_idx]))
+    for ell in frame_ellipses:
+        # Prepend frame index as first column for nD shapes
+        nd_ell = np.column_stack(
+            [
+                np.full(ell.shape[0], fill_value=frame_idx),
+                ell,
+            ]
+        )
+        all_ellipses.append(nd_ell)
+
+viewer.add_shapes(
+    all_ellipses,
+    shape_type="polygon",
+    edge_color="yellow",
+    face_color="transparent",
+    name="ellipses",
+)
 
 # %%%%%%%%%%%%%%%%
 # Can I add masks to ds_bboxes? aligned with ids?
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Generate YOLO detection training data.
-#
-# # collect_labels() normally loads video via FastVideoReader + hashes the file,
-# # which doesn't work for a directory of PNGs.  Instead we populate
-# # yolo.label_dict manually with the numpy array and zarr masks already in memory.
 
-# from octron.sam_octron.helpers.sam2_zarr import get_annotated_frames
-# from octron.yolo_octron.yolo_octron import YOLO_octron
+from octron.yolo_octron.yolo_octron import YOLO_octron
 
-# # %%
-# yolo = YOLO_octron(project_path=OUTPUT_DIR, clean_training_dir=True)
-# yolo.train_mode = "detect"
+yolo = YOLO_octron(project_path=OUTPUT_DIR, clean_training_dir=True)
+yolo.train_mode = "segment"
 
-# # %%
-# # Build label_dict manually — same structure that collect_labels() returns.
-# # See octron/yolo_octron/helpers/training.py::collect_labels()
-# #
-# # Structure:
-# #   label_dict[subfolder_path] = {
-# #       label_id: {label, frames, masks, color, original_id},
-# #       'video': indexable array  (video_data[frame_id] -> H×W×3 uint8),
-# #       'video_file_path': Path,
-# #   }
+# Add label dict
+yolo.label_dict = {
+    output_masks_dir.as_posix(): {
+        # label description
+        # key is class_ID
+        0: {
+            "label": LABEL_NAME,  # class name for YOLO
+            "original_id": 1,  # from napari
+            "frames": mask_data.attrs["annotated_frames"],
+            "masks": [mask_data],
+            "color": [1.0, 0.0, 0.0, 1.0],  # for GUI only
+        },
+        # session metadata
+        "video": image_array,
+        "video_file_path": IMAGES_DIR,
+    }
+}
 
-# loaded_masks, status = load_image_zarr(
-#     zarr_path=annotation_dir / f"{LABEL_NAME} masks.zarr",
-#     num_frames=T,
-#     image_height=H,
-#     image_width=W,
-#     num_ch=None,
-#     verbose=True,
-# )
-# assert status, "Failed to load mask zarr"
+# %%
+# Extract polygons from masks
+# Check the output: each label
+# entry in label_dict should now have a "polygons" key.
 
-# annotated_frames = get_annotated_frames(loaded_masks)
-# print(f"Found {len(annotated_frames)} annotated frames")
+# it's a generator so we need to consume it
+# for it to run
+yolo.enable_watershed = False
+for _ in yolo.prepare_polygons():
+    pass
 
-# yolo.label_dict = {
-#     annotation_dir.as_posix(): {
-#         0: {
-#             "label": LABEL_NAME,
-#             "original_id": 0,
-#             "frames": annotated_frames,
-#             "masks": [loaded_masks],
-#             "color": [1.0, 0.0, 0.0, 1.0],
-#         },
-#         "video": video_data,  # numpy array, indexable by frame
-#         "video_file_path": VIDEO_PATH,
-#     }
-# }
+# %%
+# Train / val/ test split
+yolo.prepare_split(
+    training_fraction=0.7,
+    validation_fraction=0.15,
+    verbose=True,
+)
 
-# # %%
-# # Step 2: extract bboxes from id-encoded masks
-# for _ in yolo.prepare_bboxes():
-#     pass  # consumes the generator (prints progress via tqdm)
+# %%
+# Write images and YOLO label file
+for _ in yolo.create_training_data_segment():
+    pass
 
-# # Step 3: train/val/test split
-# yolo.prepare_split(training_fraction=0.7, validation_fraction=0.15, verbose=True)
+# %%
+# Write config
+yolo.write_yolo_config(train_mode="segment")
 
-# # Step 4: export images + YOLO .txt label files
-# for _ in yolo.create_training_data_detect(verbose=True):
-#     pass
-
-# # Step 5: write YOLO config
-# yolo.write_yolo_config(train_mode="detect")
-
-# print(f"YOLO training data ready at: {yolo.data_path}")
-# print(f"YOLO config written to: {yolo.config_path}")
+# yolo.data_path has the YOLO segmentation dataset
+# yolo.config_path has the data.yaml
+# %%
