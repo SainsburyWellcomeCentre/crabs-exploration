@@ -36,6 +36,7 @@ from octron.sam_octron.helpers.sam2_zarr import (
 from PIL import Image
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from skimage.measure import regionprops
+from ultralytics import YOLO
 
 # Input data
 
@@ -253,7 +254,9 @@ print(
 # mask_data = xr.open_zarr(
 #     "/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/output/sep2023-full/crab masks.zarr"
 # )
-zarr_groups = zarr.open(output_masks_dir / f"{LABEL_NAME} masks.zarr", mode="r")
+zarr_groups = zarr.open(
+    output_masks_dir / f"{LABEL_NAME} masks.zarr", mode="r"
+)
 mask_data = zarr_groups["masks"]
 
 # %%%%%%%%%%%%%%%%%%%%%
@@ -328,8 +331,8 @@ for _ in yolo.prepare_polygons():
 # %%
 # Train / val/ test split
 yolo.prepare_split(
-    training_fraction=0.7,
-    validation_fraction=0.15,
+    training_fraction=0.8,
+    validation_fraction=0.2,
     verbose=True,
 )
 
@@ -338,10 +341,50 @@ yolo.prepare_split(
 for _ in yolo.create_training_data_segment():
     pass
 
+# # Replace copied PNGs with symlinks to originals
+# for split_dir in yolo.data_path.iterdir():
+#     for img_file in split_dir.glob("*.png"):
+#         # Would the frame_id actually work?
+#         frame_id = int(img_file.stem.split("_")[-1])
+#         original = png_files[frame_id]
+#         img_file.unlink()
+#         img_file.symlink_to(original)
+
 # %%
 # Write config
 yolo.write_yolo_config(train_mode="segment")
 
-# yolo.data_path has the YOLO segmentation dataset
-# yolo.config_path has the data.yaml
+# - yolo.data_path has the YOLO segmentation dataset
+# - yolo.config_path has the data.yaml
 # %%
+# Training
+
+segmentor_model = YOLO("yolo11n-seg.pt")
+segmentor_model.train(
+    data=str(yolo.config_path),  # path to data.yaml
+    epochs=100,
+    imgsz=1280, # 1600? 2144?
+)
+# %%
+# Inference via OCTRON, or Sahi?
+
+
+# Sahi:
+# from sahi import AutoDetectionModel
+# from sahi.predict import get_sliced_prediction
+
+# model = AutoDetectionModel.from_pretrained(
+#     model_type="ultralytics",
+#     model_path="path/to/best.pt",
+#     confidence_threshold=0.5,
+#     device="mps",
+# )
+
+# result = get_sliced_prediction(
+#     image="path/to/frame.png",
+#     detection_model=model,
+#     slice_height=1024,
+#     slice_width=1024,
+#     overlap_height_ratio=0.2,
+#     overlap_width_ratio=0.2,
+# )
