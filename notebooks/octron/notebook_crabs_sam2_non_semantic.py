@@ -26,7 +26,6 @@ from pathlib import Path
 
 import napari
 import numpy as np
-import xarray as xr
 import zarr
 from ethology.io.annotations import load_bboxes
 from octron.sam_octron.helpers.sam2_zarr import (
@@ -94,21 +93,56 @@ class ImageArrayLazy:
 
 
 def ellipses_from_labels(label_image):
-    """Return list of ellipse arrays for napari Shapes layer."""
-    ellipses_yx = []
+    """Return ellipse corners, major-axis lines, and minor-axis lines.
+
+    Each ellipse is represented by the 4 corners of its oriented bounding
+    rectangle (for napari's built-in ``"ellipse"`` shape type).
+
+    Returns
+    -------
+    ellipse_corners : list of (4, 2) arrays
+        Corners in (y, x) order.
+    major_axes : list of (2, 2) arrays
+        Endpoint pairs for the major axis (y, x).
+    minor_axes : list of (2, 2) arrays
+        Endpoint pairs for the minor axis (y, x).
+    """
+    ellipse_corners = []
+    major_axes = []
+    minor_axes = []
     for prop in regionprops(label_image):
         cy, cx = prop.centroid
         a = prop.major_axis_length / 2
         b = prop.minor_axis_length / 2
         theta = prop.orientation
-        # in radians, counter-clockwise from horizontal
-        # scikit-image's orientation is measured from the row axis
-        # Sample points around the ellipse
-        t = np.linspace(0, 2 * math.pi, 60)
-        ey = cy + a * np.cos(t) * np.cos(theta) - b * np.sin(t) * np.sin(theta)
-        ex = cx + a * np.cos(t) * np.sin(theta) + b * np.sin(t) * np.cos(theta)
-        ellipses_yx.append(np.column_stack([ey, ex]))
-    return ellipses_yx
+        # scikit-image orientation: angle of the major axis
+        # measured counter-clockwise from the row (y) axis
+        # direction vectors in (y, x)
+        dir_major = np.array([np.cos(theta), np.sin(theta)])
+        dir_minor = np.array([-np.sin(theta), np.cos(theta)])
+
+        center = np.array([cy, cx])
+
+        # 4 corners of the oriented bounding rectangle
+        corners = np.array(
+            [
+                center + a * dir_major + b * dir_minor,
+                center + a * dir_major - b * dir_minor,
+                center - a * dir_major - b * dir_minor,
+                center - a * dir_major + b * dir_minor,
+            ]
+        )
+        ellipse_corners.append(corners)
+
+        # axis endpoints
+        major_axes.append(
+            np.array([center - a * dir_major, center + a * dir_major])
+        )
+        minor_axes.append(
+            np.array([center - b * dir_minor, center + b * dir_minor])
+        )
+
+    return ellipse_corners, major_axes, minor_axes
 
 
 # %%%%%%%%%%%%%%%%%%%%%%
@@ -259,37 +293,61 @@ zarr_groups = zarr.open(
 )
 mask_data = zarr_groups["masks"]
 
-# %%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load frames and masks in napari viewer
 viewer = napari.Viewer()
-viewer.add_image(image_array, name="image")
-viewer.add_labels(np.asarray(mask_data), name=f"{LABEL_NAME} masks")
+# viewer.add_image(np.asarray(image_array).moveaxis(0, -1, 1, 2), name="image")
+viewer.add_labels(np.asarray(mask_array), name=f"{LABEL_NAME} masks")
 
-
-# build all ellipses array for napari Shapes layer
+# %%
+# build ellipses and axis lines for napari Shapes layers
 all_ellipses = []
-for frame_idx in range(mask_data.shape[0]):
-    frame_ellipses = ellipses_from_labels(np.asarray(mask_data[frame_idx]))
-    for ell in frame_ellipses:
+all_major_axes = []
+all_minor_axes = []
+for frame_idx in range(mask_array.shape[0]):
+    ellipse_corners, major_axes, minor_axes = ellipses_from_labels(
+        np.asarray(mask_array[frame_idx])
+    )
+    for corners in ellipse_corners:
         # Prepend frame index as first column for nD shapes
-        nd_ell = np.column_stack(
-            [
-                np.full(ell.shape[0], fill_value=frame_idx),
-                ell,
-            ]
+        nd = np.column_stack(
+            [np.full(corners.shape[0], fill_value=frame_idx), corners]
         )
-        all_ellipses.append(nd_ell)
+        all_ellipses.append(nd)
+    for axis in major_axes:
+        nd = np.column_stack(
+            [np.full(axis.shape[0], fill_value=frame_idx), axis]
+        )
+        all_major_axes.append(nd)
+    for axis in minor_axes:
+        nd = np.column_stack(
+            [np.full(axis.shape[0], fill_value=frame_idx), axis]
+        )
+        all_minor_axes.append(nd)
 
 viewer.add_shapes(
     all_ellipses,
-    shape_type="polygon",
+    shape_type="ellipse",
     edge_color="yellow",
+    edge_width=4,
     face_color="transparent",
     name="ellipses",
 )
+viewer.add_shapes(
+    all_minor_axes,
+    shape_type="line",
+    edge_color="green",
+    edge_width=4,
+    name="minor axes",
+)
+viewer.add_shapes(
+    all_major_axes,
+    shape_type="line",
+    edge_color="red",
+    edge_width=4,
+    name="major axes",
+)
 
-# %%%%%%%%%%%%%%%%
-# Can I add masks to ds_bboxes? aligned with ids?
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Generate YOLO detection training data.
