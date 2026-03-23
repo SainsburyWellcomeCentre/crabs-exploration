@@ -17,10 +17,10 @@ Dependencies are auto-installed if the script is executed via uv run
 #   "Pillow",
 #   "octron[all] @ git+https://github.com/OCTRON-tracking/OCTRON-GUI.git",
 #   "ethology",
+#   "sparse",
 # ]
 # ///
 # %%
-import math
 from datetime import datetime
 from pathlib import Path
 
@@ -166,7 +166,7 @@ ds_bboxes.attrs["image_array"] = image_array
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Load predictor
+# Load SAM2 predictor
 image_predictor = SAM2ImagePredictor.from_pretrained(
     "facebook/sam2.1-hiera-base-plus", device="mps"
 )
@@ -279,19 +279,169 @@ print(
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Load masks from zarr store
+import dask.array as da
+import sparse
+import xarray as xr
 
-# mask_store = zarr.open_group(
-#     annotation_dir / f"{LABEL_NAME} masks.zarr", mode="r"
-# )
-# mask_data = mask_store["masks"]
-
-# mask_data = xr.open_zarr(
-#     "/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/output/sep2023-full/crab masks.zarr"
-# )
-zarr_groups = zarr.open(
-    output_masks_dir / f"{LABEL_NAME} masks.zarr", mode="r"
+output_masks_dir = Path(
+    "/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/output/sep2023-full"
 )
-mask_data = zarr_groups["masks"]
+
+zarr_root = zarr.open(
+    output_masks_dir / f"{LABEL_NAME} masks.zarr",
+    mode="r",
+)
+# mask_array = zarr_root["masks"]
+
+mask_da_array = da.from_zarr(zarr_root["masks"])
+
+
+# %%%%%%%%%%%%%%%%
+# Can I add masks to ds_bboxes? aligned with ids?
+
+
+# Option 1: as mask arrays
+# (but we lose alignment with ID) --- except if ID matches label?
+ds_bboxes.assign_coords(
+    {
+        "img_h": np.arange(mask_da_array.shape[1]),
+        "img_w": np.arange(mask_da_array.shape[2]),
+    }
+)
+
+ds_bboxes["masks"] = xr.DataArray(
+    data=mask_da_array, dims=["image_id", "img_h", "img_w"]
+)
+
+
+# %%
+# Option 2a: store sparse array objects?
+# Is this faster than option b?
+
+# initialise array of sparse masks
+sparse_mask_array = np.empty(
+    (ds_bboxes.sizes["image_id"], ds_bboxes.sizes["id"]),
+    dtype=object,
+)
+
+# Fill in values
+# ATT! bboxes id is 0-based
+# masks's id is 1-based!
+# we assume they are in the same order?
+for bbox_id in np.arange(ds_bboxes.sizes["id"]):
+    # compute 3D coords for this ID
+    coords = da.nonzero(mask_da_array == bbox_id + 1)  # id_0, id_1, id_2
+
+    # express as numpy
+    coords = [c.compute() for c in coords]
+
+    # compute sparse array for this ID
+    s = sparse.COO(
+        coords, bbox_id, shape=mask_da_array.shape
+    )  # shape 544, 2160, 4096
+
+    # split sparse array per image_id
+    s_per_image_id = sparse.unstack(s, axis=0)  # tuple of 544 slices
+
+    # assign to array
+    sparse_mask_array[:, bbox_id] = s_per_image_id
+
+
+ds_bboxes["masks_sparse"] = xr.DataArray(
+    data=sparse_mask_array,
+    dims=["image_id", "id"],
+)
+
+# %%
+# Option 2b: store sparse array objects?
+# Q: should I used masked arrays rather than sparse arrays?
+
+sparse_mask_array = np.empty(
+    (ds_bboxes.sizes["image_id"], ds_bboxes.sizes["id"]),
+    dtype=object,
+)
+
+for image_id in range(mask_da_array.shape[0]):
+    # Get rows, cols and values of non-zero elements
+    # in this frame
+    mask_frame = mask_da_array[image_id].compute()  # load one frame at a time
+    rows, cols = np.nonzero(mask_frame)
+    labels = mask_frame[rows, cols]
+
+    # define sparse array for this frame
+    for l_i, lbl in enumerate(np.unique(labels)):
+        slc_nnz = labels == lbl
+        s = sparse.COO(
+            np.c_[rows[slc_nnz], cols[slc_nnz]].T, lbl, shape=mask_frame.shape
+        )  # img_h, img_w
+
+        # assign to full sparse array
+        sparse_mask_array[image_id, l_i] = s
+
+ds_bboxes["masks_sparse"] = xr.DataArray(
+    data=sparse_mask_array,
+    dims=["image_id", "id"],
+)
+
+# %%
+# plot image with a bbox and mask
+import matplotlib.pyplot as plt
+
+image_id = 40
+id = 10
+
+fig, ax = plt.subplots(1, 1)
+# image
+ax.imshow(ds_bboxes.image_array[image_id])
+# bbox centre
+ax.scatter(
+    ds_bboxes.position.sel(image_id=image_id, id=id, space="x"),
+    ds_bboxes.position.sel(image_id=image_id, id=id, space="y"),
+    15,
+    marker="x",
+    color='r'
+)
+# single mask
+# Q: should I used masked arrays rather than sparse arrays?
+mask_dense = ds_bboxes.masks_sparse.isel(image_id=image_id, id=id).item().todense()
+ax.imshow(
+    np.ma.masked_where(mask_dense == 0, mask_dense), cmap="turbo", alpha=0.5
+)
+
+# %%
+# plot all masks in one frame
+image_id = 40
+
+fig, ax = plt.subplots(1, 1)
+# image
+ax.imshow(ds_bboxes.image_array[image_id])
+
+all_masks_per_nonempty_id  = sparse.stack(
+    ds_bboxes.masks_sparse.isel(image_id=image_id).dropna(dim='id').values
+) # (non-empty id, img_h, img_w)
+all_masks_dense = all_masks_per_nonempty_id.max(axis=0).todense()
+ax.imshow(
+    np.ma.masked_where(all_masks_dense == 0, all_masks_dense), cmap="turbo", alpha=0.5,
+)
+
+# %%
+# %matplotlib widget
+# %%
+# What I would like is
+# ds_bboxes.masks.sel(image_id=0) ---> masks for that frame
+# ds_bboxes.masks.sel(image_id=0, id=3) ---> mask for that frame and id=3
+
+
+# %%
+# Option 3: store dask array objects?
+mask_da = np.empty(ds_bboxes.sizes["image_id"])
+
+
+ds_bboxes["masks_da"] = xr.DataArray(
+    data=mask_da,
+    dims=["image_id", "id"],
+)
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load frames and masks in napari viewer
@@ -350,7 +500,7 @@ viewer.add_shapes(
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%
-# Generate YOLO detection training data.
+# Generate YOLO detection training data via OCTRON
 
 from octron.yolo_octron.yolo_octron import YOLO_octron
 
@@ -365,8 +515,8 @@ yolo.label_dict = {
         0: {
             "label": LABEL_NAME,  # class name for YOLO
             "original_id": 1,  # from napari
-            "frames": mask_data.attrs["annotated_frames"],
-            "masks": [mask_data],
+            "frames": mask_array.attrs["annotated_frames"],
+            "masks": [mask_array],
             "color": [1.0, 0.0, 0.0, 1.0],  # for GUI only
         },
         # session metadata
@@ -421,7 +571,7 @@ segmentor_model = YOLO("yolo11n-seg.pt")
 segmentor_model.train(
     data=str(yolo.config_path),  # path to data.yaml
     epochs=100,
-    imgsz=1280, # 1600? 2144?
+    imgsz=1280,  # 1600? 2144?
 )
 # %%
 # Inference via OCTRON, or Sahi?
