@@ -30,10 +30,21 @@ Usage (dependencies are auto-installed via uv):
 # dependencies = [
 #   "Pillow",
 #   "zarr",
-#   "ethology",
+#   "torch>=2.5.1",
+#   "torchvision>=0.20.1",
 #   "sam-2 @ git+https://github.com/facebookresearch/sam2.git",
 #   "huggingface_hub",
+#   "ethology",
 # ]
+#
+# [tool.uv.sources]
+# torch = { index = "pytorch-cu128" }
+# torchvision = { index = "pytorch-cu128" }
+#
+# [[tool.uv.index]]
+# name = "pytorch-cu128"
+# url = "https://download.pytorch.org/whl/cu128"
+# explicit = true
 # ///
 
 import argparse
