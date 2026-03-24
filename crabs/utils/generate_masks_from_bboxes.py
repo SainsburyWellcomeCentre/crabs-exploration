@@ -1,12 +1,12 @@
-"""RUn SAM2 to generate crab masks.
+"""Generate SAM2 masks from provided bboxes annotations.
 
-Standalone script: pass bounding boxes as prompts to SAM2 via OCTRON, predict
-masks only in those regions, then export as YOLO detection training data.
+Pass bounding boxes as prompts to SAM2 via OCTRON, predict
+masks only in those regions, and save in OCTRON format.
 
-Input: a directory of PNG frames (sorted lexicographically as the frame sequence).
-
-BBox format: (N, 4) float32 array of [x1, y1, x2, y2] in pixel coordinates
-  x = column (width axis), y = row (height axis)
+The bbox format for SAM is a (N, 4) float array of
+[x1, y1, x2, y2] in pixel coordinates, where x = column (width axis),
+y = row (height axis), 1 is the xmin, ymin corner and 2 is the
+xmax ymax corner.
 
 Dependencies are auto-installed if the script is executed via uv run
 """
