@@ -10,7 +10,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from scipy.ndimage import find_objects, gaussian_filter, label
+from scipy.ndimage import gaussian_filter
 from skimage.feature import peak_local_max
 
 # Hide attributes globally
@@ -150,7 +150,7 @@ ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 
 # %%
-# Apply transform to filtered bins ---- why?
+# Apply transform to filtered bins ---- why? to get
 # log or power
 log_counts = np.log1p(counts_filtered)  # counts_filtered ** 0.5 #
 
@@ -199,7 +199,23 @@ y_bin_centers = (yedges[:-1] + yedges[1:]) / 2
 node_x = x_bin_centers[peaks_col_row[:, 0]]
 node_y = y_bin_centers[peaks_col_row[:, 1]]
 
+# %%
+# Define bboxes centred on detected nodes
+# node_radius: common to all 
+# sigma (in bins) * 4 (default kernel size) * bin_size_pixels -> pixels
+node_radius = sigma * 4 * bin_size_pixels  # pixels; tune as needed
 
+bboxes_from_nodes = np.column_stack(
+    [
+        np.clip(node_x - node_radius, 0, image_w),
+        np.clip(node_y - node_radius, 0, image_h),
+        np.clip(node_x + node_radius, 0, image_w),
+        np.clip(node_y + node_radius, 0, image_h),
+    ]
+)
+# shape: (n_nodes, 4), columns: x_min, y_min, x_max, y_max
+
+# %%
 # plot peaks on smoothed data
 fig, ax = plt.subplots(1, 1)
 ax.imshow(
@@ -225,6 +241,7 @@ ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 ax.legend(fontsize=8)
 
+# plot peaks on trajectory plot
 fig, ax = plt.subplots(1, 1)
 ax.imshow(
     counts.T,  # <---------
@@ -245,24 +262,23 @@ ax.scatter(
     linewidths=0.5,
     label=f"{len(peaks_col_row)} peaks",
 )
+# Plot bboxes
+for x_min, y_min, x_max, y_max in bboxes_from_nodes:
+    ax.add_patch(
+        plt.Rectangle(
+            (x_min, y_min),
+            x_max - x_min,
+            y_max - y_min,
+            edgecolor="red",
+            facecolor="none",
+            linewidth=0.8,
+        )
+    )
 ax.set_title(f"Detected peaks {ds_video.video_id}")
 ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 ax.legend(fontsize=8)
 
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Define bboxes centred on detected nodes 
-# node_radius: sigma (in bins) * 4 (default kernel support) * bin_size_pixels -> pixels
-node_radius = sigma * 4 * bin_size_pixels  # pixels; tune as needed
-
-bboxes_from_nodes = np.column_stack([
-    np.clip(node_x - node_radius, 0, image_w),
-    np.clip(node_y - node_radius, 0, image_h),
-    np.clip(node_x + node_radius, 0, image_w),
-    np.clip(node_y + node_radius, 0, image_h),
-])
-# shape: (n_nodes, 4), columns: x_min, y_min, x_max, y_max
 
 
 
@@ -278,7 +294,28 @@ blobs = blob_doh(
     threshold_rel=0.5,
 )
 # blobs is an array of [y, x, sigma] for each detected blob
+# convert blob bin indices to pixel coords for scatter
+blob_x_pixels = x_bin_centers[blobs[:, 0].astype(int)]
+blob_y_pixels = y_bin_centers[blobs[:, 1].astype(int)]
 
+# Define bboxes around blobs using sigma  values
+# blobs = [row, col, sigma] in bin-index space (row ~ x-axis here)
+# half_size = blobs[:, 2] * np.sqrt(2)
+# # standard blob radius from scale-space theory.
+# For a LoG/DoH detector, the response peaks when the blob radius equals sigma * sqrt(2).
+bboxes_from_blobs = []
+for bx, by, sigma in blobs:
+    blob_radius = sigma * np.sqrt(2)
+    bboxes_from_blobs.append(
+        (
+            x_bin_centers[max(0, int(bx - blob_radius))],
+            y_bin_centers[max(0, int(by - blob_radius))],
+            x_bin_centers[min(len(x_bin_centers) - 1, int(bx + blob_radius))],
+            y_bin_centers[min(len(y_bin_centers) - 1, int(by + blob_radius))],
+        )
+    )
+
+# Plot detected peaks on input data
 fig, ax = plt.subplots(1, 1)
 ax.imshow(
     log_counts.T,  # <---------
@@ -290,8 +327,8 @@ ax.imshow(
     # map image array idcs to coords
 )
 ax.scatter(
-    blobs[:, 0],
-    blobs[:, 1],
+    blob_x_pixels,
+    blob_y_pixels,
     s=25,
     c="red",
     marker="x",
@@ -303,48 +340,46 @@ ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 ax.legend(fontsize=8)
 
+# Plot peaks on trajectory plot
 fig, ax = plt.subplots(1, 1)
 ax.imshow(
     counts.T,  # <---------
     origin="upper",
     aspect="equal",
     cmap="Blues",
-    # extent=[0, image_w, image_h, 0],
+    extent=[0, image_w, image_h, 0],
     # left, right, bottom, top
     # map image array idcs to coords
     vmax=np.percentile(counts, 95),
 )
 ax.scatter(
-    blobs[:, 0],
-    blobs[:, 1],
+    blob_x_pixels,
+    blob_y_pixels,
     s=25,
     c="red",
     marker="x",
     linewidths=0.5,
     label=f"{len(blobs)} peaks",
 )
+# Plot bboxes
+for x_min, y_min, x_max, y_max in bboxes_from_blobs:
+    ax.add_patch(
+        plt.Rectangle(
+            (x_min, y_min),
+            x_max - x_min,
+            y_max - y_min,
+            edgecolor="red",
+            facecolor="none",
+            linewidth=0.8,
+        )
+    )
 ax.set_title(f"Detected peaks {ds_video.video_id}")
 ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 ax.legend(fontsize=8)
 
+
 # %%%%%%%%%%%%%%%%%%%
-# Define bboxes around blobs using sigma  values
-# blobs = [row, col, sigma] in bin-index space (row ~ x-axis here)
-# half_size = blobs[:, 2] * np.sqrt(2)  
-# # standard blob radius from scale-space theory. 
-# For a LoG/DoH detector, the response peaks when the blob radius equals sigma * sqrt(2).
-
-bboxes_from_blobs = []
-for (bx, by, sigma) in blobs:
-    blob_radius = sigma * np.sqrt(2)
-    bboxes_from_blobs.append((
-        x_bin_centers[max(0, int(bx - blob_radius))],
-        y_bin_centers[max(0, int(by - blob_radius))],
-        x_bin_centers[min(len(x_bin_centers)-1, int(bx + blob_radius))],
-        y_bin_centers[min(len(y_bin_centers)-1, int(by + blob_radius))],
-    ))
-
 
 
 # %%%%%%%%%%%%%%%%%
