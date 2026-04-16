@@ -11,8 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 from scipy.ndimage import find_objects, gaussian_filter, label
-import numpy as np
-from scipy.ndimage import gaussian_filter
 from skimage.feature import peak_local_max
 
 # Hide attributes globally
@@ -23,12 +21,12 @@ xr.set_options(
 
 # %%
 # pip install ipympl first for interactive plots
-%matplotlib widget
+# %matplotlib widget
 
 # %%%%%%%%%%%%%%%%
 # Input data
 
-data_dir = Path().home() / "swc" / "project_crabs" / "data"/ "CrabTracks"
+data_dir = Path().home() / "swc" / "project_crabs" / "data" / "CrabTracks"
 crabs_zarr_dataset = data_dir / "CrabTracks-slurm2478780-2478861-2489356.zarr"
 
 image_w = 4096
@@ -48,7 +46,7 @@ print(dt)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Flatten trajectories in one video 
+# Flatten trajectories in one video
 
 # .to_dataset(): makes a copy
 # .ds(): returns a view, changes propagate to tree
@@ -59,7 +57,7 @@ ds_video = dt["10.08.2023-02-Right"].ds
 position_x = ds_video.position.sel(space="x").values
 position_y = ds_video.position.sel(space="y").values
 slc_non_nan = ~np.isnan(position_x) & ~np.isnan(position_y)
-points_x = position_x[slc_non_nan]  
+points_x = position_x[slc_non_nan]
 points_y = position_y[slc_non_nan]
 
 # free original arrays
@@ -69,7 +67,7 @@ del position_x, position_y
 # %%
 # Plot 2D histogram
 # # define bins
-# bin_size_pixels = 5  
+# bin_size_pixels = 5
 # n_bins_x = round(image_w / bin_size_pixels)
 # n_bins_y = round(image_h / bin_size_pixels)
 
@@ -92,7 +90,7 @@ del position_x, position_y
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Compute 2D histogram, 
+# Compute 2D histogram,
 # 1. Discretize data into bins size 10x10 pixels
 # 2. Keep bin counts > 95th percentile
 # 3. Apply Gaussian filter
@@ -110,20 +108,20 @@ n_bins_y = round(image_h / bin_size_pixels)
 counts, xedges, yedges = np.histogram2d(
     points_x,
     points_y,
-    bins=[n_bins_x, n_bins_y],  
+    bins=[n_bins_x, n_bins_y],
     range=[[0, image_w], [0, image_h]],
     # define range per video?
 )
 
 # plot histogram (max color set to X percentile)
 # ax = axes[0, 0]
-fig, ax = plt.subplots(1,1)
+fig, ax = plt.subplots(1, 1)
 img = ax.imshow(
     counts.T,
     origin="upper",
     aspect="equal",
     cmap="viridis",
-    vmax=np.percentile(counts, 99)
+    vmax=np.percentile(counts, 99),
 )
 fig.colorbar(img, ax=ax, label="count")
 ax.set_aspect("equal")
@@ -137,13 +135,13 @@ ax.set_ylabel("y (pixels)")
 min_count = np.percentile(counts, 99)
 counts_filtered = np.where(counts >= min_count, counts, 0)
 
-fig, ax = plt.subplots(1,1)
+fig, ax = plt.subplots(1, 1)
 img = ax.imshow(
     counts_filtered.T > 0,
     origin="upper",
     aspect="equal",
     cmap="viridis",
-    # vmax=min_count, 
+    # vmax=min_count,
 )
 fig.colorbar(img, ax=ax, label="retained")
 ax.set_aspect("equal")
@@ -156,7 +154,7 @@ ax.set_ylabel("y (pixels)")
 # log or power
 log_counts = np.log1p(counts_filtered)  # counts_filtered ** 0.5 #
 
-fig, ax = plt.subplots(1,1)
+fig, ax = plt.subplots(1, 1)
 img = ax.imshow(
     log_counts.T,
     origin="upper",
@@ -176,7 +174,7 @@ ax.set_ylabel("y (pixels)")
 sigma = 2.5  # <---------- kernel radius = 4*sigma ~ blob size?
 smoothed = gaussian_filter(log_counts, sigma=sigma)
 
-fig, ax = plt.subplots(1,1)
+fig, ax = plt.subplots(1, 1)
 ax.imshow(
     smoothed.T,
     origin="upper",
@@ -203,7 +201,7 @@ node_y = y_bin_centers[peaks_col_row[:, 1]]
 
 
 # plot peaks on smoothed data
-fig, ax = plt.subplots(1,1)
+fig, ax = plt.subplots(1, 1)
 ax.imshow(
     smoothed.T,
     origin="upper",
@@ -227,16 +225,16 @@ ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 ax.legend(fontsize=8)
 
-fig, ax = plt.subplots(1,1)
+fig, ax = plt.subplots(1, 1)
 ax.imshow(
-    counts.T, #<---------
+    counts.T,  # <---------
     origin="upper",
     aspect="equal",
     cmap="Blues",
     extent=[0, image_w, image_h, 0],
     # left, right, bottom, top
     # map image array idcs to coords
-    vmax = np.percentile(counts, 95)
+    vmax=np.percentile(counts, 95),
 )
 ax.scatter(
     node_x,
@@ -252,16 +250,38 @@ ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 ax.legend(fontsize=8)
 
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Define bboxes centred on detected nodes 
+# node_radius: sigma (in bins) * 4 (default kernel support) * bin_size_pixels -> pixels
+node_radius = sigma * 4 * bin_size_pixels  # pixels; tune as needed
+
+bboxes_from_nodes = np.column_stack([
+    np.clip(node_x - node_radius, 0, image_w),
+    np.clip(node_y - node_radius, 0, image_h),
+    np.clip(node_x + node_radius, 0, image_w),
+    np.clip(node_y + node_radius, 0, image_h),
+])
+# shape: (n_nodes, 4), columns: x_min, y_min, x_max, y_max
+
+
+
 # %%%%%%%%%%%%%%%%%%%%
 # Option 2: Use blob_doh instead
-from skimage.feature import blob_log, blob_doh
+from skimage.feature import blob_doh, blob_log
 
-blobs = blob_doh(log_counts, min_sigma=3, max_sigma=10, num_sigma=5, threshold_rel=0.5,)
+blobs = blob_doh(
+    log_counts,
+    min_sigma=3,
+    max_sigma=10,
+    num_sigma=5,
+    threshold_rel=0.5,
+)
 # blobs is an array of [y, x, sigma] for each detected blob
 
-fig, ax = plt.subplots(1,1)
+fig, ax = plt.subplots(1, 1)
 ax.imshow(
-    log_counts.T, #<---------
+    log_counts.T,  # <---------
     origin="upper",
     aspect="equal",
     cmap="Blues",
@@ -283,16 +303,16 @@ ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 ax.legend(fontsize=8)
 
-fig, ax = plt.subplots(1,1)
+fig, ax = plt.subplots(1, 1)
 ax.imshow(
-    counts.T, #<---------
+    counts.T,  # <---------
     origin="upper",
     aspect="equal",
     cmap="Blues",
     # extent=[0, image_w, image_h, 0],
     # left, right, bottom, top
     # map image array idcs to coords
-    vmax = np.percentile(counts, 95)
+    vmax=np.percentile(counts, 95),
 )
 ax.scatter(
     blobs[:, 0],
@@ -308,6 +328,24 @@ ax.set_xlabel("x (pixels)")
 ax.set_ylabel("y (pixels)")
 ax.legend(fontsize=8)
 
+# %%%%%%%%%%%%%%%%%%%
+# Define bboxes around blobs using sigma  values
+# blobs = [row, col, sigma] in bin-index space (row ~ x-axis here)
+# half_size = blobs[:, 2] * np.sqrt(2)  
+# # standard blob radius from scale-space theory. 
+# For a LoG/DoH detector, the response peaks when the blob radius equals sigma * sqrt(2).
+
+bboxes_from_blobs = []
+for (bx, by, sigma) in blobs:
+    blob_radius = sigma * np.sqrt(2)
+    bboxes_from_blobs.append((
+        x_bin_centers[max(0, int(bx - blob_radius))],
+        y_bin_centers[max(0, int(by - blob_radius))],
+        x_bin_centers[min(len(x_bin_centers)-1, int(bx + blob_radius))],
+        y_bin_centers[min(len(y_bin_centers)-1, int(by + blob_radius))],
+    ))
 
 
-# %%
+
+# %%%%%%%%%%%%%%%%%
+# Export data for visualisation in napari?
