@@ -146,12 +146,6 @@ mask_da_array = da.from_zarr(zarr_root["masks"])
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Option 1: as dask-arrays
 # (but we lose alignment with ID) --- except if ID matches label?
-ds_bboxes.assign_coords(
-    {
-        "img_h": np.arange(mask_da_array.shape[1]),
-        "img_w": np.arange(mask_da_array.shape[2]),
-    }
-)
 
 ds_bboxes["masks"] = xr.DataArray(
     data=mask_da_array,
@@ -185,6 +179,7 @@ ax.imshow(
     alpha=single_mask.astype(float)*0.5,
 )
 ax.contour(single_mask, levels=[0.5], colors="red", linewidths=0.5)
+
 # all masks
 all_masks_one_img = ds_bboxes.masks.sel(image_id=image_id)
 ax.imshow(
@@ -192,6 +187,32 @@ ax.imshow(
     cmap="turbo",
     alpha=(all_masks_one_img > 0).astype(float)*0.5,
 )
+
+# %%%%%
+# If we use an accessor:
+@xr.register_dataset_accessor("sel_mask")
+class MaskAccessor:
+    def __init__(self, ds):
+        self._ds = ds
+
+    def __call__(self, image_id, id=None):
+        """Select masks with input id.
+    
+        We assume:
+        - the id coordinate goes from 0 to n in ds,
+        - the integers in the mask array `ds.masks` go from 1 to n, 
+        0 being the background
+        - a bbox with id=M is the box enclosing mask with label id = M+1
+        """
+        mask_single_img = self._ds.masks.sel(image_id=image_id)
+        if id is not None:
+            return (mask_single_img == id + 1)
+        return mask_single_img
+
+# Then we can do 
+ds_bboxes.sel_mask(image_id=40)
+ds_bboxes.sel_mask(image_id=40, id=3)
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Option 2: store sparse array objects
@@ -215,7 +236,10 @@ for image_id in range(mask_da_array.shape[0]):
     for l_i, lbl in enumerate(np.unique(labels)):
         slc_nnz = labels == lbl
         s = sparse.COO(
-            np.c_[rows[slc_nnz], cols[slc_nnz]].T, lbl, shape=mask_frame.shape
+            # for integer masks: 
+            #   np.c_[rows[slc_nnz], cols[slc_nnz]].T, lbl, shape=mask_frame.shape
+            # for boolean masks:
+            np.c_[rows[slc_nnz], cols[slc_nnz]].T, 1, shape=mask_frame.shape
         )  # img_h, img_w
 
         # assign to full sparse array
@@ -305,21 +329,31 @@ all_masks = da.stack(
 n_ids = ds_bboxes.sizes["id"]
 
 # for one task per chunk:
-def _expand_labels(block, n_ids):
-    """(chunk_frames, H, W) -> (chunk_frames, n_ids, H, W) boolean."""
-    labels = np.arange(1, n_ids + 1)[None, :, None, None]
+def _apply_one_hot_encoding_for_IDs(block, n_ids):
+    """Transform a block of shape (chunk_frames, H, W) 
+    into a boolean array of shape (chunk_frames, n_ids, H, W).
+
+    This is most efficient if chunk_frames=1.
+    """
+    labels = np.arange(1, n_ids + 1)[None, :, None, None] # (1, n_ids, 1, 1)
+    # compare every pixel against every label simultaneously
+    # via broadcasting (i.e. for each pixel, we have a 1-hot encoding
+    # vector indicate which label/id it is)
     return block[:, None, :, :] == labels
 
 
+# Apply expand labels chunk by chunk
+# we define one chunk per image
+mask_da_array = mask_da_array.rechunk({0: 1}) 
 mask_4d = mask_da_array.map_blocks(
-    _expand_labels,
+    _apply_one_hot_encoding_for_IDs,
     n_ids=n_ids,
-    new_axis=1,
-    chunks=(
-        mask_da_array.chunks[0],
-        (n_ids,),
-        mask_da_array.chunks[1],
-        mask_da_array.chunks[2],
+    new_axis=1, # position of new_axis id
+    chunks=( # sizes of output chunks (if diff from input)
+        mask_da_array.chunks[0], # same as input chunk axis=0
+        (n_ids,),   # ids
+        mask_da_array.chunks[1], # same as input chunk axis=1
+        mask_da_array.chunks[2], # same as input chunk axis=2
     ),
     dtype=bool,
 )  # (image_id, id, img_h, img_w)
@@ -327,7 +361,25 @@ mask_4d = mask_da_array.map_blocks(
 ds_bboxes["masks_bool"] = xr.DataArray(
     data=mask_4d,
     dims=["image_id", "id", "img_h", "img_w"],
+    coords={"image_id": ds_bboxes.image_id, "id": ds_bboxes.id},
 )
+
+# Why was this slow when one chunk had a few frames?
+# Before one chunk had multiple frames.
+# Because the operations above define a graph, which will run
+# for the relevant chunk when I do .sel(image_id, id).compute(). But for 
+# every chunk, it will compute boolean masks for all IDs in that chunk,
+# slice the relevant id, and throw the rest away (it is slow because
+# _apply_one_hot_encoding_for_IDs is slow, even for a chunk) it was 15s
+
+# %%
+ds_bboxes.masks_bool.sel(image_id=40, id=33).compute()
+
+# %%
+ds_bboxes.masks_bool.sel(image_id=40).compute()
+
+# %%
+ds_bboxes.masks_bool.sel(id=33).compute()
 # %%
 # Usage
 
