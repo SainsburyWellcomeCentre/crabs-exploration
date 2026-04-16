@@ -10,8 +10,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
-from scipy.ndimage import gaussian_filter
 from skimage.feature import peak_local_max
+from skimage.filters import gaussian
 
 # Hide attributes globally
 xr.set_options(
@@ -21,7 +21,7 @@ xr.set_options(
 
 # %%
 # pip install ipympl first for interactive plots
-# %matplotlib widget
+%matplotlib widget
 
 # %%%%%%%%%%%%%%%%
 # Input data
@@ -172,7 +172,7 @@ ax.set_ylabel("y (pixels)")
 # Apply Gaussian smoothing
 # log_counts = counts
 sigma = 2.5  # <---------- kernel radius = 4*sigma ~ blob size?
-smoothed = gaussian_filter(log_counts, sigma=sigma)
+smoothed = gaussian(log_counts, sigma=sigma, preserve_range=True)
 
 fig, ax = plt.subplots(1, 1)
 ax.imshow(
@@ -305,7 +305,8 @@ blob_y_pixels = y_bin_centers[blobs[:, 1].astype(int)]
 # For a LoG/DoH detector, the response peaks when the blob radius equals sigma * sqrt(2).
 bboxes_from_blobs = []
 for bx, by, sigma in blobs:
-    blob_radius = sigma * np.sqrt(2)
+    # add a 50% buffer?
+    blob_radius = sigma * np.sqrt(2) * 1.5
     bboxes_from_blobs.append(
         (
             x_bin_centers[max(0, int(bx - blob_radius))],
@@ -322,7 +323,7 @@ ax.imshow(
     origin="upper",
     aspect="equal",
     cmap="Blues",
-    # extent=[0, image_w, image_h, 0],
+    extent=[0, image_w, image_h, 0],
     # left, right, bottom, top
     # map image array idcs to coords
 )
