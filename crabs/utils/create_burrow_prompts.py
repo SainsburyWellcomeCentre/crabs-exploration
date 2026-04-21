@@ -362,10 +362,7 @@ def plot_prompts_html(
             showlegend=True,
             customdata=peak_values_rel,
             hovertemplate=(
-                "x=%{x:.1f}<br>"
-                "y=%{y:.1f}<br>"
-                "peak_value_rel=%{customdata:.3f}"
-                # "<extra></extra>"
+                "x=%{x:.1f}<br>y=%{y:.1f}<br>peak_value_rel=%{customdata:.3f}"
             ),
         )
     )
