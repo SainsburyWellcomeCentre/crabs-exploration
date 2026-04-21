@@ -49,6 +49,7 @@ import datashader as ds
 import datashader.transfer_functions as tf
 import numpy as np
 import pandas as pd
+import plotly.colors as pc
 import plotly.graph_objects as go
 import xarray as xr
 from PIL import Image
@@ -238,14 +239,16 @@ def plot_prompts_html(
     video_length_mins: float,
     image_w: int,
     image_h: int,
+    peaks_threshold_rel: float,
     output_html_path: Path,
+    colorscale: str = "Plasma",
     dynspread_threshold: float = 0.975,
 ) -> None:
     """Plot trajectories in single video and overlay per-video prompts.
 
     Rasterises the trajectory data with datashader and overlays prompts as
-    red 'x' peak markers and red bbox rectangles. The figure is saved as an
-    html file.
+    'x' peak markers and bbox rectangles, both coloured by relative peak
+    intensity. The figure is saved as an html file.
     """
     # Initialise canvas
     canvas = ds.Canvas(
@@ -319,15 +322,37 @@ def plot_prompts_html(
             ticks="outside",
             range=[image_h, 0],
         ),
+        legend=dict(x=1.02, y=1, yanchor="top", xanchor="left"),
     )
 
-    # Overlay point prompts as red 'x' peak markers
+    # Color scale bounds from the peak values (shared by points and bboxes)
+    cmin = peaks_threshold_rel
+    cmax = 1.0
+    norm_values = (peak_values_rel - cmin) / (cmax - cmin)
+    bbox_colors = pc.sample_colorscale(colorscale, norm_values)
+
+    # Overlay point prompts as 'x' markers coloured by relative peak intensity
     fig.add_trace(
         go.Scattergl(
             x=peaks_xy[:, 0],
             y=peaks_xy[:, 1],
             mode="markers",
-            marker=dict(symbol="x", color="red", size=8),
+            marker=dict(
+                symbol="x",
+                size=8,
+                color=peak_values_rel,
+                colorscale=colorscale,
+                cmin=cmin,
+                cmax=cmax,
+                colorbar=dict(
+                    title="peak_value_rel",
+                    x=1.02,
+                    y=0,
+                    yanchor="bottom",
+                    len=0.6,
+                    thickness=15,
+                ),
+            ),
             name="prompt_point",
             showlegend=True,
             customdata=peak_values_rel,
@@ -336,26 +361,21 @@ def plot_prompts_html(
             ),
         )
     )
-    # Overlay bbox prompts as red rectangles
-    # (plot as a single scatter trace)
-    # list of x, y coordinates clockwise from top left corner
-    box_corners_x_coords = []
-    box_corners_y_cords = []
-    for xmin, ymin, xmax, ymax in bboxes_clipped_x1y1x2y2:
-        # ATT: we add a None, None corner to break the line between boxes
-        box_corners_x_coords.extend([xmin, xmax, xmax, xmin, xmin, None])
-        box_corners_y_cords.extend([ymin, ymin, ymax, ymax, ymin, None])
-
-    fig.add_trace(
-        go.Scattergl(
-            x=box_corners_x_coords,
-            y=box_corners_y_cords,
-            mode="lines",
-            line=dict(color="red", width=1),
-            name="prompt_box",  # text label shown in the legend and on hover
-            showlegend=True,
+    # Overlay bbox prompts as rectangles coloured by relative peak intensity
+    # (one trace per bbox, but grouped under a single legend entry)
+    for i, (xmin, ymin, xmax, ymax) in enumerate(bboxes_clipped_x1y1x2y2):
+        fig.add_trace(
+            go.Scattergl(
+                x=[xmin, xmax, xmax, xmin, xmin],
+                y=[ymin, ymin, ymax, ymax, ymin],
+                mode="lines",
+                line=dict(color=bbox_colors[i], width=1),
+                name="prompt_box",
+                legendgroup="prompt_box",
+                showlegend=(i == 0),
+                hoverinfo="skip",
+            )
         )
-    )
 
     # Export as html
     fig.write_html(str(output_html_path))
@@ -443,6 +463,7 @@ def main(args: argparse.Namespace) -> None:
                 video_length_minutes,
                 args.image_width,
                 args.image_height,
+                args.peaks_threshold_rel,
                 output_dir_timestamped / f"{group_id}.html",
             )
 
