@@ -56,12 +56,9 @@ from skimage.feature import peak_local_max
 from skimage.filters import gaussian
 
 
-def process_video(
-    ds_video: xr.Dataset,
-    video_id: str,
-    output_dir: Path,
+def prompts_from_trajectory_data(
+    trajectories_xy: np.ndarray,
     *,
-    save_html: bool,
     image_w: int,
     image_h: int,
     bin_size_pixels: int,
@@ -70,11 +67,12 @@ def process_video(
     peaks_min_distance: int,
     peaks_threshold_rel: float,
     node_radius_pixels: float,
-) -> int:
-    """Compute SAM3 prompts for one video."""
-    # Flatten trajectory data and drop NaNs
-    trajectories_xy = _flatten_trajectory_xy(ds_video)
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Compute SAM3 prompts for one group of trajectories.
 
+    A group can be a single video or the union of several (e.g. all videos
+    from a given date).
+    """
     # Compute 2D histogram (square bins)
     counts, xedges, yedges = _compute_2d_histogram(
         trajectories_xy, image_w, image_h, bin_size_pixels
@@ -95,6 +93,9 @@ def process_video(
     peak_values_rel = peak_values / smoothed.max()
 
     # Transform peaks coords in bin-index space into prompts
+    # Set default radius for node around peak if required
+    if node_radius_pixels is None:
+        node_radius_pixels = gaussian_sigma * 4 * bin_size_pixels
     peaks_xy, bboxes_clipped_x1y1x2y2 = _peaks_to_prompts(
         peaks_col_row,
         xedges,
@@ -104,38 +105,7 @@ def process_video(
         image_h,
     )
 
-    # Export as csv
-    n = peaks_xy.shape[0]
-    df = pd.DataFrame(
-        {
-            "video_id": [video_id] * n,
-            "prompt_point_x": peaks_xy[:, 0],
-            "prompt_point_y": peaks_xy[:, 1],
-            "prompt_bbox_xmin": bboxes_clipped_x1y1x2y2[:, 0],
-            "prompt_bbox_ymin": bboxes_clipped_x1y1x2y2[:, 1],
-            "prompt_bbox_xmax": bboxes_clipped_x1y1x2y2[:, 2],
-            "prompt_bbox_ymax": bboxes_clipped_x1y1x2y2[:, 3],
-            "prompt_id": np.arange(n, dtype=int),
-            "peak_value_rel": peak_values_rel,
-        }
-    )
-    df.to_csv(output_dir / f"{video_id}.csv", index=False)
-
-    # Optionally export as html figure
-    if save_html:
-        plot_prompts_html(
-            trajectories_xy,
-            peaks_xy,
-            peak_values_rel,
-            bboxes_clipped_x1y1x2y2,
-            video_id,
-            _get_video_length_minutes(ds_video),
-            image_w,
-            image_h,
-            output_dir / f"{video_id}.html",
-        )
-
-    return peaks_xy.shape[0]
+    return peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel
 
 
 def _flatten_trajectory_xy(
@@ -398,35 +368,86 @@ def main(args: argparse.Namespace) -> None:
     output_dir_timestamped = Path(f"{args.output_dir}_{timestamp}")
     output_dir_timestamped.mkdir(parents=True, exist_ok=True)
 
-    # Set default radius for node around peak
-    if args.node_radius_pixels is None:
-        node_radius_pixels = args.gaussian_sigma * 4 * args.bin_size_pixels
-    else:
-        node_radius_pixels = args.node_radius_pixels
-
     # Read zarr store as datatree
     dt = xr.open_datatree(args.zarr_store, engine="zarr", chunks={})
 
-    # Process each video in data tree
-    for video_node in dt.leaves:
-        ds_video = video_node.ds
-        video_id = ds_video.video_id
+    # ---------------
+    # Build the list of (group_id, [leaves]) groups to process.
+    # With --group-by-pattern: one group per pattern in --patterns (union
+    # across matching videos).
+    # Otherwise: one group per video.
+    if args.group_by_pattern:
+        list_groups = []
+        for pattern in args.patterns:
+            dt_matched = dt.match(pattern)
+            if not dt_matched.children:
+                print(f"No videos match {pattern}")
+                continue
+            leaves = list(dt_matched.leaves)
+            group_id = pattern.rstrip("*")
+            list_groups.append((group_id, leaves))
+    # Otherwise: one group per video
+    else:
+        list_groups = [(node.ds.video_id, [node]) for node in dt.leaves]
+    # ---------------
 
-        n_prompts = process_video(
-            ds_video,
-            video_id,
-            output_dir_timestamped,
-            save_html=args.save_html_figure,
-            image_w=args.image_width,
-            image_h=args.image_height,
-            bin_size_pixels=args.bin_size_pixels,
-            counts_percentile=args.counts_percentile,
-            gaussian_sigma=args.gaussian_sigma,
-            peaks_min_distance=args.peaks_min_distance,
-            peaks_threshold_rel=args.peaks_threshold_rel,
-            node_radius_pixels=node_radius_pixels,
+    # Process each group of trajectories
+    for group_id, leaves in list_groups:
+        trajectories_xy = np.concatenate(
+            [_flatten_trajectory_xy(node.ds) for node in leaves],
+            axis=0,
         )
-        print(f"Video {video_id}: {n_prompts} prompts")
+        video_length_minutes = sum(
+            _get_video_length_minutes(node.ds) for node in leaves
+        )
+
+        peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel = (
+            prompts_from_trajectory_data(
+                trajectories_xy,
+                image_w=args.image_width,
+                image_h=args.image_height,
+                bin_size_pixels=args.bin_size_pixels,
+                counts_percentile=args.counts_percentile,
+                gaussian_sigma=args.gaussian_sigma,
+                peaks_min_distance=args.peaks_min_distance,
+                peaks_threshold_rel=args.peaks_threshold_rel,
+                node_radius_pixels=args.node_radius_pixels,
+            )
+        )
+
+        # Export as csv
+        n_peaks = peaks_xy.shape[0]
+        df = pd.DataFrame(
+            {
+                "group_id": [group_id] * n_peaks,
+                "prompt_point_x": peaks_xy[:, 0],
+                "prompt_point_y": peaks_xy[:, 1],
+                "prompt_bbox_xmin": bboxes_clipped_x1y1x2y2[:, 0],
+                "prompt_bbox_ymin": bboxes_clipped_x1y1x2y2[:, 1],
+                "prompt_bbox_xmax": bboxes_clipped_x1y1x2y2[:, 2],
+                "prompt_bbox_ymax": bboxes_clipped_x1y1x2y2[:, 3],
+                "prompt_id": np.arange(n_peaks, dtype=int),
+                "peak_value_rel": peak_values_rel,
+            }
+        )
+        df.to_csv(output_dir_timestamped / f"{group_id}.csv", index=False)
+
+        # Optionally export as html figure
+        if args.save_html_figure:
+            plot_prompts_html(
+                trajectories_xy,
+                peaks_xy,
+                peak_values_rel,
+                bboxes_clipped_x1y1x2y2,
+                group_id,
+                video_length_minutes,
+                args.image_width,
+                args.image_height,
+                output_dir_timestamped / f"{group_id}.html",
+            )
+
+        # return peaks_xy.shape[0]
+        print(f"Group {group_id} ({len(leaves)} videos): {n_peaks} prompts")
 
     print(f"Output written to {output_dir_timestamped}")
 
@@ -543,7 +564,47 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
             "peaks and prompt bboxes overlaid. Default: not set."
         ),
     )
-    return parser.parse_args(list_args)
+    parser.add_argument(
+        "--group-by-pattern",
+        action="store_true",
+        help=(
+            "If set, trajectory data comes from groups "
+            "that match the provided "
+            "pattern, rather than by video. Default: not set."
+        ),
+    )
+    parser.add_argument(
+        "--patterns",
+        nargs="+",
+        default=[
+            "04.09.2023*",
+            "05.09.2023*",
+            "06.09.2023*",
+            "07.09.2023*",
+            "09.08.2023*",
+            "10.08.2023*",
+        ],
+        help=(
+            "If --group-by-pattern is set, this list of patterns is used. "
+            "Patterns are matched against leaf node paths via "
+            "DataTree.match. Note that if this argument is set without "
+            "--group-by-pattern being passed, the patterns are ignored. "
+            "Default: %(default)s"
+        ),
+    )
+
+    args = parser.parse_args(list_args)
+
+    # Check: --patterns only takes effect with --group-by-pattern
+    # ATT: a user passing the exact default list explicitly wouldn't trigger
+    # the check
+    if (
+        args.patterns != parser.get_default("patterns")
+        and not args.group_by_pattern
+    ):
+        parser.error("--patterns requires --group-by-pattern")
+
+    return args
 
 
 if __name__ == "__main__":
