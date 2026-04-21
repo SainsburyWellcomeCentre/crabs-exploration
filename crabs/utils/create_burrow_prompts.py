@@ -30,6 +30,7 @@ Usage (dependencies are auto-installed via uv):
 #   "numpy>=2.0.0",
 #   "pandas",
 #   "xarray",
+#   "dask",
 #   "zarr",
 #   "scikit-image",
 #   "plotly",
@@ -352,19 +353,30 @@ def plot_prompts_html(
             y=peaks_xy[:, 1],
             mode="markers",
             marker=dict(symbol="x", color="red", size=8),
-            name=f"{n} peaks",
+            name="prompt_point",
+            showlegend=True,
         )
     )
     # Overlay bbox prompts as red rectangles
-    for x1, y1, x2, y2 in bboxes_clipped_x1y1x2y2:
-        fig.add_shape(
-            type="rect",
-            x0=x1,
-            y0=y1,
-            x1=x2,
-            y1=y2,
+    # (plot as a single scatter trace)
+    # list of x, y coordinates clockwise from top left corner
+    box_corners_x_coords = []
+    box_corners_y_cords = []
+    for xmin, ymin, xmax, ymax in bboxes_clipped_x1y1x2y2:
+        # ATT: we add a None, None corner to break the line between boxes
+        box_corners_x_coords.extend([xmin, xmax, xmax, xmin, xmin, None])
+        box_corners_y_cords.extend([ymin, ymin, ymax, ymax, ymin, None])
+
+    fig.add_trace(
+        go.Scattergl(
+            x=box_corners_x_coords,
+            y=box_corners_y_cords,
+            mode="lines",
             line=dict(color="red", width=1),
+            name="prompt_box",  # text label shown in the legend and on hover
+            showlegend=True,
         )
+    )
 
     # Export as html
     fig.write_html(str(output_html_path))
@@ -387,7 +399,7 @@ def main(args: argparse.Namespace) -> None:
     dt = xr.open_datatree(args.zarr_store, engine="zarr", chunks={})
 
     # Process each video in data tree
-    for video_node in dt.leaves():
+    for video_node in dt.leaves:
         ds_video = video_node.ds
         video_id = ds_video.video_id
 
@@ -414,15 +426,18 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
     """Parse CLI args."""
     parser = argparse.ArgumentParser(
         description=(
-            "Generate SAM3 burrow point and bbox prompts from a CrabTracks "
-            "zarr store, one CSV per video."
+            "Generate point and bbox prompts per video for "
+            "segmenting burrows with SAM3"
+            "from the trajectory data in the input "
+            "zarr store."
         ),
     )
     parser.add_argument(
         "zarr_store",
         type=Path,
         help=(
-            "Path to the CrabTracks zarr store produced by "
+            "Path to the input trajectories zarr store. "
+            "Usually a CrabTracks zarr file produced by "
             "create-zarr-dataset."
         ),
     )
@@ -433,7 +448,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
             "Output directory. A '_<YYYYMMDD_HHMMSS>' suffix is appended to "
             "this path before the directory is created, so multiple runs "
             "with the same output_dir argument never collide. "
-            "Per-video CSVs (and HTMLs, if requested) are written inside."
+            "Per-video CSVs (and HTML figures, if requested) are saved here."
         ),
     )
     parser.add_argument(
@@ -441,7 +456,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         type=int,
         default=5,
         help=(
-            "Edge length in pixels of one bin in the trajectory 2D "
+            "Bin edge length in pixels, for the trajectory 2D "
             "histogram (default: 5)."
         ),
     )
@@ -451,7 +466,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         default=99,
         help=(
             "Histogram bins with counts below this percentile are zeroed "
-            "before smoothing (default: 99). Values range 0 to 100"
+            "before smoothing (default: 99). Values range from 0 to 100"
         ),
     )
     parser.add_argument(
@@ -459,7 +474,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         type=float,
         default=2.5,
         help=(
-            "Standard deviation in bins of the Gaussian filter applied to "
+            "Sigma (in bins) of the Gaussian filter applied to "
             "the log-transformed counts (default: 2.5)."
         ),
     )
@@ -468,7 +483,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         type=int,
         default=10,
         help=(
-            "Minimum separation in bins between two detected peaks, passed "
+            "Minimum separation (in bins) between two detected peaks, passed "
             "to skimage.feature.peak_local_max (default: 10)."
         ),
     )
