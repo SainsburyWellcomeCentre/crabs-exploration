@@ -1,21 +1,22 @@
-"""Generate SAM3 burrow prompts from crab trajectory zarr stores.
+"""Generate prompts to segment burrows with SAM3 from crab trajectory data.
 
-For every video group in a `CrabTracks` zarr store, flatten all trajectories
-into 2D points, build a 2D histogram of those points, threshold and smooth it,
-detect local maxima as candidate "node" locations, and turn each peak into a
-prompt: a point (the peak coordinates, unaltered) and a square bounding box
-around it (clipped to the image bounds).
+For every video group in the input zarr store, we collect trajectories across
+all clips, discretise them into a 2D histogram, remove bins below a threshold
+and apply Gaussian smoothing to the result. We then detect local maxima as
+candidate burrow locations (trajectory "nodes"), and turn each of these into
+prompts of two formats: a point one (the peak coordinates, unaltered) and a
+square bounding box around it (clipped to the image bounds).
 
-One CSV is written per video into a timestamped output directory. Optionally,
-an interactive plotly HTML figure per video is also written, with the
-trajectory rasterised by datashader and the prompts overlaid.
+The results are written into a CSV per video, under a timestamped output
+directory. Optionally, an interactive plotly HTML figure per video is also
+saved, with the rasterised trajectory data and the prompts overlaid.
 
 Output CSV columns (one row per prompt):
     video_id,
     prompt_point_x, prompt_point_y,
     prompt_bbox_xmin, prompt_bbox_ymin,
     prompt_bbox_xmax, prompt_bbox_ymax,
-    prompt_id
+    prompt_id # 0-based index per video
 
 Usage (dependencies are auto-installed via uv):
     uv run create_burrow_prompts.py /path/to/store.zarr /path/to/out_dir
@@ -53,70 +54,162 @@ from PIL import Image
 from skimage.feature import peak_local_max
 from skimage.filters import gaussian
 
-# ----------------------------------------------------------------------
-# Trajectory & histogram pipeline
-# ----------------------------------------------------------------------
 
-
-def flatten_trajectory_xy(
+def process_video(
     ds_video: xr.Dataset,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Flatten ``position`` over (time, individuals) and drop NaNs."""
+    video_id: str,
+    output_dir: Path,
+    *,
+    save_html: bool,
+    image_w: int,
+    image_h: int,
+    bin_size_pixels: int,
+    counts_percentile: float,
+    gaussian_sigma: float,
+    peaks_min_distance: int,
+    peaks_threshold_rel: float,
+    node_radius_pixels: float,
+) -> int:
+    """Compute SAM3 prompts for one video."""
+    # Flatten trajectory data and drop NaNs
+    points_xy = _flatten_trajectory_xy(ds_video)
+
+    # Compute 2D histogram (square bins)
+    counts, xedges, yedges = _compute_2d_histogram(
+        points_xy, image_w, image_h, bin_size_pixels
+    )
+
+    # Postprocess
+    smoothed = _apply_threshold_log_gaussian(
+        counts, counts_percentile, gaussian_sigma
+    )
+
+    # Detect local maxima in the smoothed histogram, in bin-index space
+    peaks_col_row = peak_local_max(
+        smoothed,
+        min_distance=peaks_min_distance,
+        threshold_rel=peaks_threshold_rel,
+    )
+
+    # Transform peaks coords in bin-index space into prompts
+    peaks_xy, bboxes_clipped_x1y1x2y2 = _peaks_to_prompts(
+        peaks_col_row,
+        xedges,
+        yedges,
+        node_radius_pixels,
+        image_w,
+        image_h,
+    )
+
+    # Export as csv
+    n = peaks_xy.shape[0]
+    df = pd.DataFrame(
+        {
+            "video_id": [video_id] * n,
+            "prompt_point_x": peaks_xy[:, 0],
+            "prompt_point_y": peaks_xy[:, 1],
+            "prompt_bbox_xmin": bboxes_clipped_x1y1x2y2[:, 0],
+            "prompt_bbox_ymin": bboxes_clipped_x1y1x2y2[:, 1],
+            "prompt_bbox_xmax": bboxes_clipped_x1y1x2y2[:, 2],
+            "prompt_bbox_ymax": bboxes_clipped_x1y1x2y2[:, 3],
+            "prompt_id": np.arange(n, dtype=int),
+        }
+    )
+    df.to_csv(output_dir / f"{video_id}.csv", index=False)
+
+    # Optionally export as html figure
+    if save_html:
+        plot_prompts_html(
+            points_xy,
+            peaks_xy,
+            bboxes_clipped_x1y1x2y2,
+            video_id,
+            _get_video_length_minutes(ds_video),
+            image_w,
+            image_h,
+            output_dir / f"{video_id}.html",
+        )
+
+    return peaks_xy.shape[0]
+
+
+def _flatten_trajectory_xy(
+    ds_video: xr.Dataset,
+) -> np.ndarray:
+    """Flatten ``position`` over (time, individuals) and drop NaNs.
+
+    We construct a 2D array of coordinates aggregating all individuals.
+    """
     x = ds_video.position.sel(space="x").values.reshape(-1)
     y = ds_video.position.sel(space="y").values.reshape(-1)
     mask = ~np.isnan(x) & ~np.isnan(y)
-    return x[mask], y[mask]
+    return np.c_[x[mask], y[mask]]
 
 
-def compute_2d_histogram(
-    points_x: np.ndarray,
-    points_y: np.ndarray,
+def _compute_2d_histogram(
+    points_xy: np.ndarray,
     image_w: int,
     image_h: int,
     bin_size_pixels: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Bin trajectory points into a 2D histogram over the image."""
+    """Bin trajectory points into a 2D histogram over the image.
+
+    Bins are square.
+    """
     n_bins_x = round(image_w / bin_size_pixels)
     n_bins_y = round(image_h / bin_size_pixels)
     counts, xedges, yedges = np.histogram2d(
-        points_x,
-        points_y,
+        points_xy[:, 0],
+        points_xy[:, 1],
         bins=[n_bins_x, n_bins_y],
         range=[[0, image_w], [0, image_h]],
     )
     return counts, xedges, yedges
 
 
-def threshold_counts(counts: np.ndarray, percentile: float) -> np.ndarray:
-    """Zero histogram bins whose counts are below the given percentile."""
+def _apply_threshold_log_gaussian(counts, percentile, sigma):
+    """Postprocess the histogram counts.
+
+    The steps are:
+    - Set to zero histogram bins whose counts are below the given percentile.
+    - Take log(x+1) (avoids large bins dominanting)
+    - Apply Gaussian filter to histogram
+    """
+    # Set to zero histogram bins whose counts are below the given percentile.
     min_count = np.percentile(counts, percentile)
-    return np.where(counts >= min_count, counts, 0)
+    counts_filtered = np.where(counts >= min_count, counts, 0)
 
+    # Take log(x+1)
+    log_counts = np.log1p(counts_filtered)
 
-def log_transform_counts(counts_filtered: np.ndarray) -> np.ndarray:
-    """Apply ``log1p`` to the filtered counts."""
-    return np.log1p(counts_filtered)
-
-
-def smooth_counts(log_counts: np.ndarray, sigma: float) -> np.ndarray:
-    """Apply a Gaussian filter to the log-transformed counts."""
+    # Gaussian filter to histogram
     return gaussian(log_counts, sigma=sigma, preserve_range=True)
 
 
-def find_peak_bin_indices(
-    smoothed: np.ndarray,
-    min_distance: int,
-    threshold_rel: float,
-) -> np.ndarray:
-    """Detect local maxima in the smoothed histogram, in bin-index space."""
-    return peak_local_max(
-        smoothed,
-        min_distance=min_distance,
-        threshold_rel=threshold_rel,
+def _peaks_to_prompts(
+    peaks_col_row: np.ndarray,
+    xedges: np.ndarray,
+    yedges: np.ndarray,
+    node_radius_pixels: float,
+    image_w: int,
+    image_h: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute point and bbox prompts from peak values.
+
+    Bboxes are expressed as xmin, ymin, xmax, ymax coordinates.
+    """
+    # Compute point prompts in pixel space from peak bins
+    peaks_xy = _bin_indices_to_pixels(peaks_col_row, xedges, yedges)
+
+    # Compute bbox prompts from peaks in pixel space, clipped
+    # to image boundaries
+    bboxes_clipped = _point_prompts_to_bbox_prompts(
+        peaks_xy, node_radius_pixels, image_w, image_h
     )
+    return peaks_xy, bboxes_clipped
 
 
-def bin_indices_to_pixels(
+def _bin_indices_to_pixels(
     peaks_col_row: np.ndarray,
     xedges: np.ndarray,
     yedges: np.ndarray,
@@ -129,18 +222,16 @@ def bin_indices_to_pixels(
     return np.column_stack([node_x, node_y])
 
 
-# ----------------------------------------------------------------------
-# Point prompts -> bbox prompts
-# ----------------------------------------------------------------------
-
-
-def point_prompts_to_bbox_prompts(
+def _point_prompts_to_bbox_prompts(
     peaks_xy: np.ndarray,
     node_radius_pixels: float,
     image_w: int,
     image_h: int,
 ) -> np.ndarray:
-    """Build square bboxes around each peak and clip them to the image."""
+    """Build square bboxes around each peak and clip to the image boundaries.
+
+    Bboxes are expressed as xmin, ymin, xmax, ymax coordinates.
+    """
     node_x = peaks_xy[:, 0]
     node_y = peaks_xy[:, 1]
     return np.column_stack(
@@ -153,30 +244,14 @@ def point_prompts_to_bbox_prompts(
     )
 
 
-# ----------------------------------------------------------------------
-# CSV assembly
-# ----------------------------------------------------------------------
+def _get_video_length_minutes(ds_video: xr.Dataset) -> float:
+    """Return the video length in minutes from the zarr coords/attrs.
 
-
-def prompts_to_dataframe(
-    peaks_xy: np.ndarray,
-    bboxes_clipped_x1y1x2y2: np.ndarray,
-    video_id: str,
-) -> pd.DataFrame:
-    """Build the per-video prompts dataframe."""
-    n = peaks_xy.shape[0]
-    return pd.DataFrame(
-        {
-            "video_id": [video_id] * n,
-            "prompt_point_x": peaks_xy[:, 0],
-            "prompt_point_y": peaks_xy[:, 1],
-            "prompt_bbox_xmin": bboxes_clipped_x1y1x2y2[:, 0],
-            "prompt_bbox_ymin": bboxes_clipped_x1y1x2y2[:, 1],
-            "prompt_bbox_xmax": bboxes_clipped_x1y1x2y2[:, 2],
-            "prompt_bbox_ymax": bboxes_clipped_x1y1x2y2[:, 3],
-            "prompt_id": np.arange(n, dtype=int),
-        }
-    )
+    A clip goes from end of previous escape (or start of video if there is
+    no previous escape) to end of current escape.
+    """
+    n_frames = int(ds_video.clip_last_frame_0idx.max()) + 1
+    return n_frames / float(ds_video.fps) / 60
 
 
 # ----------------------------------------------------------------------
@@ -185,8 +260,7 @@ def prompts_to_dataframe(
 
 
 def rasterise_trajectory(
-    points_x: np.ndarray,
-    points_y: np.ndarray,
+    points_xy: np.ndarray,
     image_w: int,
     image_h: int,
     dynspread_threshold: float = 0.975,
@@ -198,7 +272,9 @@ def rasterise_trajectory(
         x_range=(0, image_w),
         y_range=(0, image_h),
     )
-    agg = canvas.points(pd.DataFrame({"x": points_x, "y": points_y}), "x", "y")
+    agg = canvas.points(
+        pd.DataFrame({"x": points_xy[:, 0], "y": points_xy[:, 1]}), "x", "y"
+    )
     img = tf.shade(agg, cmap=["#1f77b4"])
     img = tf.dynspread(img, threshold=dynspread_threshold)
     return img.to_pil().transpose(Image.FLIP_TOP_BOTTOM)
@@ -292,8 +368,7 @@ def overlay_prompts(
 
 
 def plot_prompts_html(
-    points_x: np.ndarray,
-    points_y: np.ndarray,
+    points_xy: np.ndarray,
     peaks_xy: np.ndarray,
     bboxes_clipped_x1y1x2y2: np.ndarray,
     video_id: str,
@@ -303,79 +378,12 @@ def plot_prompts_html(
     output_html_path: Path,
 ) -> None:
     """Build and save the per-video prompts overlay figure as HTML."""
-    rasterised = rasterise_trajectory(points_x, points_y, image_w, image_h)
+    rasterised = rasterise_trajectory(points_xy, image_w, image_h)
     fig = build_trajectory_figure(
         rasterised, video_id, video_length_minutes, image_w, image_h
     )
     overlay_prompts(fig, peaks_xy, bboxes_clipped_x1y1x2y2)
     fig.write_html(str(output_html_path))
-
-
-# ----------------------------------------------------------------------
-# Per-video orchestration
-# ----------------------------------------------------------------------
-
-
-def get_video_length_minutes(ds_video: xr.Dataset) -> float:
-    """Return the video length in minutes from the zarr coords/attrs."""
-    n_frames = int(ds_video.clip_last_frame_0idx.max()) + 1
-    return n_frames / float(ds_video.fps) / 60
-
-
-def process_video(
-    ds_video: xr.Dataset,
-    video_id: str,
-    output_dir: Path,
-    *,
-    save_html: bool,
-    image_w: int,
-    image_h: int,
-    bin_size_pixels: int,
-    counts_percentile: float,
-    gaussian_sigma: float,
-    peaks_min_distance: int,
-    peaks_threshold_rel: float,
-    node_radius_pixels: float,
-) -> int:
-    """Run the full pipeline for one video and write its outputs."""
-    points_x, points_y = flatten_trajectory_xy(ds_video)
-
-    counts, xedges, yedges = compute_2d_histogram(
-        points_x, points_y, image_w, image_h, bin_size_pixels
-    )
-    counts_filtered = threshold_counts(counts, counts_percentile)
-    log_counts = log_transform_counts(counts_filtered)
-    smoothed = smooth_counts(log_counts, gaussian_sigma)
-    peaks_col_row = find_peak_bin_indices(
-        smoothed, peaks_min_distance, peaks_threshold_rel
-    )
-    peaks_xy = bin_indices_to_pixels(peaks_col_row, xedges, yedges)
-    bboxes_clipped = point_prompts_to_bbox_prompts(
-        peaks_xy, node_radius_pixels, image_w, image_h
-    )
-
-    df = prompts_to_dataframe(peaks_xy, bboxes_clipped, video_id)
-    df.to_csv(output_dir / f"{video_id}.csv", index=False)
-
-    if save_html:
-        plot_prompts_html(
-            points_x,
-            points_y,
-            peaks_xy,
-            bboxes_clipped,
-            video_id,
-            get_video_length_minutes(ds_video),
-            image_w,
-            image_h,
-            output_dir / f"{video_id}.html",
-        )
-
-    return peaks_xy.shape[0]
-
-
-# ----------------------------------------------------------------------
-# Top-level
-# ----------------------------------------------------------------------
 
 
 def main(args: argparse.Namespace) -> None:
@@ -453,7 +461,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         default=99,
         help=(
             "Histogram bins with counts below this percentile are zeroed "
-            "before smoothing (default: 99)."
+            "before smoothing (default: 99). Values range 0 to 100"
         ),
     )
     parser.add_argument(
