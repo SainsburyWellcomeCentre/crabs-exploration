@@ -73,11 +73,11 @@ def process_video(
 ) -> int:
     """Compute SAM3 prompts for one video."""
     # Flatten trajectory data and drop NaNs
-    points_xy = _flatten_trajectory_xy(ds_video)
+    trajectories_xy = _flatten_trajectory_xy(ds_video)
 
     # Compute 2D histogram (square bins)
     counts, xedges, yedges = _compute_2d_histogram(
-        points_xy, image_w, image_h, bin_size_pixels
+        trajectories_xy, image_w, image_h, bin_size_pixels
     )
 
     # Postprocess
@@ -91,6 +91,8 @@ def process_video(
         min_distance=peaks_min_distance,
         threshold_rel=peaks_threshold_rel,
     )
+    peak_values = smoothed[peaks_col_row[:, 0], peaks_col_row[:, 1]]
+    peak_values_rel = peak_values / smoothed.max()
 
     # Transform peaks coords in bin-index space into prompts
     peaks_xy, bboxes_clipped_x1y1x2y2 = _peaks_to_prompts(
@@ -114,6 +116,7 @@ def process_video(
             "prompt_bbox_xmax": bboxes_clipped_x1y1x2y2[:, 2],
             "prompt_bbox_ymax": bboxes_clipped_x1y1x2y2[:, 3],
             "prompt_id": np.arange(n, dtype=int),
+            "peak_value_rel": peak_values_rel,
         }
     )
     df.to_csv(output_dir / f"{video_id}.csv", index=False)
@@ -121,8 +124,9 @@ def process_video(
     # Optionally export as html figure
     if save_html:
         plot_prompts_html(
-            points_xy,
+            trajectories_xy,
             peaks_xy,
+            peak_values_rel,
             bboxes_clipped_x1y1x2y2,
             video_id,
             _get_video_length_minutes(ds_video),
@@ -258,6 +262,7 @@ def _get_video_length_minutes(ds_video: xr.Dataset) -> float:
 def plot_prompts_html(
     trajectory_points_xy: np.ndarray,
     peaks_xy: np.ndarray,
+    peak_values_rel: np.ndarray,
     bboxes_clipped_x1y1x2y2: np.ndarray,
     video_id: str,
     video_length_mins: float,
@@ -355,6 +360,13 @@ def plot_prompts_html(
             marker=dict(symbol="x", color="red", size=8),
             name="prompt_point",
             showlegend=True,
+            customdata=peak_values_rel,
+            hovertemplate=(
+                "x=%{x:.1f}<br>"
+                "y=%{y:.1f}<br>"
+                "peak_value_rel=%{customdata:.3f}"
+                # "<extra></extra>"
+            ),
         )
     )
     # Overlay bbox prompts as red rectangles
