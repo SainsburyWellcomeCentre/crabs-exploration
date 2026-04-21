@@ -237,6 +237,7 @@ bboxes_from_nodes = np.column_stack(
 # shape: (n_nodes, 4), columns: x_min, y_min, x_max, y_max
 
 # %%
+# Visualise detected peaks
 # plot peaks on smoothed data
 fig, ax = plt.subplots(1, 1)
 ax.imshow(
@@ -303,106 +304,4 @@ ax.legend(fontsize=8)
 
 
 
-# %%%%%%%%%%%%%%%%%%%%
-# Option 2: Use blob_doh instead
-from skimage.feature import blob_doh, blob_log
 
-blobs = blob_doh(
-    log_counts,
-    min_sigma=3,
-    max_sigma=10,
-    num_sigma=5,
-    threshold_rel=0.5,
-)
-# blobs is an array of [y, x, sigma] for each detected blob
-# convert blob bin indices to pixel coords for scatter
-blob_x_pixels = x_bin_centers[blobs[:, 0].astype(int)]
-blob_y_pixels = y_bin_centers[blobs[:, 1].astype(int)]
-
-# Define bboxes around blobs using sigma  values
-# blobs = [row, col, sigma] in bin-index space (row ~ x-axis here)
-# half_size = blobs[:, 2] * np.sqrt(2)
-# # standard blob radius from scale-space theory.
-# For a LoG/DoH detector, the response peaks when the blob radius equals sigma * sqrt(2).
-bboxes_from_blobs = []
-for bx, by, sigma in blobs:
-    # add a 50% buffer?
-    blob_radius = sigma * np.sqrt(2) * 1.5
-    bboxes_from_blobs.append(
-        (
-            x_bin_centers[max(0, int(bx - blob_radius))],
-            y_bin_centers[max(0, int(by - blob_radius))],
-            x_bin_centers[min(len(x_bin_centers) - 1, int(bx + blob_radius))],
-            y_bin_centers[min(len(y_bin_centers) - 1, int(by + blob_radius))],
-        )
-    )
-
-# Plot detected peaks on input data
-fig, ax = plt.subplots(1, 1)
-ax.imshow(
-    log_counts.T,  # <---------
-    origin="upper",
-    aspect="equal",
-    cmap="Blues",
-    extent=[0, image_w, image_h, 0],
-    # left, right, bottom, top
-    # map image array idcs to coords
-)
-ax.scatter(
-    blob_x_pixels,
-    blob_y_pixels,
-    s=25,
-    c="red",
-    marker="x",
-    linewidths=0.5,
-    label=f"{len(blobs)} peaks",
-)
-ax.set_title(f"Detected peaks {ds_video.video_id}")
-ax.set_xlabel("x (pixels)")
-ax.set_ylabel("y (pixels)")
-ax.legend(fontsize=8)
-
-# Plot peaks on trajectory plot
-fig, ax = plt.subplots(1, 1)
-ax.imshow(
-    counts.T,  # <---------
-    origin="upper",
-    aspect="equal",
-    cmap="Blues",
-    extent=[0, image_w, image_h, 0],
-    # left, right, bottom, top
-    # map image array idcs to coords
-    vmax=np.percentile(counts, 95),
-)
-ax.scatter(
-    blob_x_pixels,
-    blob_y_pixels,
-    s=25,
-    c="red",
-    marker="x",
-    linewidths=0.5,
-    label=f"{len(blobs)} peaks",
-)
-# Plot bboxes
-for x_min, y_min, x_max, y_max in bboxes_from_blobs:
-    ax.add_patch(
-        plt.Rectangle(
-            (x_min, y_min),
-            x_max - x_min,
-            y_max - y_min,
-            edgecolor="red",
-            facecolor="none",
-            linewidth=0.8,
-        )
-    )
-ax.set_title(f"Detected peaks {ds_video.video_id}")
-ax.set_xlabel("x (pixels)")
-ax.set_ylabel("y (pixels)")
-ax.legend(fontsize=8)
-
-
-# %%%%%%%%%%%%%%%%%%%
-
-
-# %%%%%%%%%%%%%%%%%
-# Export data for visualisation in napari?
