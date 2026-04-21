@@ -250,62 +250,74 @@ def _get_video_length_minutes(ds_video: xr.Dataset) -> float:
     A clip goes from end of previous escape (or start of video if there is
     no previous escape) to end of current escape.
     """
-    n_frames = int(ds_video.clip_last_frame_0idx.max()) + 1
+    n_frames = int(ds_video.clip_last_frame_0idx.max().compute()) + 1
     return n_frames / float(ds_video.fps) / 60
 
 
-# ----------------------------------------------------------------------
-# Plotly figure
-# ----------------------------------------------------------------------
-
-
-def rasterise_trajectory(
-    points_xy: np.ndarray,
+def plot_prompts_html(
+    trajectory_points_xy: np.ndarray,
+    peaks_xy: np.ndarray,
+    bboxes_clipped_x1y1x2y2: np.ndarray,
+    video_id: str,
+    video_length_mins: float,
     image_w: int,
     image_h: int,
+    output_html_path: Path,
     dynspread_threshold: float = 0.975,
-) -> Image.Image:
-    """Rasterise trajectory points with datashader to a PIL image."""
+) -> None:
+    """Plot trajectories in single video and overlay per-video prompts.
+
+    Rasterises the trajectory data with datashader and overlays prompts as
+    red 'x' peak markers and red bbox rectangles. The figure is saved as an
+    html file.
+    """
+    # Initialise canvas
     canvas = ds.Canvas(
         plot_width=image_w,
         plot_height=image_h,
         x_range=(0, image_w),
         y_range=(0, image_h),
     )
+
+    # Add points to the canvas and rasterise
     agg = canvas.points(
-        pd.DataFrame({"x": points_xy[:, 0], "y": points_xy[:, 1]}), "x", "y"
+        pd.DataFrame(
+            {
+                "x": trajectory_points_xy[:, 0],
+                "y": trajectory_points_xy[:, 1],
+            }
+        ),
+        "x",
+        "y",
     )
     img = tf.shade(agg, cmap=["#1f77b4"])
     img = tf.dynspread(img, threshold=dynspread_threshold)
-    return img.to_pil().transpose(Image.FLIP_TOP_BOTTOM)
 
-
-def build_trajectory_figure(
-    rasterised_pil_image: Image.Image,
-    video_id: str,
-    video_length_minutes: float,
-    image_w: int,
-    image_h: int,
-) -> go.Figure:
-    """Wrap the rasterised trajectory image in a plotly figure."""
+    # Convert img to PIL and then to bytes for plotly
+    rasterised_pil_image = img.to_pil().transpose(Image.FLIP_TOP_BOTTOM)
     img_buffer = io.BytesIO()
     rasterised_pil_image.save(img_buffer, format="PNG")
     img_buffer.seek(0)
 
     fig = go.Figure()
+
+    # plot rasterised trajectory data
     fig.add_layout_image(
         source=Image.open(img_buffer),
         xref="x",
         yref="y",
         x=0,
-        y=0,
+        y=0,  # top-left corner in data coords (y is inverted)
         sizex=image_w,
         sizey=image_h,
         sizing="stretch",
         layer="below",
     )
+
+    # customise axes and labels
+    n = peaks_xy.shape[0]
     fig.update_layout(
-        title=f"{video_id} ({video_length_minutes:.1f} min)",
+        title=(f"{video_id} ({video_length_mins:.1f} min) - {n} prompts"),
         xaxis_title="x (pixels)",
         yaxis_title="y (pixels)",
         yaxis_scaleanchor="x",
@@ -332,17 +344,8 @@ def build_trajectory_figure(
             range=[image_h, 0],
         ),
     )
-    return fig
 
-
-def overlay_prompts(
-    fig: go.Figure,
-    peaks_xy: np.ndarray,
-    bboxes_clipped_x1y1x2y2: np.ndarray,
-) -> None:
-    """Add red bbox rectangles and red 'x' peak markers to the figure."""
-    n = peaks_xy.shape[0]
-
+    # Overlay point prompts as red 'x' peak markers
     fig.add_trace(
         go.Scattergl(
             x=peaks_xy[:, 0],
@@ -352,7 +355,7 @@ def overlay_prompts(
             name=f"{n} peaks",
         )
     )
-
+    # Overlay bbox prompts as red rectangles
     for x1, y1, x2, y2 in bboxes_clipped_x1y1x2y2:
         fig.add_shape(
             type="rect",
@@ -363,48 +366,35 @@ def overlay_prompts(
             line=dict(color="red", width=1),
         )
 
-    current_title = fig.layout.title.text or ""
-    fig.update_layout(title=f"{current_title} \u2014 {n} prompts")
-
-
-def plot_prompts_html(
-    points_xy: np.ndarray,
-    peaks_xy: np.ndarray,
-    bboxes_clipped_x1y1x2y2: np.ndarray,
-    video_id: str,
-    video_length_minutes: float,
-    image_w: int,
-    image_h: int,
-    output_html_path: Path,
-) -> None:
-    """Build and save the per-video prompts overlay figure as HTML."""
-    rasterised = rasterise_trajectory(points_xy, image_w, image_h)
-    fig = build_trajectory_figure(
-        rasterised, video_id, video_length_minutes, image_w, image_h
-    )
-    overlay_prompts(fig, peaks_xy, bboxes_clipped_x1y1x2y2)
+    # Export as html
     fig.write_html(str(output_html_path))
 
 
 def main(args: argparse.Namespace) -> None:
     """Generate burrow prompts for every video in the zarr store."""
+    # Compute timestamped output dir
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    actual_output_dir = Path(f"{args.output_dir}_{timestamp}")
-    actual_output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir_timestamped = Path(f"{args.output_dir}_{timestamp}")
+    output_dir_timestamped.mkdir(parents=True, exist_ok=True)
 
+    # Set default radius for node around peak
     if args.node_radius_pixels is None:
         node_radius_pixels = args.gaussian_sigma * 4 * args.bin_size_pixels
     else:
         node_radius_pixels = args.node_radius_pixels
 
+    # Read zarr store as datatree
     dt = xr.open_datatree(args.zarr_store, engine="zarr", chunks={})
 
-    for video_id, video_node in dt.children.items():
+    # Process each video in data tree
+    for video_node in dt.leaves():
         ds_video = video_node.ds
+        video_id = ds_video.video_id
+
         n_prompts = process_video(
             ds_video,
             video_id,
-            actual_output_dir,
+            output_dir_timestamped,
             save_html=args.save_html_figure,
             image_w=args.image_width,
             image_h=args.image_height,
@@ -417,7 +407,7 @@ def main(args: argparse.Namespace) -> None:
         )
         print(f"Video {video_id}: {n_prompts} prompts")
 
-    print(f"Output written to {actual_output_dir}")
+    print(f"Output written to {output_dir_timestamped}")
 
 
 def parse_args(list_args: list[str]) -> argparse.Namespace:
@@ -533,4 +523,5 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
 
 
 if __name__ == "__main__":
-    main(parse_args(sys.argv[1:]))
+    args = parse_args(sys.argv[1:])
+    main(args)
