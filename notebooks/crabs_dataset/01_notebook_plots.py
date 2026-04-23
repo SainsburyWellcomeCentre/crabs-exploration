@@ -150,8 +150,8 @@ class PlotClipsAccessor:
             "spontaneous": "r",
         }
 
-    def __call__(self, clip_id):
-        ds_video = self._dt[clip_id].ds
+    def __call__(self, video_id):
+        ds_video = self._dt[video_id].ds
 
         # prepare data for plot
         bar_widths = (
