@@ -12,16 +12,27 @@ directory. Optionally, an interactive plotly HTML figure per video is also
 saved, with the rasterised trajectory data and the prompts overlaid.
 
 Output CSV columns (one row per prompt):
-    video_id,
-    prompt_point_x, prompt_point_y,
-    prompt_bbox_xmin, prompt_bbox_ymin,
-    prompt_bbox_xmax, prompt_bbox_ymax,
-    prompt_id # 0-based index per video
+    group_id,
+    prompt_point_x,prompt_point_y,
+    prompt_bbox_xmin,prompt_bbox_ymin,
+    prompt_bbox_xmax,prompt_bbox_ymax,
+    prompt_id, # id within group
+    peak_value_rel # peak value relative to max
 
 Usage (dependencies are auto-installed via uv):
+* To generate prompts per video (default)
     uv run create_burrow_prompts.py /path/to/store.zarr /path/to/out_dir
+* To generate prompts per day
+    uv run create_burrow_prompts.py /path/to/store.zarr /path/to/out_dir \
+        --group-by-pattern
+* To generate prompts per specific pattern (e.g. across all Sept data)
+    uv run create_burrow_prompts.py /path/to/store.zarr /path/to/out_dir \
+        --group-by-pattern *.09.*
+* To save figures
     uv run create_burrow_prompts.py /path/to/store.zarr /path/to/out_dir \
         --save-html-figure
+
+
 """
 
 # /// script
