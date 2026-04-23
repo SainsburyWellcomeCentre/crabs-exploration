@@ -39,6 +39,7 @@ dependencies = [
     "numba>=0.60.0",
     # to avoid conflict between movement and sleap-nn;
     # numba is installed via xarray[accel] from movement
+    # for html figures of trajectories via notebooks/crabs_dataset:
     "plotly",
     "datashader",
 ]
