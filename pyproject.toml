@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
     "opencv-python",
-    "sleap[nn]",  # works with python>3.11
+    "sleap[nn]",        # works with python>3.11
     "typer",
     "timecode",
     "torch",
@@ -39,9 +39,6 @@ dependencies = [
     "numba>=0.60.0",
     # to avoid conflict between movement and sleap-nn;
     # numba is installed via xarray[accel] from movement
-    # for html figures of trajectories via notebooks/crabs_dataset:
-    "plotly",
-    "datashader",
 ]
 
 
@@ -63,6 +60,12 @@ dev = [
     # "types-attrs",
     # "types-PyYAML",
     # "types-requests",
+]
+notebooks = [
+    "ipympl",
+    # for html figures of trajectories via notebooks/crabs_dataset:
+    "plotly",
+    "datashader",
 ]
 
 [project.scripts]
@@ -88,9 +91,7 @@ exclude = ["tests"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=crabs"
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-]
+markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
 
 [tool.setuptools_scm]
 
