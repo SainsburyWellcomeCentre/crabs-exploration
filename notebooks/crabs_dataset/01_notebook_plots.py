@@ -41,8 +41,8 @@ pio.renderers.default = "browser"
 # Input data
 
 
-data_dir = Path("/Users/sofia/swc/CrabTracks")
-crabs_zarr_dataset = data_dir / "CrabTracks-slurm2412462-slurm2423692.zarr"
+data_dir = Path().home() / "swc" / "project_crabs" / "data" / "CrabTracks"
+crabs_zarr_dataset = data_dir / "CrabTracks-slurm2478780-2478861-2489356.zarr"
 
 data_vars_order = [
     "position",
@@ -71,7 +71,7 @@ print(dt)
 
 # .to_dataset(): makes a copy
 # .ds(): returns a view, changes propagate to tree
-ds_video = dt["06.09.2023-06-Right"].ds
+ds_video = dt["05.09.2023-05-Right"].ds
 
 # prepare data for plot
 list_colors = [plt.get_cmap("tab20c").colors[i] for i in [2, 3]]  # 2 colors
@@ -123,6 +123,7 @@ for i, rect in enumerate(rects):
         color="black",
     )
 
+
 ax.set_xlim(0, ds_video.clip_last_frame_0idx.values.max() * frames_to_min)
 ax.set_ylim(
     -bar_height_plot / 2,
@@ -134,6 +135,106 @@ ax.yaxis.set_visible(False)
 ax.set_aspect(25_000 * frames_to_min)
 ax.set_title(ds_video.video_id)
 
+
+# %%
+# If we use an accessor:
+@xr.register_datatree_accessor("plot_clips_in_video")
+class PlotClipsAccessor:
+    def __init__(self, dt):
+        self._dt = dt
+
+        self.bar_height = 1
+        self.bar_colors = [plt.get_cmap("tab20c").colors[i] for i in [2, 3]]
+        self.escape_colors = {
+            "triggered": "k",
+            "spontaneous": "r",
+        }
+
+    def __call__(self, clip_id):
+        ds_video = self._dt[clip_id].ds
+
+        # prepare data for plot
+        bar_widths = (
+            ds_video.clip_last_frame_0idx.values
+            - ds_video.clip_first_frame_0idx.values
+        ) + 1
+        bar_edges = ds_video.clip_first_frame_0idx.values
+
+        frames_to_min = 1 / (ds_video.fps * 60)
+        video_dur_min = (
+            ds_video.clip_last_frame_0idx.values.max() + 1
+        ) * frames_to_min
+
+        # plot horizontal bar plot
+        fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+        rects = ax.barh(
+            y=np.zeros_like(bar_widths),
+            width=bar_widths * frames_to_min,
+            left=bar_edges * frames_to_min,
+            height=self.bar_height,
+            color=self.bar_colors,
+        )
+
+        # add vertical lines for escape frames
+        ax.vlines(
+            ds_video.clip_escape_first_frame_0idx.values * frames_to_min,
+            ymin=-self.bar_height / 2,
+            ymax=self.bar_height / 2,
+            color=[
+                self.escape_colors[escape_type]
+                for escape_type in ds_video.clip_escape_type.values
+            ],
+            linestyle="--",
+        )
+
+        # Add text labels to each bar
+        for i, rect in enumerate(rects):
+            text_x = rect.get_x() + rect.get_width() / 2
+            text_y = rect.get_y() + rect.get_height() / 2
+            ax.text(
+                text_x,
+                text_y,
+                f"({rect.get_width():.1f})",
+                va="center",
+                ha="center",
+                fontsize=10,
+                color="black",
+            )
+
+        # legend for escape line types
+        legend_handles = [
+            plt.Line2D([0], [0], color=color, linestyle="--", label=label)
+            for label, color in self.escape_colors.items()
+        ]
+        ax.legend(
+            handles=legend_handles,
+            loc="upper left",
+            bbox_to_anchor=(1.0, 1.0),
+        )
+
+        ax.set_xlim(0, video_dur_min)
+        ax.set_ylim(
+            -bar_height_plot / 2,
+            bar_height_plot / 2,
+        )
+        ax.set_xlabel("time (min)")
+        ax.yaxis.set_visible(False)
+
+        ax.set_aspect(25_000 * frames_to_min)
+        ax.set_title(
+            f"{ds_video.video_id} ({video_dur_min:.2f} min, "
+            f"n_clips ={len(ds_video.clip_escape_type.values)})"
+        )
+
+        return fig, ax
+
+
+# %%
+# Then we can do
+# dt.plot_clips("04.09.2023-05-Right")
+
+for video_id in list(dt.match("04.09.2023*")):
+    dt.plot_clips_in_video(video_id)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
 # Visualise trajectories for one clip
