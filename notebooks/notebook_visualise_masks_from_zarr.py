@@ -1,3 +1,5 @@
+"""A notebook to visualise masks in annotations dataset."""
+
 # %%
 from pathlib import Path
 
@@ -10,8 +12,9 @@ import xarray as xr
 import zarr
 from ethology.io.annotations import load_bboxes
 from PIL import Image
+
 # %%
-%matplotlib widget
+# %matplotlib widget
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # September groundtruth data
@@ -23,7 +26,6 @@ LABEL_NAME = "crab"
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
 # Helpers
-
 
 class ImageArrayLazy:
     """A lazy array for images in a list."""
@@ -100,7 +102,6 @@ def ellipses_from_labels(label_image):
     return ellipse_corners, major_axes, minor_axes
 
 
-
 # %%%%%%%%%%%%%%%%%%%%%%
 # Read groundtruth as ethology annotation dataset
 ds_bboxes = load_bboxes.from_files(
@@ -117,18 +118,14 @@ png_files = sorted(ds_bboxes.attrs["images_directories"].glob("*.png"))
 image_array = ImageArrayLazy(png_files)
 print(image_array.shape)
 
-# add as attribute?
+# add as attribute
 ds_bboxes.attrs["image_array"] = image_array
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Load masks
-output_masks_dir = Path(
-    "/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/output/sep2023-full"
-)
-
 zarr_root = zarr.open(
-    output_masks_dir / f"{LABEL_NAME} masks.zarr",
+    DATA_DIR / f"{LABEL_NAME} masks.zarr",
     mode="r",
 )
 
@@ -136,196 +133,9 @@ mask_da_array = da.from_zarr(zarr_root["masks"])
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# How to add masks to bboxes ds with aligned ids
-
-# What I would like is something like
-# ds_bboxes.masks.sel(image_id=0) ---> returns masks for that frame
-# ds_bboxes.masks.sel(image_id=0, id=3) ---> returns mask for that frame and id=3
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Option 1: as dask-arrays
-# (but we lose alignment with ID) --- except if ID matches label?
-
-ds_bboxes["masks"] = xr.DataArray(
-    data=mask_da_array,
-    dims=["image_id", "img_h", "img_w"],
-)
-
-# %%
-# Example usage
-
-image_id = 40
-id = 10
-
-fig, ax = plt.subplots(1, 1)
-# image
-ax.imshow(ds_bboxes.image_array[image_id])
-
-# bbox centre
-ax.scatter(
-    ds_bboxes.position.sel(image_id=image_id, id=id, space="x"),
-    ds_bboxes.position.sel(image_id=image_id, id=id, space="y"),
-    15,
-    marker="x",
-    color="r",
-)
-# red contour around corresponding mask
-# NOTE id + 1, since label=0 in the mask is background
-single_mask = (ds_bboxes.masks.sel(image_id=image_id) == id + 1)
-ax.imshow(
-    single_mask,
-    cmap="Reds",
-    alpha=single_mask.astype(float)*0.5,
-)
-ax.contour(single_mask, levels=[0.5], colors="red", linewidths=0.5)
-
-# all masks
-all_masks_one_img = ds_bboxes.masks.sel(image_id=image_id)
-ax.imshow(
-    all_masks_one_img,
-    cmap="turbo",
-    alpha=(all_masks_one_img > 0).astype(float)*0.5,
-)
-
-# %%%%%
-# If we use an accessor:
-@xr.register_dataset_accessor("sel_mask")
-class MaskAccessor:
-    def __init__(self, ds):
-        self._ds = ds
-
-    def __call__(self, image_id, id=None):
-        """Select masks with input id.
-    
-        We assume:
-        - the id coordinate goes from 0 to n in ds,
-        - the integers in the mask array `ds.masks` go from 1 to n, 
-        0 being the background
-        - a bbox with id=M is the box enclosing mask with label id = M+1
-        """
-        mask_single_img = self._ds.masks.sel(image_id=image_id)
-        if id is not None:
-            return (mask_single_img == id + 1)
-        return mask_single_img
-
-# Then we can do 
-ds_bboxes.sel_mask(image_id=40)
-ds_bboxes.sel_mask(image_id=40, id=3)
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Option 2: store sparse array objects
-# PRO: we store less data, a compact representation of the mask
-# CON: we lose vectorised ops and cannot serialise (unless we do .todense first)
-
-# Initialise array
-sparse_mask_array = np.empty(
-    (ds_bboxes.sizes["image_id"], ds_bboxes.sizes["id"]),
-    dtype=object,
-)
-
-for image_id in range(mask_da_array.shape[0]):
-    # Get rows, cols and values of non-zero elements
-    # in this frame
-    mask_frame = mask_da_array[image_id].compute()  # load one frame at a time
-    rows, cols = np.nonzero(mask_frame)
-    labels = mask_frame[rows, cols]
-
-    # define sparse array for this frame
-    for l_i, lbl in enumerate(np.unique(labels)):
-        slc_nnz = labels == lbl
-        s = sparse.COO(
-            # for integer masks: 
-            #   np.c_[rows[slc_nnz], cols[slc_nnz]].T, lbl, shape=mask_frame.shape
-            # for boolean masks:
-            np.c_[rows[slc_nnz], cols[slc_nnz]].T, 1, shape=mask_frame.shape
-        )  # img_h, img_w
-
-        # assign to full sparse array
-        sparse_mask_array[image_id, l_i] = s
-
-ds_bboxes["masks_sparse"] = xr.DataArray(
-    data=sparse_mask_array,
-    dims=["image_id", "id"],
-)
-
-# %%
-# Example usage
-
-image_id = 40
-id = 10
-
-fig, ax = plt.subplots(1, 1)
-# image
-ax.imshow(ds_bboxes.image_array[image_id])
-
-# bbox centre
-ax.scatter(
-    ds_bboxes.position.sel(image_id=image_id, id=id, space="x"),
-    ds_bboxes.position.sel(image_id=image_id, id=id, space="y"),
-    15,
-    marker="x",
-    color="r",
-)
-# red contour around corresponding mask
-single_mask_dense = (
-    ds_bboxes.masks_sparse.isel(image_id=image_id, id=id).item().todense()
-)
-ax.imshow(
-    single_mask_dense,
-    cmap="Reds",
-    alpha=(single_mask_dense > 0).astype(float)*0.5,
-)
-ax.contour(single_mask_dense, levels=[0.5], colors="red", linewidths=0.5)
-
-# all masks
-all_masks_one_img = sparse.stack(
-    ds_bboxes.masks_sparse.sel(image_id=image_id).dropna(dim='id').values
-).todense().max(axis=0)
-
-ax.imshow(
-    all_masks_one_img,
-    cmap="turbo",
-    alpha=(all_masks_one_img > 0).astype(float)*0.5,
-)
-
-
-# %%%%%%%%%%
-# Option 3: store dask array objects?
-# CON: with objects we lose vectorized ops and serialising
-# construction is instant but access is slow (opposite to sparse)
-# PRO: we can sel by id?
-
-mask_da_obj = np.empty(
-    (ds_bboxes.sizes["image_id"], ds_bboxes.sizes["id"]),
-    dtype=object,
-)
-
-for image_id in range(mask_da_array.shape[0]):
-    mask_frame = mask_da_array[image_id]  # still a dask array, not computed
-    for l_i, lbl in enumerate(range(1, ds_bboxes.sizes["id"] + 1)):
-        mask_da_obj[image_id, l_i] = (mask_frame == lbl)  # dask array (img_h, img_w)
-
-ds_bboxes["masks_da_obj"] = xr.DataArray(
-    data=mask_da_obj,
-    dims=["image_id", "id"],
-)
-
-# %%
-# Usage
-# single mask — returns a dask array, call .compute() to get numpy
-single_mask = ds_bboxes.masks_da_obj.sel(image_id=40, id=10).item().compute()
-
-# all masks in one frame
-all_masks = da.stack(
-    ds_bboxes.masks_da_obj.isel(image_id=40).dropna(dim='id').values
-).compute().max(axis=0)
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Option 4: 4D boolean dask array with id dim
+# Load as 4D boolean dask array with id dim
 # Each slice [image_id, id] is a boolean mask for that object in that frame
-# CONS: slow to compute
+# CONS: can be slow to compute
 n_ids = ds_bboxes.sizes["id"]
 
 # for one task per chunk:
@@ -361,32 +171,17 @@ mask_4d = mask_da_array.map_blocks(
 ds_bboxes["masks_bool"] = xr.DataArray(
     data=mask_4d,
     dims=["image_id", "id", "img_h", "img_w"],
-    coords={"image_id": ds_bboxes.image_id, "id": ds_bboxes.id},
 )
+# %%%%%%%%%%%%%%%%%%%%%%%
+# Plot single mask and all masks in frame
 
-# Why was this slow when one chunk had a few frames?
-# Before one chunk had multiple frames.
-# Because the operations above define a graph, which will run
-# for the relevant chunk when I do .sel(image_id, id).compute(). But for 
-# every chunk, it will compute boolean masks for all IDs in that chunk,
-# slice the relevant id, and throw the rest away (it is slow because
-# _apply_one_hot_encoding_for_IDs is slow, even for a chunk) it was 15s
-
-# %%
-ds_bboxes.masks_bool.sel(image_id=40, id=33).compute()
-
-# %%
-ds_bboxes.masks_bool.sel(image_id=40).compute()
-
-# %%
-ds_bboxes.masks_bool.sel(id=33).compute()
-# %%
-# Usage
-
+# Show single mask for id=10 in frame 40
 image_id = 40
 id = 10
+single_mask = ds_bboxes.masks_bool.sel(image_id=image_id, id=id)
 
 fig, ax = plt.subplots(1, 1)
+
 # image
 ax.imshow(ds_bboxes.image_array[image_id])
 
@@ -399,7 +194,6 @@ ax.scatter(
     color="r",
 )
 # single mask by image_id and id
-single_mask = ds_bboxes.masks_bool.sel(image_id=image_id, id=id)
 ax.imshow(
     single_mask,
     cmap="Reds",
@@ -407,7 +201,7 @@ ax.imshow(
 )
 ax.contour(single_mask, levels=[0.5], colors="red", linewidths=0.5)
 
-# all masks in one frame (boolean masks, all same color!)
+# plot all masks in one frame (boolean masks, all same color!)
 all_masks = ds_bboxes.masks_bool.sel(image_id=image_id).any(dim="id")
 ax.imshow(
     all_masks,
@@ -416,10 +210,12 @@ ax.imshow(
 )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Load frames and masks in napari viewer
+# Visualise frames and masks in napari viewer
 mask_array = mask_da_array
 viewer = napari.Viewer()
+
 # viewer.add_image(np.asarray(image_array).moveaxis(0, -1, 1, 2), name="image")
+
 viewer.add_labels(np.asarray(mask_array), name=f"{LABEL_NAME} masks")
 
 # %%
