@@ -45,7 +45,7 @@ fps = 59.94
 # of clip length?
 min_frames_per_trajectory = 60 * 3  # video is 59.94 fps
 
-frames_to_min = 1 / (fps*60)
+frames_to_min = 1 / (fps * 60)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Read dataset as an xarray datatree
@@ -163,9 +163,9 @@ for node in dt.leaves:
 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 plt.figure(figsize=(10, 6))
 plt.bar(
-    bin_centers*frames_to_min,  # in min
+    bin_centers * frames_to_min,  # in min
     final_hist_counts_clips,
-    width=(bin_edges[1] - bin_edges[0])*frames_to_min,
+    width=(bin_edges[1] - bin_edges[0]) * frames_to_min,
     edgecolor="black",
 )
 plt.xlabel("length of trajectory (min)")
@@ -181,4 +181,9 @@ plt.xlim(0, 15)
 # plt.plot(bin_centers, final_hist_counts_clips)
 # plt.xlabel("n samples in tracklet")
 # plt.ylabel("Count")
+# %%
+# Total minutes with tracks
+n_total_frames = sum([node.ds.clip_last_frame_0idx.max().compute() for node in dt.leaves])
+
+n_total_hours = n_total_frames.item() / dt.leaves[0].fps / 60 / 60
 # %%
