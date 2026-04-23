@@ -188,8 +188,6 @@ class PlotClipsDatasetAccessor:
         return _plot_clips_in_video(self._ds, **kwargs)
 
 
-
-
 # %%
 # Usage for datatree
 dt.plot_clips_in_video("04.09.2023-05-Right")
@@ -619,7 +617,7 @@ for dt_video in dt.match("06.09.2023*").leaves:
     fig.update_layout(
         title=(
             f"{ds_video.video_id} "
-            f"({ds_video.clip_last_frame_0idx.max().compute() / ds_video.fps / 60:.1f} min)"
+            f"({(ds_video.clip_last_frame_0idx.max().compute() + 1) / ds_video.fps / 60:.1f} min)"
         ),
         xaxis_title="x (pixels)",
         yaxis_title="y (pixels)",
