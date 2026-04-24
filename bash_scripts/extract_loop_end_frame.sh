@@ -19,7 +19,16 @@ set -o pipefail
 
 # A script that goes through the clips in "Loops" and extracts
 # the last frame from each clip. The last frame per clip should 
-# correspond to the 'end escape' frame
+# correspond to the 'end escape' frame.
+#
+# The script assumes the virtual environment has been setup already.
+# To do this, run:
+#   module load uv
+#   export UV_CACHE_DIR=/ceph/scratch/sminano/uv-cache # optional 
+#   export UV_LINK_MODE=copy # optional 
+#   uv venv --no-project /ceph/zoo/users/sminano/envs/sleap-io-env
+#   uv pip install --python /ceph/zoo/users/sminano/envs/sleap-io-env/bin/python sleap-io
+
 
 # ---------------------
 # Define variables
@@ -49,21 +58,6 @@ if [[ $SLURM_ARRAY_TASK_COUNT -ne $N_VIDEOS ]]; then
 fi
 
 
-# ---------------------------
-# uv setup
-# ---------------------------
-# module load uv
-
-# # set uv cache dir to /ceph/scratch/sminano
-# # (should be faster than /nfs/nhome/live/sminano/.cache/uv and
-# # gets purged regularly)
-# export UV_CACHE_DIR=/ceph/scratch/sminano/uv-cache
-# # The uv cache and the env are on different filesystems (ceph vs tmpfs)
-# # so we set link mode to copy across the necessary files,
-# # instead of symlinking (which would not work across filesystems)
-# export UV_LINK_MODE=copy
-# export UV_HTTP_TIMEOUT=120  # seconds
-
 # --------------------
 # Extract frames
 # ------------------
@@ -71,6 +65,7 @@ fi
 # Pass this task's video path to Python call
 VIDEO_PATH="${LIST_VIDEOS[$SLURM_ARRAY_TASK_ID]}"
 
+# Activate the predefined environment
 source /ceph/zoo/users/sminano/envs/sleap-io-env/bin/activate
 
 python -c "
