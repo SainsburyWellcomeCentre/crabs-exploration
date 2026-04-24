@@ -76,7 +76,7 @@ source /ceph/zoo/users/sminano/envs/sleap-io-env/bin/activate
 python -c "
 import av
 import imageio.v3 as iio
-import numpy as np
+from pathlib import Path
 
 video_path = Path('$VIDEO_PATH')
 output_path = Path('$OUTPUT_DIR') / f'{video_path.stem}_first_frame.png'
