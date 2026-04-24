@@ -10,6 +10,7 @@
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
 #SBATCH --array=0-233%25
+#SBATCH --constraint=AVX2
 
 set -e
 set -u
@@ -31,7 +32,7 @@ set -o pipefail
 #   export UV_LINK_MODE=copy # optional 
 #   uv venv --no-project /ceph/zoo/users/sminano/envs/sleap-io-env
 #   uv pip install --python /ceph/zoo/users/sminano/envs/sleap-io-env/bin/python sleap-io
-#   exit        # exit the interactive sessionmodel name      : Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz
+#   exit        # exit the interactive session
 
 
 # ---------------------
@@ -73,19 +74,18 @@ VIDEO_PATH="${LIST_VIDEOS[$SLURM_ARRAY_TASK_ID]}"
 source /ceph/zoo/users/sminano/envs/sleap-io-env/bin/activate
 
 python -c "
-import sleap_io as sio
+import av
 import imageio.v3 as iio
-from pathlib import Path
+import numpy as np
 
 video_path = Path('$VIDEO_PATH')
-video = sio.load_video(str(video_path))
+output_path = Path('$OUTPUT_DIR') / f'{video_path.stem}_first_frame.png'
 
-frame_idx = video.shape[0] - 1
-last_frame = video[frame_idx]
+with av.open(video_path) as container:
+    frame = next(container.decode(video=0))
+    img = frame.to_ndarray(format="rgb24")
 
-out = Path('$OUTPUT_DIR') / f'{video_path.stem}_frame_{frame_idx:0>8d}.png'
-iio.imwrite(str(out), last_frame)
-
+iio.imwrite(output_path, img)
 print(f'Saved {out}')
 "
 
