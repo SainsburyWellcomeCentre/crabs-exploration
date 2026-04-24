@@ -83,10 +83,10 @@ output_path = Path('$OUTPUT_DIR') / f'{video_path.stem}_first_frame.png'
 
 with av.open(video_path) as container:
     frame = next(container.decode(video=0))
-    img = frame.to_ndarray(format="rgb24")
+    img = frame.to_ndarray(format='rgb24')
 
 iio.imwrite(output_path, img)
-print(f'Saved {out}')
+print(f'Saved {output_path}')
 "
 
 # ------------------
