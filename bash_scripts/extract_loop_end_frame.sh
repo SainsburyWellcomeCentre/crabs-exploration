@@ -9,7 +9,7 @@
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-25%234 
+#SBATCH --array=0-234%25
 
 set -e
 set -u
@@ -35,7 +35,7 @@ set -o pipefail
 # ----------------------
 LOOPS_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops"
 
-OUTPUT_DIR="/ceph/zoo/users/sminano/crab_loops_end_frames_slurm$(SLURM_ARRAY_JOB_ID)"
+OUTPUT_DIR="/ceph/zoo/users/sminano/crab_loops_end_frames_slurm$SLURM_ARRAY_JOB_ID"
 
 LOG_DIR=$OUTPUT_DIR/logs
 mkdir -p "$LOG_DIR"  # create full path if it doesnt exist
