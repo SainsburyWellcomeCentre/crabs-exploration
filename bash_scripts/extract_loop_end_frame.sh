@@ -2,14 +2,14 @@
 
 #SBATCH -p cpu # partition 
 #SBATCH -N 1   # number of nodes
-#SBATCH --ntasks-per-node 2
+#SBATCH --ntasks-per-node 1
 #SBATCH --mem 32G
 #SBATCH -t 0-20:00 # time (D-HH:MM)
 #SBATCH -o slurm_array.%A-%a.%N.out
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
-#SBATCH --array=0-234%25
+#SBATCH --array=0-233%25
 
 set -e
 set -u
