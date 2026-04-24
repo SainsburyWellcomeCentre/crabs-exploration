@@ -22,12 +22,16 @@ set -o pipefail
 # correspond to the 'end escape' frame.
 #
 # The script assumes the virtual environment has been setup already.
-# To do this, run:
+# It is best to built the venv on a node with the same CPU architecture
+# as the one where the job runs.
+# To do this, run on an interactive compute node session:
+#   srun -p cpu --pty bash   # get an interactive compute node session
 #   module load uv
 #   export UV_CACHE_DIR=/ceph/scratch/sminano/uv-cache # optional 
 #   export UV_LINK_MODE=copy # optional 
 #   uv venv --no-project /ceph/zoo/users/sminano/envs/sleap-io-env
 #   uv pip install --python /ceph/zoo/users/sminano/envs/sleap-io-env/bin/python sleap-io
+#   exit        # exit the interactive sessionmodel name      : Intel(R) Xeon(R) CPU E5-2650 v4 @ 2.20GHz
 
 
 # ---------------------
@@ -69,7 +73,6 @@ VIDEO_PATH="${LIST_VIDEOS[$SLURM_ARRAY_TASK_ID]}"
 source /ceph/zoo/users/sminano/envs/sleap-io-env/bin/activate
 
 python -c "
-import sys
 import sleap_io as sio
 import imageio.v3 as iio
 from pathlib import Path
