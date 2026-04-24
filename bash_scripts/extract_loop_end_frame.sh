@@ -35,10 +35,10 @@ set -o pipefail
 # ----------------------
 LOOPS_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops"
 
-OUTPUT_DIR="/ceph/zoo/users/sminano/crab_loops_end_frames_$(date +%Y%m%d_%H%M%S)"
+OUTPUT_DIR="/ceph/zoo/users/sminano/crab_loops_end_frames_slurm$(SLURM_ARRAY_JOB_ID)"
 
-LOGS_DIR=$OUTPUT_DIR/logs
-mkdir -p $LOG_DIR  # create if it doesnt exist
+LOG_DIR=$OUTPUT_DIR/logs
+mkdir -p "$LOG_DIR"  # create full path if it doesnt exist
 
 # --------------------
 # Check inputs
@@ -89,7 +89,7 @@ print(f'Saved {out}')
 # ------------------
 # Copy logs to LOG_DIR
 # -------------------
-mv slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out} $LOG_DIR
+mv "slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME."{err,out} "$LOG_DIR"
 
 # make logs read only
-chmod 444 $LOG_DIR/slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.{err,out}
+chmod 444 "$LOG_DIR/slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME."{err,out}
