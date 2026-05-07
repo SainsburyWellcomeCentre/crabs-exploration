@@ -1,4 +1,5 @@
 # %%
+from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -24,7 +25,8 @@ data_vars_order = [
 ]
 
 # TODO: add timestamp
-output_dir = Path(__file__).parents[2] / "prompt_frames"
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+output_dir = Path(__file__).parents[2] / f"prompt_frames_{timestamp}"
 output_dir.mkdir(exist_ok=True)
 
 percentile_th = 10
@@ -105,52 +107,28 @@ assert [
 # %%%%%%%%%%%%%%%%%%%%%%
 # Check frame indices to extract per video and clip are consistent
 
-# # Loop thru videos
-# for video_id in frames_per_video_below_th:
-#     frames_from_video_start = frames_per_video_below_th[video_id]
+# Loop thru videos
+for video_id in frames_per_video_below_th:
+    frames_from_video_start = frames_per_video_below_th[video_id]
 
-#     # Only consider clips that have frames for extraction
-#     list_of_relevant_clips = [
-#         ky for ky in frames_per_clip_below_th if ky.split("_")[0] == video_id
-#     ]
-#     list_frame_idcs_per_clip = []
-#     for video_clip_id in list_of_relevant_clips:
-#         clip_id = video_clip_id.split("_")[1]
-#         clip_start_frame = (
-#             dt[video_id].clip_first_frame_0idx.sel(clip_id=clip_id).item()
-#         )
+    # Only consider clips that have frames for extraction
+    list_of_relevant_clips = [
+        ky for ky in frames_per_clip_below_th if ky[0] == video_id
+    ]
+    list_frame_idcs_per_clip = []
+    for video_clip_id in list_of_relevant_clips:
+        _, clip_id = video_clip_id
+        clip_start_frame = (
+            dt[video_id].clip_first_frame_0idx.sel(clip_id=clip_id).item()
+        )
 
-#         list_frame_idcs_per_clip.append(
-#             frames_per_clip_below_th[video_clip_id] + clip_start_frame
-#         )
+        list_frame_idcs_per_clip.append(
+            frames_per_clip_below_th[video_clip_id] + clip_start_frame
+        )
 
-#     assert np.all(frames_from_video_start == np.concatenate(list_frame_idcs_per_clip))
-
-# Loop thru clips
-running_start_idx = 0
-prev_video_id = list(frames_per_clip_below_th.keys())[0][0]
-for video_clip_id, frames_per_clip in frames_per_clip_below_th.items():
-    video_id, clip_id = video_clip_id
-    clip_start_frame = (
-        dt[video_id].clip_first_frame_0idx.sel(clip_id=clip_id).item()
-    )
-    n_extracted_frames = len(frames_per_clip)
-
-    # Determine starting index in frames per video array
-    # (reset to zero if video changes)
-    start_idx = running_start_idx if video_id == prev_video_id else 0
-
-    # Compare to the relevant section in the frames per video array
     assert np.all(
-        frames_per_clip + clip_start_frame
-        == frames_per_video_below_th[video_id][
-            start_idx : start_idx + n_extracted_frames
-        ]
+        frames_from_video_start == np.concatenate(list_frame_idcs_per_clip)
     )
-
-    # Update video running variables
-    running_start_idx = start_idx + n_extracted_frames
-    prev_video_id = video_id
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -237,4 +215,5 @@ for video_clip_id, frame_idcs in frames_per_clip_below_th.items():
 df_per_clip = pd.DataFrame(rows_per_clip)
 df_per_clip.to_csv(output_dir / "frames_per_clip.csv", index=False)
 
-# %%
+# %%%%%%%%%
+# Save plot as plotly html file
