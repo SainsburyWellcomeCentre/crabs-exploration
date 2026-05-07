@@ -132,8 +132,45 @@ for video_id in frames_per_video_below_th:
     )
 
 
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Save frames to extract as csv
+# per clip and per video
+
+
+# # Export frame indices relative to video start
+# rows_per_video = [
+#     {"video_id": video_id, "frame_idx_in_video": int(f)}
+#     for video_id, frame_idcs in frames_per_video_below_th.items()
+#     for f in frame_idcs
+# ]
+# df_per_video = pd.DataFrame(rows_per_video)
+# df_per_video.to_csv(output_dir / "frames_per_video.csv", index=False)
+
+# Export frame indices relative to clip start (and to video start for convenience)
+rows_per_clip = []
+for video_clip_id, frame_idcs in frames_per_clip_below_th.items():
+    video_id, clip_id = video_clip_id
+    clip_start = dt[video_id].clip_first_frame_0idx.sel(clip_id=clip_id).item()
+    for f in frame_idcs:
+        rows_per_clip.append(
+            {
+                "loop_clip_name": f"{video_id}-{clip_id}.mp4",
+                "frame_0idx_in_clip": int(f),
+                "video_name": f"{video_id}.mov",
+                "frame_0idx_in_video": int(f) + clip_start,
+            }
+        )
+df_per_clip = pd.DataFrame(rows_per_clip)
+csv_path = output_dir / "frames_per_clip.csv"
+with open(csv_path, "w") as f:
+    # Add percentile used as metadata
+    # we can use pd.read_csv(path, comment="#") to skip it when reading
+    f.write(f"# percentile_th={percentile_th}\n")
+    df_per_clip.to_csv(f, index=False)
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%
-# Plotly version of the same plot (for saving as html)
+# Plot count per frame, escape frames and selected frames for extraction
+
 map_escape_type_to_plotly_style = {
     "triggered": ("red", "solid"),
     "spontaneous": ("red", "dash"),
@@ -196,7 +233,7 @@ for i, ky in enumerate(counts_per_video_frame):
                 color="orange",
                 # line=dict(color="black", width=0.5),
             ),
-            name="selected frames",
+            name=f"selected frames (<{percentile_th}th percentile)",
             legendgroup="selected_frames",
             showlegend=show_legend_selected,
             hovertemplate=(
@@ -288,36 +325,4 @@ print(
     f"Max n detections per frame: {max([max(val) for val in counts_per_video_frame.values()])}"
 )
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Save frames to extract as csv
-# per clip and per video
-
-
-# # Export frame indices relative to video start
-# rows_per_video = [
-#     {"video_id": video_id, "frame_idx_in_video": int(f)}
-#     for video_id, frame_idcs in frames_per_video_below_th.items()
-#     for f in frame_idcs
-# ]
-# df_per_video = pd.DataFrame(rows_per_video)
-# df_per_video.to_csv(output_dir / "frames_per_video.csv", index=False)
-
-# Export frame indices relative to clip start (and to video start for convenience)
-rows_per_clip = []
-for video_clip_id, frame_idcs in frames_per_clip_below_th.items():
-    video_id, clip_id = video_clip_id
-    clip_start = dt[video_id].clip_first_frame_0idx.sel(clip_id=clip_id).item()
-    for f in frame_idcs:
-        rows_per_clip.append(
-            {
-                "loop_clip_name": f"{video_id}-{clip_id}.mp4",
-                "frame_0idx_in_clip": int(f),
-                "video_name": f"{video_id}.mov",
-                "frame_0idx_in_video": int(f) + clip_start,
-            }
-        )
-df_per_clip = pd.DataFrame(rows_per_clip)
-df_per_clip.to_csv(output_dir / "frames_per_clip.csv", index=False)
-
-# %%%%%%%%%
-# Save plot as plotly html file
+# %%
