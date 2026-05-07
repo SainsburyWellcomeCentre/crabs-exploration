@@ -5,7 +5,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 import xarray as xr
+from plotly.subplots import make_subplots
 
 # Hide attributes globally
 xr.set_options(
@@ -132,32 +134,66 @@ for video_id in frames_per_video_below_th:
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%
-# Plot
-# TODO: save as plotly
+# Plotly version of the same plot (for saving as html)
+map_escape_type_to_plotly_style = {
+    "triggered": ("red", "solid"),
+    "spontaneous": ("red", "dash"),
+    "tourists": ("green", "solid"),
+}
+
 n_videos = len(counts_per_video_frame)
 n_cols = 3
 n_rows = int(np.ceil(n_videos / n_cols))
-fig, axs = plt.subplots(n_rows, n_cols, figsize=(15, 3 * n_rows), sharex=False)
-axs_flat = axs.flatten()
 
-map_escape_type_to_style = {
-    "triggered": ("red", "solid"),
-    "spontaneous": ("red", "dashed"),
-    "tourists": ("green", "dotted"),
-}
+fig_plotly = make_subplots(
+    rows=n_rows,
+    cols=n_cols,
+    subplot_titles=list(counts_per_video_frame.keys()),
+    horizontal_spacing=0.04,
+    vertical_spacing=0.025,
+)
 
-fps = dt["04.09.2023-01-Right"].fps
+# Track which escape types have been added to legend, to deduplicate
+escape_types_in_legend = set()
 
-for ax, ky in zip(axs_flat, counts_per_video_frame, strict=False):
+for i, ky in enumerate(counts_per_video_frame):
+    row = i // n_cols + 1
+    col = i % n_cols + 1
+
     video_frame_idcs = np.arange(counts_per_video_frame[ky].shape[0])
+    time_min = video_frame_idcs / fps / 60
 
-    ax.plot(video_frame_idcs / fps / 60, counts_per_video_frame[ky])
-    ax.set_title(ky, fontsize=9)
-    ax.set_xlabel("time (min)")
-    ax.set_ylabel("n detections")
+    # plot counts per frame
+    fig_plotly.add_trace(
+        go.Scattergl(
+            x=time_min,
+            y=counts_per_video_frame[ky],
+            mode="lines",
+            line=dict(color="#1f77b4", width=1),
+            name=ky,
+            showlegend=False,
+            hovertemplate=(
+                "t=%{x:.2f} min<br>n_detections=%{y}<extra></extra>"
+            ),
+        ),
+        row=row,
+        col=col,
+    )
 
-    # common y axis for all
-    ax.set_ylim([0, 120])
+    is_bottom_row = row == n_rows or (
+        row == n_rows - 1 and i + n_cols >= n_videos
+    )
+    fig_plotly.update_xaxes(
+        title_text="time (min)" if is_bottom_row else None,
+        row=row,
+        col=col,
+    )
+    fig_plotly.update_yaxes(
+        title_text="n detections" if col == 1 else None,
+        range=[0, 120],
+        row=row,
+        col=col,
+    )
 
     # add escape frames as vertical lines
     escapes_video_frame_idcs = dt[ky].clip_escape_first_frame_0idx.values
@@ -166,16 +202,54 @@ for ax, ky in zip(axs_flat, counts_per_video_frame, strict=False):
     for x_val, esc_type in zip(
         escapes_video_frame_idcs, escape_type, strict=True
     ):
-        ax.axvline(
-            x=x_val / fps / 60,
-            color=map_escape_type_to_style[esc_type][0],
-            linestyle=map_escape_type_to_style[esc_type][1],
-            alpha=0.5,
+        color, dash = map_escape_type_to_plotly_style[esc_type]
+        x_min = float(x_val) / fps / 60
+        show_legend = esc_type not in escape_types_in_legend
+        escape_types_in_legend.add(esc_type)
+        fig_plotly.add_trace(
+            go.Scattergl(
+                x=[x_min, x_min],
+                y=[0, 120],
+                mode="lines",
+                line=dict(color=color, dash=dash, width=1.5),
+                opacity=0.65,
+                name=esc_type,
+                legendgroup=esc_type,
+                showlegend=show_legend,
+                hoverinfo="skip",
+            ),
+            row=row,
+            col=col,
         )
 
-    # add frames per clip below threshold
+fig_plotly.update_layout(
+    height=180 * n_rows,
+    width=1500,
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+    legend=dict(x=1.02, y=1, yanchor="top", xanchor="left"),
+    margin=dict(l=50, r=50, t=30, b=30),
+)
+fig_plotly.update_xaxes(
+    showgrid=True,
+    gridcolor="lightgrey",
+    linecolor="black",
+    mirror=True,
+    ticks="outside",
+    zeroline=False,
+)
+fig_plotly.update_yaxes(
+    showgrid=True,
+    gridcolor="lightgrey",
+    linecolor="black",
+    mirror=True,
+    ticks="outside",
+    zeroline=False,
+)
+for annotation in fig_plotly.layout.annotations:
+    annotation.font.size = 10
 
-fig.tight_layout()
+fig_plotly.write_html(str(output_dir / "n_detections_per_video.html"))
 
 print(
     f"Min n detections per frame: {min([min(val) for val in counts_per_video_frame.values()])}"
