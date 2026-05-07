@@ -2,7 +2,6 @@
 from datetime import datetime
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -31,7 +30,7 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 output_dir = Path(__file__).parents[2] / f"prompt_frames_{timestamp}"
 output_dir.mkdir(exist_ok=True)
 
-percentile_th = 10
+percentile_th = 5
 
 # %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Read dataset as an xarray datatree
@@ -153,6 +152,8 @@ fig_plotly = make_subplots(
     vertical_spacing=0.025,
 )
 
+fps = dt["04.09.2023-01-Right"].ds.fps
+
 # Track which escape types have been added to legend, to deduplicate
 escape_types_in_legend = set()
 
@@ -180,17 +181,28 @@ for i, ky in enumerate(counts_per_video_frame):
         col=col,
     )
 
-    is_bottom_row = row == n_rows or (
-        row == n_rows - 1 and i + n_cols >= n_videos
-    )
-    fig_plotly.update_xaxes(
-        title_text="time (min)" if is_bottom_row else None,
-        row=row,
-        col=col,
-    )
-    fig_plotly.update_yaxes(
-        title_text="n detections" if col == 1 else None,
-        range=[0, 120],
+    # add scatter markers for the selected frames (below threshold)
+    selected_frame_idcs = frames_per_video_below_th[ky]
+    show_legend_selected = "selected_frames" not in escape_types_in_legend
+    escape_types_in_legend.add("selected_frames")
+    fig_plotly.add_trace(
+        go.Scattergl(
+            x=selected_frame_idcs / fps / 60,
+            y=counts_per_video_frame[ky][selected_frame_idcs],
+            mode="markers",
+            marker=dict(
+                symbol="circle",
+                size=2.5,
+                color="orange",
+                # line=dict(color="black", width=0.5),
+            ),
+            name="selected frames",
+            legendgroup="selected_frames",
+            showlegend=show_legend_selected,
+            hovertemplate=(
+                "t=%{x:.2f} min<br>n_detections=%{y}<extra></extra>"
+            ),
+        ),
         row=row,
         col=col,
     )
@@ -222,6 +234,25 @@ for i, ky in enumerate(counts_per_video_frame):
             col=col,
         )
 
+    # set x and y axes labels
+    is_bottom_row = row == n_rows or (
+        row == n_rows - 1 and i + n_cols >= n_videos
+    )
+    fig_plotly.update_xaxes(
+        title_text="time (min)" if is_bottom_row else None,
+        row=row,
+        col=col,
+    )
+    fig_plotly.update_yaxes(
+        title_text="n detections" if col == 1 else None,
+        range=[0, 120],
+        row=row,
+        col=col,
+    )
+
+for annotation in fig_plotly.layout.annotations:
+    annotation.font.size = 12
+
 fig_plotly.update_layout(
     height=180 * n_rows,
     width=1500,
@@ -246,8 +277,7 @@ fig_plotly.update_yaxes(
     ticks="outside",
     zeroline=False,
 )
-for annotation in fig_plotly.layout.annotations:
-    annotation.font.size = 10
+
 
 fig_plotly.write_html(str(output_dir / "n_detections_per_video.html"))
 
