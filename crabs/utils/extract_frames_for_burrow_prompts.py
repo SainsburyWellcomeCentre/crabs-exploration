@@ -45,6 +45,7 @@ dt
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Compute number of detections per video
+
 counts_per_video_frame = {}
 frames_per_clip_below_th = {}
 frames_per_video_below_th = {}
@@ -52,6 +53,7 @@ for dt_video in dt.leaves:
     # Get video dataset
     ds_video = dt_video.ds
     ds_video.coords["clip_escape_first_frame_0idx"].load()
+    video_id = ds_video.video_id
 
     # Get detections per clip and clip length
     count_per_clip_in_video = (
@@ -61,36 +63,32 @@ for dt_video in dt.leaves:
         ds_video.clip_last_frame_0idx - ds_video.clip_first_frame_0idx + 1
     ).values  # (clip,)
 
-    # Concatenate counts per clip --> indices are frame idcs in video
-    counts_per_video_frame[ds_video.video_id] = np.concatenate(
+    # Get counts per video frame by concatenating counts per clip
+    counts_video = np.concatenate(
         [
             count_per_clip_in_video[i, :n]
             for i, n in enumerate(n_frames_per_clip)
         ]
     )
+    counts_per_video_frame[video_id] = counts_video
 
-    # Compute count value such that X% of frame counts are below threshold
-    count_th = np.percentile(
-        counts_per_video_frame[ds_video.video_id], percentile_th
-    )
+    # Compute count value such that X% of frame counts per video
+    # are below threshold
+    count_th = np.percentile(counts_video, percentile_th)
+    below_th_mask = counts_video < count_th
 
     # Compute frame indices *per video* below threshold
-    frames_per_video_below_th[ds_video.video_id] = np.where(
-        counts_per_video_frame[ds_video.video_id] < count_th
-    )[0]
+    frames_per_video_below_th[video_id] = np.where(below_th_mask)[0]
 
     # Compute frame indices *per clip* below threshold
-    # (that is, frame indices have origin at start of clip, NOT video)
+    clip_boundaries = np.concatenate([[0], np.cumsum(n_frames_per_clip)])
     for i, clip_id in enumerate(ds_video.clip_id.values):
-        n_frames_in_clip = n_frames_per_clip[i]
-        frame_idcs_below_th = np.where(
-            count_per_clip_in_video[i, :n_frames_in_clip] < count_th
-        )[0]
-
-        if len(frame_idcs_below_th) > 0:
-            frames_per_clip_below_th[(ds_video.video_id, clip_id)] = (
-                frame_idcs_below_th
-            )
+        below_th_mask_clip = below_th_mask[
+            clip_boundaries[i] : clip_boundaries[i + 1]
+        ]
+        clip_idcs = np.where(below_th_mask_clip)[0]
+        if len(clip_idcs) > 0:
+            frames_per_clip_below_th[(video_id, clip_id)] = clip_idcs
 
 # %%%%%%%%%%%%%%%%%%%
 # Check number of frames per video
@@ -135,16 +133,6 @@ for video_id in frames_per_video_below_th:
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Save frames to extract as csv
 # per clip and per video
-
-
-# # Export frame indices relative to video start
-# rows_per_video = [
-#     {"video_id": video_id, "frame_idx_in_video": int(f)}
-#     for video_id, frame_idcs in frames_per_video_below_th.items()
-#     for f in frame_idcs
-# ]
-# df_per_video = pd.DataFrame(rows_per_video)
-# df_per_video.to_csv(output_dir / "frames_per_video.csv", index=False)
 
 # Export frame indices relative to clip start (and to video start for convenience)
 rows_per_clip = []
