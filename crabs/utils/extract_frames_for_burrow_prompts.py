@@ -30,7 +30,7 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 output_dir = Path(__file__).parents[2] / f"prompt_frames_{timestamp}"
 output_dir.mkdir(exist_ok=True)
 
-percentile_th = 5
+frames_per_video_fraction = 0.05
 
 # %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Read dataset as an xarray datatree
@@ -47,8 +47,8 @@ dt
 # Compute number of detections per video
 
 counts_per_video_frame = {}
-frames_per_clip_below_th = {}
-frames_per_video_below_th = {}
+frames_per_clip_to_extract = {}
+frames_per_video_to_extract = {}
 for dt_video in dt.leaves:
     # Get video dataset
     ds_video = dt_video.ds
@@ -72,23 +72,43 @@ for dt_video in dt.leaves:
     )
     counts_per_video_frame[video_id] = counts_video
 
-    # Compute count value such that X% of frame counts per video
-    # are below threshold
-    count_th = np.percentile(counts_video, percentile_th)
-    below_th_mask = counts_video < count_th
+    # Get number of samples to extract per video
+    n_frames_to_extract = int(frames_per_video_fraction * counts_video.size)
 
-    # Compute frame indices *per video* below threshold
-    frames_per_video_below_th[video_id] = np.where(below_th_mask)[0]
+    # Compute frame indices *per video*
+    bottom_idcs = np.argpartition(
+        counts_video,
+        n_frames_to_extract,
+    )[:n_frames_to_extract]  # not sorted except last one
 
-    # Compute frame indices *per clip* below threshold
+    # Sort idcs by count
+    bottom_idcs = bottom_idcs[
+        np.argsort(
+            counts_video[bottom_idcs],
+            kind="stable",  # preserves original order,
+            # to select always the earliest in time if a tie
+        )
+    ]
+    frames_per_video_to_extract[video_id] = bottom_idcs
+
+    # Compute frame indices *per clip*
     clip_boundaries = np.concatenate([[0], np.cumsum(n_frames_per_clip)])
+    # For each bottom_idx, find index of the nearest lower-or-equal boundary
+    clip_id_per_idx = (
+        np.searchsorted(clip_boundaries, bottom_idcs, side="right") - 1
+    )
+    bottom_idcs_clip = bottom_idcs - clip_boundaries[clip_id_per_idx]
+
+    # Group results by clip
+    # (frames sorted by count within clip, with earliest-in-time-first
+    # among ties)
     for i, clip_id in enumerate(ds_video.clip_id.values):
-        below_th_mask_clip = below_th_mask[
-            clip_boundaries[i] : clip_boundaries[i + 1]
-        ]
-        clip_idcs = np.where(below_th_mask_clip)[0]
-        if len(clip_idcs) > 0:
-            frames_per_clip_below_th[(video_id, clip_id)] = clip_idcs
+        mask = clip_id_per_idx == i
+        if mask.any():
+            frames_per_clip_to_extract[(video_id, clip_id)] = bottom_idcs_clip[
+                mask
+            ]
+
 
 # %%%%%%%%%%%%%%%%%%%
 # Check number of frames per video
@@ -107,12 +127,12 @@ assert [
 # Check frame indices to extract per video and clip are consistent
 
 # Loop thru videos
-for video_id in frames_per_video_below_th:
-    frames_from_video_start = frames_per_video_below_th[video_id]
+for video_id in frames_per_video_to_extract:
+    frames_from_video_start = frames_per_video_to_extract[video_id]
 
     # Only consider clips that have frames for extraction
     list_of_relevant_clips = [
-        ky for ky in frames_per_clip_below_th if ky[0] == video_id
+        ky for ky in frames_per_clip_to_extract if ky[0] == video_id
     ]
     list_frame_idcs_per_clip = []
     for video_clip_id in list_of_relevant_clips:
@@ -122,12 +142,14 @@ for video_id in frames_per_video_below_th:
         )
 
         list_frame_idcs_per_clip.append(
-            frames_per_clip_below_th[video_clip_id] + clip_start_frame
+            frames_per_clip_to_extract[video_clip_id] + clip_start_frame
         )
 
-    assert np.all(
-        frames_from_video_start == np.concatenate(list_frame_idcs_per_clip)
-    )
+    assert np.array_equal(
+        np.sort(frames_from_video_start),
+        np.sort(np.concatenate(list_frame_idcs_per_clip)),
+    )  # sort because frames_from_video_start are indices sourted by count,
+    # and the clip-derived ones are sourted by count and grouped by clip
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -136,7 +158,7 @@ for video_id in frames_per_video_below_th:
 
 # Export frame indices relative to clip start (and to video start for convenience)
 rows_per_clip = []
-for video_clip_id, frame_idcs in frames_per_clip_below_th.items():
+for video_clip_id, frame_idcs in frames_per_clip_to_extract.items():
     video_id, clip_id = video_clip_id
     clip_start = dt[video_id].clip_first_frame_0idx.sel(clip_id=clip_id).item()
     for f in frame_idcs:
@@ -153,7 +175,7 @@ csv_path = output_dir / "frames_per_clip.csv"
 with open(csv_path, "w") as f:
     # Add percentile used as metadata
     # we can use pd.read_csv(path, comment="#") to skip it when reading
-    f.write(f"# percentile_th={percentile_th}\n")
+    f.write(f"# frames_per_video_fraction={frames_per_video_fraction}\n")
     df_per_clip.to_csv(f, index=False)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -207,7 +229,7 @@ for i, ky in enumerate(counts_per_video_frame):
     )
 
     # add scatter markers for the selected frames (below threshold)
-    selected_frame_idcs = frames_per_video_below_th[ky]
+    selected_frame_idcs = frames_per_video_to_extract[ky]
     show_legend_selected = "selected_frames" not in escape_types_in_legend
     escape_types_in_legend.add("selected_frames")
     fig_plotly.add_trace(
@@ -221,7 +243,7 @@ for i, ky in enumerate(counts_per_video_frame):
                 color="orange",
                 # line=dict(color="black", width=0.5),
             ),
-            name=f"selected frames (<{percentile_th}th percentile)",
+            name=f"selected frames (<{frames_per_video_fraction * 100}%)",
             legendgroup="selected_frames",
             showlegend=show_legend_selected,
             hovertemplate=(
