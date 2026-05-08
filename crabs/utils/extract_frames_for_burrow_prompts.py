@@ -25,7 +25,7 @@ data_vars_order = [
     "escape_state",
 ]
 
-# TODO: add timestamp
+
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 output_dir = Path(__file__).parents[2] / f"prompt_frames_{timestamp}"
 output_dir.mkdir(exist_ok=True)
@@ -243,7 +243,7 @@ for i, ky in enumerate(counts_per_video_frame):
                 color="orange",
                 # line=dict(color="black", width=0.5),
             ),
-            name=f"selected frames (<{frames_per_video_fraction * 100}%)",
+            name=f"selected frames ({frames_per_video_fraction * 100}%)",
             legendgroup="selected_frames",
             showlegend=show_legend_selected,
             hovertemplate=(
