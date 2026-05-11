@@ -1,4 +1,4 @@
-"""Extract frames for prompting SAM3 to detect burrows.
+"""Compute frames to extract for prompting SAM3 to detect burrows.
 
 For every video in the input zarr store, we compute the number of crab
 detections per frame, and select a fixed fraction of frames with the lowest
@@ -23,13 +23,13 @@ document the fraction used (it can be skipped with
 
 Usage (dependencies are auto-installed via uv):
 * Default
-    uv run extract_frames_for_burrow_prompts.py /path/to/store.zarr
+    uv run compute_frames_for_burrow_prompts.py /path/to/store.zarr
     /path/to/out_dir
 * Non-default fraction
-    uv run extract_frames_for_burrow_prompts.py /path/to/store.zarr
+    uv run compute_frames_for_burrow_prompts.py /path/to/store.zarr
     /path/to/out_dir --frames-per-video-fraction 0.1
 * Save HTML figure
-    uv run extract_frames_for_burrow_prompts.py /path/to/store.zarr
+    uv run compute_frames_for_burrow_prompts.py /path/to/store.zarr
     /path/to/out_dir --save-html-figure
 """
 
@@ -253,7 +253,7 @@ def plot_n_detections_html(
                 legendgroup="selected_frames",
                 showlegend=show_legend_selected,
                 hovertemplate=(
-                    "t=%{x:.2f} min<br>" "n_detections=%{y}<extra></extra>"
+                    "t=%{x:.2f} min<br>n_detections=%{y}<extra></extra>"
                 ),
             ),
             row=row,
@@ -422,7 +422,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
     """Parse CLI args."""
     parser = argparse.ArgumentParser(
         description=(
-            "Extract frames for prompting SAM3 to detect burrows. "
+            "Compute frames to extract for prompting SAM3 to detect burrows. "
             "The lowest-detection-count frames "
             "are selected, since they correspond to less crowded scenes."
         ),

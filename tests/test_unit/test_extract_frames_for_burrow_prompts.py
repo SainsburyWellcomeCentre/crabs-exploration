@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from crabs.utils.extract_frames_for_burrow_prompts import (
+from crabs.utils.compute_frames_for_burrow_prompts import (
     _counts_per_video_frame,
     _select_lowest_count_frame_idcs,
     _video_idcs_to_per_clip_idcs,
@@ -16,28 +16,23 @@ def sample_video_dataset():
     Confidence has dims (clip, frame, individual) with deliberate NaNs so
     the per-frame non-null counts are known in advance.
     """
-    # UNUSED:
-    # n_clips = 2
-    # max_frames = 5
-    # n_individuals = 3
-
     confidence = np.array(
         [
             # clip 0
             [
-                [1.0, 1.0, 1.0],  # frame 0 -> 3 valid
-                [1.0, 1.0, np.nan],  # frame 1 -> 2 valid
-                [1.0, np.nan, np.nan],  # frame 2 -> 1 valid
-                [np.nan, np.nan, np.nan],  # frame 3 -> 0 valid
-                [1.0, 1.0, 1.0],  # frame 4 -> 3 valid
+                [1.0, 1.0, 1.0],  # frame 0 -> 3 detections
+                [1.0, 1.0, np.nan],  # frame 1 -> 2 detections
+                [1.0, np.nan, np.nan],  # frame 2 -> 1 detections
+                [np.nan, np.nan, np.nan],  # frame 3 -> 0 detections
+                [1.0, 1.0, 1.0],  # frame 4 -> 3 detections
             ],
             # clip 1
             [
-                [1.0, np.nan, np.nan],  # frame 0 -> 1 valid
-                [1.0, 1.0, np.nan],  # frame 1 -> 2 valid
-                [1.0, 1.0, np.nan],  # frame 2 -> 2 valid
-                [1.0, 1.0, 1.0],  # frame 3 -> 3 valid
-                [np.nan, np.nan, np.nan],  # frame 4 -> 0 valid
+                [1.0, np.nan, np.nan],  # frame 0 -> 1 detections
+                [1.0, 1.0, np.nan],  # frame 1 -> 2 detections
+                [1.0, 1.0, np.nan],  # frame 2 -> 2 detections
+                [1.0, 1.0, 1.0],  # frame 3 -> 3 detections
+                [np.nan, np.nan, np.nan],  # frame 4 -> 0 detections
             ],
         ]
     )
@@ -53,7 +48,7 @@ def sample_video_dataset():
             "clip_last_frame_0idx": (("clip_id",), np.array([4, 9])),
         },
         coords={
-            "clip_id": np.array(["c0", "c1"]),
+            "clip_id": np.array(["clip0", "clip1"]),
         },
     )
     return ds, expected_counts
