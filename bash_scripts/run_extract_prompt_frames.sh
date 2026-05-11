@@ -77,24 +77,24 @@ export UV_HTTP_TIMEOUT=120  # seconds
 # ----------------
 # warmup uv cache
 # ----------------
-# A lock is a coordination primitive: only one process at a time can "hold" it. 
-# Other processes that try to acquire it block (wait) until the holder releases it. 
-# It's how you serialize access to a shared resource across independent processes 
+# A lock is a coordination primitive: only one process at a time can "hold" it.
+# Other processes that try to acquire it block (wait) until the holder releases it.
+# It's how you serialize access to a shared resource across independent processes
 # that otherwise can't talk to each other.
 #
 # flock (file-lock) uses a file as the rendezvous point.
 #
-# A file descriptor (FD) is a small integer the kernel hands you when you open a file 
+# A file descriptor (FD) is a small integer the kernel hands you when you open a file
 # — it's your handle to that open file.
 #
 # What happens below?
-# All 10 concurrent array tasks hit this block. 
-# One wins the lock and does the slow cold-cache download. 
-# The other 9 wait. When the winner finishes, the next acquires the lock, 
-# finds a warm cache, returns immediately, releases — and so on. 
+# All 10 concurrent array tasks hit this block.
+# One wins the lock and does the slow cold-cache download.
+# The other 9 wait. When the winner finishes, the next acquires the lock,
+# finds a warm cache, returns immediately, releases — and so on.
 # No two tasks ever download in parallel, no cache corruption, no wasted bandwidth.
 #
-# The lock file itself (.warmup.lock) just exists as an anchor — nothing is ever written to it. 
+# The lock file itself (.warmup.lock) just exists as an anchor — nothing is ever written to it.
 # You can leave it on disk between runs.
 
 # create cache dir if it does not exist
@@ -102,8 +102,8 @@ mkdir -p "$UV_CACHE_DIR"
 
 # put a lock file (.warmup.lock) inside cache dir.
 # once the lock is held, run the uv cache warmup
-# First task to arrive populates the uv cache; 
-# later tasks block on flock, then run the same command when released and 
+# First task to arrive populates the uv cache;
+# later tasks block on flock, then run the same command when released and
 # find a warm cache (instant).
 flock -x "$UV_CACHE_DIR/.warmup.lock" \
     uv run --python 3.11 --with av -- python -c "import av" >/dev/null
@@ -136,69 +136,63 @@ mapfile -t FRAME_IDCS < <(
 
 echo "Frames to extract (n=${#FRAME_IDCS[@]}): $(IFS=,; echo "${FRAME_IDCS[*]}")"
 
-# -----------------------------------------------------------
-# Extract all frames for this clip in a single ffmpeg pass
-# -----------------------------------------------------------
-
-# Build compound select expression
-# eg: for frames 100, 234 and 512 --> eq(n,100)+eq(n,234)+eq(n,512)
-# (n is ffmpeg's built-in variable for the zero-based index of the current video frame being decoded.)
-#
-# IMPORTANT NOTE: the order inside the select expression doesn't matter for ffmpeg's output,
-# because eq(n,4)+eq(n,100)+... is a logical "OR" and ffmpeg emits matching frames in
-# decode order (that is, ascending order)
-SELECT_EXPR=$(printf "eq(n,%d)+" "${FRAME_IDCS[@]}" | sed 's/+$//')
-
+# -----------------------------------
+# Extract all frames for this clip
+# -----------------------------------
 
 # Run ffmpeg command to extract frames in decode order
 # (we assume input video is reencoded such that frames are reliably
 # seekable)
-# ffmpeg decodes from 0 to the largest frame
 # -------------------------------------
-# TODO: change to pyAV
-# Create temporary directory
-TMP_DIR=$(mktemp -d)
+# run Python on the script written between <<'PYEOF' and PYEOF
+uv run --python 3.11 --with av - "$CLIP_PATH" "$OUTPUT_DIR_JOB" "$CLIP_NAME_NO_EXT" "${FRAME_IDCS[@]}" <<'PYEOF'
+import sys
+from fractions import Fraction
+from pathlib import Path
 
-ffmpeg -loglevel error \
-    -i "$CLIP_PATH" \
-    -vf "select='${SELECT_EXPR}'" \
-    -vsync vfr \  # prevent ffmpeg from producing a video with same fps as input
-    -q:v 2 \
-    "${TMP_DIR}/frame_%08d.png"
+import av
 
-# Since frames are extracted
-# ffmpeg names its outputs sequentially: frame_00000001.png, frame_00000002.png, etc.,
-# regardless of which frame indices were extracted. This loop remaps those sequential
-# names back to the actual frame indices.
-for i in "${!FRAME_IDCS[@]}"; do
-    src="${TMP_DIR}/$(printf 'frame_%08d.png' $((i + 1)))"
-    dst="${OUTPUT_DIR_JOB}/${CLIP_NAME_NO_EXT}_frame_$(printf '%08d' "${FRAME_IDCS[$i]}").png"
-    mv "$src" "$dst"
-done
+clip_path = sys.argv[1]
+output_dir = Path(sys.argv[2])
+clip_name_no_ext = sys.argv[3]
+frame_idcs = [int(x) for x in sys.argv[4:]]
 
-rm -rf "$TMP_DIR"
+with av.open(clip_path) as container:
+    stream = container.streams.video[0]
+    fps = stream.codec_context.framerate  # Fraction
+
+    # Loop thru frame idcs to extract
+    for target_idx in frame_idcs:
+
+        # Go to nearest keyframe **before** target (time in microseconds)
+        container.seek(int(target_idx / float(fps) * 1e6))
+
+        # Decode from keyframe until we get a frame with PTS >= target
+        target_pts = None # initialise
+        for frame in container.decode(stream):
+            # Compute target_pts from data in first frame
+            # (we need to get frame.time_base from first frame)
+            if target_pts is None:
+                target_pts = int(Fraction(target_idx) / fps / frame.time_base)
+
+            # Throw an error if PTS for this frame not defined
+            # (possible in some containers)
+            if frame.pts is None:
+                raise ValueError(f"Frame at index {target_idx} has no PTS")
+
+            # Compare current and target PTS values (both are integers)
+            if frame.pts >= target_pts:
+                out_path = (
+                    output_dir
+                    / f"{clip_name_no_ext}_frame_{target_idx:08d}.png"
+                )
+                # frame is an av.VideoFrame; .to_image returns PIL.Image.Image
+                frame.to_image().save(out_path)
+                break
+PYEOF
 # -------------------------------------
 
 echo "Extracted ${#FRAME_IDCS[@]} frames from $CLIP_NAME to $OUTPUT_DIR_JOB"
-
-
-# ffmpeg's select filter seeks to the nearest preceding keyframe, then decodes
-# forward to each target frame — should be functionally equivalent to the
-# PyAV approach:
-#
-#   with av.open(clip_path) as container:
-#       stream = container.streams.video[0]
-#       fps = stream.codec_context.framerate  # Fraction
-#       container.seek(int(target_idx / float(fps) * 1e6))
-#       target_pts = None
-#       for frame in container.decode(stream):
-#           if target_pts is None:
-#               target_pts = int(Fraction(target_idx) / fps / frame.time_base)
-#           if frame.pts is None:
-#               raise ValueError("Frame has no PTS")
-#           if frame.pts >= target_pts:
-#               img = frame.to_ndarray(format="rgb24")
-#               break
 
 
 # ----------------------------------------
