@@ -150,7 +150,9 @@ def _build_rows_per_clip(
     video_id = ds_video.video_id
     # Loop thru clips in video and append each frame to extract
     for clip_id, frame_idcs_clip_based in frame_idcs_per_clip.items():
-        clip_start = ds_video.clip_first_frame_0idx.sel(clip_id=clip_id).item()
+        clip_start = ds_video.clip_first_frame_0idx.sel(
+            clip_id=clip_id
+        ).values.item()
         for f in frame_idcs_clip_based:
             # Check video-based frame to log is in `frame_idcs_video_based`
             assert int(f) + clip_start in frame_idcs_video_based
