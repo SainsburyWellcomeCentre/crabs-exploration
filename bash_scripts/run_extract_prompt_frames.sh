@@ -28,10 +28,10 @@ OUTPUT_DIR="/ceph/zoo/users/sminano/burrow_prompt_frames"
 
 # ---------------------
 # Derive list of unique clip names from the CSV
-# (with nR>2, it skips the leading # comment line and the header row)
+# (with NR>2, it skips the leading # comment line and the header row)
 # ---------------------
 mapfile -t CLIPS_LIST < <(
-    awk -F',' 'NR>2 && $1 !~ /^#/ {print $1}' "$FRAMES_CSV" | sort -u
+    awk -F',' 'NR>2 && $1 !~ /^#/ {print $1}' "$INPUT_FRAMES_CSV" | sort -u
 )
 
 # Check len(CLIPS_LIST) matches SLURM_ARRAY_TASK_COUNT
@@ -140,9 +140,9 @@ echo "Frames to extract (n=${#FRAME_IDCS[@]}): $(IFS=,; echo "${FRAME_IDCS[*]}")
 # Extract all frames for this clip
 # -----------------------------------
 
-# Run ffmpeg command to extract frames in decode order
-# (we assume input video is reencoded such that frames are reliably
-# seekable)
+# Run pyav command to extract frames
+# (we assume input video is reencoded such that
+# frames are reliably seekable)
 # -------------------------------------
 # run Python on the script written between <<'PYEOF' and PYEOF
 uv run --python 3.11 --with av - "$CLIP_PATH" "$OUTPUT_DIR_JOB" "$CLIP_NAME_NO_EXT" "${FRAME_IDCS[@]}" <<'PYEOF'
@@ -165,6 +165,7 @@ with av.open(clip_path) as container:
     for target_idx in frame_idcs:
 
         # Go to nearest keyframe **before** target (time in microseconds)
+        # (assumes constant fps)
         container.seek(int(target_idx / float(fps) * 1e6))
 
         # Decode from keyframe until we get a frame with PTS >= target
@@ -195,9 +196,9 @@ PYEOF
 echo "Extracted ${#FRAME_IDCS[@]} frames from $CLIP_NAME to $OUTPUT_DIR_JOB"
 
 
-# ----------------------------------------
+# -------------------------------------------
 # Move SLURM logs into the output directory
-# ----------------------------------------
+# -------------------------------------------
 # Create slurm directory
 LOG_DIR="$OUTPUT_DIR_JOB/logs"
 mkdir -p "$LOG_DIR"
