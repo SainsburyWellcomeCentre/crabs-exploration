@@ -356,9 +356,12 @@ def main(args: argparse.Namespace) -> None:
     # Read zarr store as datatree
     dt = xr.open_datatree(args.zarr_store, engine="zarr", chunks={})
 
+    # for plot data:
+    if args.save_html_figure:
+        counts_per_video_frame: dict[str, np.ndarray] = {}
+        frames_per_video_to_extract: dict[str, np.ndarray] = {}
+
     # Loop thru videos
-    counts_per_video_frame: dict[str, np.ndarray] = {}
-    frames_per_video_to_extract: dict[str, np.ndarray] = {}
     list_csv_rows: list[dict] = []
     for dt_video in dt.leaves:
         # Get video dataset and id
@@ -417,7 +420,11 @@ def main(args: argparse.Namespace) -> None:
             output_dir_timestamped / "frames_to_extract.html",
         )
 
-    print(f"Output written to {output_dir_timestamped}")
+    n_unique_clips = df_per_clip["loop_clip_name"].nunique()
+    print(
+        f"Output written to {output_dir_timestamped}. "
+        f"Frames extracted for {n_unique_clips} unique clips."
+    )
 
 
 def parse_args(list_args: list[str]) -> argparse.Namespace:
