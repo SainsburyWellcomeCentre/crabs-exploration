@@ -54,58 +54,59 @@ def sample_video_dataset():
     return ds, expected_counts
 
 
-def test_counts_per_video_frame_length_matches_clip_last_frame(
-    sample_video_dataset,
-):
-    """Replaces the notebook assert at lines 119-123."""
+def test_counts_per_video_frame(sample_video_dataset):
+    """Check the computed counts per video frame matches dataset."""
     ds, expected_counts = sample_video_dataset
-
     counts = _counts_per_video_frame(ds)
 
+    # check total number of frames
     assert len(counts) == ds.clip_last_frame_0idx.isel(clip_id=-1).item() + 1
+    # check number of detections per frame
     np.testing.assert_array_equal(counts, expected_counts)
 
 
-def test_video_idcs_round_trip_with_per_clip_idcs():
-    """Replaces the notebook assert at lines 130-152.
+def test_video_idcs_to_per_clip_idcs(sample_video_dataset):
+    """Check frame indices conversion from clip-based to video-based."""
+    ds_video, _ = sample_video_dataset
+    counts_video = _counts_per_video_frame(ds_video)
 
-    Selecting bottom-N video-frame indices and then splitting them into
-    per-clip indices must round-trip back to the original video-frame
-    indices when we add each clip's start offset.
-    """
-    counts_video = np.array([5, 1, 3, 2, 4, 6, 0, 7, 2, 1])
-    n_frames_per_clip = np.array([5, 5])
-    clip_ids = np.array(["c0", "c1"])
-    clip_first_frame_0idx = np.array([0, 5])
-    n_to_extract = 4
+    # Compute clip based indices
+    frame_based_idcs = _select_lowest_count_frame_idcs(
+        counts_video, frames_fraction=0.5
+    )  # sorted by count
+    clip_based_idcs = _video_idcs_to_per_clip_idcs(frame_based_idcs, ds_video)
 
-    video_idcs = _select_lowest_count_frame_idcs(counts_video, n_to_extract)
-    per_clip = _video_idcs_to_per_clip_idcs(
-        video_idcs, n_frames_per_clip, clip_ids
-    )
-
-    reconstructed = np.concatenate(
+    # Compute frame-based indices from clip-based ones
+    frame_based_idcs_from_clip = np.concatenate(
         [
-            per_clip[clip_id] + clip_first_frame_0idx[i]
-            for i, clip_id in enumerate(clip_ids)
-            if clip_id in per_clip
+            clip_based_idcs[clip_id]
+            + ds_video.clip_first_frame_0idx.sel(clip_id=clip_id).values
+            for clip_id in ds_video.clip_id.values
+            if clip_id in clip_based_idcs
         ]
-    )
+    )  # not sorted by count
 
-    np.testing.assert_array_equal(np.sort(video_idcs), np.sort(reconstructed))
+    # To compare we ignore sorting
+    # - frame_based_idcs is sorted by ascending count
+    # - frame_based_idcs_from_clip is not sorted by count
+    assert set(frame_based_idcs) == set(frame_based_idcs_from_clip)
 
 
-def test_select_lowest_count_frame_idcs_picks_smallest():
+def test_select_lowest_count_frame_idcs():
     """The selected indices correspond to the n smallest counts and are
     returned in ascending count order.
     """
     counts = np.array([5, 1, 3, 2, 4, 1, 6, 0, 7, 2])
-    n_to_extract = 4
+    frames_fraction = 0.5
 
-    idcs = _select_lowest_count_frame_idcs(counts, n_to_extract)
+    idcs = _select_lowest_count_frame_idcs(counts, frames_fraction)
 
+    # Check number of extracted frames
+    n_to_extract = int(len(counts) * frames_fraction)
     assert idcs.shape == (n_to_extract,)
+
+    # Check extracted frames are bottom ones after sorting
     np.testing.assert_array_equal(
-        np.sort(counts[idcs]), np.sort(counts)[:n_to_extract]
+        counts[idcs],
+        np.sort(counts)[:n_to_extract],
     )
-    assert np.all(np.diff(counts[idcs]) >= 0)
