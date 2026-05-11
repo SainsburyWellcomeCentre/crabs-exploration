@@ -59,6 +59,55 @@ echo "Path to csv with frames to extract: $INPUT_FRAMES_CSV"
 echo "Output directory: $OUTPUT_DIR_JOB"
 echo "-----"
 
+# ---------------------------
+# uv configuration
+# ---------------------------
+module load uv
+
+# set uv cache dir to /ceph/scratch/sminano
+# (should be faster than /nfs/nhome/live/sminano/.cache/uv and
+# gets purged regularly)
+export UV_CACHE_DIR=/ceph/scratch/sminano/uv-cache
+# The uv cache and the env are on different filesystems (ceph vs tmpfs)
+# so we set link mode to copy across the necessary files,
+# instead of symlinking (which would not work across filesystems)
+export UV_LINK_MODE=copy
+export UV_HTTP_TIMEOUT=120  # seconds
+
+# ----------------
+# warmup uv cache
+# ----------------
+# A lock is a coordination primitive: only one process at a time can "hold" it. 
+# Other processes that try to acquire it block (wait) until the holder releases it. 
+# It's how you serialize access to a shared resource across independent processes 
+# that otherwise can't talk to each other.
+#
+# flock (file-lock) uses a file as the rendezvous point.
+#
+# A file descriptor (FD) is a small integer the kernel hands you when you open a file 
+# — it's your handle to that open file.
+#
+# What happens below?
+# All 10 concurrent array tasks hit this block. 
+# One wins the lock and does the slow cold-cache download. 
+# The other 9 wait. When the winner finishes, the next acquires the lock, 
+# finds a warm cache, returns immediately, releases — and so on. 
+# No two tasks ever download in parallel, no cache corruption, no wasted bandwidth.
+#
+# The lock file itself (.warmup.lock) just exists as an anchor — nothing is ever written to it. 
+# You can leave it on disk between runs.
+
+# create cache dir if it does not exist
+mkdir -p "$UV_CACHE_DIR"
+
+# put a lock file (.warmup.lock) inside cache dir.
+# once the lock is held, run the uv cache warmup
+# First task to arrive populates the uv cache; 
+# later tasks block on flock, then run the same command when released and 
+# find a warm cache (instant).
+flock -x "$UV_CACHE_DIR/.warmup.lock" \
+    uv run --python 3.11 --with av -- python -c "import av" >/dev/null
+
 
 # -------------------------------------
 # Get clip for this job in the array
