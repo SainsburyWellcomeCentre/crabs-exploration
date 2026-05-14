@@ -95,26 +95,45 @@ fi
 # (this is useful because interrupted jobs may lead to
 # corrupted environments that uv otherwise would use,
 # so we force a fresh environment definition here)
-uv run --reinstall "$SCRIPT_COORD_PROMPTS_URL" \
-    "$ZARR_STORE" \
-    "$OUTPUT_DIR_COORDS" \
-    --save-html-figure \
-    $DATA_GROUPING_FLAG
 
-# -----------------------------------------
-# Run script to compute prompt frames
-# -----------------------------------------
+# --save-html-figure \
+
+# Track the resolved (timestamped) output dirs printed by each script
+# via lines of the form: "Output written to <path>."
+RESOLVED_OUTPUT_DIRS=()
+
+# echo "Computing prompt coordinates..."
+# COORDS_LOG=$(mktemp)
+# uv run --reinstall "$SCRIPT_COORD_PROMPTS_URL" \
+#     "$ZARR_STORE" \
+#     "$OUTPUT_DIR_COORDS" \
+#     $DATA_GROUPING_FLAG 2>&1 | tee "$COORDS_LOG"
+# RESOLVED_OUTPUT_DIRS+=("$(grep -oP '(?<=Output written to )[^.]+' "$COORDS_LOG")")
+# rm -f "$COORDS_LOG"
+# echo "Prompt coordinates saved at ${RESOLVED_OUTPUT_DIRS[-1]}"
+
+# # -----------------------------------------
+# # Run script to compute prompt frames
+# # -----------------------------------------
+echo "Computing prompt frames..."
+FRAMES_LOG=$(mktemp)
 uv run --reinstall "$SCRIPT_FRAME_PROMPTS_URL" \
     "$ZARR_STORE" \
     "$OUTPUT_DIR_FRAMES" \
-    --save-html-figure
+    --save-html-figure 2>&1 | tee "$FRAMES_LOG"
+
+# extract timestamped output dir
+RESOLVED_OUTPUT_DIRS+=("$(grep -oP '(?<=Output written to )[^.]+' "$FRAMES_LOG")")
+rm -f "$FRAMES_LOG"
+echo "Prompt frames saved at ${RESOLVED_OUTPUT_DIRS[-1]}"
 
 # --------------------------------------
-# Move logs into the latest output dir
+# Save a copy of the logs under each resolved output dir
 # -------------------------------------
-if [[ -n "$OUTPUT_DIR" ]]; then
-    LOG_DIR="$OUTPUT_DIR/logs"
+for DIR in "${RESOLVED_OUTPUT_DIRS[@]}"; do
+    LOG_DIR="$DIR/logs"
     mkdir -p "$LOG_DIR"
-    mv slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out} "$LOG_DIR"
+    cp slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out} "$LOG_DIR"
     chmod 444 "$LOG_DIR"/slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out}
-fi
+done
+rm slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out}
