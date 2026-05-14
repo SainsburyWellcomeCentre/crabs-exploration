@@ -86,17 +86,43 @@ def prompts_from_trajectory_data(
     A group can be a single video or the union of several (e.g. all videos
     from a given date).
     """
-    # Compute 2D histogram (square bins)
     counts, xedges, yedges = _compute_2d_histogram(
         trajectories_xy, image_w, image_h, bin_size_pixels
     )
+    return _prompts_from_histogram(
+        counts,
+        xedges,
+        yedges,
+        image_w=image_w,
+        image_h=image_h,
+        bin_size_pixels=bin_size_pixels,
+        counts_percentile=counts_percentile,
+        gaussian_sigma=gaussian_sigma,
+        peaks_min_distance=peaks_min_distance,
+        peaks_threshold_rel=peaks_threshold_rel,
+        node_radius_pixels=node_radius_pixels,
+    )
 
-    # Postprocess
+
+def _prompts_from_histogram(
+    counts: np.ndarray,
+    xedges: np.ndarray,
+    yedges: np.ndarray,
+    *,
+    image_w: int,
+    image_h: int,
+    bin_size_pixels: int,
+    counts_percentile: float,
+    gaussian_sigma: float,
+    peaks_min_distance: int,
+    peaks_threshold_rel: float,
+    node_radius_pixels: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Run the post-histogram pipeline (smoothing, peaks, prompts)."""
     smoothed = _apply_threshold_log_gaussian(
         counts, counts_percentile, gaussian_sigma
     )
 
-    # Detect local maxima in the smoothed histogram, in bin-index space
     peaks_col_row = peak_local_max(
         smoothed,
         min_distance=peaks_min_distance,
@@ -105,8 +131,6 @@ def prompts_from_trajectory_data(
     peak_values = smoothed[peaks_col_row[:, 0], peaks_col_row[:, 1]]
     peak_values_rel = peak_values / smoothed.max()
 
-    # Transform peaks coords in bin-index space into prompts
-    # Set default radius for node around peak if required
     if node_radius_pixels is None:
         node_radius_pixels = gaussian_sigma * 4 * bin_size_pixels
     peaks_xy, bboxes_clipped_x1y1x2y2 = _peaks_to_prompts(
@@ -117,8 +141,55 @@ def prompts_from_trajectory_data(
         image_w,
         image_h,
     )
-
     return peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel
+
+
+def _stream_2d_histogram_over_leaves(
+    leaves: list,
+    image_w: int,
+    image_h: int,
+    bin_size_pixels: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Build the 2D histogram by streaming over time-chunks of each leaf.
+
+    Reads one time-chunk of ``position`` at a time, accumulates partial
+    histograms, and never materialises the full per-video position array.
+    Peak memory per iteration is bounded by one chunk, not by video length.
+    """
+    n_bins_x = round(image_w / bin_size_pixels)
+    n_bins_y = round(image_h / bin_size_pixels)
+    counts = np.zeros((n_bins_x, n_bins_y), dtype=np.int64)
+    xedges = np.linspace(0, image_w, n_bins_x + 1)
+    yedges = np.linspace(0, image_h, n_bins_y + 1)
+
+    for node in leaves:
+        pos = node.ds.position
+        time_axis = pos.dims.index("time")
+        if pos.chunks is None:
+            time_sizes = (pos.sizes["time"],)
+        else:
+            time_sizes = pos.chunks[time_axis]
+
+        start = 0
+        for csize in time_sizes:
+            stop = start + csize
+            with dask.config.set(scheduler="synchronous"):
+                block = pos.isel(time=slice(start, stop))
+                x = block.sel(space="x").values.reshape(-1)
+                y = block.sel(space="y").values.reshape(-1)
+            mask = ~np.isnan(x) & ~np.isnan(y)
+            if mask.any():
+                c, _, _ = np.histogram2d(
+                    x[mask],
+                    y[mask],
+                    bins=[n_bins_x, n_bins_y],
+                    range=[[0, image_w], [0, image_h]],
+                )
+                counts += c.astype(np.int64)
+            del x, y, mask, block
+            start = stop
+
+    return counts, xedges, yedges
 
 
 def _flatten_trajectory_xy(
@@ -432,24 +503,51 @@ def main(args: argparse.Namespace) -> None:
 
     # Process each group of trajectories
     for group_id, leaves in list_groups:
-        trajectories_xy = np.concatenate(
-            [_flatten_trajectory_xy(node.ds) for node in leaves],
-            axis=0,
-        )
-
-        peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel = (
-            prompts_from_trajectory_data(
-                trajectories_xy,
+        # When HTML output is requested we need the full flat trajectory
+        # array (for datashader rasterisation), so we materialise it.
+        # Otherwise we stream chunk-by-chunk into the histogram, avoiding
+        # large per-video allocations entirely.
+        if args.save_html_figure:
+            trajectories_xy = np.concatenate(
+                [_flatten_trajectory_xy(node.ds) for node in leaves],
+                axis=0,
+            )
+            peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel = (
+                prompts_from_trajectory_data(
+                    trajectories_xy,
+                    image_w=args.image_width,
+                    image_h=args.image_height,
+                    bin_size_pixels=args.bin_size_pixels,
+                    counts_percentile=args.counts_percentile,
+                    gaussian_sigma=args.gaussian_sigma,
+                    peaks_min_distance=args.peaks_min_distance,
+                    peaks_threshold_rel=args.peaks_threshold_rel,
+                    node_radius_pixels=args.node_radius_pixels,
+                )
+            )
+        else:
+            counts, xedges, yedges = _stream_2d_histogram_over_leaves(
+                leaves,
                 image_w=args.image_width,
                 image_h=args.image_height,
                 bin_size_pixels=args.bin_size_pixels,
-                counts_percentile=args.counts_percentile,
-                gaussian_sigma=args.gaussian_sigma,
-                peaks_min_distance=args.peaks_min_distance,
-                peaks_threshold_rel=args.peaks_threshold_rel,
-                node_radius_pixels=args.node_radius_pixels,
             )
-        )
+            peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel = (
+                _prompts_from_histogram(
+                    counts,
+                    xedges,
+                    yedges,
+                    image_w=args.image_width,
+                    image_h=args.image_height,
+                    bin_size_pixels=args.bin_size_pixels,
+                    counts_percentile=args.counts_percentile,
+                    gaussian_sigma=args.gaussian_sigma,
+                    peaks_min_distance=args.peaks_min_distance,
+                    peaks_threshold_rel=args.peaks_threshold_rel,
+                    node_radius_pixels=args.node_radius_pixels,
+                )
+            )
+            del counts
 
         # Export as csv
         n_peaks = peaks_xy.shape[0]
