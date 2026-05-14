@@ -50,7 +50,6 @@ Usage (dependencies are auto-installed via uv):
 # ]
 # ///
 import argparse
-import gc
 import io
 import resource
 import sys
@@ -400,13 +399,11 @@ def main(args: argparse.Namespace) -> None:
     output_dir_timestamped = Path(f"{args.output_dir}_{timestamp}")
     output_dir_timestamped.mkdir(parents=True, exist_ok=True)
 
-    # ---------------
-    # Build the list of (group_id, [leaf_paths]) groups to process.
-    # We open dt only to collect leaf paths and video IDs, then
-    # dt.close() + del dt before the loop starts. This avoids memory
-    # accumulation across many videos.
+    # Read zarr store as datatree
     dt = xr.open_datatree(args.zarr_store, engine="zarr", chunks={})
 
+    # ---------------
+    # Build the list of (group_id, [leaves]) groups to process.
     # With --group-by-pattern: one group per pattern in --patterns (union
     # across matching videos).
     # Otherwise: one group per video.
@@ -417,33 +414,18 @@ def main(args: argparse.Namespace) -> None:
             if not dt_matched.children:
                 print(f"No videos match {pattern}")
                 continue
-            leaf_paths = [node.path for node in dt_matched.leaves]
+            leaves = list(dt_matched.leaves)
             group_id = pattern.rstrip("*")
-            list_groups.append((group_id, leaf_paths))
+            list_groups.append((group_id, leaves))
+    # Otherwise: one group per video
     else:
-        list_groups = [(node.ds.video_id, [node.path]) for node in dt.leaves]
-
-    # Close and clear datatree
-    dt.close()
-    del dt
-    gc.collect()
+        list_groups = [(node.ds.video_id, [node]) for node in dt.leaves]
     # ---------------
 
     # Process each group of trajectories
-    for group_id, leaf_paths in list_groups:
-        # Get list of datasets for this group_id
-        # Open each leaf's dataset fresh; close after this iteration
-        list_ds = [
-            xr.open_dataset(
-                args.zarr_store,
-                engine="zarr",
-                group=p,
-                chunks={},
-            )
-            for p in leaf_paths
-        ]
+    for group_id, leaves in list_groups:
         trajectories_xy = np.concatenate(
-            [_flatten_trajectory_xy(ds_leaf) for ds_leaf in list_ds],
+            [_flatten_trajectory_xy(node.ds) for node in leaves],
             axis=0,
         )
 
@@ -481,7 +463,7 @@ def main(args: argparse.Namespace) -> None:
         # Optionally export as html figure
         if args.save_html_figure:
             video_length_minutes = sum(
-                _get_video_length_minutes(ds_leaf) for ds_leaf in list_ds
+                _get_video_length_minutes(node.ds) for node in leaves
             )
 
             plot_prompts_html(
@@ -497,14 +479,8 @@ def main(args: argparse.Namespace) -> None:
                 output_dir_timestamped / f"{group_id}.html",
             )
 
-        print(f"Group {group_id} ({len(list_ds)} videos): {n_peaks} prompts")
-
-        # Release this iteration's dataset before moving on
-        for ds_leaf in list_ds:
-            ds_leaf.close()
-        del list_ds, trajectories_xy, peaks_xy, bboxes_clipped_x1y1x2y2
-        del peak_values_rel, df
-        gc.collect()
+        # return peaks_xy.shape[0]
+        print(f"Group {group_id} ({len(leaves)} videos): {n_peaks} prompts")
 
         print(
             "RSS GB:",
