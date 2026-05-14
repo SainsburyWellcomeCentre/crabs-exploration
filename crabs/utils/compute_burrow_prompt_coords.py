@@ -446,9 +446,6 @@ def main(args: argparse.Namespace) -> None:
             [_flatten_trajectory_xy(ds_leaf) for ds_leaf in list_ds],
             axis=0,
         )
-        video_length_minutes = sum(
-            _get_video_length_minutes(ds_leaf) for ds_leaf in list_ds
-        )
 
         peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel = (
             prompts_from_trajectory_data(
@@ -483,6 +480,10 @@ def main(args: argparse.Namespace) -> None:
 
         # Optionally export as html figure
         if args.save_html_figure:
+            video_length_minutes = sum(
+                _get_video_length_minutes(ds_leaf) for ds_leaf in list_ds
+            )
+
             plot_prompts_html(
                 trajectories_xy,
                 peaks_xy,
