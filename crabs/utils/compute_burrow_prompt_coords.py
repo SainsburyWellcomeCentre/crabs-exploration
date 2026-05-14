@@ -21,17 +21,17 @@ Output CSV columns (one row per prompt):
 
 Usage (dependencies are auto-installed via uv):
 * To generate prompts per video (default)
-    uv run compute_burrow_prompt_coords.py /path/to/store.zarr /path/to/out_dir
+    uv run compute_burrow_prompt_coords.py /path/to/store.zarr \
+        /path/to/out_dir
 * To generate prompts per day
-    uv run compute_burrow_prompt_coords.py /path/to/store.zarr /path/to/out_dir \
-        --group-by-pattern
+    uv run compute_burrow_prompt_coords.py /path/to/store.zarr \
+        /path/to/out_dir --group-by-pattern
 * To generate prompts per specific pattern (e.g. across all Sept data)
-    uv run compute_burrow_prompt_coords.py /path/to/store.zarr /path/to/out_dir \
-        --group-by-pattern *.09.*
+    uv run compute_burrow_prompt_coords.py /path/to/store.zarr \
+        /path/to/out_dir --group-by-pattern *.09.*
 * To save figures
-    uv run compute_burrow_prompt_coords.py /path/to/store.zarr /path/to/out_dir \
-        --save-html-figure
-
+    uv run compute_burrow_prompt_coords.py /path/to/store.zarr \
+        /path/to/out_dir --save-html-figure
 
 """
 
@@ -49,9 +49,9 @@ Usage (dependencies are auto-installed via uv):
 #   "Pillow",
 # ]
 # ///
-
 import argparse
 import io
+import resource
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -480,6 +480,12 @@ def main(args: argparse.Namespace) -> None:
 
         # return peaks_xy.shape[0]
         print(f"Group {group_id} ({len(leaves)} videos): {n_peaks} prompts")
+
+        print(
+            "RSS GB:",
+            resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6,
+            flush=True,
+        )
 
     print(f"Output written to {output_dir_timestamped}")
 
