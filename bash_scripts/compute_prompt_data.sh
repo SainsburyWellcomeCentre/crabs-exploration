@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -p gpu # partition (or gpu if needed)
+#SBATCH -p cpu # partition (cpu or gpu if needed)
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 2
 #SBATCH --mem 35G
@@ -90,7 +90,12 @@ if [[ "$DATA_GROUPING_COORD_PROMPTS" == "date" ]]; then
     DATA_GROUPING_FLAG="--group-by-pattern"
 fi
 
-uv run "$SCRIPT_COORD_PROMPTS_URL" \
+# we use --reinstall flag to force uv to rebuild
+# the environment without wiping the cache directory 
+# (this is useful because interrupted jobs may lead to
+# corrupted environments that uv otherwise would use,
+# so we force a fresh environment definition here)
+uv run --reinstall "$SCRIPT_COORD_PROMPTS_URL" \
     "$ZARR_STORE" \
     "$OUTPUT_DIR_COORDS" \
     --save-html-figure \
@@ -99,7 +104,7 @@ uv run "$SCRIPT_COORD_PROMPTS_URL" \
 # -----------------------------------------
 # Run script to compute prompt frames
 # -----------------------------------------
-uv run "$SCRIPT_FRAME_PROMPTS_URL" \
+uv run --reinstall "$SCRIPT_FRAME_PROMPTS_URL" \
     "$ZARR_STORE" \
     "$OUTPUT_DIR_FRAMES" \
     --save-html-figure
