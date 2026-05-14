@@ -21,8 +21,8 @@ set -o pipefail
 # ---------------------
 # Define variables
 # ---------------------
-INPUT_CLIPS_DIR="/ceph/zoo/users/sminano/loop_clips"
-INPUT_FRAMES_CSV="/ceph/zoo/users/sminano/burrow_prompts_XXXXXXXX_XXXXXX/frames_to_extract.csv"
+INPUT_CLIPS_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops"
+INPUT_FRAMES_CSV="/ceph/zoo/users/sminano/burrow_coord_prompts_XXXXXXXX_XXXXXX/frames_to_extract.csv"
 OUTPUT_DIR="/ceph/zoo/users/sminano/burrow_prompt_frames"
 
 
