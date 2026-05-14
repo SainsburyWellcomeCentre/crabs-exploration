@@ -56,6 +56,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import dask
 import datashader as ds
 import datashader.transfer_functions as tf
 import numpy as np
@@ -127,8 +128,15 @@ def _flatten_trajectory_xy(
 
     We construct a 2D array of coordinates aggregating all individuals.
     """
-    x = ds_video.position.sel(space="x").values.reshape(-1)
-    y = ds_video.position.sel(space="y").values.reshape(-1)
+    # By default, dask reads chunks in parallel, one per CPU core. On
+    # the cluster this can increase the memory peak substantially, because
+    # a cluster node can have many cores.
+
+    # We force dask to operate synchronously (i.e. no parallel workers)
+    # to avoid many chunks alive in memory on a many-core SLURM node
+    with dask.config.set(scheduler="synchronous"):
+        x = ds_video.position.sel(space="x").values.reshape(-1)
+        y = ds_video.position.sel(space="y").values.reshape(-1)
     mask = ~np.isnan(x) & ~np.isnan(y)
     return np.c_[x[mask], y[mask]]
 
