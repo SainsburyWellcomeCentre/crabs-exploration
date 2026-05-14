@@ -21,15 +21,15 @@ Output CSV columns (one row per prompt):
 
 Usage (dependencies are auto-installed via uv):
 * To generate prompts per video (default)
-    uv run create_burrow_prompts.py /path/to/store.zarr /path/to/out_dir
+    uv run compute_burrow_prompt_coords.py /path/to/store.zarr /path/to/out_dir
 * To generate prompts per day
-    uv run create_burrow_prompts.py /path/to/store.zarr /path/to/out_dir \
+    uv run compute_burrow_prompt_coords.py /path/to/store.zarr /path/to/out_dir \
         --group-by-pattern
 * To generate prompts per specific pattern (e.g. across all Sept data)
-    uv run create_burrow_prompts.py /path/to/store.zarr /path/to/out_dir \
+    uv run compute_burrow_prompt_coords.py /path/to/store.zarr /path/to/out_dir \
         --group-by-pattern *.09.*
 * To save figures
-    uv run create_burrow_prompts.py /path/to/store.zarr /path/to/out_dir \
+    uv run compute_burrow_prompt_coords.py /path/to/store.zarr /path/to/out_dir \
         --save-html-figure
 
 
@@ -602,7 +602,8 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         help=(
             "If set, trajectory data comes from groups "
             "that match the provided "
-            "pattern, rather than by video. Default: not set."
+            "pattern, rather than by video. Default: not set "
+            "(i.e., the data is grouped by video)."
         ),
     )
     parser.add_argument(

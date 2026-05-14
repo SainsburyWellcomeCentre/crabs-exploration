@@ -23,13 +23,13 @@ document the fraction used (it can be skipped with
 
 Usage (dependencies are auto-installed via uv):
 * Default
-    uv run compute_frames_for_burrow_prompts.py /path/to/store.zarr
+    uv run compute_burrow_prompt_frames.py /path/to/store.zarr
     /path/to/out_dir
 * Non-default fraction
-    uv run compute_frames_for_burrow_prompts.py /path/to/store.zarr
+    uv run compute_burrow_prompt_frames.py /path/to/store.zarr
     /path/to/out_dir --frames-per-video-fraction 0.1
 * Save HTML figure
-    uv run compute_frames_for_burrow_prompts.py /path/to/store.zarr
+    uv run compute_burrow_prompt_frames.py /path/to/store.zarr
     /path/to/out_dir --save-html-figure
 """
 
