@@ -2,8 +2,8 @@
 
 #SBATCH -p cpu # partition (cpu or gpu if needed)
 #SBATCH -N 1   # number of nodes
-#SBATCH --ntasks-per-node 2
-#SBATCH --mem 35G
+#SBATCH --ntasks-per-node 1
+#SBATCH --mem 16G
 #SBATCH -t 0-04:00 # time (D-HH:MM)
 #SBATCH -o slurm.%N.%j.out
 #SBATCH -e slurm.%N.%j.err
@@ -24,28 +24,40 @@ set -o pipefail
 # - a script to compute the frames to extract for the burrow prompts 
 #   and saves the outputs to OUTPUT_DIR_FRAMES
 
+
 # ---------------------
 # Define variables
 # ----------------------
-ZARR_STORE="/ceph/zoo/processed/CrabField/ramalhete_2023/CrabTracks/CrabTracks-slurm2492830-slurm2492948.zarr"
+ZARR_STORE="/ceph/zoo/users/sminano/CrabTracks-slurm2492830-slurm2492948.zarr"
+#"/ceph/zoo/processed/CrabField/ramalhete_2023/CrabTracks/CrabTracks-slurm2492830-slurm2492948.zarr"
 
 # Output directories
 # Note: The Python scripts will create burrow_prompts/coords_<ts>/ and 
 # burrow_prompts/frames_<ts>/ respectively (because they append the 
 # timestamp <ts> to the path passed).
-OUTPUT_DIR="/ceph/zoo/users/sminano/burrow_prompts"
-OUTPUT_DIR_COORDS="/ceph/zoo/users/sminano/burrow_prompts/coords"
-OUTPUT_DIR_FRAMES="/ceph/zoo/users/sminano/burrow_prompts/frames"
+OUTPUT_DIR="/ceph/zoo/users/sminano/burrow_prompts_slurm_$SLURM_JOB_ID"
+OUTPUT_DIR_COORDS="$OUTPUT_DIR/coords" # will be timestamped
+OUTPUT_DIR_FRAMES="$OUTPUT_DIR/frames" # will be timestamped
 
 # Version of the codebase: branch (or tag/commit) to fetch the script from
+GIT_REPO=SainsburyWellcomeCentre/crabs-exploration
 GIT_BRANCH=smg/segment-burrows
-
-# Script URLs on GitHub
-SCRIPT_COORD_PROMPTS_URL="https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/$GIT_BRANCH/crabs/utils/compute_burrow_prompt_coords.py"
-SCRIPT_FRAME_PROMPTS_URL="https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/$GIT_BRANCH/crabs/utils/compute_burrow_prompt_frames.py"
 
 # Data grouping for prompt coordinates
 DATA_GROUPING_COORD_PROMPTS="video"  # "video" or "date"
+
+# ------------------
+# Get script paths
+# ------------------
+
+# log the corresponding git commit
+GIT_COMMIT_ID=$(git ls-remote "https://github.com/$GIT_REPO.git" "$GIT_BRANCH" | cut -f1)
+
+# Script URLs on GitHub
+SCRIPT_COORD_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$COMMIT_ID/crabs/utils/compute_burrow_prompt_coords.py"
+SCRIPT_FRAME_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$COMMIT_ID/crabs/utils/compute_burrow_prompt_frames.py"
+
+
 
 # ---------------------------
 # uv configuration
@@ -67,6 +79,7 @@ export UV_HTTP_TIMEOUT=120  # seconds
 # Log arguments
 # -------------------------
 echo "Git branch: $GIT_BRANCH"
+echo "Git commit ID: $GIT_COMMIT_ID"
 echo "Script to compute prompt coordinates URL: $SCRIPT_COORD_PROMPTS_URL"
 echo "Script to compute prompt frames URL: $SCRIPT_FRAME_PROMPTS_URL"
 echo "zarr_store: $ZARR_STORE"
@@ -90,58 +103,62 @@ if [[ "$DATA_GROUPING_COORD_PROMPTS" == "date" ]]; then
     DATA_GROUPING_FLAG="--group-by-pattern"
 fi
 
-# we use --reinstall flag to force uv to rebuild
-# the environment without wiping the cache directory 
-# (this is useful because interrupted jobs may lead to
-# corrupted environments that uv otherwise would use,
-# so we force a fresh environment definition here)
-
-
 # Track the resolved (timestamped) output dirs printed by each script
 # via lines of the form: "Output written to <path>."
 RESOLVED_OUTPUT_DIRS=()
 
+# run command
+# - we use --reinstall flag to force uv to rebuild
+#  the environment without wiping the cache directory 
+#  (this is useful because interrupted jobs may lead to
+#  corrupted environments that uv otherwise would use,
+#  so we force a fresh environment definition here)
+# - prepend /usr/bin/time -v to log maxRSS
+
 # create temporary file to capture timestamped output directory
 COORDS_LOG=$(mktemp)
 
-# run command
-# --save-html-figure \
 echo "Computing prompt coordinates..."
-/usr/bin/time -v uv run --reinstall "$SCRIPT_COORD_PROMPTS_URL" \
+uv run --reinstall "$SCRIPT_COORD_PROMPTS_URL" \
     "$ZARR_STORE" \
     "$OUTPUT_DIR_COORDS" \
-    $DATA_GROUPING_FLAG 2>&1 | tee "$COORDS_LOG"
+    $DATA_GROUPING_FLAG \
+    --save-html-figure 2>&1 | tee "$COORDS_LOG"
 
 RESOLVED_OUTPUT_DIRS+=("$(grep -oP '(?<=Output written to )[^.]+' "$COORDS_LOG")")
-rm -f "$COORDS_LOG"
 echo "Prompt coordinates saved at ${RESOLVED_OUTPUT_DIRS[-1]}"
+
+# delete temporary file
+rm -f "$COORDS_LOG"
 
 # -----------------------------------------
 # Run script to compute prompt frames
 # -----------------------------------------
 
-# # create temporary file to capture timestamped output directory
-# FRAMES_LOG=$(mktemp)
+# create temporary file to capture timestamped output directory
+FRAMES_LOG=$(mktemp)
 
-# # run command
-# echo "Computing prompt frames..."
-# uv run --reinstall "$SCRIPT_FRAME_PROMPTS_URL" \
-#     "$ZARR_STORE" \
-#     "$OUTPUT_DIR_FRAMES" \
-#     --save-html-figure 2>&1 | tee "$FRAMES_LOG"
+# run command
+echo "Computing prompt frames..."
+uv run --reinstall "$SCRIPT_FRAME_PROMPTS_URL" \
+    "$ZARR_STORE" \
+    "$OUTPUT_DIR_FRAMES" \
+    --save-html-figure 2>&1 | tee "$FRAMES_LOG"
 
-# # extract timestamped output dir
-# RESOLVED_OUTPUT_DIRS+=("$(grep -oP '(?<=Output written to )[^.]+' "$FRAMES_LOG")")
-# rm -f "$FRAMES_LOG"
-# echo "Prompt frames saved at ${RESOLVED_OUTPUT_DIRS[-1]}"
+# extract timestamped output dir
+RESOLVED_OUTPUT_DIRS+=("$(grep -oP '(?<=Output written to )[^.]+' "$FRAMES_LOG")")
+echo "Prompt frames saved at ${RESOLVED_OUTPUT_DIRS[-1]}"
+
+# delete temporary file
+rm -f "$FRAMES_LOG"
 
 # --------------------------------------
-# Save a copy of the logs under each resolved output dir
+# Save a copy of the logs under parent output dir
 # -------------------------------------
-for DIR in "${RESOLVED_OUTPUT_DIRS[@]}"; do
-    LOG_DIR="$DIR/logs"
-    mkdir -p "$LOG_DIR"
-    cp slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out} "$LOG_DIR"
-    chmod 444 "$LOG_DIR"/slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out}
-done
+
+LOG_DIR="$OUTPUT_DIR/logs"
+mkdir -p "$LOG_DIR"
+cp slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out} "$LOG_DIR"
+chmod 444 "$LOG_DIR"/slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out}
+
 rm slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out}
