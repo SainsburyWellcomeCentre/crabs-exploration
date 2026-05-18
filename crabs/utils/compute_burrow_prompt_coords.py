@@ -412,33 +412,21 @@ def plot_prompts_html(
             ),
         )
     )
-    # Overlay bbox prompts as rectangles coloured by relative peak intensity.
-    # These are drawn as lightweight layout shapes rather than one Scattergl
-    # trace per bbox: thousands of WebGL traces are expensive to build and
-    # serialise, while rect shapes are compact dicts and still keep their
-    # individual colour. A single empty proxy trace carries the legend entry.
-    for (xmin, ymin, xmax, ymax), color in zip(
-        bboxes_clipped_x1y1x2y2, bbox_colors, strict=True
-    ):
-        fig.add_shape(
-            type="rect",
-            x0=xmin,
-            y0=ymin,
-            x1=xmax,
-            y1=ymax,
-            line=dict(color=color, width=1),
+    # Overlay bbox prompts as rectangles coloured by relative peak intensity
+    # (one trace per bbox, but grouped under a single legend entry)
+    for i, (xmin, ymin, xmax, ymax) in enumerate(bboxes_clipped_x1y1x2y2):
+        fig.add_trace(
+            go.Scattergl(
+                x=[xmin, xmax, xmax, xmin, xmin],
+                y=[ymin, ymin, ymax, ymax, ymin],
+                mode="lines",
+                line=dict(color=bbox_colors[i], width=1),
+                name="prompt_box",
+                legendgroup="prompt_box",
+                showlegend=(i == 0),
+                hoverinfo="skip",
+            )
         )
-    fig.add_trace(
-        go.Scattergl(
-            x=[None],
-            y=[None],
-            mode="lines",
-            line=dict(color="grey", width=1),
-            name="prompt_box",
-            showlegend=True,
-            hoverinfo="skip",
-        )
-    )
 
     # Export as html
     fig.write_html(str(output_html_path))
