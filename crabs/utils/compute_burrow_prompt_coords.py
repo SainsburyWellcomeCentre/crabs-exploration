@@ -47,6 +47,7 @@ Usage (dependencies are auto-installed via uv):
 #   "plotly",
 #   "datashader",
 #   "Pillow",
+#   "pyarrow",
 # ]
 # ///
 import argparse
@@ -69,40 +70,6 @@ import xarray as xr
 from PIL import Image
 from skimage.feature import peak_local_max
 from skimage.filters import gaussian
-
-# def prompts_from_trajectory_data(
-#     trajectories_xy: np.ndarray,
-#     *,
-#     image_w: int,
-#     image_h: int,
-#     bin_size_pixels: int,
-#     counts_percentile: float,
-#     gaussian_sigma: float,
-#     peaks_min_distance: int,
-#     peaks_threshold_rel: float,
-#     node_radius_pixels: float,
-# ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-#     """Compute SAM3 prompts for one group of trajectories.
-
-#     A group can be a single video or the union of several (e.g. all videos
-#     from a given date).
-#     """
-#     counts, xedges, yedges = _compute_2d_histogram(
-#         trajectories_xy, image_w, image_h, bin_size_pixels
-#     )
-#     return _prompts_from_histogram(
-#         counts,
-#         xedges,
-#         yedges,
-#         image_w=image_w,
-#         image_h=image_h,
-#         bin_size_pixels=bin_size_pixels,
-#         counts_percentile=counts_percentile,
-#         gaussian_sigma=gaussian_sigma,
-#         peaks_min_distance=peaks_min_distance,
-#         peaks_threshold_rel=peaks_threshold_rel,
-#         node_radius_pixels=node_radius_pixels,
-#     )
 
 
 def _prompts_from_histogram(
