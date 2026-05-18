@@ -58,6 +58,7 @@ from pathlib import Path
 
 import dask
 import dask.array as da
+import dask.dataframe as dd
 import datashader as ds
 import datashader.transfer_functions as tf
 import numpy as np
@@ -153,55 +154,6 @@ def _prompts_from_histogram(
 
 
 # ----------------
-def _yield_position_chunks(list_leaves: list):
-    """Yield (x, y) numpy arrays of non-nan position, one time-chunk at a time.
-
-    Reads only one time chunk into memory at a time and drops NaNs before
-    yielding.
-
-    A leaf is a node of the tree with no children (i.e. a tip of the
-    tree). In our case, it contains video data. In the default per-video
-    grouping case, the list of leaves contains one video.
-    """
-    # Loop thru leaves in input list
-    # (In the default per-video grouping case,
-    # the list of leaves contains one video).
-    for leaf in list_leaves:
-        pos = leaf.ds.position
-
-        # determine how to slice the time dimension into chunks
-        # list_chunk_sizes is a **tuple** of per-chunk lengths along time.
-        time_dim_index = pos.dims.index("time")
-        if pos.chunks is None:
-            # the array is not dask-backed - we get
-            # the full length of the time dimension
-            list_chunk_sizes = (pos.sizes["time"],)
-        else:
-            # the array is dask-backed (the normal case,
-            # since the zarr store is opened lazily with chunks={}), the
-            # pos.chunks is a tuple ordered by axis position
-            list_chunk_sizes = pos.chunks[time_dim_index]
-
-        # walk time dimension one chunk at a time
-        # (only that chunk is forced into memory via .values)
-        start = 0
-        for chunk_size in list_chunk_sizes:
-            stop = start + chunk_size
-            # force synchronous dask
-            with dask.config.set(scheduler="synchronous"):
-                block = pos.isel(time=slice(start, stop))
-                x = block.sel(space="x").values.reshape(-1)
-                y = block.sel(space="y").values.reshape(-1)
-
-            # yield no-nans coordinates for that chunk
-            mask = ~np.isnan(x) & ~np.isnan(y)
-            yield x[mask], y[mask]
-
-            # free before next chunk
-            del x, y, mask, block
-            start = stop
-
-
 def _compute_2d_histogram(
     list_leaves: list,
     image_w: int,
@@ -256,40 +208,48 @@ def _compute_2d_histogram(
     return counts.astype(np.int64), xedges, yedges
 
 
-def _compute_datashader_agg_by_chunks(
+def _compute_datashader_agg(
     list_leaves: list,
     image_w: int,
     image_h: int,
 ):
-    """Build a datashader points aggregate by accumulating time-chunks.
+    """Build a datashader points aggregate across leaves.
 
-    Returns the summed aggregate as an xarray DataArray (same type as
+    Feeds a dask DataFrame straight into ``Canvas.points``, which datashader
+    aggregates out-of-core. The aggregation is forced under the synchronous
+    scheduler to keep peak memory bounded.
+
+    NaN positions are ignored by datashader and points outside the canvas
+    ranges are dropped, so no explicit NaN masking is needed.
+
+    Returns the aggregate as an xarray DataArray (same type as
     ``ds.Canvas().points(...)``), suitable for passing to ``tf.shade``.
     """
-    # Initialise canvas
+    # Lazily concatenate the (flattened) x and y positions across leaves,
+    # then expose them as a dask DataFrame for datashader
+    x = da.concatenate(
+        [
+            leaf.ds.position.sel(space="x").data.reshape(-1)
+            for leaf in list_leaves
+        ]
+    )
+    y = da.concatenate(
+        [
+            leaf.ds.position.sel(space="y").data.reshape(-1)
+            for leaf in list_leaves
+        ]
+    )
+    ddf = dd.from_dask_array(da.stack([x, y], axis=1), columns=["x", "y"])
+
     canvas = ds.Canvas(
         plot_width=image_w,
         plot_height=image_h,
         x_range=(0, image_w),
         y_range=(0, image_h),
     )
-
-    # Initialise aggregate
-    agg_total = None
-
-    # Add points to canvas chunk-by-chunk
-    for x, y in _yield_position_chunks(list_leaves):
-        if x.size == 0:
-            continue
-        agg_chunk = canvas.points(pd.DataFrame({"x": x, "y": y}), "x", "y")
-        agg_total = agg_chunk if agg_total is None else agg_total + agg_chunk
-
-    # If no data, return a zero aggregate of the right shape
-    if agg_total is None:
-        agg_total = canvas.points(
-            pd.DataFrame({"x": np.empty(0), "y": np.empty(0)}), "x", "y"
-        )
-    return agg_total
+    with dask.config.set(scheduler="synchronous"):
+        agg = canvas.points(ddf, "x", "y")
+    return agg
 
 
 # ----------------
@@ -545,10 +505,10 @@ def main(args: argparse.Namespace) -> None:
     # ---------------
 
     # Process each group of trajectories.
-    # We stream the data chunk-by-chunk to avoid large per-video
-    # allocations: the 2D histogram (used for prompt detection) and, when
-    # --save-html-figure is set, the datashader aggregate (used for plotting)
-    # are both accumulated incrementally over time-chunks.
+    # Both the 2D histogram (used for prompt detection) and, when
+    # --save-html-figure is set, the datashader aggregate (used for
+    # plotting) are built lazily with dask and materialised under the
+    # synchronous scheduler, to avoid large per-video allocations.
     for group_id, list_nodes in list_groups:
         # # Before
         # trajectories_xy = np.concatenate(
@@ -610,12 +570,12 @@ def main(args: argparse.Namespace) -> None:
         )
         df.to_csv(output_dir_timestamped / f"{group_id}.csv", index=False)
 
-        # Optionally export as html figure (also streamed)
+        # Optionally export as html figure (also built lazily)
         if args.save_html_figure:
             video_length_minutes = sum(
                 _get_video_length_minutes(node.ds) for node in list_nodes
             )
-            agg = _compute_datashader_agg_by_chunks(
+            agg = _compute_datashader_agg(
                 list_nodes,
                 image_w=args.image_width,
                 image_h=args.image_height,
