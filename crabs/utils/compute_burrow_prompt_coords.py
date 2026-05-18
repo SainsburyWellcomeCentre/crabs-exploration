@@ -57,6 +57,7 @@ from datetime import datetime
 from pathlib import Path
 
 import dask
+import dask.array as da
 import datashader as ds
 import datashader.transfer_functions as tf
 import numpy as np
@@ -201,13 +202,21 @@ def _yield_position_chunks(list_leaves: list):
             start = stop
 
 
-def _compute_2d_histogram_by_chunks(
+def _compute_2d_histogram(
     list_leaves: list,
     image_w: int,
     image_h: int,
     bin_size_pixels: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Build the 2D histogram by accumulating results over time-chunks.
+    """Build the 2D histogram of trajectory positions across leaves.
+
+    Uses ``dask.array.histogram2d`` so the histogram is accumulated lazily
+    via a tree-reduction. The ``.compute()`` is forced under the synchronous
+    scheduler to keep peak memory bounded (roughly one chunk resident at a
+    time), matching the previous hand-rolled chunk loop.
+
+    NaN positions need no explicit masking: ``range`` discards out-of-range
+    points, and every comparison with NaN is False, so NaNs are dropped too.
 
     A leaf is a node of the tree with no children (i.e. a tip of the
     tree). In our case, it contains video data. In the default per-video
@@ -219,27 +228,32 @@ def _compute_2d_histogram_by_chunks(
     xedges = np.linspace(0, image_w, n_bins_x + 1)
     yedges = np.linspace(0, image_h, n_bins_y + 1)
 
-    # Initialise histogram
-    accum_counts = np.zeros((n_bins_x, n_bins_y), dtype=np.int64)
+    # Lazily concatenate the (flattened) x and y positions across leaves
+    x = da.concatenate(
+        [
+            leaf.ds.position.sel(space="x").data.reshape(-1)
+            for leaf in list_leaves
+        ]
+    )
+    y = da.concatenate(
+        [
+            leaf.ds.position.sel(space="y").data.reshape(-1)
+            for leaf in list_leaves
+        ]
+    )
 
-    # Loop thru chunks of trajectory data and accumulate
-    # in a running histogram
-    for x, y in _yield_position_chunks(list_leaves):
-        if x.size == 0:
-            continue
+    # Build the histogram lazily, then materialise it under the synchronous
+    # scheduler to bound peak memory
+    counts, _, _ = da.histogram2d(
+        x,
+        y,
+        bins=[n_bins_x, n_bins_y],
+        range=[[0, image_w], [0, image_h]],
+    )
+    with dask.config.set(scheduler="synchronous"):
+        counts = counts.compute()
 
-        # compute partial histogram
-        counts, _, _ = np.histogram2d(
-            x,
-            y,
-            bins=[n_bins_x, n_bins_y],
-            range=[[0, image_w], [0, image_h]],
-        )
-
-        # add partial histogram to final one
-        accum_counts += counts.astype(np.int64)
-
-    return accum_counts, xedges, yedges
+    return counts.astype(np.int64), xedges, yedges
 
 
 def _compute_datashader_agg_by_chunks(
@@ -555,7 +569,7 @@ def main(args: argparse.Namespace) -> None:
         #     )
         # )
         # ------------------------
-        counts, xedges, yedges = _compute_2d_histogram_by_chunks(
+        counts, xedges, yedges = _compute_2d_histogram(
             list_nodes,
             image_w=args.image_width,
             image_h=args.image_height,
