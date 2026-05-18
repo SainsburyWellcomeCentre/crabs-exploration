@@ -75,7 +75,7 @@ from skimage.filters import gaussian
 # The zarr-native chunking can be arbitrarily large; capping it here bounds
 # the peak memory of the per-chunk materialisation in both the histogram
 # and (heavier) datashader passes. ~5e6 float32 ≈ 20 MB per chunk.
-POSITION_CHUNK_SIZE = 5_000_000
+# POSITION_CHUNK_SIZE = 5_000_000
 
 
 def _prompts_from_histogram(
@@ -187,10 +187,10 @@ def _compute_datashader_agg(
     Returns the aggregate as an xarray DataArray (same type as
     ``ds.Canvas().points(...)``), suitable for passing to ``tf.shade``.
     """
-    # Build the dataframe column-wise rather than via da.stack, which would
-    # allocate a full extra (N, 2) copy of the positions. x_flat and y_flat
-    # share identical partitioning, so the axis=1 concat is a cheap
-    # per-partition column assembly.
+    # Build the dataframe concatenating two single-column dataframes.
+    # x_flat and y_flat share identical partitioning, so the axis=1
+    # concat is a cheap. dd.from_dask_array wraps the existing 1D array
+    # as a single-column DataFrame without copying
     ddf = dd.concat(
         [
             dd.from_dask_array(x_flat, columns="x"),
@@ -472,9 +472,8 @@ def main(args: argparse.Namespace) -> None:
                     leaf.ds.position.sel(space="x").data.reshape(-1)
                     for leaf in list_leaves
                 ]
-            )
-            .astype("float32")
-            .rechunk(POSITION_CHUNK_SIZE)
+            ).astype("float32")
+            # .rechunk(POSITION_CHUNK_SIZE)
         )
 
         y = (
@@ -483,9 +482,8 @@ def main(args: argparse.Namespace) -> None:
                     leaf.ds.position.sel(space="y").data.reshape(-1)
                     for leaf in list_leaves
                 ]
-            )
-            .astype("float32")
-            .rechunk(POSITION_CHUNK_SIZE)
+            ).astype("float32")
+            # .rechunk(POSITION_CHUNK_SIZE)
         )
 
         counts, xedges, yedges = _compute_2d_histogram(
