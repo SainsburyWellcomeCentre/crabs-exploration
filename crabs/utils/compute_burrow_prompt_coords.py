@@ -57,6 +57,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import dask
 import dask.array as da
 import dask.dataframe as dd
 import datashader as ds
@@ -162,9 +163,8 @@ def _compute_2d_histogram(
         range=[[0, image_w], [0, image_h]],
         # NOTE: we need to specify range to discard nan values
     )
-    # with dask.config.set(scheduler="synchronous"):
-    #     counts = counts.compute()
-    counts = counts.compute()
+    with dask.config.set(scheduler="synchronous"):
+        counts = counts.compute()
 
     return counts.astype(np.int64), xedges, yedges
 
@@ -205,9 +205,8 @@ def _compute_datashader_agg(
         x_range=(0, image_w),
         y_range=(0, image_h),
     )
-    # with dask.config.set(scheduler="synchronous"):
-    #     agg = canvas.points(ddf, "x", "y")
-    agg = canvas.points(ddf, "x", "y")
+    with dask.config.set(scheduler="synchronous"):
+        agg = canvas.points(ddf, "x", "y")
     return agg
 
 
