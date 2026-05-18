@@ -71,6 +71,12 @@ from PIL import Image
 from skimage.feature import peak_local_max
 from skimage.filters import gaussian
 
+# Target number of elements per chunk for the flattened position arrays.
+# The zarr-native chunking can be arbitrarily large; capping it here bounds
+# the peak memory of the per-chunk materialisation in both the histogram
+# and (heavier) datashader passes. ~5e6 float32 ≈ 20 MB per chunk.
+POSITION_CHUNK_SIZE = 5_000_000
+
 
 def _prompts_from_histogram(
     counts: np.ndarray,
@@ -181,8 +187,16 @@ def _compute_datashader_agg(
     Returns the aggregate as an xarray DataArray (same type as
     ``ds.Canvas().points(...)``), suitable for passing to ``tf.shade``.
     """
-    ddf = dd.from_dask_array(
-        da.stack([x_flat, y_flat], axis=1), columns=["x", "y"]
+    # Build the dataframe column-wise rather than via da.stack, which would
+    # allocate a full extra (N, 2) copy of the positions. x_flat and y_flat
+    # share identical partitioning, so the axis=1 concat is a cheap
+    # per-partition column assembly.
+    ddf = dd.concat(
+        [
+            dd.from_dask_array(x_flat, columns="x"),
+            dd.from_dask_array(y_flat, columns="y"),
+        ],
+        axis=1,
     )
 
     canvas = ds.Canvas(
@@ -398,21 +412,33 @@ def plot_prompts_html(
             ),
         )
     )
-    # Overlay bbox prompts as rectangles coloured by relative peak intensity
-    # (one trace per bbox, but grouped under a single legend entry)
-    for i, (xmin, ymin, xmax, ymax) in enumerate(bboxes_clipped_x1y1x2y2):
-        fig.add_trace(
-            go.Scattergl(
-                x=[xmin, xmax, xmax, xmin, xmin],
-                y=[ymin, ymin, ymax, ymax, ymin],
-                mode="lines",
-                line=dict(color=bbox_colors[i], width=1),
-                name="prompt_box",
-                legendgroup="prompt_box",
-                showlegend=(i == 0),
-                hoverinfo="skip",
-            )
+    # Overlay bbox prompts as rectangles coloured by relative peak intensity.
+    # These are drawn as lightweight layout shapes rather than one Scattergl
+    # trace per bbox: thousands of WebGL traces are expensive to build and
+    # serialise, while rect shapes are compact dicts and still keep their
+    # individual colour. A single empty proxy trace carries the legend entry.
+    for (xmin, ymin, xmax, ymax), color in zip(
+        bboxes_clipped_x1y1x2y2, bbox_colors, strict=True
+    ):
+        fig.add_shape(
+            type="rect",
+            x0=xmin,
+            y0=ymin,
+            x1=xmax,
+            y1=ymax,
+            line=dict(color=color, width=1),
         )
+    fig.add_trace(
+        go.Scattergl(
+            x=[None],
+            y=[None],
+            mode="lines",
+            line=dict(color="grey", width=1),
+            name="prompt_box",
+            showlegend=True,
+            hoverinfo="skip",
+        )
+    )
 
     # Export as html
     fig.write_html(str(output_html_path))
@@ -452,19 +478,27 @@ def main(args: argparse.Namespace) -> None:
     for group_id, list_leaves in list_groups:
         # ------------------------
         # Lazily concatenate the (flattened) x and y positions across leaves
-        x = da.concatenate(
-            [
-                leaf.ds.position.sel(space="x").data.reshape(-1)
-                for leaf in list_leaves
-            ]
-        ).astype("float32")
+        x = (
+            da.concatenate(
+                [
+                    leaf.ds.position.sel(space="x").data.reshape(-1)
+                    for leaf in list_leaves
+                ]
+            )
+            .astype("float32")
+            .rechunk(POSITION_CHUNK_SIZE)
+        )
 
-        y = da.concatenate(
-            [
-                leaf.ds.position.sel(space="y").data.reshape(-1)
-                for leaf in list_leaves
-            ]
-        ).astype("float32")
+        y = (
+            da.concatenate(
+                [
+                    leaf.ds.position.sel(space="y").data.reshape(-1)
+                    for leaf in list_leaves
+                ]
+            )
+            .astype("float32")
+            .rechunk(POSITION_CHUNK_SIZE)
+        )
 
         counts, xedges, yedges = _compute_2d_histogram(
             x,
