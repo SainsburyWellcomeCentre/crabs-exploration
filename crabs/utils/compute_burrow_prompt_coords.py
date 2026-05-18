@@ -68,40 +68,39 @@ from PIL import Image
 from skimage.feature import peak_local_max
 from skimage.filters import gaussian
 
+# def prompts_from_trajectory_data(
+#     trajectories_xy: np.ndarray,
+#     *,
+#     image_w: int,
+#     image_h: int,
+#     bin_size_pixels: int,
+#     counts_percentile: float,
+#     gaussian_sigma: float,
+#     peaks_min_distance: int,
+#     peaks_threshold_rel: float,
+#     node_radius_pixels: float,
+# ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+#     """Compute SAM3 prompts for one group of trajectories.
 
-def prompts_from_trajectory_data(
-    trajectories_xy: np.ndarray,
-    *,
-    image_w: int,
-    image_h: int,
-    bin_size_pixels: int,
-    counts_percentile: float,
-    gaussian_sigma: float,
-    peaks_min_distance: int,
-    peaks_threshold_rel: float,
-    node_radius_pixels: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Compute SAM3 prompts for one group of trajectories.
-
-    A group can be a single video or the union of several (e.g. all videos
-    from a given date).
-    """
-    counts, xedges, yedges = _compute_2d_histogram(
-        trajectories_xy, image_w, image_h, bin_size_pixels
-    )
-    return _prompts_from_histogram(
-        counts,
-        xedges,
-        yedges,
-        image_w=image_w,
-        image_h=image_h,
-        bin_size_pixels=bin_size_pixels,
-        counts_percentile=counts_percentile,
-        gaussian_sigma=gaussian_sigma,
-        peaks_min_distance=peaks_min_distance,
-        peaks_threshold_rel=peaks_threshold_rel,
-        node_radius_pixels=node_radius_pixels,
-    )
+#     A group can be a single video or the union of several (e.g. all videos
+#     from a given date).
+#     """
+#     counts, xedges, yedges = _compute_2d_histogram(
+#         trajectories_xy, image_w, image_h, bin_size_pixels
+#     )
+#     return _prompts_from_histogram(
+#         counts,
+#         xedges,
+#         yedges,
+#         image_w=image_w,
+#         image_h=image_h,
+#         bin_size_pixels=bin_size_pixels,
+#         counts_percentile=counts_percentile,
+#         gaussian_sigma=gaussian_sigma,
+#         peaks_min_distance=peaks_min_distance,
+#         peaks_threshold_rel=peaks_threshold_rel,
+#         node_radius_pixels=node_radius_pixels,
+#     )
 
 
 def _prompts_from_histogram(
@@ -118,11 +117,18 @@ def _prompts_from_histogram(
     peaks_threshold_rel: float,
     node_radius_pixels: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Run the post-histogram pipeline (smoothing, peaks, prompts)."""
+    """Compute prompt locations from trajectory histogram.
+
+    Returns x,y coordinates, bboxes and peak relative values.
+    """
+    # Postprocess histogram: threshold + log + Gaussian
     smoothed = _apply_threshold_log_gaussian(
-        counts, counts_percentile, gaussian_sigma
+        counts,
+        counts_percentile,
+        gaussian_sigma,
     )
 
+    # Find local maxima (column and row), and get relative value
     peaks_col_row = peak_local_max(
         smoothed,
         min_distance=peaks_min_distance,
@@ -131,6 +137,7 @@ def _prompts_from_histogram(
     peak_values = smoothed[peaks_col_row[:, 0], peaks_col_row[:, 1]]
     peak_values_rel = peak_values / smoothed.max()
 
+    # Compute xy coordinates and bbox around peaks
     if node_radius_pixels is None:
         node_radius_pixels = gaussian_sigma * 4 * bin_size_pixels
     peaks_xy, bboxes_clipped_x1y1x2y2 = _peaks_to_prompts(
@@ -144,93 +151,134 @@ def _prompts_from_histogram(
     return peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel
 
 
-def _stream_2d_histogram_over_leaves(
-    leaves: list,
-    image_w: int,
-    image_h: int,
-    bin_size_pixels: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Build the 2D histogram by streaming over time-chunks of each leaf.
+# ----------------
+def _yield_position_chunks(list_leaves: list):
+    """Yield (x, y) numpy arrays of non-nan position, one time-chunk at a time.
 
-    Reads one time-chunk of ``position`` at a time, accumulates partial
-    histograms, and never materialises the full per-video position array.
-    Peak memory per iteration is bounded by one chunk, not by video length.
+    Reads only one time chunk into memory at a time and drops NaNs before
+    yielding.
+
+    A leaf is a node of the tree with no children (i.e. a tip of the
+    tree). In our case, it contains video data. In the default per-video
+    grouping case, the list of leaves contains one video.
     """
-    n_bins_x = round(image_w / bin_size_pixels)
-    n_bins_y = round(image_h / bin_size_pixels)
-    counts = np.zeros((n_bins_x, n_bins_y), dtype=np.int64)
-    xedges = np.linspace(0, image_w, n_bins_x + 1)
-    yedges = np.linspace(0, image_h, n_bins_y + 1)
+    # Loop thru leaves in input list
+    # (In the default per-video grouping case,
+    # the list of leaves contains one video).
+    for leaf in list_leaves:
+        pos = leaf.ds.position
 
-    for node in leaves:
-        pos = node.ds.position
-        time_axis = pos.dims.index("time")
+        # determine how to slice the time dimension into chunks
+        # list_chunk_sizes is a **tuple** of per-chunk lengths along time.
+        time_dim_index = pos.dims.index("time")
         if pos.chunks is None:
-            time_sizes = (pos.sizes["time"],)
+            # the array is not dask-backed - we get
+            # the full length of the time dimension
+            list_chunk_sizes = (pos.sizes["time"],)
         else:
-            time_sizes = pos.chunks[time_axis]
+            # the array is dask-backed (the normal case,
+            # since the zarr store is opened lazily with chunks={}), the
+            # pos.chunks is a tuple ordered by axis position
+            list_chunk_sizes = pos.chunks[time_dim_index]
 
+        # walk time dimension one chunk at a time
+        # (only that chunk is forced into memory via .values)
         start = 0
-        for csize in time_sizes:
-            stop = start + csize
+        for chunk_size in list_chunk_sizes:
+            stop = start + chunk_size
+            # force synchronous dask
             with dask.config.set(scheduler="synchronous"):
                 block = pos.isel(time=slice(start, stop))
                 x = block.sel(space="x").values.reshape(-1)
                 y = block.sel(space="y").values.reshape(-1)
+
+            # yield no-nans coordinates for that chunk
             mask = ~np.isnan(x) & ~np.isnan(y)
-            if mask.any():
-                c, _, _ = np.histogram2d(
-                    x[mask],
-                    y[mask],
-                    bins=[n_bins_x, n_bins_y],
-                    range=[[0, image_w], [0, image_h]],
-                )
-                counts += c.astype(np.int64)
+            yield x[mask], y[mask]
+
+            # free before next chunk
             del x, y, mask, block
             start = stop
 
-    return counts, xedges, yedges
 
-
-def _flatten_trajectory_xy(
-    ds_video: xr.Dataset,
-) -> np.ndarray:
-    """Flatten ``position`` over (time, individuals) and drop NaNs.
-
-    We construct a 2D array of coordinates aggregating all individuals.
-    """
-    # By default, dask reads chunks in parallel, one per CPU core. On
-    # the cluster this can increase the memory peak substantially, because
-    # a cluster node can have many cores.
-
-    # We force dask to operate synchronously (i.e. no parallel workers)
-    # to avoid many chunks alive in memory on a many-core SLURM node
-    with dask.config.set(scheduler="synchronous"):
-        x = ds_video.position.sel(space="x").values.reshape(-1)
-        y = ds_video.position.sel(space="y").values.reshape(-1)
-    mask = ~np.isnan(x) & ~np.isnan(y)
-    return np.c_[x[mask], y[mask]]
-
-
-def _compute_2d_histogram(
-    points_xy: np.ndarray,
+def _compute_2d_histogram_by_chunks(
+    list_leaves: list,
     image_w: int,
     image_h: int,
     bin_size_pixels: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Bin trajectory points into a 2D histogram over the image.
+    """Build the 2D histogram by accumulating results over time-chunks.
 
-    Bins are square.
+    A leaf is a node of the tree with no children (i.e. a tip of the
+    tree). In our case, it contains video data. In the default per-video
+    grouping case, the list of leaves contains one video.
     """
+    # Compute histogram params
     n_bins_x = round(image_w / bin_size_pixels)
     n_bins_y = round(image_h / bin_size_pixels)
-    counts, xedges, yedges = np.histogram2d(
-        points_xy[:, 0],
-        points_xy[:, 1],
-        bins=[n_bins_x, n_bins_y],
-        range=[[0, image_w], [0, image_h]],
+    xedges = np.linspace(0, image_w, n_bins_x + 1)
+    yedges = np.linspace(0, image_h, n_bins_y + 1)
+
+    # Initialise histogram
+    accum_counts = np.zeros((n_bins_x, n_bins_y), dtype=np.int64)
+
+    # Loop thru chunks of trajectory data and accumulate
+    # in a running histogram
+    for x, y in _yield_position_chunks(list_leaves):
+        if x.size == 0:
+            continue
+
+        # compute partial histogram
+        counts, _, _ = np.histogram2d(
+            x,
+            y,
+            bins=[n_bins_x, n_bins_y],
+            range=[[0, image_w], [0, image_h]],
+        )
+
+        # add partial histogram to final one
+        accum_counts += counts.astype(np.int64)
+
+    return accum_counts, xedges, yedges
+
+
+def _compute_datashader_agg_by_chunks(
+    list_leaves: list,
+    image_w: int,
+    image_h: int,
+):
+    """Build a datashader points aggregate by accumulating time-chunks.
+
+    Returns the summed aggregate as an xarray DataArray (same type as
+    ``ds.Canvas().points(...)``), suitable for passing to ``tf.shade``.
+    """
+    # Initialise canvas
+    canvas = ds.Canvas(
+        plot_width=image_w,
+        plot_height=image_h,
+        x_range=(0, image_w),
+        y_range=(0, image_h),
     )
-    return counts, xedges, yedges
+
+    # Initialise aggregate
+    agg_total = None
+
+    # Add points to canvas chunk-by-chunk
+    for x, y in _yield_position_chunks(list_leaves):
+        if x.size == 0:
+            continue
+        agg_chunk = canvas.points(pd.DataFrame({"x": x, "y": y}), "x", "y")
+        agg_total = agg_chunk if agg_total is None else agg_total + agg_chunk
+
+    # If no data, return a zero aggregate of the right shape
+    if agg_total is None:
+        agg_total = canvas.points(
+            pd.DataFrame({"x": np.empty(0), "y": np.empty(0)}), "x", "y"
+        )
+    return agg_total
+
+
+# ----------------
 
 
 def _apply_threshold_log_gaussian(counts, percentile, sigma):
@@ -321,7 +369,7 @@ def _get_video_length_minutes(ds_video: xr.Dataset) -> float:
 
 
 def plot_prompts_html(
-    trajectory_points_xy: np.ndarray,
+    agg,
     peaks_xy: np.ndarray,
     peak_values_rel: np.ndarray,
     bboxes_clipped_x1y1x2y2: np.ndarray,
@@ -336,29 +384,10 @@ def plot_prompts_html(
 ) -> None:
     """Plot trajectories in single video and overlay per-video prompts.
 
-    Rasterises the trajectory data with datashader and overlays prompts as
+    Takes a pre-built datashader aggregate and overlays prompts as
     'x' peak markers and bbox rectangles, both coloured by relative peak
     intensity. The figure is saved as an html file.
     """
-    # Initialise canvas
-    canvas = ds.Canvas(
-        plot_width=image_w,
-        plot_height=image_h,
-        x_range=(0, image_w),
-        y_range=(0, image_h),
-    )
-
-    # Add points to the canvas and rasterise
-    agg = canvas.points(
-        pd.DataFrame(
-            {
-                "x": trajectory_points_xy[:, 0],
-                "y": trajectory_points_xy[:, 1],
-            }
-        ),
-        "x",
-        "y",
-    )
     img = tf.shade(agg, cmap=["#1f77b4"])
     img = tf.dynspread(img, threshold=dynspread_threshold)
 
@@ -493,61 +522,62 @@ def main(args: argparse.Namespace) -> None:
             if not dt_matched.children:
                 print(f"No videos match {pattern}")
                 continue
-            leaves = list(dt_matched.leaves)
+            list_nodes = list(dt_matched.leaves)
             group_id = pattern.rstrip("*")
-            list_groups.append((group_id, leaves))
+            list_groups.append((group_id, list_nodes))
     # Otherwise: one group per video
     else:
         list_groups = [(node.ds.video_id, [node]) for node in dt.leaves]
     # ---------------
 
-    # Process each group of trajectories
-    for group_id, leaves in list_groups:
-        # When HTML output is requested we need the full flat trajectory
-        # array (for datashader rasterisation), so we materialise it.
-        # Otherwise we stream chunk-by-chunk into the histogram, avoiding
-        # large per-video allocations entirely.
-        if args.save_html_figure:
-            trajectories_xy = np.concatenate(
-                [_flatten_trajectory_xy(node.ds) for node in leaves],
-                axis=0,
-            )
-            peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel = (
-                prompts_from_trajectory_data(
-                    trajectories_xy,
-                    image_w=args.image_width,
-                    image_h=args.image_height,
-                    bin_size_pixels=args.bin_size_pixels,
-                    counts_percentile=args.counts_percentile,
-                    gaussian_sigma=args.gaussian_sigma,
-                    peaks_min_distance=args.peaks_min_distance,
-                    peaks_threshold_rel=args.peaks_threshold_rel,
-                    node_radius_pixels=args.node_radius_pixels,
-                )
-            )
-        else:
-            counts, xedges, yedges = _stream_2d_histogram_over_leaves(
-                leaves,
+    # Process each group of trajectories.
+    # We stream the data chunk-by-chunk to avoid large per-video
+    # allocations: the 2D histogram (used for prompt detection) and, when
+    # --save-html-figure is set, the datashader aggregate (used for plotting)
+    # are both accumulated incrementally over time-chunks.
+    for group_id, list_nodes in list_groups:
+        # # Before
+        # trajectories_xy = np.concatenate(
+        #     [_flatten_trajectory_xy(node.ds) for node in leaves],
+        #     axis=0,
+        # )
+        # peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel = (
+        #     prompts_from_trajectory_data(
+        #         trajectories_xy,
+        #         image_w=args.image_width,
+        #         image_h=args.image_height,
+        #         bin_size_pixels=args.bin_size_pixels,
+        #         counts_percentile=args.counts_percentile,
+        #         gaussian_sigma=args.gaussian_sigma,
+        #         peaks_min_distance=args.peaks_min_distance,
+        #         peaks_threshold_rel=args.peaks_threshold_rel,
+        #         node_radius_pixels=args.node_radius_pixels,
+        #     )
+        # )
+        # ------------------------
+        counts, xedges, yedges = _compute_2d_histogram_by_chunks(
+            list_nodes,
+            image_w=args.image_width,
+            image_h=args.image_height,
+            bin_size_pixels=args.bin_size_pixels,
+        )
+        peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel = (
+            _prompts_from_histogram(
+                counts,
+                xedges,
+                yedges,
                 image_w=args.image_width,
                 image_h=args.image_height,
                 bin_size_pixels=args.bin_size_pixels,
+                counts_percentile=args.counts_percentile,
+                gaussian_sigma=args.gaussian_sigma,
+                peaks_min_distance=args.peaks_min_distance,
+                peaks_threshold_rel=args.peaks_threshold_rel,
+                node_radius_pixels=args.node_radius_pixels,
             )
-            peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel = (
-                _prompts_from_histogram(
-                    counts,
-                    xedges,
-                    yedges,
-                    image_w=args.image_width,
-                    image_h=args.image_height,
-                    bin_size_pixels=args.bin_size_pixels,
-                    counts_percentile=args.counts_percentile,
-                    gaussian_sigma=args.gaussian_sigma,
-                    peaks_min_distance=args.peaks_min_distance,
-                    peaks_threshold_rel=args.peaks_threshold_rel,
-                    node_radius_pixels=args.node_radius_pixels,
-                )
-            )
-            del counts
+        )
+        del counts
+        # -------------------
 
         # Export as csv
         n_peaks = peaks_xy.shape[0]
@@ -566,14 +596,18 @@ def main(args: argparse.Namespace) -> None:
         )
         df.to_csv(output_dir_timestamped / f"{group_id}.csv", index=False)
 
-        # Optionally export as html figure
+        # Optionally export as html figure (also streamed)
         if args.save_html_figure:
             video_length_minutes = sum(
-                _get_video_length_minutes(node.ds) for node in leaves
+                _get_video_length_minutes(node.ds) for node in list_nodes
             )
-
+            agg = _compute_datashader_agg_by_chunks(
+                list_nodes,
+                image_w=args.image_width,
+                image_h=args.image_height,
+            )
             plot_prompts_html(
-                trajectories_xy,
+                agg,
                 peaks_xy,
                 peak_values_rel,
                 bboxes_clipped_x1y1x2y2,
@@ -584,9 +618,12 @@ def main(args: argparse.Namespace) -> None:
                 args.peaks_threshold_rel,
                 output_dir_timestamped / f"{group_id}.html",
             )
+            del agg
 
         # return peaks_xy.shape[0]
-        print(f"Group {group_id} ({len(leaves)} videos): {n_peaks} prompts")
+        print(
+            f"Group {group_id} ({len(list_nodes)} videos): {n_peaks} prompts"
+        )
 
         print(
             "RSS GB:",
