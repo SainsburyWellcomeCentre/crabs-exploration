@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from crabs.utils.compute_frames_for_burrow_prompts import (
+from crabs.utils.compute_burrow_prompt_frames import (
     _counts_per_video_frame,
     _select_lowest_count_frame_idcs,
     _video_idcs_to_per_clip_idcs,
