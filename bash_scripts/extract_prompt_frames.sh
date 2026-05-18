@@ -5,14 +5,14 @@
 #SBATCH --ntasks-per-node 1       # number of tasks per node
 #SBATCH --mem 8G                  # memory pool for all cores
 #SBATCH -t 0-04:00                # time (D-HH:MM)
-#SBATCH -o slurm_array.%N.%A-%a.out
-#SBATCH -e slurm_array.%N.%A-%a.err
+#SBATCH -o slurm_array.%A-%a.%N.out
+#SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
 # Update N to (number of unique clips in INPUT_FRAMES_CSV) - 1.
 # To get number of unique clips:
 #   awk -F',' 'NR>2 && $1 !~ /^#/ {print $1}' "$INPUT_FRAMES_CSV" | sort -u | wc -l
-#SBATCH --array=0-119%10
+#SBATCH --array=0-120%10
 
 set -e
 set -u
@@ -22,8 +22,10 @@ set -o pipefail
 # Define variables
 # ---------------------
 INPUT_CLIPS_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops"
-INPUT_FRAMES_CSV="/ceph/zoo/users/sminano/burrow_coord_prompts_XXXXXXXX_XXXXXX/frames_to_extract.csv"
-OUTPUT_DIR="/ceph/zoo/users/sminano/burrow_prompt_frames"
+INPUT_FRAMES_CSV="/ceph/zoo/users/sminano/burrow_prompts/frames_20260514_125227/frames_to_extract.csv"
+
+# will be prepended with _slurm
+OUTPUT_DIR="/ceph/zoo/users/sminano/burrow_extracted_frames_slurm_${SLURM_ARRAY_JOB_ID}"
 
 
 # ---------------------
@@ -47,8 +49,8 @@ fi
 # All tasks in the array write to the same directory, identified by
 # the SLURM array job ID.
 # -------------------------------
-OUTPUT_DIR_JOB="${OUTPUT_DIR}_${SLURM_ARRAY_JOB_ID}"
-mkdir -p "$OUTPUT_DIR_JOB"
+# OUTPUT_DIR_JOB="${OUTPUT_DIR}_slurm_${SLURM_ARRAY_JOB_ID}"
+mkdir -p "$OUTPUT_DIR"
 
 
 # -------------------------
@@ -56,7 +58,7 @@ mkdir -p "$OUTPUT_DIR_JOB"
 # -------------------------
 echo "Input clips directory:  $INPUT_CLIPS_DIR"
 echo "Path to csv with frames to extract: $INPUT_FRAMES_CSV"
-echo "Output directory: $OUTPUT_DIR_JOB"
+echo "Output directory: $OUTPUT_DIR"
 echo "-----"
 
 # ---------------------------
@@ -105,8 +107,11 @@ mkdir -p "$UV_CACHE_DIR"
 # First task to arrive populates the uv cache;
 # later tasks block on flock, then run the same command when released and
 # find a warm cache (instant).
+#
+# Re dependencies: Pillow is not a hard dependency of av,
+# PyAV declares it optional and doesn't pull it in automatically
 flock -x "$UV_CACHE_DIR/.warmup.lock" \
-    uv run --python 3.11 --with av -- python -c "import av" >/dev/null
+    uv run --python 3.11 --with av,pillow -- python -c "import av, PIL" >/dev/null
 
 
 # -------------------------------------
@@ -145,7 +150,7 @@ echo "Frames to extract (n=${#FRAME_IDCS[@]}): $(IFS=,; echo "${FRAME_IDCS[*]}")
 # frames are reliably seekable)
 # -------------------------------------
 # run Python on the script written between <<'PYEOF' and PYEOF
-uv run --python 3.11 --with av - "$CLIP_PATH" "$OUTPUT_DIR_JOB" "$CLIP_NAME_NO_EXT" "${FRAME_IDCS[@]}" <<'PYEOF'
+uv run --python 3.11 --with av --with pillow - "$CLIP_PATH" "$OUTPUT_DIR" "$CLIP_NAME_NO_EXT" "${FRAME_IDCS[@]}" <<'PYEOF'
 import sys
 from fractions import Fraction
 from pathlib import Path
@@ -193,19 +198,18 @@ with av.open(clip_path) as container:
 PYEOF
 # -------------------------------------
 
-echo "Extracted ${#FRAME_IDCS[@]} frames from $CLIP_NAME to $OUTPUT_DIR_JOB"
-
+echo "Extracted ${#FRAME_IDCS[@]} frames from $CLIP_NAME to $OUTPUT_DIR"
 
 # -------------------------------------------
 # Move SLURM logs into the output directory
 # -------------------------------------------
 # Create slurm directory
-LOG_DIR="$OUTPUT_DIR_JOB/logs"
+LOG_DIR="$OUTPUT_DIR/logs"
 mkdir -p "$LOG_DIR"
 
-mv "slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.out" \
+mv "slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.out" \
    "$LOG_DIR"
-mv "slurm_array.$SLURMD_NODENAME.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.err" \
+mv "slurm_array.$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID.$SLURMD_NODENAME.err" \
    "$LOG_DIR"
 
 # make read-only
