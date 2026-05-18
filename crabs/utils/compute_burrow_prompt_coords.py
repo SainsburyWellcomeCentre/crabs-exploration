@@ -122,7 +122,8 @@ def _prompts_from_histogram(
 
 # ----------------
 def _compute_2d_histogram(
-    list_leaves: list,
+    x_flat: da.Array,
+    y_flat: da.Array,
     image_w: int,
     image_h: int,
     bin_size_pixels: int,
@@ -147,27 +148,14 @@ def _compute_2d_histogram(
     xedges = np.linspace(0, image_w, n_bins_x + 1)
     yedges = np.linspace(0, image_h, n_bins_y + 1)
 
-    # Lazily concatenate the (flattened) x and y positions across leaves
-    x = da.concatenate(
-        [
-            leaf.ds.position.sel(space="x").data.reshape(-1)
-            for leaf in list_leaves
-        ]
-    )
-    y = da.concatenate(
-        [
-            leaf.ds.position.sel(space="y").data.reshape(-1)
-            for leaf in list_leaves
-        ]
-    )
-
     # Build the histogram lazily, then materialise it under the synchronous
     # scheduler to bound peak memory
     counts, _, _ = da.histogram2d(
-        x,
-        y,
+        x_flat,
+        y_flat,
         bins=[n_bins_x, n_bins_y],
         range=[[0, image_w], [0, image_h]],
+        # NOTE: we need to specify range to discard nan values
     )
     with dask.config.set(scheduler="synchronous"):
         counts = counts.compute()
@@ -176,7 +164,8 @@ def _compute_2d_histogram(
 
 
 def _compute_datashader_agg(
-    list_leaves: list,
+    x_flat: da.Array,
+    y_flat: da.Array,
     image_w: int,
     image_h: int,
 ):
@@ -192,21 +181,9 @@ def _compute_datashader_agg(
     Returns the aggregate as an xarray DataArray (same type as
     ``ds.Canvas().points(...)``), suitable for passing to ``tf.shade``.
     """
-    # Lazily concatenate the (flattened) x and y positions across leaves,
-    # then expose them as a dask DataFrame for datashader
-    x = da.concatenate(
-        [
-            leaf.ds.position.sel(space="x").data.reshape(-1)
-            for leaf in list_leaves
-        ]
+    ddf = dd.from_dask_array(
+        da.stack([x_flat, y_flat], axis=1), columns=["x", "y"]
     )
-    y = da.concatenate(
-        [
-            leaf.ds.position.sel(space="y").data.reshape(-1)
-            for leaf in list_leaves
-        ]
-    )
-    ddf = dd.from_dask_array(da.stack([x, y], axis=1), columns=["x", "y"])
 
     canvas = ds.Canvas(
         plot_width=image_w,
@@ -463,41 +440,35 @@ def main(args: argparse.Namespace) -> None:
             if not dt_matched.children:
                 print(f"No videos match {pattern}")
                 continue
-            list_nodes = list(dt_matched.leaves)
+            list_leaves = list(dt_matched.leaves)
             group_id = pattern.rstrip("*")
-            list_groups.append((group_id, list_nodes))
+            list_groups.append((group_id, list_leaves))
     # Otherwise: one group per video
     else:
-        list_groups = [(node.ds.video_id, [node]) for node in dt.leaves]
+        list_groups = [(leaf.ds.video_id, [leaf]) for leaf in dt.leaves]
     # ---------------
 
     # Process each group of trajectories.
-    # Both the 2D histogram (used for prompt detection) and, when
-    # --save-html-figure is set, the datashader aggregate (used for
-    # plotting) are built lazily with dask and materialised under the
-    # synchronous scheduler, to avoid large per-video allocations.
-    for group_id, list_nodes in list_groups:
-        # # Before
-        # trajectories_xy = np.concatenate(
-        #     [_flatten_trajectory_xy(node.ds) for node in leaves],
-        #     axis=0,
-        # )
-        # peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel = (
-        #     prompts_from_trajectory_data(
-        #         trajectories_xy,
-        #         image_w=args.image_width,
-        #         image_h=args.image_height,
-        #         bin_size_pixels=args.bin_size_pixels,
-        #         counts_percentile=args.counts_percentile,
-        #         gaussian_sigma=args.gaussian_sigma,
-        #         peaks_min_distance=args.peaks_min_distance,
-        #         peaks_threshold_rel=args.peaks_threshold_rel,
-        #         node_radius_pixels=args.node_radius_pixels,
-        #     )
-        # )
+    for group_id, list_leaves in list_groups:
         # ------------------------
+        # Lazily concatenate the (flattened) x and y positions across leaves
+        x = da.concatenate(
+            [
+                leaf.ds.position.sel(space="x").data.reshape(-1)
+                for leaf in list_leaves
+            ]
+        ).astype("float32")
+
+        y = da.concatenate(
+            [
+                leaf.ds.position.sel(space="y").data.reshape(-1)
+                for leaf in list_leaves
+            ]
+        ).astype("float32")
+
         counts, xedges, yedges = _compute_2d_histogram(
-            list_nodes,
+            x,
+            y,
             image_w=args.image_width,
             image_h=args.image_height,
             bin_size_pixels=args.bin_size_pixels,
@@ -540,10 +511,11 @@ def main(args: argparse.Namespace) -> None:
         # Optionally export as html figure (also built lazily)
         if args.save_html_figure:
             video_length_minutes = sum(
-                _get_video_length_minutes(node.ds) for node in list_nodes
+                _get_video_length_minutes(node.ds) for node in list_leaves
             )
             agg = _compute_datashader_agg(
-                list_nodes,
+                x,
+                y,
                 image_w=args.image_width,
                 image_h=args.image_height,
             )
@@ -563,7 +535,7 @@ def main(args: argparse.Namespace) -> None:
 
         # return peaks_xy.shape[0]
         print(
-            f"Group {group_id} ({len(list_nodes)} videos): {n_peaks} prompts"
+            f"Group {group_id} ({len(list_leaves)} videos): {n_peaks} prompts"
         )
 
         print(
