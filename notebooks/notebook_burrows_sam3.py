@@ -8,23 +8,38 @@ with columns:
   prompt_point_x, prompt_point_y,
   prompt_bbox_xmin, prompt_bbox_ymin, prompt_bbox_xmax, prompt_bbox_ymax
 """
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "Pillow",
+#   "zarr",
+#   "torch>=2.5.1",
+#   "torchvision>=0.20.1",
+#   "sam3 @ git+https://github.com/facebookresearch/sam3.git",
+# ]
+# ///
 
 # %%
 # Imports
 import os
+from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import torch
-from PIL import Image
-
 import sam3
+import torch
+import zarr
+from PIL import Image
 from sam3 import build_sam3_image_model
 from sam3.model.box_ops import box_xywh_to_cxcywh
 from sam3.model.sam3_image_processor import Sam3Processor
-from sam3.visualization_utils import draw_box_on_image, normalize_bbox, plot_results
+from sam3.visualization_utils import (
+    draw_box_on_image,
+    normalize_bbox,
+    plot_results,
+)
 
 sam3_root = os.path.join(os.path.dirname(sam3.__file__), "..")
 
@@ -68,6 +83,22 @@ class ImageArrayLazy:
     def shape(self):
         return (len(self.img_paths), self.img_h, self.img_w, self.img_c)
         # B, H, W, C
+
+
+def create_mask_zarr(path_to_zarr, zarr_array_shape, metadata_dict=None):
+    """Create a zarr store for ID-encoded masks and write metadata."""
+    n_images, image_h, image_w = zarr_array_shape[:3]
+    mask_zarr = zarr.open(
+        path_to_zarr,
+        mode="w",
+        shape=(n_images, image_h, image_w),
+        dtype="int16",
+        fill_value=0,
+        chunks=(1, image_h, image_w),
+    )
+    if metadata_dict is not None:
+        mask_zarr.attrs.update(metadata_dict)
+    return mask_zarr
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -119,10 +150,38 @@ processor = Sam3Processor(model, confidence_threshold=CONF_THRESHOLD)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Run inference on every frame using its video's bbox prompts
+# Create the output ID-encoded mask zarr store
 
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-masks_per_frame = {}
+output_masks_zarr = OUTPUT_DIR / f"masks_{timestamp}.zarr"
+
+n_images, image_h, image_w = image_array.shape[:3]
+metadata_dict = {
+    "timestamp": timestamp,
+    "sam3_model": "sam3_image",
+    "source_images_dir": str(images_dir),
+    "prompt_coords_dir": str(prompt_coords_dir),
+    "text_prompt": TEXT_PROMPT,
+    "confidence_threshold": CONF_THRESHOLD,
+    "n_images": n_images,
+    "image_shape": [image_h, image_w],
+    "prompt_type": "bounding_box",
+    "mask_encoding": "instance_id",
+    "background_label": 0,
+    "id_offset": 1,
+}
+mask_zarr = create_mask_zarr(
+    output_masks_zarr,
+    (n_images, image_h, image_w),
+    metadata_dict=metadata_dict,
+)
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Run inference on every frame and write ID-encoded masks to zarr
+
+processed_frames = []
 
 for frame_idx in range(len(image_array)):
     video_str = list_video_per_img[frame_idx]
@@ -157,25 +216,30 @@ for frame_idx in range(len(image_array)):
         )
 
     results = processor.get_results(inference_state)
-    masks_per_frame[frame_idx] = results
 
-    # TODO: save as a zarr store?
-    np.savez_compressed(
-        OUTPUT_DIR / f"frame_{frame_idx:06d}.npz",
-        masks=results["masks"],
-        scores=results["scores"],
-        video=video_str,
-    )
-    print(
-        f"Frame {frame_idx} ({video_str}): "
-        f"{len(results['masks'])} masks"
-    )
+    # boolean masks (N, H, W) -> ID-encoded (H, W); higher ID wins on overlap
+    masks = np.asarray(results["masks"])
+    masks = masks.squeeze(1) if masks.ndim == 4 else masks  # (N, H, W)
+    n_objects = masks.shape[0]
+    if n_objects == 0:
+        print(f"Frame {frame_idx} ({video_str}): no detections")
+        continue
+
+    obj_ids = np.arange(1, n_objects + 1, dtype=np.int16)[:, None, None]
+    id_mask = (masks.astype(bool) * obj_ids).max(axis=0)
+
+    mask_zarr[frame_idx] = id_mask
+    processed_frames.append(frame_idx)
+    mask_zarr.attrs["annotated_frames"] = processed_frames
+    print(f"Frame {frame_idx} ({video_str}): {n_objects} masks")
+
+print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Visualise one frame: prompt boxes + predicted masks
 
-frame_idx = next(iter(masks_per_frame))
+frame_idx = processed_frames[0]
 video_str = list_video_per_img[frame_idx]
 image = Image.fromarray(image_array[frame_idx])
 
