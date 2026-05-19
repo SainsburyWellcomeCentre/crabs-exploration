@@ -5,8 +5,8 @@
 #SBATCH --ntasks-per-node 1
 #SBATCH --mem 16G
 #SBATCH -t 0-04:00 # time (D-HH:MM)
-#SBATCH -o slurm.%N.%j.out
-#SBATCH -e slurm.%N.%j.err
+#SBATCH -o slurm.%j.%N.out
+#SBATCH -e slurm.%j.%N.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=s.minano@ucl.ac.uk
 
@@ -28,8 +28,7 @@ set -o pipefail
 # ---------------------
 # Define variables
 # ----------------------
-ZARR_STORE="/ceph/zoo/users/sminano/CrabTracks-slurm2492830-slurm2492948.zarr"
-#"/ceph/zoo/processed/CrabField/ramalhete_2023/CrabTracks/CrabTracks-slurm2492830-slurm2492948.zarr"
+ZARR_STORE="/ceph/zoo/processed/CrabField/ramalhete_2023/CrabTracks/CrabTracks-slurm2478780-2478861-2489356.zarr"
 
 # Output directories
 # Note: The Python scripts will create burrow_prompts/coords_<ts>/ and 
@@ -54,8 +53,8 @@ DATA_GROUPING_COORD_PROMPTS="video"  # "video" or "date"
 GIT_COMMIT_ID=$(git ls-remote "https://github.com/$GIT_REPO.git" "$GIT_BRANCH" | cut -f1)
 
 # Script URLs on GitHub
-SCRIPT_COORD_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$COMMIT_ID/crabs/utils/compute_burrow_prompt_coords.py"
-SCRIPT_FRAME_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$COMMIT_ID/crabs/utils/compute_burrow_prompt_frames.py"
+SCRIPT_COORD_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$GIT_COMMIT_ID/crabs/utils/compute_burrow_prompt_coords.py"
+SCRIPT_FRAME_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$GIT_COMMIT_ID/crabs/utils/compute_burrow_prompt_frames.py"
 
 
 
@@ -158,7 +157,7 @@ rm -f "$FRAMES_LOG"
 
 LOG_DIR="$OUTPUT_DIR/logs"
 mkdir -p "$LOG_DIR"
-cp slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out} "$LOG_DIR"
-chmod 444 "$LOG_DIR"/slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out}
+cp slurm.$SLURM_JOB_ID.$SLURMD_NODENAME.{err,out} "$LOG_DIR"
+chmod 444 "$LOG_DIR"/slurm.$SLURM_JOB_ID.$SLURMD_NODENAME.{err,out}
 
-rm slurm.$SLURMD_NODENAME.$SLURM_JOB_ID.{err,out}
+rm slurm.$SLURM_JOB_ID.$SLURMD_NODENAME.{err,out}
