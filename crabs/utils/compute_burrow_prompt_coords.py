@@ -52,7 +52,6 @@ Usage (dependencies are auto-installed via uv):
 # ///
 import argparse
 import io
-import resource
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -70,12 +69,6 @@ import xarray as xr
 from PIL import Image
 from skimage.feature import peak_local_max
 from skimage.filters import gaussian
-
-# Target number of elements per chunk for the flattened position arrays.
-# The zarr-native chunking can be arbitrarily large; capping it here bounds
-# the peak memory of the per-chunk materialisation in both the histogram
-# and (heavier) datashader passes. ~5e6 float32 ≈ 20 MB per chunk.
-# POSITION_CHUNK_SIZE = 5_000_000
 
 
 def _prompts_from_histogram(
@@ -126,7 +119,6 @@ def _prompts_from_histogram(
     return peaks_xy, bboxes_clipped_x1y1x2y2, peak_values_rel
 
 
-# ----------------
 def _compute_2d_histogram(
     x_flat: da.Array,
     y_flat: da.Array,
@@ -208,9 +200,6 @@ def _compute_datashader_agg(
     with dask.config.set(scheduler="synchronous"):
         agg = canvas.points(ddf, "x", "y")
     return agg
-
-
-# ----------------
 
 
 def _apply_threshold_log_gaussian(counts, percentile, sigma):
@@ -553,15 +542,8 @@ def main(args: argparse.Namespace) -> None:
             )
             del agg
 
-        # return peaks_xy.shape[0]
         print(
             f"Group {group_id} ({len(list_leaves)} videos): {n_peaks} prompts"
-        )
-
-        print(
-            "RSS GB:",
-            resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1e6,
-            flush=True,
         )
 
     print(f"Output written to {output_dir_timestamped}")
