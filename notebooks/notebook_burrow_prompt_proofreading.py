@@ -10,8 +10,9 @@ from PIL import Image
 images_dir = (
     "/Users/sofia/arc/project_Zoo_crabs/crab_loops_end_frames_slurm2764495"
 )
-prompts_dir = '/Users/sofia/arc/project_Zoo_crabs/burrow_prompts_per_day_20260423_143244'
-# "/Users/sofia/arc/project_Zoo_crabs/burrow_prompts_per_video_20260423_153811"
+
+# per video or per date?
+prompt_coords_dir = "/Users/sofia/arc/project_Zoo_crabs/burrow_prompts_slurm_3012602/coords_20260519_105922"
 
 
 # %%%%%%%%%%
@@ -50,7 +51,7 @@ list_video_per_img = [
 list_date_per_img = [video.split("-")[0] for video in list_video_per_img]
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
-list_prompt_csv = sorted(list(Path(prompts_dir).glob("*.csv")))
+list_prompt_csv = sorted(list(Path(prompt_coords_dir).glob("*.csv")))
 list_df = []
 for file in list_prompt_csv:
     list_df.append(pd.read_csv(file))
@@ -68,32 +69,6 @@ df_prompts_bboxes = df_prompts.drop(
     columns=["prompt_point_x", "prompt_point_y"]
 )
 
-# %%
-# df_prompts_points["napari_image_idx"] = df_prompts_points["group_id"].map(
-#     list_video_per_img.index
-# )
-
-prompts_yx_per_group_id = {
-    key: group[["prompt_point_y", "prompt_point_x"]].to_numpy()
-    for key, group in df_prompts_points.groupby("group_id")
-}
-
-
-# map prompts to frames
-list_zyx = []
-start_idx = 0
-for video_str, yx in prompts_yx_per_group_id.items():
-    n_frames = sum([video_str == im for im in list_date_per_img]) # list_date_per_img? list_video_per_img
-    zyx = np.concat(
-        [
-            np.c_[np.ones((yx.shape[0], 1)) * id + start_idx, yx]
-            for id in range(n_frames)
-        ],
-        axis=0,
-    )
-    list_zyx.append(zyx)
-    start_idx += n_frames
-
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load frames in napari viewer
 
@@ -104,8 +79,33 @@ viewer.add_image(np.asarray(image_array), name="image")
 # %%%%%%%%%%%%%%%%%%%%%%%%
 # Load prompts for SAM3
 
+# format prompt data for napari
+prompts_yx_per_group_id = {
+    key: group[["prompt_point_y", "prompt_point_x"]].to_numpy()
+    for key, group in df_prompts_points.groupby("group_id")
+}
+
+
+# map prompts to frames
+list_zyx = []
+start_idx = 0
+for video_str, yx in prompts_yx_per_group_id.items():
+    n_frames = sum(
+        [video_str == im for im in list_video_per_img]
+    )  # list_date_per_img? list_video_per_img
+    zyx = np.concat(
+        [
+            np.c_[np.ones((yx.shape[0], 1)) * id + start_idx, yx]
+            for id in range(n_frames)
+        ],
+        axis=0,
+    )
+    list_zyx.append(zyx)
+    start_idx += n_frames
+
+# %%
 # frame, y, x
-viewer.add_points(np.concat(list_zyx, axis=0))
+viewer.add_points(np.concat(list_zyx, axis=0), face_color='red', size=35)
 
 # %%%%%%%%%%%%%%%%%%%%%
 # Load SAM3 masks
