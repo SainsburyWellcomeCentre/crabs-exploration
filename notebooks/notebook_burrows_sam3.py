@@ -81,7 +81,7 @@ OUTPUT_DIR = Path("/home/sminano/swc/project_crabs/crabs-exploration/output_burr
 
 # use only the top 3 prompt boxes per video (or date)
 # (they should be sorted by peak height)
-top_n_bboxes = 10
+# top_n_bboxes = 10
 
 
 
@@ -214,6 +214,65 @@ mask_zarr = create_mask_zarr(
     (n_images, image_h, image_w),
     metadata_dict=metadata_dict,
 )
+ # %%
+%matplotlib widget
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Interactively select which prompt boxes to pass to SAM3.
+# Click inside a box to toggle it: lime = selected, red = excluded.
+
+import matplotlib.patches as patches
+
+select_frame_idx = 0
+if flag_using_date_prompts:
+    select_video_str = list_date_per_img[select_frame_idx]
+else:
+    select_video_str = list_video_per_img[select_frame_idx]
+
+boxes_xyxy = bboxes_xyxy_per_video[select_video_str]
+selected = np.zeros(len(boxes_xyxy), dtype=bool)  # start with all unselected
+
+# lime - unselected
+# red - selected
+
+fig, ax = plt.subplots()
+ax.imshow(image_array[select_frame_idx])
+ax.set_axis_off()
+
+rects = []
+for x1, y1, x2, y2 in boxes_xyxy:
+    r = patches.Rectangle(
+        (x1, y1), x2 - x1, y2 - y1,
+        fill=False, linewidth=2, edgecolor="lime",
+    )
+    ax.add_patch(r)
+    rects.append(r)
+
+def _refresh_title():
+    ax.set_title(
+        f"{select_video_str}: {selected.sum()}/{len(selected)} boxes selected"
+    )
+
+def _on_click(event):
+    if event.inaxes != ax:
+        return
+    for i, (x1, y1, x2, y2) in enumerate(boxes_xyxy):
+        if x1 <= event.xdata <= x2 and y1 <= event.ydata <= y2:
+            selected[i] = not selected[i]
+            rects[i].set_edgecolor("lime" if not selected[i] else "red")
+            break  # first match only — minimal handling of overlaps
+    _refresh_title()
+    fig.canvas.draw_idle()
+
+_refresh_title()
+fig.canvas.mpl_connect("button_press_event", _on_click)
+plt.show()
+
+
+# %%
+# once you're happy with the selection), commit the choice back so the inference loop picks it up unchanged:
+# Apply the selection — the inference loop reads bboxes_xyxy_per_video
+bboxes_xyxy_per_video[select_video_str] = boxes_xyxy[selected]
+print(f"{select_video_str}: kept {selected.sum()} boxes")
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -258,7 +317,7 @@ for frame_idx in range(len(image_array)):
     norm_boxes_cxcywh = normalize_bbox(boxes_cxcywh, width, height).tolist()
 
     # Add the top N bboxes as a prompt
-    for box in norm_boxes_cxcywh[:top_n_bboxes]:
+    for box in norm_boxes_cxcywh:
         inference_state = processor.add_geometric_prompt(
             state=inference_state, box=box, label=True
         )
@@ -292,8 +351,6 @@ for frame_idx in range(len(image_array)):
 
 print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
 
-# %%
-%matplotlib widget
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Visualise one frame: prompt boxes + predicted masks
@@ -306,7 +363,7 @@ else:
 image = Image.fromarray(image_array[frame_idx])
 
 image_with_boxes = image
-for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str][top_n_bboxes:]:
+for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str]:
     image_with_boxes = draw_box_on_image(
         image_with_boxes, [x1, y1, x2 - x1, y2 - y1], (0, 255, 0)
     )
@@ -328,5 +385,7 @@ plt.imshow(masked, cmap="tab10", alpha=0.5, interpolation="nearest")
 plt.axis("off")
 plt.title(f"frame {frame_idx} ({video_str}) - SAM3 masks (from zarr)")
 plt.show()
+
+# TODO add count of predicted masks
 
 # %%
