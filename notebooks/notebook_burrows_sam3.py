@@ -2,6 +2,8 @@
 
 Follows the official SAM3 image predictor example:
 https://github.com/facebookresearch/sam3/blob/main/examples/sam3_image_predictor_example.ipynb
+and https://github.com/facebookresearch/sam3#basic-usage  
+
 
 Prompt data is produced upstream (one CSV per video, grouped by ``group_id``)
 with columns:
@@ -16,19 +18,35 @@ with columns:
 #   "torch>=2.5.1",
 #   "torchvision>=0.20.1",
 #   "sam3 @ git+https://github.com/facebookresearch/sam3.git",
+#   "einops",
+#   "huggingface_hub",
+#   "ipympl",
 # ]
+#
+# [tool.uv.sources]
+# torch = { index = "pytorch-cu128" }
+# torchvision = { index = "pytorch-cu128" }
+#
+# [[tool.uv.index]]
+# name = "pytorch-cu128"
+# url = "https://download.pytorch.org/whl/cu128"
+# explicit = true
 # ///
 
 # %%
 # Imports
 import os
+
+# Reduce CUDA allocator fragmentation. Must be set before torch is
+# imported -> restart the kernel for this to take effect in a notebook.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import sam3
 import torch
 import zarr
 from PIL import Image
@@ -38,27 +56,33 @@ from sam3.model.sam3_image_processor import Sam3Processor
 from sam3.visualization_utils import (
     draw_box_on_image,
     normalize_bbox,
-    plot_results,
 )
 
-sam3_root = os.path.join(os.path.dirname(sam3.__file__), "..")
+# sam3_root = os.path.join(os.path.dirname(sam3.__file__), "..")
 
 # %%
 # Input data
 # - images_dir: directory of PNG frames
 # - prompt_coords_dir: directory of per-video prompt CSVs
 
-images_dir = (
-    "/Users/sofia/arc/project_Zoo_crabs/crab_loops_end_frames_slurm2764495"
-)
-prompt_coords_dir = "/Users/sofia/arc/project_Zoo_crabs/burrow_prompts_slurm_3012602/coords_20260519_105922"
+images_dir = "/home/sminano/swc/project_crabs/burrow_mean_image_slurm_3013437"
+prompt_coords_dir = "/home/sminano/swc/project_crabs/burrow_prompts_per_day_20260423_143244"
+#"/home/sminano/swc/project_crabs/burrow_prompts_slurm_3012602/coords_20260519_105922"
+
+flag_using_date_prompts = True
 
 # Prediction params
 TEXT_PROMPT = "burrow"  # set to None to skip the text prompt
 CONF_THRESHOLD = 0.5
 
-# Output dir for masks (.npz per frame)
-OUTPUT_DIR = Path("./output_burrows_sam3")
+# Output dir for masks 
+# TODO: add timestamp
+OUTPUT_DIR = Path("/home/sminano/swc/project_crabs/crabs-exploration/output_burrows_sam3")
+
+# use only the top 3 prompt boxes per video (or date)
+# (they should be sorted by peak height)
+top_n_bboxes = 10
+
 
 
 # %%%%%%%%%%
@@ -115,7 +139,7 @@ list_video_per_img = [
 list_date_per_img = [video.split("-")[0] for video in list_video_per_img]
 
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load prompts (one CSV per video, concatenated)
 
 list_prompt_csv = sorted(list(Path(prompt_coords_dir).glob("*.csv")))
@@ -138,19 +162,33 @@ bboxes_xyxy_per_video = {
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Build SAM3 image model and processor
 
-# turn on tfloat32 for Ampere GPUs
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
+# # turn on tfloat32 for Ampere GPUs
+# torch.backends.cuda.matmul.allow_tf32 = True
+# torch.backends.cudnn.allow_tf32 = True
+
+# to avoid bfloat16 and float mismatch
 if torch.cuda.is_available():
     torch.autocast("cuda", dtype=torch.bfloat16).__enter__()
+# torch.autocast("cuda", dtype=torch.bfloat16).__enter__()
 
-bpe_path = f"{sam3_root}/assets/bpe_simple_vocab_16e6.txt.gz"
-model = build_sam3_image_model(bpe_path=bpe_path)
+# %%
+
+# bpe_path = f"{sam3_root}/assets/bpe_simple_vocab_16e6.txt.gz"
+model = build_sam3_image_model()
+
+# # Fix dtype mismatch issue by ensuring all parameters are float32
+# model = model.float()
+# for name, param in model.named_parameters():
+#     param.data = param.data.float()
+# for name, buffer in model.named_buffers():
+#     if buffer.dtype != torch.complex64:  # Keep complex buffers as-is (for rotary embeddings)
+#         buffer.data = buffer.data.float()
+
 processor = Sam3Processor(model, confidence_threshold=CONF_THRESHOLD)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Create the output ID-encoded mask zarr store
+# Initialise the output ID-encoded mask zarr store
 
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -184,16 +222,26 @@ mask_zarr = create_mask_zarr(
 processed_frames = []
 
 for frame_idx in range(len(image_array)):
-    video_str = list_video_per_img[frame_idx]
+    # with torch.autocast("cuda", dtype=torch.bfloat16):
+
+    # Get corresponding video
+    if flag_using_date_prompts:
+        video_str = list_date_per_img[frame_idx]
+    else:
+        video_str = list_video_per_img[frame_idx]
+
+    # Get prompts for that video
     boxes_xyxy = bboxes_xyxy_per_video.get(video_str)
     if boxes_xyxy is None or len(boxes_xyxy) == 0:
         print(f"Frame {frame_idx} ({video_str}): no prompts, skipping")
         continue
 
+    # Load image
     image = Image.fromarray(image_array[frame_idx])
     width, height = image.size
-    inference_state = processor.set_image(image)
-    processor.reset_all_prompts(inference_state)
+    inference_state = processor.set_image(image) 
+    # maybe: set_image_batch?
+    processor.reset_all_prompts(inference_state) # mutates the state dict in place
 
     # optional text prompt
     if TEXT_PROMPT is not None:
@@ -201,24 +249,33 @@ for frame_idx in range(len(image_array)):
             state=inference_state, prompt=TEXT_PROMPT
         )
 
-    # bbox exemplars: xyxy (px) -> xywh -> cxcywh -> normalized
+    # Express bboxes for exemplars as norm_cxcywh
+    # bbox exemplars: xyxy (pixels) -> xywh -> cxcywh -> normalized
     boxes_xywh = boxes_xyxy.astype(np.float32).copy()
     boxes_xywh[:, 2] -= boxes_xywh[:, 0]  # w = xmax - xmin
     boxes_xywh[:, 3] -= boxes_xywh[:, 1]  # h = ymax - ymin
-    boxes_cxcywh = box_xywh_to_cxcywh(
-        torch.tensor(boxes_xywh).view(-1, 4)
-    )
+    boxes_cxcywh = box_xywh_to_cxcywh(torch.tensor(boxes_xywh).view(-1, 4))
     norm_boxes_cxcywh = normalize_bbox(boxes_cxcywh, width, height).tolist()
 
-    for box in norm_boxes_cxcywh:
+    # Add the top N bboxes as a prompt
+    for box in norm_boxes_cxcywh[:top_n_bboxes]:
         inference_state = processor.add_geometric_prompt(
             state=inference_state, box=box, label=True
         )
 
-    results = processor.get_results(inference_state)
+    # add_geometric_prompt / set_text_prompt run inference internally
+    # and return the updated state; predictions live in the state dict
+    # under the "masks" / "boxes" / "scores" keys (no get_results method)
 
+    # Express results as an ID-encoded mask
     # boolean masks (N, H, W) -> ID-encoded (H, W); higher ID wins on overlap
-    masks = np.asarray(results["masks"])
+    # Move masks to CPU, then release this frame's GPU state before the
+    # next frame: otherwise the previous state (backbone features +
+    # full-res masks_logits) stays alive during the next forward pass.
+    masks = inference_state["masks"].cpu().numpy()
+    del inference_state
+    torch.cuda.empty_cache()
+    
     masks = masks.squeeze(1) if masks.ndim == 4 else masks  # (N, H, W)
     n_objects = masks.shape[0]
     if n_objects == 0:
@@ -235,16 +292,21 @@ for frame_idx in range(len(image_array)):
 
 print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
 
+# %%
+%matplotlib widget
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Visualise one frame: prompt boxes + predicted masks
 
-frame_idx = processed_frames[0]
-video_str = list_video_per_img[frame_idx]
+frame_idx = 0 #processed_frames[0]
+if flag_using_date_prompts:
+    video_str = list_date_per_img[frame_idx]
+else:
+    video_str = list_video_per_img[frame_idx]
 image = Image.fromarray(image_array[frame_idx])
 
 image_with_boxes = image
-for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str]:
+for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str][top_n_bboxes:]:
     image_with_boxes = draw_box_on_image(
         image_with_boxes, [x1, y1, x2 - x1, y2 - y1], (0, 255, 0)
     )
@@ -255,24 +317,16 @@ plt.axis("off")
 plt.title(f"frame {frame_idx} ({video_str}) - prompt boxes")
 plt.show()
 
-# rerun the predictor on this frame to plot SAM3 results overlaid
-inference_state = processor.set_image(image)
-processor.reset_all_prompts(inference_state)
-if TEXT_PROMPT is not None:
-    inference_state = processor.set_text_prompt(
-        state=inference_state, prompt=TEXT_PROMPT
-    )
-boxes_xyxy = bboxes_xyxy_per_video[video_str].astype(np.float32).copy()
-boxes_xywh = boxes_xyxy.copy()
-boxes_xywh[:, 2] -= boxes_xywh[:, 0]
-boxes_xywh[:, 3] -= boxes_xywh[:, 1]
-boxes_cxcywh = box_xywh_to_cxcywh(torch.tensor(boxes_xywh).view(-1, 4))
-for box in normalize_bbox(
-    boxes_cxcywh, *image.size
-).tolist():
-    inference_state = processor.add_geometric_prompt(
-        state=inference_state, box=box, label=True
-    )
-plot_results(image, inference_state)
+# Plot the ID-encoded masks read back from the zarr store
+# TODO: why only 3 masks?
+id_mask = mask_zarr[frame_idx]  # (H, W), 0 = background
+masked = np.ma.masked_where(id_mask == 0, id_mask)
+
+plt.figure()
+plt.imshow(image)
+plt.imshow(masked, cmap="tab10", alpha=0.5, interpolation="nearest")
+plt.axis("off")
+plt.title(f"frame {frame_idx} ({video_str}) - SAM3 masks (from zarr)")
+plt.show()
 
 # %%
