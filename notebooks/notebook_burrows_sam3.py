@@ -33,7 +33,7 @@ with columns:
 # explicit = true
 # ///
 
-# %%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Imports
 import os
 
@@ -58,22 +58,25 @@ from sam3.visualization_utils import (
     normalize_bbox,
 )
 
-# sam3_root = os.path.join(os.path.dirname(sam3.__file__), "..")
 
-# %%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
 # - images_dir: directory of PNG frames
 # - prompt_coords_dir: directory of per-video prompt CSVs
 
-images_dir = "/home/sminano/swc/project_crabs/burrow_mean_image_slurm_3013437"
+images_dir = "/home/sminano/swc/project_crabs/burrow_mean_image_slurm_3014447"
 prompt_coords_dir = "/home/sminano/swc/project_crabs/burrow_prompts_per_day_20260423_143244"
 #"/home/sminano/swc/project_crabs/burrow_prompts_slurm_3012602/coords_20260519_105922"
 
+# Select whether to use video prompts or date prompts
 flag_using_date_prompts = True
 
 # Prediction params
 TEXT_PROMPT = "burrow"  # set to None to skip the text prompt
-CONF_THRESHOLD = 0.5
+CONF_THRESHOLD = 0.3
+
+# Geometric prompt type: "bounding_box" or "point"
+PROMPT_TYPE = "bounding_box"
 
 # Output dir for masks 
 # TODO: add timestamp
@@ -125,6 +128,76 @@ def create_mask_zarr(path_to_zarr, zarr_array_shape, metadata_dict=None):
     return mask_zarr
 
 
+def add_point_prompt(processor, state, point_xy, label=True):
+    """Add a single point prompt and run inference, returning the updated state.
+
+    ``point_xy`` is an ``(x, y)`` pair normalized to ``[0, 1]``. Mirrors
+    ``Sam3Processor.add_geometric_prompt`` but appends a point to the geometric
+    prompt instead of a box. Relies on SAM3 internals (``_get_dummy_prompt`` /
+    ``_forward_grounding``) as the processor exposes no public point method.
+    """
+    if "backbone_out" not in state:
+        raise ValueError("call processor.set_image before adding a prompt")
+    if "language_features" not in state["backbone_out"]:
+        # no text prompt yet: fall back to a dummy "visual" text prompt so the
+        # model relies only on the geometric prompt
+        dummy_text = processor.model.backbone.forward_text(
+            ["visual"], device=processor.device
+        )
+        state["backbone_out"].update(dummy_text)
+    if "geometric_prompt" not in state:
+        state["geometric_prompt"] = processor.model._get_dummy_prompt()
+
+    # points: (n_points, batch, 2); labels: (n_points, batch); mask: (batch, n_points)
+    pts = torch.tensor(
+        point_xy, device=processor.device, dtype=torch.float32
+    ).view(1, 1, 2)
+    lbl = torch.tensor(
+        [label], device=processor.device, dtype=torch.bool
+    ).view(1, 1)
+    msk = torch.zeros(1, 1, dtype=torch.bool, device=processor.device)
+    state["geometric_prompt"].append_points(pts, lbl, msk)
+
+    return processor._forward_grounding(state)
+
+def add_geometric_prompts(processor, state, boxes_cxcywh_norm, labels=None):
+    """Add multiple box prompts at once and run inference a single time.
+
+    ``boxes_cxcywh_norm`` is an ``(N, 4)`` array of cxcywh boxes normalized to
+    ``[0, 1]``. Mirrors ``Sam3Processor.add_geometric_prompt`` but appends the
+    whole batch to the geometric prompt before one ``_forward_grounding`` call,
+    avoiding the N-1 redundant grounding passes of a per-box loop.
+
+    The official docs use the public per-box loop because 
+    add_geometric_prompt has no batched form. 
+    """
+    if "backbone_out" not in state:
+        raise ValueError("call processor.set_image before adding a prompt")
+    if "language_features" not in state["backbone_out"]:
+        # no text prompt: fall back to a dummy "visual" text prompt
+        dummy_text = processor.model.backbone.forward_text(
+            ["visual"], device=processor.device
+        )
+        state["backbone_out"].update(dummy_text)
+    if "geometric_prompt" not in state:
+        state["geometric_prompt"] = processor.model._get_dummy_prompt()
+
+    # boxes: (n_boxes, batch, 4); labels: (n_boxes, batch)
+    boxes = torch.tensor(
+        boxes_cxcywh_norm, device=processor.device, dtype=torch.float32
+    ).view(-1, 1, 4)
+    n = boxes.shape[0]
+    if labels is None:
+        labels = torch.ones(n, 1, dtype=torch.bool, device=processor.device)
+    else:
+        labels = torch.as_tensor(
+            labels, device=processor.device, dtype=torch.bool
+        ).view(n, 1)
+    state["geometric_prompt"].append_boxes(boxes, labels)
+
+    return processor._forward_grounding(state)
+
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load frames as a lazy array and map each frame to its video / date
 
@@ -155,6 +228,12 @@ bboxes_xyxy_per_video = {
             "prompt_bbox_ymax",
         ]
     ].to_numpy()
+    for key, group in df_prompts.groupby("group_id")
+}
+
+# point prompts in pixel xy, keyed by group_id (== video string)
+points_xy_per_video = {
+    key: group[["prompt_point_x", "prompt_point_y"]].to_numpy()
     for key, group in df_prompts.groupby("group_id")
 }
 
@@ -204,7 +283,7 @@ metadata_dict = {
     "confidence_threshold": CONF_THRESHOLD,
     "n_images": n_images,
     "image_shape": [image_h, image_w],
-    "prompt_type": "bounding_box",
+    "prompt_type": PROMPT_TYPE,
     "mask_encoding": "instance_id",
     "background_label": 0,
     "id_offset": 1,
@@ -217,49 +296,87 @@ mask_zarr = create_mask_zarr(
  # %%
 %matplotlib widget
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Interactively select which prompt boxes to pass to SAM3.
-# Click inside a box to toggle it: lime = selected, red = excluded.
+# Interactively select which prompts to pass to SAM3.
+# Click a prompt to toggle it: red = selected (kept), lime = excluded.
+# Works for both box and point prompts, switched by PROMPT_TYPE.
 
 import matplotlib.patches as patches
 
+# click within this many pixels of a point counts as a hit on it
+POINT_HIT_RADIUS = 20
+
 select_frame_idx = 0
 if flag_using_date_prompts:
-    select_video_str = list_date_per_img[select_frame_idx]
+    group_str_for_prompts = list_date_per_img[select_frame_idx]
 else:
-    select_video_str = list_video_per_img[select_frame_idx]
+    group_str_for_prompts = list_video_per_img[select_frame_idx]
 
-boxes_xyxy = bboxes_xyxy_per_video[select_video_str]
-selected = np.zeros(len(boxes_xyxy), dtype=bool)  # start with all unselected
-
-# lime - unselected
-# red - selected
+if PROMPT_TYPE == "bounding_box":
+    prompts_select = bboxes_xyxy_per_video[group_str_for_prompts]
+else:
+    prompts_select = points_xy_per_video[group_str_for_prompts]
+selected = np.zeros(len(prompts_select), dtype=bool)  # start all unselected
 
 fig, ax = plt.subplots()
 ax.imshow(image_array[select_frame_idx])
 ax.set_axis_off()
 
-rects = []
-for x1, y1, x2, y2 in boxes_xyxy:
-    r = patches.Rectangle(
-        (x1, y1), x2 - x1, y2 - y1,
-        fill=False, linewidth=2, edgecolor="lime",
-    )
-    ax.add_patch(r)
-    rects.append(r)
+# one matplotlib artist per prompt, index-aligned with `selected`
+artists = []
+if PROMPT_TYPE == "bounding_box":
+    for x1, y1, x2, y2 in prompts_select:
+        r = patches.Rectangle(
+            (x1, y1), x2 - x1, y2 - y1,
+            fill=False, linewidth=2, edgecolor="lime",
+        )
+        ax.add_patch(r)
+        artists.append(r)
+else:
+    for x, y in prompts_select:
+        (pt,) = ax.plot(
+            x, y,
+            marker="*",
+            markersize=14,
+            markerfacecolor="none",
+            markeredgecolor="lime",
+        )
+        artists.append(pt)
+
+def _set_color(i):
+    color = "red" if selected[i] else "lime"
+    if PROMPT_TYPE == "bounding_box":
+        artists[i].set_edgecolor(color)
+    else:
+        artists[i].set_markeredgecolor(color)
 
 def _refresh_title():
     ax.set_title(
-        f"{select_video_str}: {selected.sum()}/{len(selected)} boxes selected"
+        f"{image_array.img_paths[select_frame_idx].name}"
+        f"(prompts {group_str_for_prompts}: "
+        f"{selected.sum()}/{len(selected)} selected)"
     )
+
+def _hit_index(event):
+    """Index of the prompt under the click, or None."""
+    if PROMPT_TYPE == "bounding_box":
+        for i, (x1, y1, x2, y2) in enumerate(prompts_select):
+            if x1 <= event.xdata <= x2 and y1 <= event.ydata <= y2:
+                return i  # first match only — minimal handling of overlaps
+        return None
+    dist = np.hypot(
+        prompts_select[:, 0] - event.xdata,
+        prompts_select[:, 1] - event.ydata,
+    )
+    i = int(np.argmin(dist))
+    return i if dist[i] <= POINT_HIT_RADIUS else None
 
 def _on_click(event):
     if event.inaxes != ax:
         return
-    for i, (x1, y1, x2, y2) in enumerate(boxes_xyxy):
-        if x1 <= event.xdata <= x2 and y1 <= event.ydata <= y2:
-            selected[i] = not selected[i]
-            rects[i].set_edgecolor("lime" if not selected[i] else "red")
-            break  # first match only — minimal handling of overlaps
+    i = _hit_index(event)
+    if i is not None:
+        selected[i] = not selected[i]
+        _set_color(i)
     _refresh_title()
     fig.canvas.draw_idle()
 
@@ -269,10 +386,13 @@ plt.show()
 
 
 # %%
-# once you're happy with the selection), commit the choice back so the inference loop picks it up unchanged:
-# Apply the selection — the inference loop reads bboxes_xyxy_per_video
-bboxes_xyxy_per_video[select_video_str] = boxes_xyxy[selected]
-print(f"{select_video_str}: kept {selected.sum()} boxes")
+# once you're happy with the selection, commit the choice back so the
+# inference loop picks it up unchanged (it reads the *_per_video dict).
+if PROMPT_TYPE == "bounding_box":
+    bboxes_xyxy_per_video[group_str_for_prompts] = prompts_select[selected]
+else:
+    points_xy_per_video[group_str_for_prompts] = prompts_select[selected]
+print(f"{group_str_for_prompts}: kept {selected.sum()} prompts")
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -280,7 +400,7 @@ print(f"{select_video_str}: kept {selected.sum()} boxes")
 
 processed_frames = []
 
-for frame_idx in range(len(image_array)):
+for frame_idx in [0]: #range(len(image_array)):
     # with torch.autocast("cuda", dtype=torch.bfloat16):
 
     # Get corresponding video
@@ -290,8 +410,11 @@ for frame_idx in range(len(image_array)):
         video_str = list_video_per_img[frame_idx]
 
     # Get prompts for that video
-    boxes_xyxy = bboxes_xyxy_per_video.get(video_str)
-    if boxes_xyxy is None or len(boxes_xyxy) == 0:
+    if PROMPT_TYPE == "bounding_box":
+        prompts = bboxes_xyxy_per_video.get(video_str)
+    else:
+        prompts = points_xy_per_video.get(video_str)
+    if prompts is None or len(prompts) == 0:
         print(f"Frame {frame_idx} ({video_str}): no prompts, skipping")
         continue
 
@@ -308,19 +431,30 @@ for frame_idx in range(len(image_array)):
             state=inference_state, prompt=TEXT_PROMPT
         )
 
-    # Express bboxes for exemplars as norm_cxcywh
-    # bbox exemplars: xyxy (pixels) -> xywh -> cxcywh -> normalized
-    boxes_xywh = boxes_xyxy.astype(np.float32).copy()
-    boxes_xywh[:, 2] -= boxes_xywh[:, 0]  # w = xmax - xmin
-    boxes_xywh[:, 3] -= boxes_xywh[:, 1]  # h = ymax - ymin
-    boxes_cxcywh = box_xywh_to_cxcywh(torch.tensor(boxes_xywh).view(-1, 4))
-    norm_boxes_cxcywh = normalize_bbox(boxes_cxcywh, width, height).tolist()
-
-    # Add the top N bboxes as a prompt
-    for box in norm_boxes_cxcywh:
-        inference_state = processor.add_geometric_prompt(
-            state=inference_state, box=box, label=True
+    # Add geometric prompts (boxes or points)
+    if PROMPT_TYPE == "bounding_box":
+        # bbox exemplars: xyxy (pixels) -> xywh -> cxcywh -> normalized
+        boxes_xywh = prompts.astype(np.float32).copy()
+        boxes_xywh[:, 2] -= boxes_xywh[:, 0]  # w = xmax - xmin
+        boxes_xywh[:, 3] -= boxes_xywh[:, 1]  # h = ymax - ymin
+        boxes_cxcywh = box_xywh_to_cxcywh(torch.tensor(boxes_xywh).view(-1, 4))
+        norm_boxes_cxcywh = normalize_bbox(
+            boxes_cxcywh, width, height
+        ).tolist()
+        # for box in norm_boxes_cxcywh:
+        #     inference_state = processor.add_geometric_prompt(
+        #         state=inference_state, box=box, label=True
+        #     )
+        inference_state = add_geometric_prompts(
+            processor, inference_state, norm_boxes_cxcywh
         )
+    else:
+        # point exemplars: xy (pixels) -> normalized [0, 1]
+        norm_points_xy = prompts.astype(np.float32) / np.array([width, height])
+        for px, py in norm_points_xy:
+            inference_state = add_point_prompt(
+                processor, inference_state, (float(px), float(py)), label=True
+            )
 
     # add_geometric_prompt / set_text_prompt run inference internally
     # and return the updated state; predictions live in the state dict
@@ -341,6 +475,11 @@ for frame_idx in range(len(image_array)):
         print(f"Frame {frame_idx} ({video_str}): no detections")
         continue
 
+    # Compute id-encoded mask
+    # n_masks may be different from n_objects because:
+    # - SAM3 can return a mask that is all False
+    # - when computing the id mask, if masks overlap we take the one with 
+    #   higher ID. So completely overlapping masks disappear.
     obj_ids = np.arange(1, n_objects + 1, dtype=np.int16)[:, None, None]
     id_mask = (masks.astype(bool) * obj_ids).max(axis=0)
 
@@ -355,7 +494,7 @@ print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Visualise one frame: prompt boxes + predicted masks
 
-frame_idx = 0 #processed_frames[0]
+frame_idx = processed_frames[0]
 if flag_using_date_prompts:
     video_str = list_date_per_img[frame_idx]
 else:
@@ -363,15 +502,22 @@ else:
 image = Image.fromarray(image_array[frame_idx])
 
 image_with_boxes = image
-for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str]:
-    image_with_boxes = draw_box_on_image(
-        image_with_boxes, [x1, y1, x2 - x1, y2 - y1], (0, 255, 0)
-    )
+if PROMPT_TYPE == "bounding_box":
+    for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str]:
+        image_with_boxes = draw_box_on_image(
+            image_with_boxes, [x1, y1, x2 - x1, y2 - y1], (0, 255, 0)
+        )
 
 plt.figure()
 plt.imshow(image_with_boxes)
+if PROMPT_TYPE == "point":
+    pts = points_xy_per_video[video_str]
+    plt.scatter(
+        pts[:, 0], pts[:, 1],
+        c="lime", marker="*", s=120, edgecolors="k",
+    )
 plt.axis("off")
-plt.title(f"frame {frame_idx} ({video_str}) - prompt boxes")
+plt.title(f"frame {frame_idx} ({video_str}) - prompt {PROMPT_TYPE}")
 plt.show()
 
 # Plot the ID-encoded masks read back from the zarr store
@@ -379,13 +525,18 @@ plt.show()
 id_mask = mask_zarr[frame_idx]  # (H, W), 0 = background
 masked = np.ma.masked_where(id_mask == 0, id_mask)
 
+# count number of masks
+mask_ids = np.unique(id_mask)
+mask_ids = mask_ids[mask_ids != 0]   # drop background
+n_masks = len(mask_ids)
+
 plt.figure()
 plt.imshow(image)
 plt.imshow(masked, cmap="tab10", alpha=0.5, interpolation="nearest")
 plt.axis("off")
-plt.title(f"frame {frame_idx} ({video_str}) - SAM3 masks (from zarr)")
+plt.title(f"{image_array.img_paths[frame_idx].stem} - {n_masks} masks")
 plt.show()
 
-# TODO add count of predicted masks
+# n_masks may be different from n_objects because:
 
 # %%
