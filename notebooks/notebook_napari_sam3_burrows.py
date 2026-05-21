@@ -1,7 +1,9 @@
 """Interactive SAM3 burrow segmentation in a napari viewer.
 
 A prototyping notebook that turns the batch workflow of
-``notebook_burrows_sam3.py`` into an interactive tool:
+``notebook_burrows_sam3.py`` into an interactive tool. The interactive logic
+lives in a single self-contained ``Sam3BurrowWidget`` (a ``QWidget``), which is
+attached to a napari viewer in the last cell.
 
   * Load an array of images into napari (one Image layer, navigated with the
     dims slider).
@@ -19,7 +21,8 @@ A prototyping notebook that turns the batch workflow of
 
 Reproducibility: the point prompts per frame, the confidence threshold per
 frame, the image file list and the SAM3 commit are all written to the zarr
-store metadata. ``load_prompts_from_zarr`` reloads the prompts from a store.
+store metadata. ``Sam3BurrowWidget.load_prompts_from_zarr`` reloads the prompts
+from a store.
 
 Why an "inference floor": setting the SAM3 ``confidence_threshold`` very low
 makes the model return a huge number of masks and causes CUDA OOM. Instead we
@@ -40,7 +43,6 @@ confidences, lower the floor in the UI and re-run.
 #   "scikit-image",
 #   "scipy",
 #   "napari[all]",
-#   "magicgui",
 # ]
 #
 # [tool.uv.sources]
@@ -71,17 +73,18 @@ import napari
 import numpy as np
 import torch
 import zarr
-from magicgui.widgets import (
-    Container,
-    FloatSlider,
-    FloatSpinBox,
-    LineEdit,
-    PushButton,
-)
 from PIL import Image
+from qtpy.QtWidgets import (
+    QDoubleSpinBox,
+    QFormLayout,
+    QLineEdit,
+    QPushButton,
+    QWidget,
+)
 from sam3 import build_sam3_image_model
 from sam3.model.sam3_image_processor import Sam3Processor
 from scipy import ndimage as ndi
+from superqt import QLabeledDoubleSlider
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("napari_sam3")
@@ -269,6 +272,367 @@ def postprocess(id_mask, frame_idx, max_mask_frac, min_mask_frac):
     return result
 
 
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# The widget
+
+
+class Sam3BurrowWidget(QWidget):
+    """Self-contained widget for interactive SAM3 burrow segmentation.
+
+    On construction it creates the napari layers (Image, Points, Labels), a
+    zarr store for the masks, and the UI controls. Attach it to a viewer with
+    ``viewer.window.add_dock_widget(widget)``.
+    """
+
+    def __init__(
+        self,
+        napari_viewer,
+        image_array,
+        model,
+        output_dir,
+        parent=None,
+    ):
+        """Build layers, the zarr store and the UI for ``napari_viewer``."""
+        super().__init__(parent=parent)
+        self.viewer = napari_viewer
+        self.image_array = image_array
+        self.model = model
+        self.n_images, self.image_h, self.image_w = image_array.shape[:3]
+
+        # Per-frame state.
+        # - inference_cache: raw SAM3 output per frame, so the threshold slider
+        #   can re-filter instantly without re-running the model.
+        # - point_prompts_per_frame, threshold_per_frame: reproducibility.
+        self.inference_cache: dict[int, dict] = {}
+        self.point_prompts_per_frame: dict[int, list] = {}
+        self.threshold_per_frame: dict[int, float] = {}
+        self.annotated_frames: set[int] = set()
+
+        self._create_mask_store(output_dir)
+        self._create_layers()
+
+        self.setLayout(QFormLayout())
+        self._create_text_prompt_widget()
+        self._create_inference_floor_widget()
+        self._create_max_mask_frac_widget()
+        self._create_min_mask_frac_widget()
+        self._create_run_button()
+        self._create_threshold_widget()
+
+        self._connect_layer_events()
+
+    # ------------------------------------------------------------------
+    # Construction helpers
+
+    def _create_mask_store(self, output_dir):
+        """Create the output ID-encoded mask zarr store and in-memory copy."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        self.output_masks_zarr = output_dir / f"masks_napari_{timestamp}.zarr"
+        self.sam3_commit = get_sam3_commit()
+
+        self.mask_zarr = create_mask_zarr(
+            self.output_masks_zarr,
+            (self.n_images, self.image_h, self.image_w),
+            metadata_dict={
+                "timestamp": timestamp,
+                "sam3_model": "sam3_image",
+                "sam3_commit": self.sam3_commit,
+                "source_images_dir": str(
+                    self.image_array.img_paths[0].parent
+                ),
+                "image_shape": [self.image_h, self.image_w],
+                "image_files": [
+                    str(p) for p in self.image_array.img_paths
+                ],
+                "mask_encoding": "instance_id",
+                "background_label": 0,
+                "id_offset": 1,
+            },
+        )
+        logger.info("Created mask zarr store at %s", self.output_masks_zarr)
+
+        # In-memory copy backing the Labels layer. Each frame slice is written
+        # to the zarr store on save (avoids dask-write quirks while painting).
+        self.masks_in_memory = np.zeros(
+            (self.n_images, self.image_h, self.image_w), dtype=np.int16
+        )
+
+    def _create_layers(self):
+        """Add the Image, Points and Labels layers to the viewer."""
+        self.viewer.add_image(np.asarray(self.image_array), name="images")
+        self.points_layer = self.viewer.add_points(
+            np.empty((0, 3)),
+            ndim=3,
+            name="point prompts",
+            face_color="red",
+            border_color="white",
+            size=20,
+        )
+        self.labels_layer = self.viewer.add_labels(
+            self.masks_in_memory, name="masks"
+        )
+
+        # select the Points layer so the user can immediately click prompts
+        self.viewer.layers.selection.active = self.points_layer
+        self.points_layer.mode = "add"
+
+    def _create_text_prompt_widget(self):
+        """Text prompt line edit (empty -> geometric-only inference)."""
+        self.text_prompt = QLineEdit()
+        self.text_prompt.setText(DEFAULT_TEXT_PROMPT)
+        self.layout().addRow("text prompt", self.text_prompt)
+
+    def _create_inference_floor_widget(self):
+        """SAM3 ``confidence_threshold`` used at inference time."""
+        self.inference_floor = QDoubleSpinBox()
+        self.inference_floor.setRange(0.0, 1.0)
+        self.inference_floor.setSingleStep(0.05)
+        self.inference_floor.setValue(DEFAULT_INFERENCE_FLOOR)
+        self.inference_floor.valueChanged.connect(self._on_floor_changed)
+        self.layout().addRow("inference floor", self.inference_floor)
+
+    def _create_max_mask_frac_widget(self):
+        """Drop masks larger than this fraction of the image."""
+        self.max_mask_frac = QDoubleSpinBox()
+        self.max_mask_frac.setRange(0.0, 1.0)
+        self.max_mask_frac.setSingleStep(0.01)
+        self.max_mask_frac.setValue(DEFAULT_MAX_MASK_FRAC)
+        self.max_mask_frac.valueChanged.connect(self._on_postproc_changed)
+        self.layout().addRow("max mask frac", self.max_mask_frac)
+
+    def _create_min_mask_frac_widget(self):
+        """Drop masks smaller than this fraction of the image."""
+        self.min_mask_frac = QDoubleSpinBox()
+        self.min_mask_frac.setDecimals(6)
+        self.min_mask_frac.setRange(0.0, 1.0)
+        self.min_mask_frac.setSingleStep(0.0005)
+        self.min_mask_frac.setValue(DEFAULT_MIN_MASK_FRAC)
+        self.min_mask_frac.valueChanged.connect(self._on_postproc_changed)
+        self.layout().addRow("min mask frac", self.min_mask_frac)
+
+    def _create_run_button(self):
+        """Button that runs SAM3 on the frame in view."""
+        self.run_button = QPushButton("Run inference")
+        self.run_button.clicked.connect(self._on_run_clicked)
+        self.layout().addRow(self.run_button)
+
+    def _create_threshold_widget(self):
+        """Post-hoc confidence threshold slider (re-filters cached masks)."""
+        self.threshold = QLabeledDoubleSlider()
+        self.threshold.setRange(DEFAULT_INFERENCE_FLOOR, 1.0)
+        self.threshold.setValue(DEFAULT_INFERENCE_FLOOR)
+        self.threshold.valueChanged.connect(self._on_threshold_changed)
+        self.layout().addRow("confidence threshold", self.threshold)
+
+    def _connect_layer_events(self):
+        """Auto-save manual edits on paint strokes and frame navigation."""
+        self._prev_frame = self.current_frame()
+        self.labels_layer.events.paint.connect(self._on_paint)
+        self.viewer.dims.events.current_step.connect(self._on_step_change)
+
+    # ------------------------------------------------------------------
+    # Core operations
+
+    def current_frame(self):
+        """Frame index currently shown by the dims slider."""
+        return int(self.viewer.dims.current_step[0])
+
+    def points_for_frame(self, frame_idx):
+        """``(M, 2)`` array of (x, y) pixel prompts placed on ``frame_idx``."""
+        data = self.points_layer.data
+        if len(data) == 0:
+            return np.empty((0, 2), dtype=np.float32)
+        on_frame = np.rint(data[:, 0]).astype(int) == frame_idx
+        yx = data[on_frame, 1:]
+        return yx[:, ::-1].astype(np.float32)  # (y, x) -> (x, y)
+
+    def write_metadata(self):
+        """Refresh the reproducibility metadata in the zarr store attrs."""
+        self.mask_zarr.attrs.update(
+            {
+                "point_prompts_per_frame": {
+                    str(k): np.asarray(v).tolist()
+                    for k, v in self.point_prompts_per_frame.items()
+                },
+                "confidence_threshold_per_frame": {
+                    str(k): float(v)
+                    for k, v in self.threshold_per_frame.items()
+                },
+                "annotated_image_files": [
+                    str(self.image_array.img_paths[i])
+                    for i in sorted(self.annotated_frames)
+                ],
+                "text_prompt": self.text_prompt.text(),
+                "inference_floor": float(self.inference_floor.value()),
+                "max_mask_frac": float(self.max_mask_frac.value()),
+                "min_mask_frac": float(self.min_mask_frac.value()),
+            }
+        )
+
+    def save_frame(self, frame_idx):
+        """Write one frame's mask slice to the zarr store, refresh metadata."""
+        self.mask_zarr[frame_idx] = self.labels_layer.data[frame_idx]
+        self.annotated_frames.add(frame_idx)
+        self.write_metadata()
+
+    def apply_threshold(self, frame_idx, thr=None):
+        """Re-filter the cached SAM3 masks for a frame at confidence ``thr``.
+
+        Pure post-hoc operation: no model call. Rebuilds the frame's mask from
+        the cached SAM3 output, runs postprocessing, updates the Labels layer
+        and saves. NOTE: this discards any manual paint edits on the frame --
+        set the threshold first, then paint.
+        """
+        cache = self.inference_cache.get(frame_idx)
+        if cache is None:
+            return
+        if thr is None:
+            thr = self.threshold.value()
+
+        masks_bool = cache["masks_bool"]
+        scores = cache["scores"]
+        keep = scores >= thr
+        kept = masks_bool[keep]
+
+        if len(kept) == 0:
+            id_mask = np.zeros((self.image_h, self.image_w), dtype=np.int16)
+        else:
+            obj_ids = np.arange(1, len(kept) + 1, dtype=np.int16)[
+                :, None, None
+            ]
+            id_mask = (kept.astype(np.int16) * obj_ids).max(axis=0)
+
+        id_mask = postprocess(
+            id_mask,
+            frame_idx,
+            self.max_mask_frac.value(),
+            self.min_mask_frac.value(),
+        )
+
+        self.labels_layer.data[frame_idx] = id_mask.astype(np.int16)
+        self.labels_layer.refresh()
+        self.threshold_per_frame[frame_idx] = float(thr)
+        self.save_frame(frame_idx)
+        logger.info(
+            "frame %d: %d masks at threshold %.2f",
+            frame_idx,
+            int(id_mask.max()),
+            thr,
+        )
+
+    def run_inference(self):
+        """Run SAM3 on the frame in view using its point prompts."""
+        frame_idx = self.current_frame()
+        points_xy = self.points_for_frame(frame_idx)
+        if len(points_xy) == 0:
+            logger.warning(
+                "frame %d: no point prompts placed, skipping", frame_idx
+            )
+            return
+
+        image = Image.fromarray(self.image_array[frame_idx])
+        width, height = image.size
+
+        # rebuild the processor so the inference floor from the UI is used
+        processor = Sam3Processor(
+            self.model,
+            confidence_threshold=float(self.inference_floor.value()),
+        )
+        state = processor.set_image(image)
+        processor.reset_all_prompts(state)
+
+        text_prompt = self.text_prompt.text().strip()
+        if text_prompt:
+            state = processor.set_text_prompt(state=state, prompt=text_prompt)
+
+        # normalize (x, y) pixel prompts to [0, 1] and add them one by one
+        norm_xy = points_xy / np.array([width, height], dtype=np.float32)
+        for px, py in norm_xy:
+            state = add_point_prompt(
+                processor, state, (float(px), float(py)), label=True
+            )
+
+        # move masks/scores to CPU, then release this frame's GPU state
+        masks = state["masks"].cpu().numpy()
+        scores = state["scores"].cpu().numpy().reshape(-1)
+        del state
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        masks = masks.squeeze(1) if masks.ndim == 4 else masks  # (N, H, W)
+        self.inference_cache[frame_idx] = {
+            "masks_bool": masks.astype(bool),
+            "scores": scores,
+        }
+        self.point_prompts_per_frame[frame_idx] = points_xy.tolist()
+        logger.info(
+            "frame %d: SAM3 returned %d masks (floor %.2f, %d point prompts)",
+            frame_idx,
+            masks.shape[0],
+            self.inference_floor.value(),
+            len(points_xy),
+        )
+
+        self.apply_threshold(frame_idx)
+
+    def load_prompts_from_zarr(self, path):
+        """Repopulate the Points layer + threshold dict from a saved store.
+
+        Run this against an existing store to reproduce an analysis from its
+        metadata. Returns the ``confidence_threshold_per_frame`` dict read from
+        the store (also merged into ``self.threshold_per_frame``).
+        """
+        store = zarr.open(path, mode="r")
+        prompts = store.attrs.get("point_prompts_per_frame", {})
+        thresholds = store.attrs.get("confidence_threshold_per_frame", {})
+
+        nd_points = []
+        for frame_str, xy_list in prompts.items():
+            frame = int(frame_str)
+            for x, y in xy_list:  # stored as (x, y) pixels
+                nd_points.append([frame, y, x])  # napari wants (frame, y, x)
+
+        self.points_layer.data = (
+            np.asarray(nd_points, dtype=np.float32)
+            if nd_points
+            else np.empty((0, 3), dtype=np.float32)
+        )
+        loaded = {int(k): float(v) for k, v in thresholds.items()}
+        self.threshold_per_frame.update(loaded)
+        logger.info("Loaded prompts for %d frames from %s", len(prompts), path)
+        return loaded
+
+    # ------------------------------------------------------------------
+    # Callbacks
+
+    def _on_run_clicked(self):
+        self.run_inference()
+
+    def _on_threshold_changed(self, value):
+        self.apply_threshold(self.current_frame(), thr=value)
+
+    def _on_floor_changed(self, value):
+        # the post-hoc slider can never go below the inference floor
+        self.threshold.setMinimum(value)
+        if self.threshold.value() < value:
+            self.threshold.setValue(value)
+
+    def _on_postproc_changed(self, value):
+        # re-run postprocessing on the current frame with the new size limits
+        self.apply_threshold(self.current_frame())
+
+    def _on_paint(self, event):
+        self.save_frame(self.current_frame())
+
+    def _on_step_change(self, event):
+        new_frame = self.current_frame()
+        if new_frame != self._prev_frame:
+            self.save_frame(self._prev_frame)
+            self._prev_frame = new_frame
+
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load frames as a lazy array
 
@@ -286,315 +650,17 @@ if torch.cuda.is_available():
     torch.autocast("cuda", dtype=torch.bfloat16).__enter__()
 
 model = build_sam3_image_model()
-SAM3_COMMIT = get_sam3_commit()
-print(f"SAM3 commit: {SAM3_COMMIT}")
+print(f"SAM3 commit: {get_sam3_commit()}")
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Initialise the output ID-encoded mask zarr store and the in-memory masks
-
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-output_masks_zarr = OUTPUT_DIR / f"masks_napari_{timestamp}.zarr"
-
-mask_zarr = create_mask_zarr(
-    output_masks_zarr,
-    (n_images, image_h, image_w),
-    metadata_dict={
-        "timestamp": timestamp,
-        "sam3_model": "sam3_image",
-        "sam3_commit": SAM3_COMMIT,
-        "source_images_dir": str(images_dir),
-        "image_shape": [image_h, image_w],
-        "image_files": [str(p) for p in image_array.img_paths],
-        "mask_encoding": "instance_id",
-        "background_label": 0,
-        "id_offset": 1,
-    },
-)
-print(f"Created mask zarr store at {output_masks_zarr}")
-
-# In-memory copy backing the Labels layer. Each frame slice is written to the
-# zarr store on save (avoids dask-write quirks while painting).
-masks_in_memory = np.zeros((n_images, image_h, image_w), dtype=np.int16)
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Per-frame state
-# - inference_cache: raw SAM3 output per frame, so the threshold slider can
-#   re-filter instantly without re-running the model.
-# - point_prompts_per_frame, threshold_per_frame: for reproducibility metadata.
-
-inference_cache: dict[int, dict] = {}
-point_prompts_per_frame: dict[int, list] = {}
-threshold_per_frame: dict[int, float] = {}
-annotated_frames: set[int] = set()
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Build the napari viewer and layers
+# Create the viewer and attach the widget
 
 viewer = napari.Viewer()
-viewer.add_image(np.asarray(image_array), name="images")
-points_layer = viewer.add_points(
-    np.empty((0, 3)),
-    ndim=3,
-    name="point prompts",
-    face_color="red",
-    border_color="white",
-    size=20,
-)
-labels_layer = viewer.add_labels(masks_in_memory, name="masks")
-
-# select the Points layer so the user can immediately click prompts
-viewer.layers.selection.active = points_layer
-points_layer.mode = "add"
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Core operations
-
-
-def current_frame():
-    """Frame index currently shown by the dims slider."""
-    return int(viewer.dims.current_step[0])
-
-
-def points_for_frame(frame_idx):
-    """``(M, 2)`` array of (x, y) pixel prompts placed on ``frame_idx``."""
-    data = points_layer.data
-    if len(data) == 0:
-        return np.empty((0, 2), dtype=np.float32)
-    on_frame = np.rint(data[:, 0]).astype(int) == frame_idx
-    yx = data[on_frame, 1:]
-    return yx[:, ::-1].astype(np.float32)  # (y, x) -> (x, y)
-
-
-def write_metadata():
-    """Refresh the reproducibility metadata in the zarr store attrs."""
-    mask_zarr.attrs.update(
-        {
-            "point_prompts_per_frame": {
-                str(k): np.asarray(v).tolist()
-                for k, v in point_prompts_per_frame.items()
-            },
-            "confidence_threshold_per_frame": {
-                str(k): float(v) for k, v in threshold_per_frame.items()
-            },
-            "annotated_image_files": [
-                str(image_array.img_paths[i]) for i in sorted(annotated_frames)
-            ],
-            "text_prompt": text_prompt_w.value,
-            "inference_floor": float(inference_floor_w.value),
-            "max_mask_frac": float(max_mask_frac_w.value),
-            "min_mask_frac": float(min_mask_frac_w.value),
-        }
-    )
-
-
-def save_frame(frame_idx):
-    """Write one frame's mask slice to the zarr store and refresh metadata."""
-    mask_zarr[frame_idx] = labels_layer.data[frame_idx]
-    annotated_frames.add(frame_idx)
-    write_metadata()
-
-
-def apply_threshold(frame_idx, thr=None):
-    """Re-filter the cached SAM3 masks for a frame at confidence ``thr``.
-
-    Pure post-hoc operation: no model call. Rebuilds the frame's mask from the
-    cached SAM3 output, runs postprocessing, updates the Labels layer and saves.
-    NOTE: this discards any manual paint edits on the frame -- set the
-    threshold first, then paint.
-    """
-    cache = inference_cache.get(frame_idx)
-    if cache is None:
-        return
-    if thr is None:
-        thr = threshold_w.value
-
-    masks_bool = cache["masks_bool"]
-    scores = cache["scores"]
-    keep = scores >= thr
-    kept = masks_bool[keep]
-
-    if len(kept) == 0:
-        id_mask = np.zeros((image_h, image_w), dtype=np.int16)
-    else:
-        obj_ids = np.arange(1, len(kept) + 1, dtype=np.int16)[:, None, None]
-        id_mask = (kept.astype(np.int16) * obj_ids).max(axis=0)
-
-    id_mask = postprocess(
-        id_mask, frame_idx, max_mask_frac_w.value, min_mask_frac_w.value
-    )
-
-    labels_layer.data[frame_idx] = id_mask.astype(np.int16)
-    labels_layer.refresh()
-    threshold_per_frame[frame_idx] = float(thr)
-    save_frame(frame_idx)
-    logger.info(
-        "frame %d: %d masks at threshold %.2f",
-        frame_idx,
-        int(id_mask.max()),
-        thr,
-    )
-
-
-def run_inference():
-    """Run SAM3 on the frame in view using its point prompts."""
-    frame_idx = current_frame()
-    points_xy = points_for_frame(frame_idx)
-    if len(points_xy) == 0:
-        logger.warning(
-            "frame %d: no point prompts placed, skipping", frame_idx
-        )
-        return
-
-    image = Image.fromarray(image_array[frame_idx])
-    width, height = image.size
-
-    # rebuild the processor so the inference floor from the UI is used
-    processor = Sam3Processor(
-        model, confidence_threshold=float(inference_floor_w.value)
-    )
-    state = processor.set_image(image)
-    processor.reset_all_prompts(state)
-
-    text_prompt = text_prompt_w.value.strip()
-    if text_prompt:
-        state = processor.set_text_prompt(state=state, prompt=text_prompt)
-
-    # normalize (x, y) pixel prompts to [0, 1] and add them one by one
-    norm_xy = points_xy / np.array([width, height], dtype=np.float32)
-    for px, py in norm_xy:
-        state = add_point_prompt(
-            processor, state, (float(px), float(py)), label=True
-        )
-
-    # move masks/scores to CPU, then release this frame's GPU state
-    masks = state["masks"].cpu().numpy()
-    scores = state["scores"].cpu().numpy().reshape(-1)
-    del state
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-    masks = masks.squeeze(1) if masks.ndim == 4 else masks  # (N, H, W)
-    inference_cache[frame_idx] = {
-        "masks_bool": masks.astype(bool),
-        "scores": scores,
-    }
-    point_prompts_per_frame[frame_idx] = points_xy.tolist()
-    logger.info(
-        "frame %d: SAM3 returned %d masks (floor %.2f, %d point prompts)",
-        frame_idx,
-        masks.shape[0],
-        inference_floor_w.value,
-        len(points_xy),
-    )
-
-    apply_threshold(frame_idx)
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Build the dock widget
-
-text_prompt_w = LineEdit(value=DEFAULT_TEXT_PROMPT, label="text prompt")
-inference_floor_w = FloatSpinBox(
-    value=DEFAULT_INFERENCE_FLOOR,
-    min=0.0,
-    max=1.0,
-    step=0.05,
-    label="inference floor",
-)
-max_mask_frac_w = FloatSpinBox(
-    value=DEFAULT_MAX_MASK_FRAC,
-    min=0.0,
-    max=1.0,
-    step=0.01,
-    label="max mask frac",
-)
-min_mask_frac_w = FloatSpinBox(
-    value=DEFAULT_MIN_MASK_FRAC,
-    min=0.0,
-    max=1.0,
-    step=0.0005,
-    label="min mask frac",
-)
-run_w = PushButton(text="Run inference")
-threshold_w = FloatSlider(
-    value=DEFAULT_INFERENCE_FLOOR,
-    min=DEFAULT_INFERENCE_FLOOR,
-    max=1.0,
-    label="confidence threshold",
-)
-
-
-def _on_run():
-    run_inference()
-
-
-def _on_threshold(value):
-    apply_threshold(current_frame(), thr=value)
-
-
-def _on_floor_change(value):
-    # the post-hoc slider can never go below the inference floor
-    threshold_w.min = value
-    if threshold_w.value < value:
-        threshold_w.value = value
-
-
-def _on_postproc_change(value):
-    # re-run postprocessing on the current frame with the new size limits
-    apply_threshold(current_frame())
-
-
-run_w.clicked.connect(_on_run)
-threshold_w.changed.connect(_on_threshold)
-inference_floor_w.changed.connect(_on_floor_change)
-max_mask_frac_w.changed.connect(_on_postproc_change)
-min_mask_frac_w.changed.connect(_on_postproc_change)
-
-widget = Container(
-    widgets=[
-        text_prompt_w,
-        inference_floor_w,
-        max_mask_frac_w,
-        min_mask_frac_w,
-        run_w,
-        threshold_w,
-    ]
-)
+widget = Sam3BurrowWidget(viewer, image_array, model, OUTPUT_DIR)
 viewer.window.add_dock_widget(widget, name="SAM3", area="right")
 
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Auto-save manual edits
-# - on every paint stroke: save the frame in view
-# - on navigating to another frame: save the frame we are leaving
-
-
-def _on_paint(event):
-    save_frame(current_frame())
-
-
-_prev_frame = current_frame()
-
-
-def _on_step_change(event):
-    global _prev_frame
-    new_frame = current_frame()
-    if new_frame != _prev_frame:
-        save_frame(_prev_frame)
-        _prev_frame = new_frame
-
-
-labels_layer.events.paint.connect(_on_paint)
-viewer.dims.events.current_step.connect(_on_step_change)
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Run the napari event loop (only needed when running as a plain script)
+# Run the napari event loop (only needed when running as a plain script).
 napari.run()
 
 
@@ -603,33 +669,5 @@ napari.run()
 # Run this cell against an existing store to repopulate the Points layer and
 # the per-frame thresholds, so an analysis can be reproduced from metadata.
 
-
-def load_prompts_from_zarr(path, target_points_layer):
-    """Repopulate a Points layer + threshold dict from a saved mask zarr.
-
-    Returns the ``confidence_threshold_per_frame`` dict read from the store.
-    """
-    store = zarr.open(path, mode="r")
-    prompts = store.attrs.get("point_prompts_per_frame", {})
-    thresholds = store.attrs.get("confidence_threshold_per_frame", {})
-
-    nd_points = []
-    for frame_str, xy_list in prompts.items():
-        frame = int(frame_str)
-        for x, y in xy_list:  # stored as (x, y) pixels
-            nd_points.append([frame, y, x])  # napari wants (frame, y, x)
-
-    target_points_layer.data = (
-        np.asarray(nd_points, dtype=np.float32)
-        if nd_points
-        else np.empty((0, 3), dtype=np.float32)
-    )
-    loaded_thresholds = {int(k): float(v) for k, v in thresholds.items()}
-    print(f"Loaded prompts for {len(prompts)} frames from {path}")
-    return loaded_thresholds
-
-
 # Example (uncomment and point at an existing store):
-# threshold_per_frame.update(
-#     load_prompts_from_zarr(output_masks_zarr, points_layer)
-# )
+# widget.load_prompts_from_zarr(widget.output_masks_zarr)
