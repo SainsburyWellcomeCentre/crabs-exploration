@@ -9,6 +9,10 @@ Prompt data is produced upstream (one CSV per video, grouped by ``group_id``)
 with columns:
   prompt_point_x, prompt_point_y,
   prompt_bbox_xmin, prompt_bbox_ymin, prompt_bbox_xmax, prompt_bbox_ymax
+
+Only the bbox columns are used here. With ``PROMPT_TYPE = "point"`` the point
+prompts are *derived* from the bboxes (darkest pixel near the bbox centre),
+not read from the CSV ``prompt_point_*`` columns.
 """
 # /// script
 # requires-python = ">=3.11"
@@ -75,8 +79,14 @@ flag_using_date_prompts = True
 TEXT_PROMPT = "burrow"  # set to None to skip the text prompt
 CONF_THRESHOLD = 0.3
 
-# Geometric prompt type: "bounding_box" or "point"
+# Geometric prompt type: "bounding_box" or "point".
+# "point" uses the darkest-pixel
+# points *derived* from the CSV bboxes (see derive_points_from_bboxes).
 PROMPT_TYPE = "bounding_box"
+
+# Fraction of each bbox (centred) searched for the darkest pixel when
+# deriving a point prompt from a bbox.
+CENTRAL_FRACTION = 0.5
 
 # Output dir for masks 
 # TODO: add timestamp
@@ -160,6 +170,52 @@ def add_point_prompt(processor, state, point_xy, label=True):
 
     return processor._forward_grounding(state)
 
+
+def bbox_to_darkest_point(image_hwc, bbox_xyxy, central_fraction):
+    """Return the darkest pixel ``(x, y)`` within the centre of a bbox.
+
+    The search is restricted to a centred sub-region of the bbox spanning
+    ``central_fraction`` of its width and height. ``bbox_xyxy`` is in pixel
+    ``(xmin, ymin, xmax, ymax)`` coordinates; the returned point is in pixel
+    ``(x, y)`` coordinates of the full image.
+    """
+    x1, y1, x2, y2 = bbox_xyxy
+    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+    sub_w = (x2 - x1) * central_fraction
+    sub_h = (y2 - y1) * central_fraction
+
+    img_h, img_w = image_hwc.shape[:2]
+    sx1 = int(round(np.clip(cx - sub_w / 2.0, 0, img_w - 1)))
+    sx2 = int(round(np.clip(cx + sub_w / 2.0, 0, img_w)))
+    sy1 = int(round(np.clip(cy - sub_h / 2.0, 0, img_h - 1)))
+    sy2 = int(round(np.clip(cy + sub_h / 2.0, 0, img_h)))
+
+    # degenerate crop: fall back to the bbox centre
+    if sx2 <= sx1 or sy2 <= sy1:
+        return (float(cx), float(cy))
+
+    # grayscale crop -> darkest pixel
+    gray = np.asarray(image_hwc).astype(np.float32)
+    if gray.ndim == 3:
+        gray = gray.mean(axis=2)
+    crop = gray[sy1:sy2, sx1:sx2]
+    dy, dx = np.unravel_index(int(np.argmin(crop)), crop.shape)
+    return (float(sx1 + dx), float(sy1 + dy))
+
+
+def derive_points_from_bboxes(image_hwc, bboxes_xyxy, central_fraction):
+    """Derive one darkest-pixel point per bbox; returns an ``(N, 2)`` array."""
+    if len(bboxes_xyxy) == 0:
+        return np.empty((0, 2), dtype=np.float32)
+    return np.array(
+        [
+            bbox_to_darkest_point(image_hwc, bbox, central_fraction)
+            for bbox in bboxes_xyxy
+        ],
+        dtype=np.float32,
+    )
+
+
 def add_geometric_prompts(processor, state, boxes_cxcywh_norm, labels=None):
     """Add multiple box prompts at once and run inference a single time.
 
@@ -231,12 +287,6 @@ bboxes_xyxy_per_video = {
     for key, group in df_prompts.groupby("group_id")
 }
 
-# point prompts in pixel xy, keyed by group_id (== video string)
-points_xy_per_video = {
-    key: group[["prompt_point_x", "prompt_point_y"]].to_numpy()
-    for key, group in df_prompts.groupby("group_id")
-}
-
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Build SAM3 image model and processor
@@ -284,6 +334,7 @@ metadata_dict = {
     "n_images": n_images,
     "image_shape": [image_h, image_w],
     "prompt_type": PROMPT_TYPE,
+    "central_fraction": CENTRAL_FRACTION,
     "mask_encoding": "instance_id",
     "background_label": 0,
     "id_offset": 1,
@@ -297,13 +348,11 @@ mask_zarr = create_mask_zarr(
 %matplotlib widget
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Interactively select which prompts to pass to SAM3.
-# Click a prompt to toggle it: red = selected (kept), lime = excluded.
-# Works for both box and point prompts, switched by PROMPT_TYPE.
+# Selection is always on the bboxes: click a box to toggle it
+# (red = selected/kept, lime = excluded). In "point" mode the derived
+# point prompts are additionally drawn as `x` markers for reference.
 
 import matplotlib.patches as patches
-
-# click within this many pixels of a point counts as a hit on it
-POINT_HIT_RADIUS = 20
 
 select_frame_idx = 0
 if flag_using_date_prompts:
@@ -311,43 +360,50 @@ if flag_using_date_prompts:
 else:
     group_str_for_prompts = list_video_per_img[select_frame_idx]
 
-if PROMPT_TYPE == "bounding_box":
-    prompts_select = bboxes_xyxy_per_video[group_str_for_prompts]
-else:
-    prompts_select = points_xy_per_video[group_str_for_prompts]
-selected = np.zeros(len(prompts_select), dtype=bool)  # start all unselected
+# master prompt array: always the CSV bboxes. `selected` is a mask over
+# its indices; in "point" mode the derived points map 1:1 to these bboxes.
+bboxes_select = bboxes_xyxy_per_video[group_str_for_prompts]
+prompts_select = bboxes_select
+selected = np.zeros(len(bboxes_select), dtype=bool)  # start all unselected
+
+# derived darkest-pixel points, only used as an overlay in "point" mode
+if PROMPT_TYPE == "point":
+    derived_points = derive_points_from_bboxes(
+        image_array[select_frame_idx], bboxes_select, CENTRAL_FRACTION
+    )
 
 fig, ax = plt.subplots()
 ax.imshow(image_array[select_frame_idx])
 ax.set_axis_off()
 
-# one matplotlib artist per prompt, index-aligned with `selected`
+# one rectangle artist per bbox, index-aligned with `selected`
 artists = []
-if PROMPT_TYPE == "bounding_box":
-    for x1, y1, x2, y2 in prompts_select:
-        r = patches.Rectangle(
-            (x1, y1), x2 - x1, y2 - y1,
-            fill=False, linewidth=2, edgecolor="lime",
-        )
-        ax.add_patch(r)
-        artists.append(r)
-else:
-    for x, y in prompts_select:
+for x1, y1, x2, y2 in prompts_select:
+    r = patches.Rectangle(
+        (x1, y1), x2 - x1, y2 - y1,
+        fill=False, linewidth=2, edgecolor="lime",
+    )
+    ax.add_patch(r)
+    artists.append(r)
+
+# in "point" mode, an `x` marker per derived point, also index-aligned
+# with `selected` (reference only — clicks still toggle the boxes)
+point_artists = []
+if PROMPT_TYPE == "point":
+    for x, y in derived_points:
         (pt,) = ax.plot(
             x, y,
-            marker="*",
+            marker="x",
             markersize=14,
-            markerfacecolor="none",
             markeredgecolor="lime",
         )
-        artists.append(pt)
+        point_artists.append(pt)
 
 def _set_color(i):
     color = "red" if selected[i] else "lime"
-    if PROMPT_TYPE == "bounding_box":
-        artists[i].set_edgecolor(color)
-    else:
-        artists[i].set_markeredgecolor(color)
+    artists[i].set_edgecolor(color)
+    if PROMPT_TYPE == "point":
+        point_artists[i].set_markeredgecolor(color)
 
 def _refresh_title():
     ax.set_title(
@@ -357,18 +413,11 @@ def _refresh_title():
     )
 
 def _hit_index(event):
-    """Index of the prompt under the click, or None."""
-    if PROMPT_TYPE == "bounding_box":
-        for i, (x1, y1, x2, y2) in enumerate(prompts_select):
-            if x1 <= event.xdata <= x2 and y1 <= event.ydata <= y2:
-                return i  # first match only — minimal handling of overlaps
-        return None
-    dist = np.hypot(
-        prompts_select[:, 0] - event.xdata,
-        prompts_select[:, 1] - event.ydata,
-    )
-    i = int(np.argmin(dist))
-    return i if dist[i] <= POINT_HIT_RADIUS else None
+    """Index of the bbox under the click, or None."""
+    for i, (x1, y1, x2, y2) in enumerate(prompts_select):
+        if x1 <= event.xdata <= x2 and y1 <= event.ydata <= y2:
+            return i  # first match only — minimal handling of overlaps
+    return None
 
 def _on_click(event):
     if event.inaxes != ax:
@@ -388,10 +437,9 @@ plt.show()
 # %%
 # once you're happy with the selection, commit the choice back so the
 # inference loop picks it up unchanged (it reads the *_per_video dict).
-if PROMPT_TYPE == "bounding_box":
-    bboxes_xyxy_per_video[group_str_for_prompts] = prompts_select[selected]
-else:
-    points_xy_per_video[group_str_for_prompts] = prompts_select[selected]
+# filter the bboxes (derived points map 1:1 to bboxes, so the mask applies
+# regardless of PROMPT_TYPE)
+bboxes_xyxy_per_video[group_str_for_prompts] = bboxes_select[selected]
 print(f"{group_str_for_prompts}: kept {selected.sum()} prompts")
 
 
@@ -409,11 +457,8 @@ for frame_idx in [0]: #range(len(image_array)):
     else:
         video_str = list_video_per_img[frame_idx]
 
-    # Get prompts for that video
-    if PROMPT_TYPE == "bounding_box":
-        prompts = bboxes_xyxy_per_video.get(video_str)
-    else:
-        prompts = points_xy_per_video.get(video_str)
+    # Get bbox prompts for that video (the master prompt store)
+    prompts = bboxes_xyxy_per_video.get(video_str)
     if prompts is None or len(prompts) == 0:
         print(f"Frame {frame_idx} ({video_str}): no prompts, skipping")
         continue
@@ -449,8 +494,14 @@ for frame_idx in [0]: #range(len(image_array)):
             processor, inference_state, norm_boxes_cxcywh
         )
     else:
-        # point exemplars: xy (pixels) -> normalized [0, 1]
-        norm_points_xy = prompts.astype(np.float32) / np.array([width, height])
+        # derive a darkest-pixel point per bbox from *this* frame's image,
+        # then xy (pixels) -> normalized [0, 1]
+        points_xy = derive_points_from_bboxes(
+            image_array[frame_idx], prompts, CENTRAL_FRACTION
+        )
+        norm_points_xy = points_xy / np.array(
+            [width, height], dtype=np.float32
+        )
         for px, py in norm_points_xy:
             inference_state = add_point_prompt(
                 processor, inference_state, (float(px), float(py)), label=True
@@ -501,17 +552,22 @@ else:
     video_str = list_video_per_img[frame_idx]
 image = Image.fromarray(image_array[frame_idx])
 
+# always draw the source bboxes
 image_with_boxes = image
-if PROMPT_TYPE == "bounding_box":
-    for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str]:
-        image_with_boxes = draw_box_on_image(
-            image_with_boxes, [x1, y1, x2 - x1, y2 - y1], (0, 255, 0)
-        )
+for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str]:
+    image_with_boxes = draw_box_on_image(
+        image_with_boxes, [x1, y1, x2 - x1, y2 - y1], (0, 255, 0)
+    )
 
 plt.figure()
 plt.imshow(image_with_boxes)
 if PROMPT_TYPE == "point":
-    pts = points_xy_per_video[video_str]
+    # overlay the darkest-pixel points derived for this frame
+    pts = derive_points_from_bboxes(
+        image_array[frame_idx],
+        bboxes_xyxy_per_video[video_str],
+        CENTRAL_FRACTION,
+    )
     plt.scatter(
         pts[:, 0], pts[:, 1],
         c="lime", marker="*", s=120, edgecolors="k",
