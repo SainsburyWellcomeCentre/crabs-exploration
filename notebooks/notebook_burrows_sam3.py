@@ -11,8 +11,8 @@ with columns:
   prompt_bbox_xmin, prompt_bbox_ymin, prompt_bbox_xmax, prompt_bbox_ymax
 
 Only the bbox columns are used here. With ``PROMPT_TYPE = "point"`` the point
-prompts are *derived* from the bboxes (darkest pixel near the bbox centre),
-not read from the CSV ``prompt_point_*`` columns.
+prompts are *derived* from the bboxes (interior point of the darkest connected
+blob inside each bbox), not read from the CSV ``prompt_point_*`` columns.
 """
 # /// script
 # requires-python = ">=3.11"
@@ -25,6 +25,8 @@ not read from the CSV ``prompt_point_*`` columns.
 #   "einops",
 #   "huggingface_hub",
 #   "ipympl",
+#   "scikit-image",
+#   "scipy",
 # ]
 #
 # [tool.uv.sources]
@@ -62,6 +64,9 @@ from sam3.visualization_utils import (
     normalize_bbox,
 )
 
+from scipy import ndimage as ndi
+from skimage.filters import gaussian, threshold_otsu
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
@@ -80,13 +85,13 @@ TEXT_PROMPT = "burrow"  # set to None to skip the text prompt
 CONF_THRESHOLD = 0.3
 
 # Geometric prompt type: "bounding_box" or "point".
-# "point" uses the darkest-pixel
-# points *derived* from the CSV bboxes (see derive_points_from_bboxes).
-PROMPT_TYPE = "bounding_box"
+# "point" uses the dark-blob points *derived* from the CSV bboxes
+# (see derive_points_from_bboxes).
+PROMPT_TYPE = "point"
 
-# Fraction of each bbox (centred) searched for the darkest pixel when
-# deriving a point prompt from a bbox.
-CENTRAL_FRACTION = 0.5
+# Minimum size of a dark connected component (as a fraction of the bbox
+# area) for it to be considered a blob when deriving a point prompt.
+MIN_AREA_FRAC = 0.02
 
 # Output dir for masks 
 # TODO: add timestamp
@@ -171,45 +176,92 @@ def add_point_prompt(processor, state, point_xy, label=True):
     return processor._forward_grounding(state)
 
 
-def bbox_to_darkest_point(image_hwc, bbox_xyxy, central_fraction):
-    """Return the darkest pixel ``(x, y)`` within the centre of a bbox.
+def bbox_to_dark_blob_point(image_hwc, bbox_xyxy, min_area_frac=0.02):
+    """Return an interior point ``(x, y)`` of the dark blob inside a bbox.
 
-    The search is restricted to a centred sub-region of the bbox spanning
-    ``central_fraction`` of its width and height. ``bbox_xyxy`` is in pixel
+    Segments the darkest connected region within ``bbox_xyxy`` and returns the
+    point furthest from that region's boundary (distance-transform peak), which
+    is guaranteed to lie inside the blob. Connected components smaller than
+    ``min_area_frac`` of the bbox area are discarded as noise; among the rest
+    the darkest one (lowest mean intensity) is chosen. Falls back to the bbox
+    centre when no plausible dark blob is found. ``bbox_xyxy`` is in pixel
     ``(xmin, ymin, xmax, ymax)`` coordinates; the returned point is in pixel
     ``(x, y)`` coordinates of the full image.
     """
+    # Compute bbox centre in pixels
     x1, y1, x2, y2 = bbox_xyxy
     cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-    sub_w = (x2 - x1) * central_fraction
-    sub_h = (y2 - y1) * central_fraction
 
+    # Compute bbox centre as indices
     img_h, img_w = image_hwc.shape[:2]
-    sx1 = int(round(np.clip(cx - sub_w / 2.0, 0, img_w - 1)))
-    sx2 = int(round(np.clip(cx + sub_w / 2.0, 0, img_w)))
-    sy1 = int(round(np.clip(cy - sub_h / 2.0, 0, img_h - 1)))
-    sy2 = int(round(np.clip(cy + sub_h / 2.0, 0, img_h)))
+    bx1 = int(round(np.clip(x1, 0, img_w - 1)))
+    bx2 = int(round(np.clip(x2, 0, img_w)))
+    by1 = int(round(np.clip(y1, 0, img_h - 1)))
+    by2 = int(round(np.clip(y2, 0, img_h)))
 
-    # degenerate crop: fall back to the bbox centre
-    if sx2 <= sx1 or sy2 <= sy1:
+    # if degenerate box: fall back to the bbox centre
+    if bx2 <= bx1 or by2 <= by1:
         return (float(cx), float(cy))
 
-    # grayscale crop -> darkest pixel
+    # Compute grayscale crop of the bbox
     gray = np.asarray(image_hwc).astype(np.float32)
     if gray.ndim == 3:
         gray = gray.mean(axis=2)
-    crop = gray[sy1:sy2, sx1:sx2]
-    dy, dx = np.unravel_index(int(np.argmin(crop)), crop.shape)
-    return (float(sx1 + dx), float(sy1 + dy))
+    crop = gray[by1:by2, bx1:bx2]
+
+    # Apply Guassian smoothing to suppress pixel noise before thresholding
+    crop_s = gaussian(crop, sigma=1.0, preserve_range=True)
+
+    # Compute Otsu threshold to binarise the image
+    # Otsu th: splits pixels in two sets (light and dark), s.t the variance
+    # within a group is minimal (ok?)
+    # dark pixels are those below the Otsu threshold.
+    # Otsu needs >1 distinct intensity -> if that fails, fall back 
+    # to returning the bbox centre
+    try:
+        thresh = threshold_otsu(crop_s)
+    except ValueError:
+        return (float(cx), float(cy))
+    dark = crop_s < thresh # binarise (True = dark)
+
+    # Get connected-regions from the binarised image
+    # (connected-component labelling of the dark mask)
+    labels, n = ndi.label(dark)
+    if n == 0:
+        # if just one region, return the bbox centre
+        return (float(cx), float(cy))
+
+    # Select darkest blob from those above area threshold
+    min_area = min_area_frac * crop.size
+    best, best_dark = None, None
+    for lbl in range(1, n + 1): # skip 0 (background)
+        single_lbl_mask = labels == lbl
+        if single_lbl_mask.sum() < min_area:
+            continue
+        # darkest (lowest mean brightness) wins
+        darkness = -crop_s[single_lbl_mask].mean()  
+        if best_dark is None or darkness > best_dark:
+            best, best_dark = single_lbl_mask, darkness
+
+    # if no blob passes the thresholding, return centre of bbox
+    if best is None:
+        return (float(cx), float(cy))
+
+    # From the selected blob, get the
+    # point furthest from the blob boundary 
+    # (it will be robustly inside the blob)
+    dist = ndi.distance_transform_edt(best)
+    dy, dx = np.unravel_index(int(np.argmax(dist)), dist.shape)
+    return (float(bx1 + dx), float(by1 + dy))
 
 
-def derive_points_from_bboxes(image_hwc, bboxes_xyxy, central_fraction):
-    """Derive one darkest-pixel point per bbox; returns an ``(N, 2)`` array."""
+def derive_points_from_bboxes(image_hwc, bboxes_xyxy, min_area_frac):
+    """Derive one dark-blob point per bbox; returns an ``(N, 2)`` array."""
     if len(bboxes_xyxy) == 0:
         return np.empty((0, 2), dtype=np.float32)
     return np.array(
         [
-            bbox_to_darkest_point(image_hwc, bbox, central_fraction)
+            bbox_to_dark_blob_point(image_hwc, bbox, min_area_frac)
             for bbox in bboxes_xyxy
         ],
         dtype=np.float32,
@@ -334,7 +386,7 @@ metadata_dict = {
     "n_images": n_images,
     "image_shape": [image_h, image_w],
     "prompt_type": PROMPT_TYPE,
-    "central_fraction": CENTRAL_FRACTION,
+    "min_area_frac": MIN_AREA_FRAC,
     "mask_encoding": "instance_id",
     "background_label": 0,
     "id_offset": 1,
@@ -354,7 +406,7 @@ mask_zarr = create_mask_zarr(
 
 import matplotlib.patches as patches
 
-select_frame_idx = 0
+select_frame_idx = 3
 if flag_using_date_prompts:
     group_str_for_prompts = list_date_per_img[select_frame_idx]
 else:
@@ -366,10 +418,10 @@ bboxes_select = bboxes_xyxy_per_video[group_str_for_prompts]
 prompts_select = bboxes_select
 selected = np.zeros(len(bboxes_select), dtype=bool)  # start all unselected
 
-# derived darkest-pixel points, only used as an overlay in "point" mode
+# derived dark-blob points, only used as an overlay in "point" mode
 if PROMPT_TYPE == "point":
     derived_points = derive_points_from_bboxes(
-        image_array[select_frame_idx], bboxes_select, CENTRAL_FRACTION
+        image_array[select_frame_idx], bboxes_select, MIN_AREA_FRAC
     )
 
 fig, ax = plt.subplots()
@@ -448,7 +500,7 @@ print(f"{group_str_for_prompts}: kept {selected.sum()} prompts")
 
 processed_frames = []
 
-for frame_idx in [0]: #range(len(image_array)):
+for frame_idx in [3]: #range(len(image_array)):
     # with torch.autocast("cuda", dtype=torch.bfloat16):
 
     # Get corresponding video
@@ -494,10 +546,10 @@ for frame_idx in [0]: #range(len(image_array)):
             processor, inference_state, norm_boxes_cxcywh
         )
     else:
-        # derive a darkest-pixel point per bbox from *this* frame's image,
+        # derive a dark-blob point per bbox from *this* frame's image,
         # then xy (pixels) -> normalized [0, 1]
         points_xy = derive_points_from_bboxes(
-            image_array[frame_idx], prompts, CENTRAL_FRACTION
+            image_array[frame_idx], prompts, MIN_AREA_FRAC
         )
         norm_points_xy = points_xy / np.array(
             [width, height], dtype=np.float32
@@ -562,15 +614,15 @@ for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str]:
 plt.figure()
 plt.imshow(image_with_boxes)
 if PROMPT_TYPE == "point":
-    # overlay the darkest-pixel points derived for this frame
+    # overlay the dark-blob points derived for this frame
     pts = derive_points_from_bboxes(
         image_array[frame_idx],
         bboxes_xyxy_per_video[video_str],
-        CENTRAL_FRACTION,
+        MIN_AREA_FRAC,
     )
     plt.scatter(
         pts[:, 0], pts[:, 1],
-        c="lime", marker="*", s=120, edgecolors="k",
+        c="lime", marker="x", s=120, edgecolors="k",
     )
 plt.axis("off")
 plt.title(f"frame {frame_idx} ({video_str}) - prompt {PROMPT_TYPE}")
@@ -593,6 +645,97 @@ plt.axis("off")
 plt.title(f"{image_array.img_paths[frame_idx].stem} - {n_masks} masks")
 plt.show()
 
-# n_masks may be different from n_objects because:
+# %%%%%%%%
+# Postprocess?
+# - remove large masks?
+# - remove split masks, not blob-like masks?
+# - can I do a second pass using predictions as prompts?
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Second pass: re-prompt SAM3 with the centroids of the predicted masks
+#
+# Compute the centroid (centre of mass) of each predicted mask from the
+# first pass, then feed those centroids back to SAM3 as point prompts.
+
+# frame_idx = processed_frames[0]
+# if flag_using_date_prompts:
+#     video_str = list_date_per_img[frame_idx]
+# else:
+#     video_str = list_video_per_img[frame_idx]
+
+# # ID-encoded mask from the first pass; one ID per predicted mask
+# id_mask = mask_zarr[frame_idx]  # (H, W), 0 = background
+# mask_ids = np.unique(id_mask)
+# mask_ids = mask_ids[mask_ids != 0]  # drop background
+
+# # centroid (centre of mass) of each mask, in pixel (x, y)
+# centroids_yx = ndi.center_of_mass(
+#     np.ones_like(id_mask), labels=id_mask, index=mask_ids
+# )
+# centroids_xy = np.array(
+#     [(x, y) for (y, x) in centroids_yx], dtype=np.float32
+# )
+# print(f"Frame {frame_idx} ({video_str}): {len(centroids_xy)} mask centroids")
+
+# # Run inference again with the centroids as point prompts
+# image = Image.fromarray(image_array[frame_idx])
+# width, height = image.size
+# inference_state = processor.set_image(image)
+# processor.reset_all_prompts(inference_state)
+
+# if TEXT_PROMPT is not None:
+#     inference_state = processor.set_text_prompt(
+#         state=inference_state, prompt=TEXT_PROMPT
+#     )
+
+# # xy (pixels) -> normalized [0, 1]
+# norm_centroids_xy = centroids_xy / np.array(
+#     [width, height], dtype=np.float32
+# )
+# for px, py in norm_centroids_xy:
+#     inference_state = add_point_prompt(
+#         processor, inference_state, (float(px), float(py)), label=True
+#     )
+
+# # collect the second-pass masks, then release GPU state
+# masks2 = inference_state["masks"].cpu().numpy()
+# del inference_state
+# torch.cuda.empty_cache()
+
+# masks2 = masks2.squeeze(1) if masks2.ndim == 4 else masks2  # (N, H, W)
+# n_objects2 = masks2.shape[0]
+# print(f"Frame {frame_idx} ({video_str}): {n_objects2} masks (second pass)")
+
+# # ID-encoded mask for the second pass
+# if n_objects2 > 0:
+#     obj_ids2 = np.arange(1, n_objects2 + 1, dtype=np.int16)[:, None, None]
+#     id_mask2 = (masks2.astype(bool) * obj_ids2).max(axis=0)
+# else:
+#     id_mask2 = np.zeros_like(id_mask)
+
+# # %%
+# # Visualise the second-pass masks + centroid prompts
+# masked2 = np.ma.masked_where(id_mask2 == 0, id_mask2)
+
+# # count number of masks
+# mask_ids2 = np.unique(id_mask2)
+# mask_ids2 = mask_ids2[mask_ids2 != 0]   # drop background
+# n_masks2 = len(mask_ids2)
+
+
+# plt.figure()
+# plt.imshow(image)
+# plt.imshow(masked2, cmap="tab10", alpha=0.5, interpolation="nearest")
+# plt.scatter(
+#     centroids_xy[:, 0], centroids_xy[:, 1],
+#     c="lime", marker="x", s=120, edgecolors="k",
+# )
+# plt.axis("off")
+# plt.title(
+#     f"{image_array.img_paths[frame_idx].stem} - "
+#     f"{n_masks2} masks (centroid re-prompt)"
+# )
+# plt.show()
 
 # %%
