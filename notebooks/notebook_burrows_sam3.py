@@ -67,6 +67,8 @@ from sam3.visualization_utils import (
 from scipy import ndimage as ndi
 from skimage.filters import gaussian, threshold_otsu
 
+from skimage.measure import regionprops, label as sk_label
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
@@ -93,14 +95,15 @@ PROMPT_TYPE = "point"
 # area) for it to be considered a blob when deriving a point prompt.
 MIN_AREA_FRAC = 0.02
 
+# postprocessing of masks
+# TODO: change to pixels
+MIN_MASK_AREA_FRAC = 0.000002 
+MAX_MASK_AREA_FRAC = 0.05
+MIN_SOLIDITY = 0.8 #0.85
+
 # Output dir for masks 
 # TODO: add timestamp
 OUTPUT_DIR = Path("/home/sminano/swc/project_crabs/crabs-exploration/output_burrows_sam3")
-
-# use only the top 3 prompt boxes per video (or date)
-# (they should be sorted by peak height)
-# top_n_bboxes = 10
-
 
 
 # %%%%%%%%%%
@@ -306,6 +309,55 @@ def add_geometric_prompts(processor, state, boxes_cxcywh_norm, labels=None):
     return processor._forward_grounding(state)
 
 
+def postprocess_masks(masks, image_area, min_area_frac,
+                      max_area_frac, min_solidity, verbose=True):
+    """Split disconnected masks, drop ones too large/small or not blob-like.
+
+    ``masks`` is (N, H, W) boolean. Returns ``(kept, kept_obj_idx,
+    drop_counts)`` where ``kept`` is a list of (H, W) boolean masks,
+    ``kept_obj_idx`` is the index (into ``masks``) of the source object each
+    kept mask came from (so per-object data like scores can be mapped onto
+    the kept masks), and ``drop_counts`` is a dict counting how many
+    connected components were dropped per reason.
+
+    Note that ``kept_obj_idx`` is needed because the function splits masks 
+    into connected components, so a single SAM3 object can yield several 
+    kept masks (or none), and each must inherit the right score.
+    """
+    min_area = min_area_frac * image_area
+    max_area = max_area_frac * image_area
+    kept = []
+    kept_obj_idx = []
+    drop_counts = {"area_low": 0, "area_high": 0, "solidity": 0}
+    for obj_idx, m in enumerate(masks.astype(bool)):
+        # 1. split into connected components
+        comp_labels = sk_label(m)
+        for prop in regionprops(comp_labels):
+            # 2. area filter
+            if prop.area < min_area:
+                drop_counts["area_low"] += 1
+                if verbose:
+                    print(f"  obj {obj_idx} comp {prop.label}: dropped "
+                          f"(area {prop.area} < {min_area:.0f})")
+                continue
+            if prop.area > max_area:
+                drop_counts["area_high"] += 1
+                if verbose:
+                    print(f"  obj {obj_idx} comp {prop.label}: dropped "
+                          f"(area {prop.area} > {max_area:.0f})")
+                continue
+            # 3. blob-likeness
+            if prop.solidity < min_solidity:
+                drop_counts["solidity"] += 1
+                if verbose:
+                    print(f"  obj {obj_idx} comp {prop.label}: dropped "
+                          f"(solidity {prop.solidity:.2f} < {min_solidity})")
+                continue
+            kept.append(comp_labels == prop.label)
+            kept_obj_idx.append(obj_idx)
+    return kept, kept_obj_idx, drop_counts
+
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load frames as a lazy array and map each frame to its video / date
 
@@ -387,6 +439,9 @@ metadata_dict = {
     "image_shape": [image_h, image_w],
     "prompt_type": PROMPT_TYPE,
     "min_area_frac": MIN_AREA_FRAC,
+    "postproc_min_mask_area_frac": MIN_MASK_AREA_FRAC,
+    "postproc_max_mask_area_frac": MAX_MASK_AREA_FRAC,
+    "postproc_min_solidity": MIN_SOLIDITY,
     "mask_encoding": "instance_id",
     "background_label": 0,
     "id_offset": 1,
@@ -406,7 +461,7 @@ mask_zarr = create_mask_zarr(
 
 import matplotlib.patches as patches
 
-select_frame_idx = 3
+select_frame_idx = -2
 if flag_using_date_prompts:
     group_str_for_prompts = list_date_per_img[select_frame_idx]
 else:
@@ -499,8 +554,9 @@ print(f"{group_str_for_prompts}: kept {selected.sum()} prompts")
 # Run inference on every frame and write ID-encoded masks to zarr
 
 processed_frames = []
+frame_scores = {}  # frame_idx -> {mask_id: score}
 
-for frame_idx in [3]: #range(len(image_array)):
+for frame_idx in [select_frame_idx]: #range(len(image_array)):
     # with torch.autocast("cuda", dtype=torch.bfloat16):
 
     # Get corresponding video
@@ -569,13 +625,30 @@ for frame_idx in [3]: #range(len(image_array)):
     # next frame: otherwise the previous state (backbone features +
     # full-res masks_logits) stays alive during the next forward pass.
     masks = inference_state["masks"].cpu().numpy()
+    scores = inference_state["scores"].float().cpu().numpy() # (N,)
     del inference_state
     torch.cuda.empty_cache()
-    
+
     masks = masks.squeeze(1) if masks.ndim == 4 else masks  # (N, H, W)
     n_objects = masks.shape[0]
     if n_objects == 0:
         print(f"Frame {frame_idx} ({video_str}): no detections")
+        continue
+
+    # -----------------------
+    # Postprocess masks
+    kept_masks, kept_obj_idx, drop_counts = postprocess_masks(
+        masks,
+        image_h * image_w,
+        MIN_MASK_AREA_FRAC,
+        MAX_MASK_AREA_FRAC,
+        MIN_SOLIDITY,
+    )
+    print(f"Frame {frame_idx} ({video_str}): postproc kept "
+          f"{len(kept_masks)}/{n_objects} objects, "
+          f"dropped {drop_counts}")
+    if not kept_masks:
+        print(f"Frame {frame_idx} ({video_str}): no masks after postprocessing")
         continue
 
     # Compute id-encoded mask
@@ -583,13 +656,29 @@ for frame_idx in [3]: #range(len(image_array)):
     # - SAM3 can return a mask that is all False
     # - when computing the id mask, if masks overlap we take the one with 
     #   higher ID. So completely overlapping masks disappear.
-    obj_ids = np.arange(1, n_objects + 1, dtype=np.int16)[:, None, None]
-    id_mask = (masks.astype(bool) * obj_ids).max(axis=0)
+    # obj_ids = np.arange(1, n_objects + 1, dtype=np.int16)[:, None, None]
+    # id_mask = (masks.astype(bool) * obj_ids).max(axis=0)
+    obj_ids = np.arange(1, len(kept_masks) + 1, dtype=np.int16)
+    id_mask = np.zeros((image_h, image_w), dtype=np.int16)
+    for oid, m in zip(obj_ids, kept_masks):
+        id_mask[m] = oid
+
+    # Score per kept mask: each kept mask inherits the SAM3 score of the
+    # source object it was split from (kept_obj_idx maps back into `scores`).
+    kept_scores = scores[kept_obj_idx]
+    id_to_score = {
+        str(int(oid)): float(s) for oid, s in zip(obj_ids, kept_scores)
+    }
+    # -----------------------
 
     mask_zarr[frame_idx] = id_mask
     processed_frames.append(frame_idx)
     mask_zarr.attrs["annotated_frames"] = processed_frames
-    print(f"Frame {frame_idx} ({video_str}): {n_objects} masks")
+    # per-mask scores, keyed by frame index then mask id (zarr attrs are
+    # JSON, so keys are strings)
+    frame_scores[str(frame_idx)] = id_to_score
+    mask_zarr.attrs["mask_scores"] = frame_scores
+    print(f"Frame {frame_idx} ({video_str}): {len(kept_masks)} masks")
 
 print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
 
@@ -604,29 +693,29 @@ else:
     video_str = list_video_per_img[frame_idx]
 image = Image.fromarray(image_array[frame_idx])
 
-# always draw the source bboxes
-image_with_boxes = image
-for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str]:
-    image_with_boxes = draw_box_on_image(
-        image_with_boxes, [x1, y1, x2 - x1, y2 - y1], (0, 255, 0)
-    )
+# # always draw the source bboxes
+# image_with_boxes = image
+# for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str]:
+#     image_with_boxes = draw_box_on_image(
+#         image_with_boxes, [x1, y1, x2 - x1, y2 - y1], (0, 255, 0)
+#     )
 
-plt.figure()
-plt.imshow(image_with_boxes)
-if PROMPT_TYPE == "point":
-    # overlay the dark-blob points derived for this frame
-    pts = derive_points_from_bboxes(
-        image_array[frame_idx],
-        bboxes_xyxy_per_video[video_str],
-        MIN_AREA_FRAC,
-    )
-    plt.scatter(
-        pts[:, 0], pts[:, 1],
-        c="lime", marker="x", s=120, edgecolors="k",
-    )
-plt.axis("off")
-plt.title(f"frame {frame_idx} ({video_str}) - prompt {PROMPT_TYPE}")
-plt.show()
+# plt.figure()
+# plt.imshow(image_with_boxes)
+# if PROMPT_TYPE == "point":
+#     # overlay the dark-blob points derived for this frame
+#     pts = derive_points_from_bboxes(
+#         image_array[frame_idx],
+#         bboxes_xyxy_per_video[video_str],
+#         MIN_AREA_FRAC,
+#     )
+#     plt.scatter(
+#         pts[:, 0], pts[:, 1],
+#         c="lime", marker="x", s=120, edgecolors="k",
+#     )
+# plt.axis("off")
+# plt.title(f"frame {frame_idx} ({video_str}) - prompt {PROMPT_TYPE}")
+# plt.show()
 
 # Plot the ID-encoded masks read back from the zarr store
 # TODO: why only 3 masks?
@@ -638,11 +727,21 @@ mask_ids = np.unique(id_mask)
 mask_ids = mask_ids[mask_ids != 0]   # drop background
 n_masks = len(mask_ids)
 
-plt.figure()
-plt.imshow(image)
-plt.imshow(masked, cmap="tab10", alpha=0.5, interpolation="nearest")
-plt.axis("off")
-plt.title(f"{image_array.img_paths[frame_idx].stem} - {n_masks} masks")
+fig, ax = plt.subplots()
+ax.imshow(image)
+ax.imshow(masked, cmap="tab10", alpha=0.5, interpolation="nearest")
+if PROMPT_TYPE == "point":
+    pts = derive_points_from_bboxes(
+        image_array[frame_idx],
+        bboxes_xyxy_per_video[video_str],
+        MIN_AREA_FRAC,
+    )
+    ax.scatter(
+        pts[:, 0], pts[:, 1],
+        c="lime", marker="x", s=120, 
+    )
+ax.set_axis_off()
+ax.set_title(f"{image_array.img_paths[frame_idx].stem} - {n_masks} masks")
 plt.show()
 
 # %%%%%%%%
