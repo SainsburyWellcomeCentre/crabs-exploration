@@ -744,97 +744,92 @@ ax.set_axis_off()
 ax.set_title(f"{image_array.img_paths[frame_idx].stem} - {n_masks} masks")
 plt.show()
 
-# %%%%%%%%
-# Postprocess?
-# - remove large masks?
-# - remove split masks, not blob-like masks?
-# - can I do a second pass using predictions as prompts?
+
+# %%%%%%%%%%%%%%%%%%%%%
+# Color masks by score
+# Read the per-mask scores back from the zarr store and render each mask
+# filled with its SAM3 score (continuous colormap). Hovering over a mask
+# shows its ID and score.
+
+id_mask = mask_zarr[frame_idx]  # (H, W), 0 = background
+id_to_score = mask_zarr.attrs["mask_scores"][str(frame_idx)]  # {id: score}
+
+# build a (H, W) float image holding each mask's score (NaN on background)
+score_image = np.full(id_mask.shape, np.nan, dtype=float)
+for id_str, score in id_to_score.items():
+    score_image[id_mask == int(id_str)] = score
+score_masked = np.ma.masked_invalid(score_image)
+
+score_vals = np.array(list(id_to_score.values()), dtype=float)
+
+fig, ax = plt.subplots()
+ax.imshow(image)
+im = ax.imshow(
+    score_masked,
+    cmap="viridis",
+    alpha=0.6,
+    interpolation="nearest",
+    vmin=score_vals.min(),
+    vmax=score_vals.max(),
+)
+cbar = fig.colorbar(im, ax=ax, label="SAM3 score")
+# show the actual min/max scores as ticks (auto-ticks skip the extremes)
+cbar.set_ticks([score_vals.min(), score_vals.max()])
+cbar.set_ticklabels(
+    [f"{score_vals.min():.3f}", f"{score_vals.max():.3f}"]
+)
+ax.set_axis_off()
+ax.set_title(
+    f"{image_array.img_paths[frame_idx].stem} - "
+    f"{len(id_to_score)} masks colored by score"
+)
 
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Second pass: re-prompt SAM3 with the centroids of the predicted masks
-#
-# Compute the centroid (centre of mass) of each predicted mask from the
-# first pass, then feed those centroids back to SAM3 as point prompts.
+# add prompts
+if PROMPT_TYPE == "point":
+    pts = derive_points_from_bboxes(
+        image_array[frame_idx],
+        bboxes_xyxy_per_video[video_str],
+        MIN_AREA_FRAC,
+    )
+    ax.scatter(
+        pts[:, 0], pts[:, 1],
+        c="lime", marker="x", s=120, 
+    )
 
-# frame_idx = processed_frames[0]
-# if flag_using_date_prompts:
-#     video_str = list_date_per_img[frame_idx]
-# else:
-#     video_str = list_video_per_img[frame_idx]
+# hover tooltip: show the mask ID + score under the cursor
+annot = ax.annotate(
+    "", xy=(0, 0), xytext=(12, 12), textcoords="offset points",
+    bbox=dict(boxstyle="round", fc="w"), fontsize=9,
+)
+annot.set_visible(False)
 
-# # ID-encoded mask from the first pass; one ID per predicted mask
-# id_mask = mask_zarr[frame_idx]  # (H, W), 0 = background
-# mask_ids = np.unique(id_mask)
-# mask_ids = mask_ids[mask_ids != 0]  # drop background
+def _on_hover(event):
+    if event.inaxes != ax or event.xdata is None:
+        if annot.get_visible():
+            annot.set_visible(False)
+            fig.canvas.draw_idle()
+        return
+    col, row = int(round(event.xdata)), int(round(event.ydata))
+    visible = False
+    if 0 <= row < id_mask.shape[0] and 0 <= col < id_mask.shape[1]:
+        mid = int(id_mask[row, col])
+        if mid != 0:
+            annot.xy = (event.xdata, event.ydata)
+            annot.set_text(f"id {mid}: {id_to_score[str(mid)]:.3f}")
+            visible = True
+    annot.set_visible(visible)
+    fig.canvas.draw_idle()
 
-# # centroid (centre of mass) of each mask, in pixel (x, y)
-# centroids_yx = ndi.center_of_mass(
-#     np.ones_like(id_mask), labels=id_mask, index=mask_ids
-# )
-# centroids_xy = np.array(
-#     [(x, y) for (y, x) in centroids_yx], dtype=np.float32
-# )
-# print(f"Frame {frame_idx} ({video_str}): {len(centroids_xy)} mask centroids")
-
-# # Run inference again with the centroids as point prompts
-# image = Image.fromarray(image_array[frame_idx])
-# width, height = image.size
-# inference_state = processor.set_image(image)
-# processor.reset_all_prompts(inference_state)
-
-# if TEXT_PROMPT is not None:
-#     inference_state = processor.set_text_prompt(
-#         state=inference_state, prompt=TEXT_PROMPT
-#     )
-
-# # xy (pixels) -> normalized [0, 1]
-# norm_centroids_xy = centroids_xy / np.array(
-#     [width, height], dtype=np.float32
-# )
-# for px, py in norm_centroids_xy:
-#     inference_state = add_point_prompt(
-#         processor, inference_state, (float(px), float(py)), label=True
-#     )
-
-# # collect the second-pass masks, then release GPU state
-# masks2 = inference_state["masks"].cpu().numpy()
-# del inference_state
-# torch.cuda.empty_cache()
-
-# masks2 = masks2.squeeze(1) if masks2.ndim == 4 else masks2  # (N, H, W)
-# n_objects2 = masks2.shape[0]
-# print(f"Frame {frame_idx} ({video_str}): {n_objects2} masks (second pass)")
-
-# # ID-encoded mask for the second pass
-# if n_objects2 > 0:
-#     obj_ids2 = np.arange(1, n_objects2 + 1, dtype=np.int16)[:, None, None]
-#     id_mask2 = (masks2.astype(bool) * obj_ids2).max(axis=0)
-# else:
-#     id_mask2 = np.zeros_like(id_mask)
-
-# # %%
-# # Visualise the second-pass masks + centroid prompts
-# masked2 = np.ma.masked_where(id_mask2 == 0, id_mask2)
-
-# # count number of masks
-# mask_ids2 = np.unique(id_mask2)
-# mask_ids2 = mask_ids2[mask_ids2 != 0]   # drop background
-# n_masks2 = len(mask_ids2)
+fig.canvas.mpl_connect("motion_notify_event", _on_hover)
+plt.show()
 
 
-# plt.figure()
-# plt.imshow(image)
-# plt.imshow(masked2, cmap="tab10", alpha=0.5, interpolation="nearest")
-# plt.scatter(
-#     centroids_xy[:, 0], centroids_xy[:, 1],
-#     c="lime", marker="x", s=120, edgecolors="k",
-# )
-# plt.axis("off")
-# plt.title(
-#     f"{image_array.img_paths[frame_idx].stem} - "
-#     f"{n_masks2} masks (centroid re-prompt)"
-# )
-# plt.show()
+# %%%%%%%%%%%%%%%%%
+# Subsequent passes
+# - pass the highest score ones that are not prompts?
 
-# %%
+# 1. Select masks that are higher than 0.5 score and do not overlap with a prompt point
+# 2. Compute bounding box around those masks
+# 3. Derive point prompt from the bbox using the existing function
+# 4. Run inference with the old set of point prompts + new point prompts -- print how many new masks are found
