@@ -83,7 +83,7 @@ prompt_coords_dir = "/home/sminano/swc/project_crabs/burrow_prompts_per_day_2026
 flag_using_date_prompts = True
 
 # Prediction params
-TEXT_PROMPT = "burrow"  # set to None to skip the text prompt
+TEXT_PROMPT = "animal burrow entrance"  # set to None to skip the text prompt
 CONF_THRESHOLD = 0.3
 
 # Geometric prompt type: "bounding_box" or "point".
@@ -97,9 +97,9 @@ MIN_AREA_FRAC = 0.02
 
 # postprocessing of masks
 # TODO: change to pixels
-MIN_MASK_AREA_FRAC = 0.000002 
+MIN_MASK_AREA_FRAC = 0.00005 
 MAX_MASK_AREA_FRAC = 0.05
-MIN_SOLIDITY = 0.8 #0.85
+MIN_SOLIDITY = 0.95 #0.85
 
 # Output dir for masks 
 # TODO: add timestamp
@@ -461,7 +461,7 @@ mask_zarr = create_mask_zarr(
 
 import matplotlib.patches as patches
 
-select_frame_idx = -2
+select_frame_idx = 1
 if flag_using_date_prompts:
     group_str_for_prompts = list_date_per_img[select_frame_idx]
 else:
@@ -738,7 +738,17 @@ if PROMPT_TYPE == "point":
     )
     ax.scatter(
         pts[:, 0], pts[:, 1],
-        c="lime", marker="x", s=120, 
+        c="lime", marker="x", s=120,
+    )
+
+# annotate each mask with its ID and area at the top-right corner of its bbox
+for mid in mask_ids:
+    ys, xs = np.where(id_mask == mid)
+    ax.text(
+        xs.max(), ys.min(), 
+        f"id={int(mid)}, {int((id_mask == mid).sum())} px",
+        color="white", fontsize=9, ha="left", va="bottom",
+        bbox=dict(boxstyle="round", fc="black", alpha=0.5, pad=0.2),
     )
 ax.set_axis_off()
 ax.set_title(f"{image_array.img_paths[frame_idx].stem} - {n_masks} masks")
@@ -833,3 +843,176 @@ plt.show()
 # 2. Compute bounding box around those masks
 # 3. Derive point prompt from the bbox using the existing function
 # 4. Run inference with the old set of point prompts + new point prompts -- print how many new masks are found
+
+# %%
+# One manual iterative step.
+# Reuses `kept_masks`, `kept_scores`, `points_xy` from the inference cell
+# above (run for `select_frame_idx`, PROMPT_TYPE == "point").
+
+PROMPT_SELECTION_MIN_SCORE = 0.3
+
+img_iter = image_array[select_frame_idx]
+img_h_i, img_w_i = img_iter.shape[:2]
+
+# 1. Select High-score kept masks that contain no existing prompt points
+# get rows and column indices for each prompt
+prompt_rc = np.round(points_xy[:, ::-1]).astype(int)  # (N, 2) as (row, col)
+prompt_rows = prompt_rc[:, 0].clip(0, img_h_i - 1)
+prompt_cols = prompt_rc[:, 1].clip(0, img_w_i - 1)
+
+new_bboxes_xyxy = []
+for m, s in zip(kept_masks, kept_scores):
+    # skip masks with score below threshold
+    if s <= PROMPT_SELECTION_MIN_SCORE:
+        continue
+    # skip masks already covered by a prompt point
+    # (is any point prompt inside this mask?)
+    if m[prompt_rows, prompt_cols].any():
+        continue
+
+    # if it passes previous checks:
+    # compute bounding box around the mask -> pixel xyxy
+    # output from np.where is row (y-axis), col (x-axis) coordinate of each 
+    # pixel in this mask
+    ys, xs = np.where(m) 
+    # we get min/max to compute bbox
+    new_bboxes_xyxy.append([xs.min(), ys.min(), xs.max(), ys.max()])
+
+new_bboxes_xyxy = np.array(new_bboxes_xyxy, dtype=np.float32).reshape(-1, 4)
+print(f"{len(new_bboxes_xyxy)} candidate masks selected for re-prompting")
+
+# %%
+# 3. Derive a dark-blob point per new bbox (existing helper)
+# TODO\; maybe here I could just compute the mean?
+new_points_xy = derive_points_from_bboxes(
+    img_iter, new_bboxes_xyxy, MIN_AREA_FRAC
+)
+
+# %%
+# plot old and new prompts
+# old prompts (lime x), new prompts (cyan x) and the mask bboxes the new
+# points were derived from (cyan rectangles).
+fig, ax = plt.subplots()
+ax.imshow(img_iter)
+ax.scatter(
+    points_xy[:, 0], points_xy[:, 1],
+    c="lime", marker="x", s=120, label=f"old ({len(points_xy)})",
+)
+if len(new_points_xy):
+    ax.scatter(
+        new_points_xy[:, 0], new_points_xy[:, 1],
+        c="cyan", marker="x", s=120, label=f"new ({len(new_points_xy)})",
+    )
+for x1, y1, x2, y2 in new_bboxes_xyxy:
+    ax.add_patch(patches.Rectangle(
+        (x1, y1), x2 - x1, y2 - y1,
+        fill=False, linewidth=1.5, edgecolor="cyan",
+    ))
+ax.set_axis_off()
+ax.legend(loc="upper right")
+ax.set_title(
+    f"{image_array.img_paths[select_frame_idx].stem} - "
+    f"{len(points_xy)} old + {len(new_points_xy)} new prompts"
+)
+plt.show()
+
+
+# %%
+# 4. Run inference with old + new point prompts
+all_points_xy = np.vstack([points_xy, new_points_xy])
+norm_all_points = all_points_xy / np.array(
+    [img_w_i, img_h_i], dtype=np.float32
+)
+
+image2 = Image.fromarray(img_iter)
+state2 = processor.set_image(image2)
+processor.reset_all_prompts(state2)
+if TEXT_PROMPT is not None:
+    state2 = processor.set_text_prompt(state=state2, prompt=TEXT_PROMPT)
+for px, py in norm_all_points:
+    state2 = add_point_prompt(
+        processor, state2, (float(px), float(py)), label=True
+    )
+
+masks2 = state2["masks"].cpu().numpy()
+scores2 = state2["scores"].float().cpu().numpy()
+del state2
+torch.cuda.empty_cache()
+masks2 = masks2.squeeze(1) if masks2.ndim == 4 else masks2
+
+kept2, kept_obj_idx2, drop_counts2 = postprocess_masks(
+    masks2, img_h_i * img_w_i,
+    MIN_MASK_AREA_FRAC, MAX_MASK_AREA_FRAC, MIN_SOLIDITY,
+    verbose=False,
+)
+print(f"pass 1: {len(kept_masks)} masks from {len(points_xy)} prompts")
+print(f"pass 2: {len(kept2)} masks from {len(all_points_xy)} prompts "
+      f"({len(new_points_xy)} new)")
+print(f"new masks found: {len(kept2) - len(kept_masks)}")
+
+
+# %%
+# plot results, new masks with red border
+
+
+# # Plot the ID-encoded masks read back from the zarr store
+# # TODO: why only 3 masks?
+# id_mask = mask_zarr[frame_idx]  # (H, W), 0 = background
+# masked = np.ma.masked_where(id_mask == 0, id_mask)
+
+# # count number of masks
+# mask_ids = np.unique(id_mask)
+# mask_ids = mask_ids[mask_ids != 0]   # drop background
+# n_masks = len(mask_ids)
+
+# fig, ax = plt.subplots()
+# ax.imshow(image)
+# ax.imshow(masked, cmap="tab10", alpha=0.5, interpolation="nearest")
+# if PROMPT_TYPE == "point":
+#     pts = derive_points_from_bboxes(
+#         image_array[frame_idx],
+#         bboxes_xyxy_per_video[video_str],
+#         MIN_AREA_FRAC,
+#     )
+#     ax.scatter(
+#         pts[:, 0], pts[:, 1],
+#         c="lime", marker="x", s=120, 
+#     )
+# ax.set_axis_off()
+# ax.set_title(f"{image_array.img_paths[frame_idx].stem} - {n_masks} masks")
+# plt.show()
+
+
+# A pass-2 mask is flagged "new" when its source object came from a new
+# prompt: prompts were added old-then-new, so object index >= n_old_prompts
+# means it was driven by a new point. (Note this counts masks attributable
+# to new prompts, not the naive len(kept2) - len(kept_masks) delta above.)
+n_old_prompts = len(points_xy)
+
+fig, ax = plt.subplots()
+ax.imshow(img_iter)
+for m, obj_idx in zip(kept2, kept_obj_idx2):
+    is_new = obj_idx >= n_old_prompts
+    ax.imshow(
+        np.ma.masked_where(~m, m),
+        cmap="autumn" if is_new else "winter",
+        alpha=0.4, interpolation="nearest",
+    )
+    ax.contour(
+        m, levels=[0.5],
+        colors="red" if is_new else "yellow", linewidths=1.5,
+    )
+ax.scatter(points_xy[:, 0], points_xy[:, 1], c="lime", marker="x", s=80)
+if len(new_points_xy):
+    ax.scatter(
+        new_points_xy[:, 0], new_points_xy[:, 1],
+        c="cyan", marker="x", s=80,
+    )
+ax.set_axis_off()
+n_new = sum(o >= n_old_prompts for o in kept_obj_idx2)
+ax.set_title(
+    f"{image_array.img_paths[select_frame_idx].stem} - pass 2: "
+    f"{len(kept2)} masks ({n_new} from new prompts, red border)"
+)
+plt.show()
+# %%
