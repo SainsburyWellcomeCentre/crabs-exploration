@@ -461,7 +461,7 @@ mask_zarr = create_mask_zarr(
 
 import matplotlib.patches as patches
 
-select_frame_idx = 1
+select_frame_idx = 7
 if flag_using_date_prompts:
     group_str_for_prompts = list_date_per_img[select_frame_idx]
 else:
@@ -849,7 +849,7 @@ plt.show()
 # Reuses `kept_masks`, `kept_scores`, `points_xy` from the inference cell
 # above (run for `select_frame_idx`, PROMPT_TYPE == "point").
 
-PROMPT_SELECTION_MIN_SCORE = 0.3
+PROMPT_SELECTION_MIN_SCORE = 0.0 # if 0.3, reuses all
 
 img_iter = image_array[select_frame_idx]
 img_h_i, img_w_i = img_iter.shape[:2]
@@ -918,101 +918,188 @@ plt.show()
 
 
 # %%
-# 4. Run inference with old + new point prompts
-all_points_xy = np.vstack([points_xy, new_points_xy])
-norm_all_points = all_points_xy / np.array(
-    [img_w_i, img_h_i], dtype=np.float32
-)
+# # 4. Run inference with old + new point prompts
+# all_points_xy = np.vstack([points_xy, new_points_xy])
+# norm_all_points = all_points_xy / np.array(
+#     [img_w_i, img_h_i], dtype=np.float32
+# )
 
-image2 = Image.fromarray(img_iter)
-state2 = processor.set_image(image2)
-processor.reset_all_prompts(state2)
-if TEXT_PROMPT is not None:
-    state2 = processor.set_text_prompt(state=state2, prompt=TEXT_PROMPT)
-for px, py in norm_all_points:
-    state2 = add_point_prompt(
-        processor, state2, (float(px), float(py)), label=True
-    )
+# image2 = Image.fromarray(img_iter)
+# state2 = processor.set_image(image2)
+# processor.reset_all_prompts(state2)
+# if TEXT_PROMPT is not None:
+#     state2 = processor.set_text_prompt(state=state2, prompt=TEXT_PROMPT)
+# for px, py in norm_all_points:
+#     state2 = add_point_prompt(
+#         processor, state2, (float(px), float(py)), label=True
+#     )
 
-masks2 = state2["masks"].cpu().numpy()
-scores2 = state2["scores"].float().cpu().numpy()
-del state2
-torch.cuda.empty_cache()
-masks2 = masks2.squeeze(1) if masks2.ndim == 4 else masks2
+# masks2 = state2["masks"].cpu().numpy()
+# scores2 = state2["scores"].float().cpu().numpy()
+# del state2
+# torch.cuda.empty_cache()
+# masks2 = masks2.squeeze(1) if masks2.ndim == 4 else masks2
 
-kept2, kept_obj_idx2, drop_counts2 = postprocess_masks(
-    masks2, img_h_i * img_w_i,
-    MIN_MASK_AREA_FRAC, MAX_MASK_AREA_FRAC, MIN_SOLIDITY,
-    verbose=False,
-)
-print(f"pass 1: {len(kept_masks)} masks from {len(points_xy)} prompts")
-print(f"pass 2: {len(kept2)} masks from {len(all_points_xy)} prompts "
-      f"({len(new_points_xy)} new)")
-print(f"new masks found: {len(kept2) - len(kept_masks)}")
+# kept2, kept_obj_idx2, drop_counts2 = postprocess_masks(
+#     masks2, img_h_i * img_w_i,
+#     MIN_MASK_AREA_FRAC, MAX_MASK_AREA_FRAC, MIN_SOLIDITY,
+#     verbose=False,
+# )
+# print(f"pass 1: {len(kept_masks)} masks from {len(points_xy)} prompts")
+# print(f"pass 2: {len(kept2)} masks from {len(all_points_xy)} prompts "
+#       f"({len(new_points_xy)} new)")
+# print(f"new masks found: {len(kept2) - len(kept_masks)}")
 
+
+
+# %%%%%%%%%%%%%%%%%
+# Option C: tiled inference seeded by old + new point prompts
+# -----------------------------------------------------------
+# Exemplars are spatial, so they cannot be shared to a tile they do not
+# fall inside. Here `points_xy` (old) and `new_points_xy` (new) from the
+# iterative cell above form a single exemplar pool. The image is split into
+# overlapping tiles; each tile runs SAM3 with the text prompt + whatever
+# pool points land inside it (transformed to tile coords). Tiles with no
+# exemplar are skipped (text-only finds nothing here -> residual gap).
+# Per-tile masks are offset back to full-image coords and de-duplicated
+# across tile seams by IoU.
+
+TILE_SIZE = image_h      # tile side in pixels
+TILE_OVERLAP = 256 #int(image_w*0.05) #256    # overlap between neighbouring tiles, in pixels
+MERGE_IOU = 0.5       # IoU above which two tile masks are the same burrow
+
+img_full = image_array[select_frame_idx]
+H, W = img_full.shape[:2]
+full_area = H * W
+
+# exemplar pool: old + new point prompts (pixel xy, full-image frame)
+pool_points = np.vstack([points_xy, new_points_xy]).astype(np.float32)
+print(f"exemplar pool: {len(pool_points)} points "
+      f"({len(points_xy)} old + {len(new_points_xy)} new)")
 
 # %%
-# plot results, new masks with red border
+def _make_tiles(img_h, img_w, tile, overlap):
+    """Overlapping (x0, y0, x1, y1) tiles covering the image."""
+    step = tile - overlap
+    tiles = set()
+    for y0 in range(0, max(1, img_h - overlap), step):
+        for x0 in range(0, max(1, img_w - overlap), step):
+            # clamp to image, then shift back so the tile stays full-sized
+            x1, y1 = min(x0 + tile, img_w), min(y0 + tile, img_h)
+            tiles.add((max(0, x1 - tile), max(0, y1 - tile), x1, y1))
+    return sorted(tiles)
 
 
-# # Plot the ID-encoded masks read back from the zarr store
-# # TODO: why only 3 masks?
-# id_mask = mask_zarr[frame_idx]  # (H, W), 0 = background
-# masked = np.ma.masked_where(id_mask == 0, id_mask)
+def _run_sam3_points(image_pil, points_xy_px, area_for_postproc):
+    """Run SAM3 (text + points) on a (cropped) image; masks in its frame."""
+    w, h = image_pil.size
+    state = processor.set_image(image_pil)
+    processor.reset_all_prompts(state)
 
-# # count number of masks
-# mask_ids = np.unique(id_mask)
-# mask_ids = mask_ids[mask_ids != 0]   # drop background
-# n_masks = len(mask_ids)
+    # text prompt
+    if TEXT_PROMPT is not None:
+        state = processor.set_text_prompt(state=state, prompt=TEXT_PROMPT)
 
-# fig, ax = plt.subplots()
-# ax.imshow(image)
-# ax.imshow(masked, cmap="tab10", alpha=0.5, interpolation="nearest")
-# if PROMPT_TYPE == "point":
-#     pts = derive_points_from_bboxes(
-#         image_array[frame_idx],
-#         bboxes_xyxy_per_video[video_str],
-#         MIN_AREA_FRAC,
-#     )
-#     ax.scatter(
-#         pts[:, 0], pts[:, 1],
-#         c="lime", marker="x", s=120, 
-#     )
-# ax.set_axis_off()
-# ax.set_title(f"{image_array.img_paths[frame_idx].stem} - {n_masks} masks")
-# plt.show()
+    # point prompts
+    for px, py in points_xy_px / np.array([w, h], dtype=np.float32):
+        state = add_point_prompt(
+            processor, state, (float(px), float(py)), label=True
+        )
+
+    
+    masks = state["masks"].cpu().numpy()
+    scores = state["scores"].float().cpu().numpy()
+    del state
+    torch.cuda.empty_cache()
 
 
-# A pass-2 mask is flagged "new" when its source object came from a new
-# prompt: prompts were added old-then-new, so object index >= n_old_prompts
-# means it was driven by a new point. (Note this counts masks attributable
-# to new prompts, not the naive len(kept2) - len(kept_masks) delta above.)
-n_old_prompts = len(points_xy)
-
-fig, ax = plt.subplots()
-ax.imshow(img_iter)
-for m, obj_idx in zip(kept2, kept_obj_idx2):
-    is_new = obj_idx >= n_old_prompts
-    ax.imshow(
-        np.ma.masked_where(~m, m),
-        cmap="autumn" if is_new else "winter",
-        alpha=0.4, interpolation="nearest",
+    masks = masks.squeeze(1) if masks.ndim == 4 else masks
+    if masks.shape[0] == 0:
+        return [], np.empty(0, dtype=float)
+    
+    # area thresholds use the FULL image area so the absolute pixel limits
+    # stay constant regardless of tile size
+    kept, kept_idx, _ = postprocess_masks(
+        masks, area_for_postproc,
+        MIN_MASK_AREA_FRAC, MAX_MASK_AREA_FRAC, MIN_SOLIDITY, verbose=False,
     )
-    ax.contour(
-        m, levels=[0.5],
-        colors="red" if is_new else "yellow", linewidths=1.5,
+    return kept, scores[kept_idx]
+
+
+def _merge_by_iou(masks, scores, iou_thresh):
+    """Greedy IoU de-dup of full-image masks; higher score wins on overlap."""
+    kept_m, kept_s = [], []
+    for i in np.argsort(scores)[::-1]:  # high score first
+        m = masks[i]
+        area = m.sum()
+        is_dup = False
+        for km in kept_m:
+            inter = np.logical_and(m, km).sum()
+            union = area + km.sum() - inter
+            if union and inter / union > iou_thresh:
+                is_dup = True
+                break
+        if not is_dup:
+            kept_m.append(m)
+            kept_s.append(scores[i])
+    return kept_m, np.array(kept_s)
+
+# %%
+# --- run tiled inference ---------------------------------------------------
+tiles = _make_tiles(H, W, TILE_SIZE, TILE_OVERLAP)
+tile_masks, tile_scores = [], []
+n_empty = 0
+for (x0, y0, x1, y1) in tiles:
+    in_tile = (
+        (pool_points[:, 0] >= x0) & (pool_points[:, 0] < x1)
+        & (pool_points[:, 1] >= y0) & (pool_points[:, 1] < y1)
     )
-ax.scatter(points_xy[:, 0], points_xy[:, 1], c="lime", marker="x", s=80)
-if len(new_points_xy):
-    ax.scatter(
-        new_points_xy[:, 0], new_points_xy[:, 1],
-        c="cyan", marker="x", s=80,
+    if not in_tile.any():
+        n_empty += 1
+        continue  # no exemplar -> text-only finds nothing, skip this tile
+    crop = Image.fromarray(img_full[y0:y1, x0:x1])
+    kept, ksc = _run_sam3_points(
+        crop,
+        pool_points[in_tile] - np.array([x0, y0], dtype=np.float32),
+        full_area,
     )
-ax.set_axis_off()
-n_new = sum(o >= n_old_prompts for o in kept_obj_idx2)
-ax.set_title(
-    f"{image_array.img_paths[select_frame_idx].stem} - pass 2: "
-    f"{len(kept2)} masks ({n_new} from new prompts, red border)"
+    # offset each tile mask back into the full-image canvas
+    for m in kept:
+        full = np.zeros((H, W), dtype=bool)
+        full[y0:y1, x0:x1] = m
+        tile_masks.append(full)
+    tile_scores.extend(ksc.tolist())
+
+print(f"{len(tiles)} tiles, {n_empty} skipped (no exemplar)")
+print(f"{len(tile_masks)} raw tile masks before merge")
+
+merged_masks, merged_scores = _merge_by_iou(
+    tile_masks, np.array(tile_scores, dtype=float), MERGE_IOU
 )
+print(f"{len(merged_masks)} masks after cross-tile merge "
+      f"(pass-1 had {len(kept_masks)})")
+
+# %%
+# --- plot: pass-1 vs tiled result -----------------------------------------
+fig, axes = plt.subplots(1, 2, figsize=(16, 8))
+for ax, (title, mlist) in zip(
+    axes,
+    [(f"pass 1 - {len(kept_masks)} masks", kept_masks),
+     (f"tiled (option C) - {len(merged_masks)} masks", merged_masks)],
+):
+    ax.imshow(img_full)
+    for m in mlist:
+        ax.contour(m, levels=[0.5], colors="red", linewidths=1.0)
+    ax.set_axis_off()
+    ax.set_title(title)
+# tile boundaries + exemplar pool overlaid on the tiled result
+for (x0, y0, x1, y1) in tiles:
+    axes[1].add_patch(patches.Rectangle(
+        (x0, y0), x1 - x0, y1 - y0,
+        fill=False, edgecolor="cyan", linewidth=0.7, linestyle=":",
+    ))
+axes[1].scatter(pool_points[:, 0], pool_points[:, 1],
+                c="lime", marker="x", s=40)
+plt.tight_layout()
 plt.show()
 # %%
