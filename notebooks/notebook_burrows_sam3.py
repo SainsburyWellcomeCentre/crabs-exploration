@@ -27,6 +27,7 @@ blob inside each bbox), not read from the CSV ``prompt_point_*`` columns.
 #   "ipympl",
 #   "scikit-image",
 #   "scipy",
+#   "xarray",
 # ]
 #
 # [tool.uv.sources]
@@ -106,7 +107,7 @@ MIN_AREA_FRAC = 0.02
 # Postprocessing of masks
 # -------------------------
 # TODO: change to pixels
-MIN_MASK_AREA_FRAC = 0.00005
+MIN_MASK_AREA_PIXELS = 100  # 200? in crab bodylengths?
 MAX_MASK_AREA_FRAC = 0.05
 MIN_SOLIDITY = 0.95  # 0.85
 
@@ -415,9 +416,8 @@ def add_geometric_prompts(processor, state, boxes_cxcywh_norm, labels=None):
 # TODO: review
 def postprocess_masks(
     masks,
-    image_area,
-    min_area_frac,
-    max_area_frac,
+    min_area,
+    max_area,
     min_solidity,
     verbose=True,
 ):
@@ -434,8 +434,8 @@ def postprocess_masks(
     into connected components, so a single SAM3 object can yield several
     kept masks (or none), and each must inherit the right score.
     """
-    min_area = min_area_frac * image_area
-    max_area = max_area_frac * image_area
+    # min_area = min_area_pixels * image_area
+    # max_area = max_area_frac * image_area
     kept = []
     kept_obj_idx = []
     drop_counts = {"area_low": 0, "area_high": 0, "solidity": 0}
@@ -507,7 +507,7 @@ metadata_dict = {
     "prompt_type": PROMPT_TYPE,
     "bbox_to_point_min_area_frac": MIN_AREA_FRAC,
     "sam3_confidence_threshold": CONF_THRESHOLD,
-    "postproc_min_mask_area_frac": MIN_MASK_AREA_FRAC,
+    "postproc_min_mask_area_PIXELS": MIN_MASK_AREA_PIXELS,
     "postproc_max_mask_area_frac": MAX_MASK_AREA_FRAC,
     "postproc_min_solidity": MIN_SOLIDITY,
     "mask_encoding": "instance_id",
@@ -543,7 +543,7 @@ bboxes_xyxy_per_video = {
 }
 
 # %%
-# %matplotlib widget
+%matplotlib widget
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Interactively select which prompts to pass to SAM3.
 # Selection is always on the bboxes: click a box to toggle it
@@ -553,7 +553,7 @@ bboxes_xyxy_per_video = {
 # TODO: loop thru images, export selected promtps
 
 # Select a frame and get its group string
-selected_frame_idx = 7
+selected_frame_idx = 14
 if flag_using_date_prompts:
     selected_frame_group_str = list_date_per_img[selected_frame_idx]
 else:
@@ -793,9 +793,8 @@ for frame_idx in [selected_frame_idx]:  # range(len(image_array)):
     # Postprocess masks
     kept_masks, kept_obj_idx, drop_counts = postprocess_masks(
         masks,
-        image_h * image_w,
-        MIN_MASK_AREA_FRAC,
-        MAX_MASK_AREA_FRAC,
+        MIN_MASK_AREA_PIXELS,
+        MAX_MASK_AREA_FRAC * image_h * image_w,
         MIN_SOLIDITY,
     )
     print(
@@ -852,29 +851,6 @@ else:
     video_str = list_video_per_img[frame_idx]
 image = Image.fromarray(image_array[frame_idx])
 
-# # always draw the source bboxes
-# image_with_boxes = image
-# for x1, y1, x2, y2 in bboxes_xyxy_per_video[video_str]:
-#     image_with_boxes = draw_box_on_image(
-#         image_with_boxes, [x1, y1, x2 - x1, y2 - y1], (0, 255, 0)
-#     )
-
-# plt.figure()
-# plt.imshow(image_with_boxes)
-# if PROMPT_TYPE == "point":
-#     # overlay the dark-blob points derived for this frame
-#     pts = derive_points_from_bboxes(
-#         image_array[frame_idx],
-#         bboxes_xyxy_per_video[video_str],
-#         MIN_AREA_FRAC,
-#     )
-#     plt.scatter(
-#         pts[:, 0], pts[:, 1],
-#         c="lime", marker="x", s=120, edgecolors="k",
-#     )
-# plt.axis("off")
-# plt.title(f"frame {frame_idx} ({video_str}) - prompt {PROMPT_TYPE}")
-# plt.show()
 
 # Plot the ID-encoded masks read back from the zarr store
 # TODO: why only 3 masks?
@@ -893,7 +869,7 @@ if PROMPT_TYPE == "point":
     pts = derive_points_from_bboxes(
         image_array[frame_idx],
         bboxes_xyxy_per_video[video_str],
-       gaussian_sigma=1.5,
+        gaussian_sigma=1.5,
         min_area_frac=MIN_AREA_FRAC,
         blob_connectivity=2,
     )
@@ -905,21 +881,41 @@ if PROMPT_TYPE == "point":
         s=120,
     )
 
-# annotate each mask with its ID and area at the top-right corner of its bbox
-for mid in mask_ids:
-    ys, xs = np.where(id_mask == mid)
-    ax.text(
-        xs.max(),
-        ys.min(),
-        f"id={int(mid)}, {int((id_mask == mid).sum())} px",
-        color="white",
-        fontsize=9,
-        ha="left",
-        va="bottom",
-        bbox=dict(boxstyle="round", fc="black", alpha=0.5, pad=0.2),
-    )
 ax.set_axis_off()
 ax.set_title(f"{image_array.img_paths[frame_idx].stem} - {n_masks} masks")
+
+# hover tooltip: show the mask ID + area under the cursor
+mask_areas = {int(mid): int((id_mask == mid).sum()) for mid in mask_ids}
+hover_annot = ax.annotate(
+    "",
+    xy=(0, 0),
+    xytext=(12, 12),
+    textcoords="offset points",
+    bbox=dict(boxstyle="round", fc="w"),
+    fontsize=9,
+)
+hover_annot.set_visible(False)
+
+
+def _on_hover_id(event):
+    if event.inaxes != ax or event.xdata is None:
+        if hover_annot.get_visible():
+            hover_annot.set_visible(False)
+            fig.canvas.draw_idle()
+        return
+    col, row = int(round(event.xdata)), int(round(event.ydata))
+    visible = False
+    if 0 <= row < id_mask.shape[0] and 0 <= col < id_mask.shape[1]:
+        mid = int(id_mask[row, col])
+        if mid != 0:
+            hover_annot.xy = (event.xdata, event.ydata)
+            hover_annot.set_text(f"id={mid}, {mask_areas[mid]} px")
+            visible = True
+    hover_annot.set_visible(visible)
+    fig.canvas.draw_idle()
+
+
+fig.canvas.mpl_connect("motion_notify_event", _on_hover_id)
 plt.show()
 
 
@@ -966,7 +962,9 @@ if PROMPT_TYPE == "point":
     pts = derive_points_from_bboxes(
         image_array[frame_idx],
         bboxes_xyxy_per_video[video_str],
-        MIN_AREA_FRAC,
+        gaussian_sigma=1.5,
+        min_area_frac=MIN_AREA_FRAC,
+        blob_connectivity=2,
     )
     ax.scatter(
         pts[:, 0],
@@ -1009,10 +1007,6 @@ def _on_hover(event):
 fig.canvas.mpl_connect("motion_notify_event", _on_hover)
 plt.show()
 
-# %%
-# Plot trajectories on top
-
-
 
 # %%%%%%%%%%%%%%%%%
 # Subsequent passes
@@ -1028,7 +1022,7 @@ plt.show()
 # Reuses `kept_masks`, `kept_scores`, `points_xy` from the inference cell
 # above (run for `select_frame_idx`, PROMPT_TYPE == "point").
 
-PROMPT_SELECTION_MIN_SCORE = 0.0  # if 0.3, reuses all
+PROMPT_SELECTION_MIN_SCORE = 0.0  # if CONF_THRESHOLD or 0, reuses all
 
 img_iter = image_array[selected_frame_idx]
 img_h_i, img_w_i = img_iter.shape[:2]
@@ -1058,13 +1052,17 @@ for m, s in zip(kept_masks, kept_scores):
     new_bboxes_xyxy.append([xs.min(), ys.min(), xs.max(), ys.max()])
 
 new_bboxes_xyxy = np.array(new_bboxes_xyxy, dtype=np.float32).reshape(-1, 4)
-print(f"{len(new_bboxes_xyxy)} candidate masks selected for re-prompting")
+print(f"{len(new_bboxes_xyxy)} predicted masks selected for re-prompting")
 
 # %%
 # 3. Derive a dark-blob point per new bbox (existing helper)
-# TODO\; maybe here I could just compute the mean?
+# TODO\; maybe here I could just compute the centroid of the mask?
 new_points_xy = derive_points_from_bboxes(
-    img_iter, new_bboxes_xyxy, MIN_AREA_FRAC
+    img_iter,
+    new_bboxes_xyxy,
+    gaussian_sigma=1.5,
+    min_area_frac=MIN_AREA_FRAC,
+    blob_connectivity=2,
 )
 
 # %%
@@ -1110,40 +1108,6 @@ ax.set_title(
 plt.show()
 
 
-# %%
-# # 4. Run inference with old + new point prompts
-# all_points_xy = np.vstack([points_xy, new_points_xy])
-# norm_all_points = all_points_xy / np.array(
-#     [img_w_i, img_h_i], dtype=np.float32
-# )
-
-# image2 = Image.fromarray(img_iter)
-# state2 = processor.set_image(image2)
-# processor.reset_all_prompts(state2)
-# if TEXT_PROMPT is not None:
-#     state2 = processor.set_text_prompt(state=state2, prompt=TEXT_PROMPT)
-# for px, py in norm_all_points:
-#     state2 = add_point_prompt(
-#         processor, state2, (float(px), float(py)), label=True
-#     )
-
-# masks2 = state2["masks"].cpu().numpy()
-# scores2 = state2["scores"].float().cpu().numpy()
-# del state2
-# torch.cuda.empty_cache()
-# masks2 = masks2.squeeze(1) if masks2.ndim == 4 else masks2
-
-# kept2, kept_obj_idx2, drop_counts2 = postprocess_masks(
-#     masks2, img_h_i * img_w_i,
-#     MIN_MASK_AREA_FRAC, MAX_MASK_AREA_FRAC, MIN_SOLIDITY,
-#     verbose=False,
-# )
-# print(f"pass 1: {len(kept_masks)} masks from {len(points_xy)} prompts")
-# print(f"pass 2: {len(kept2)} masks from {len(all_points_xy)} prompts "
-#       f"({len(new_points_xy)} new)")
-# print(f"new masks found: {len(kept2) - len(kept_masks)}")
-
-
 # %%%%%%%%%%%%%%%%%
 # Option C: tiled inference seeded by old + new point prompts
 # -----------------------------------------------------------
@@ -1156,8 +1120,10 @@ plt.show()
 # Per-tile masks are offset back to full-image coords and de-duplicated
 # across tile seams by IoU.
 
-TILE_SIZE = image_h  # tile side in pixels
-TILE_OVERLAP = 256  # int(image_w*0.05) #256    # overlap between neighbouring tiles, in pixels
+TILE_SIZE = int(image_h / 3)  # tile side in pixels
+TILE_OVERLAP = int(
+    TILE_SIZE / 2
+)  # int(image_w*0.05) #256    # overlap between neighbouring tiles, in pixels
 MERGE_IOU = 0.5  # IoU above which two tile masks are the same burrow
 
 img_full = image_array[selected_frame_idx]
@@ -1214,9 +1180,8 @@ def _run_sam3_points(image_pil, points_xy_px, area_for_postproc):
     # stay constant regardless of tile size
     kept, kept_idx, _ = postprocess_masks(
         masks,
-        area_for_postproc,
-        MIN_MASK_AREA_FRAC,
-        MAX_MASK_AREA_FRAC,
+        MIN_MASK_AREA_PIXELS,
+        MAX_MASK_AREA_FRAC * img_h_i * img_w_i,
         MIN_SOLIDITY,
         verbose=False,
     )
@@ -1272,28 +1237,84 @@ for x0, y0, x1, y1 in tiles:
 
 print(f"{len(tiles)} tiles, {n_empty} skipped (no exemplar)")
 print(f"{len(tile_masks)} raw tile masks before merge")
+# Q: I assume this is before merging tiles?
 
 merged_masks, merged_scores = _merge_by_iou(
     tile_masks, np.array(tile_scores, dtype=float), MERGE_IOU
 )
+
+# TODO: review this count, I dont get it
 print(
     f"{len(merged_masks)} masks after cross-tile merge "
     f"(pass-1 had {len(kept_masks)})"
 )
 
 # %%
+# Persist tiled-pass masks to zarr and free intermediates before plotting.
+# A separate store from the pass-1 mask_zarr so both passes coexist on disk.
+
+# TODO: ideally we save to zarr as we go!
+import gc  # noqa: E402
+
+if "tiled_mask_zarr" not in globals():
+    output_tiled_masks_zarr = OUTPUT_DIR / f"masks_tiled_{timestamp}.zarr"
+    tiled_metadata_dict = {
+        **metadata_dict,
+        "pass": "tiled",
+        "tile_size": TILE_SIZE,
+        "tile_overlap": TILE_OVERLAP,
+        "merge_iou": MERGE_IOU,
+    }
+    tiled_mask_zarr = create_mask_zarr(
+        output_tiled_masks_zarr,
+        (n_images, image_h, image_w),
+        zarr_metadata_dict=tiled_metadata_dict,
+    )
+
+# Encode merged masks as ID-mask (higher score won the IoU merge, so order
+# in `merged_masks` is high-to-low score; IDs follow that order).
+tiled_id_mask = np.zeros((image_h, image_w), dtype=np.int16)
+for oid, m in enumerate(merged_masks, start=1):
+    tiled_id_mask[m] = oid
+tiled_mask_zarr[selected_frame_idx] = tiled_id_mask
+
+tiled_id_to_score = {str(i + 1): float(s) for i, s in enumerate(merged_scores)}
+tiled_scores_attr = dict(tiled_mask_zarr.attrs.get("mask_scores", {}))
+tiled_scores_attr[str(selected_frame_idx)] = tiled_id_to_score
+tiled_mask_zarr.attrs["mask_scores"] = tiled_scores_attr
+print(f"Saved tiled ID-mask zarr to {output_tiled_masks_zarr}")
+
+# Drop the big per-tile mask lists now that the result is on disk.
+del tile_masks, tile_scores, merged_masks, merged_scores
+gc.collect()
+torch.cuda.empty_cache()
+
+
+# %%
 # --- plot: pass-1 vs tiled result -----------------------------------------
+# Read both ID-masks back from zarr so we don't hold N full-res bool masks
+# in RAM, and use imshow instead of N ax.contour calls (much lighter).
+pass1_id_mask = mask_zarr[selected_frame_idx]
+tiled_id_mask = tiled_mask_zarr[selected_frame_idx]
+n_pass1 = int(pass1_id_mask.max())
+n_tiled = int(tiled_id_mask.max())
+
 fig, axes = plt.subplots(1, 2, figsize=(16, 8))
-for ax, (title, mlist) in zip(
+for ax, (title, id_arr) in zip(
     axes,
     [
-        (f"pass 1 - {len(kept_masks)} masks", kept_masks),
-        (f"tiled (option C) - {len(merged_masks)} masks", merged_masks),
+        (f"pass 1 - {n_pass1} masks", pass1_id_mask),
+        (f"tiled (option C) - {n_tiled} masks", tiled_id_mask),
     ],
+    strict=True,
 ):
     ax.imshow(img_full)
-    for m in mlist:
-        ax.contour(m, levels=[0.5], colors="red", linewidths=1.0)
+    ax.imshow(
+        np.ma.masked_where(id_arr == 0, id_arr),
+        cmap="tab10",
+        alpha=0.5,
+        interpolation="nearest",
+    )
     ax.set_axis_off()
     ax.set_title(title)
 # tile boundaries + exemplar pool overlaid on the tiled result
@@ -1314,4 +1335,239 @@ axes[1].scatter(
 )
 plt.tight_layout()
 plt.show()
+# %%
+# %%
+# Plot trajectories on top of tiled burrow masks
+# Overlay per-individual crab trajectories (from the CrabTracks zarr datatree)
+# on the selected frame, alongside the tiled-pass burrow masks.
+
+import xarray as xr  # noqa: E402
+
+crabs_zarr_dataset = (
+    Path.home()
+    / "swc"
+    / "project_crabs"
+    / "data"
+    / "_CrabTracks"
+    / "CrabTracks-slurm2478780-2478861-2489356.zarr"  # "CrabTracks-slurm3012633.zarr"
+)
+
+dt = xr.open_datatree(crabs_zarr_dataset, engine="zarr", chunks={})
+
+# Get video data
+video_str = list_video_per_img[selected_frame_idx]
+ds_video = dt[video_str].to_dataset()
+
+# Flatten all (clip_id, time, individuals) samples and drop NaNs. No
+# trajectory-length filter here — every non-NaN sample is plotted, and the
+# minimum-hit threshold (MIN_HITS_PER_BURROW, below) controls which burrows
+# get flagged in red.
+position = ds_video.position  # (clip_id, time, individuals, space)
+x = position.sel(space="x").values.reshape(-1)
+y = position.sel(space="y").values.reshape(-1)
+valid = ~np.isnan(x) & ~np.isnan(y)
+x_clean, y_clean = x[valid], y[valid]
+del x, y, valid
+
+# Rasterise trajectory points with datashader: positions are
+# (clip_id, time, individuals, space) padded to max time across clips,
+# so we flatten x/y and drop NaNs (padding + missing detections) before
+# aggregating onto a full-res canvas.
+import datashader as ds  # noqa: E402
+import datashader.transfer_functions as tf  # noqa: E402
+
+DYNSPREAD_THRESHOLD = 0.975
+
+img_h_i, img_w_i = image_array.img_h, image_array.img_w
+canvas = ds.Canvas(
+    plot_width=img_w_i,
+    plot_height=img_h_i,
+    x_range=(0, img_w_i),
+    y_range=(0, img_h_i),
+)
+agg = canvas.points(pd.DataFrame({"x": x_clean, "y": y_clean}), "x", "y")
+traj_img = tf.shade(agg, cmap=["#c3ff1f"])
+traj_img = tf.dynspread(traj_img, threshold=DYNSPREAD_THRESHOLD)
+# datashader y-origin is bottom; flip to match image y-origin (top)
+traj_rgba = np.array(traj_img.to_pil().transpose(Image.FLIP_TOP_BOTTOM))
+
+# ---------------------
+# Combine pass-1 + tiled ID-masks into one with non-colliding IDs. Tiled
+# IDs are shifted by n_pass1; on overlap pass-1 wins (i.e. tiled is only
+# written where pass-1 is background). All masks are rendered with one
+# colourmap so the two passes are visually undifferentiated.
+pass1_id_mask = mask_zarr[selected_frame_idx]
+tiled_id_mask = tiled_mask_zarr[selected_frame_idx]
+n_pass1 = int(pass1_id_mask.max())
+n_tiled = int(tiled_id_mask.max())
+
+tiled_shifted = np.where(tiled_id_mask > 0, tiled_id_mask + n_pass1, 0)
+combined_id_mask = np.where(
+    pass1_id_mask > 0, pass1_id_mask, tiled_shifted
+).astype(np.int32)
+combined_masked = np.ma.masked_where(combined_id_mask == 0, combined_id_mask)
+n_combined_max_id = int(combined_id_mask.max())
+
+# Per-burrow trajectory-sample counts over the combined ID-mask. Sample
+# the ID-mask at the integer pixel under each trajectory point, then
+# bincount (index 0 = background, dropped via the [1:] slice below).
+MIN_HITS_PER_BURROW = 30  # min trajectory samples inside a mask to flag it
+
+traj_cols = np.round(x_clean).astype(int).clip(0, img_w_i - 1)
+traj_rows = np.round(y_clean).astype(int).clip(0, img_h_i - 1)
+ids_at_traj = combined_id_mask[traj_rows, traj_cols]
+hits_per_id = np.bincount(ids_at_traj, minlength=n_combined_max_id + 1)
+# +1 because IDs are 1-indexed (id 0 = background)
+hit_ids = np.where(hits_per_id[1:] >= MIN_HITS_PER_BURROW)[0] + 1
+
+# Interactive Plotly figure: saves a self-contained HTML and opens it in the
+# browser. Legend has two toggles: one for "masks" (all mask fills + red
+# hit-mask contours toggle together via legendgroup) and one for
+# "trajectories" (the datashader-rasterised trajectory overlay).
+import plotly.graph_objects as go  # noqa: E402
+import plotly.io as pio  # noqa: E402
+from skimage.measure import find_contours  # noqa: E402
+
+pio.renderers.default = "browser"
+
+# Build an RGBA overlay for the combined ID-mask using the tab10 colormap, so
+# all masks render as a single go.Image trace (one legend entry).
+tab10_rgb = (np.array(plt.cm.tab10.colors) * 255).astype(np.uint8)  # (10, 3)
+mask_rgba = np.zeros((img_h_i, img_w_i, 4), dtype=np.uint8)
+mask_nonzero = combined_id_mask > 0
+mask_rgba[mask_nonzero, :3] = tab10_rgb[
+    (combined_id_mask[mask_nonzero] - 1) % 10
+]
+mask_rgba[mask_nonzero, 3] = 128  # fill alpha ~= 0.5
+
+fig = go.Figure()
+
+# Background frame: layout image (sits below all traces, not toggleable)
+fig.add_layout_image(
+    source=Image.fromarray(image_array[selected_frame_idx]),
+    xref="x",
+    yref="y",
+    x=0,
+    y=0,
+    sizex=img_w_i,
+    sizey=img_h_i,
+    sizing="stretch",
+    layer="below",
+)
+
+# Masks overlay. go.Image traces cannot appear in the legend at all (no
+# `showlegend`/`legendgroup` properties), so we toggle them via layout
+# `updatemenus` buttons defined below. The red hit-mask contours are kept
+# as always-visible Scatter traces (showlegend=False -> no legend clutter).
+masks_trace_idx = len(fig.data)
+fig.add_trace(
+    go.Image(
+        z=mask_rgba,
+        colormodel="rgba256",
+        name=f"masks ({n_pass1} pass-1 + {n_tiled} tiled)",
+        hoverinfo="skip",
+    )
+)
+
+# Red contours for hit masks: always visible, no legend entries
+for mid in hit_ids:
+    for contour in find_contours(combined_id_mask == mid, 0.5):
+        fig.add_trace(
+            go.Scatter(
+                x=contour[:, 1],
+                y=contour[:, 0],
+                mode="lines",
+                line=dict(color="red", width=1.5),
+                showlegend=False,
+                hoverinfo="skip",
+            )
+        )
+
+# Trajectories overlay.
+# colormodel="rgba256" is required so plotly honours the alpha channel of
+# `z`; the default "rgb" would render the trajectory image as fully opaque
+# lime and hide every layer beneath it.
+traj_trace_idx = len(fig.data)
+fig.add_trace(
+    go.Image(
+        z=traj_rgba,
+        colormodel="rgba256",
+        name=f"trajectories ({position.sizes['individuals']} individuals)",
+        hoverinfo="skip",
+    )
+)
+
+fig.update_layout(
+    title=(
+        f"{image_array.img_paths[selected_frame_idx].stem} - "
+        f"{position.sizes['individuals']} trajectories, "
+        f"{n_pass1} pass-1 + {n_tiled} tiled masks "
+        f"({len(hit_ids)} with >= {MIN_HITS_PER_BURROW} samples)"
+    ),
+    xaxis_title="x (pixels)",
+    yaxis_title="y (pixels)",
+    yaxis_scaleanchor="x",
+    plot_bgcolor="white",
+    paper_bgcolor="white",
+    showlegend=False,
+    # Toggle buttons for the two image overlays. Each button uses
+    # args/args2 so it acts as an on/off switch (click once -> args
+    # applied, click again -> args2 applied).
+    updatemenus=[
+        dict(
+            type="buttons",
+            direction="right",
+            x=0,
+            xanchor="left",
+            y=1.08,
+            yanchor="bottom",
+            showactive=False,
+            buttons=[
+                dict(
+                    label="toggle masks",
+                    method="restyle",
+                    args=[{"visible": False}, [masks_trace_idx]],
+                    args2=[{"visible": True}, [masks_trace_idx]],
+                ),
+                dict(
+                    label="toggle trajectories",
+                    method="restyle",
+                    args=[{"visible": False}, [traj_trace_idx]],
+                    args2=[{"visible": True}, [traj_trace_idx]],
+                ),
+            ],
+        )
+    ],
+    xaxis=dict(
+        range=[0, img_w_i],
+        showgrid=True,
+        gridcolor="lightgrey",
+        gridwidth=0.5,
+        zeroline=False,
+        linecolor="black",
+        mirror=True,
+        ticks="outside",
+    ),
+    yaxis=dict(
+        range=[img_h_i, 0],  # invert y so image origin is top-left
+        showgrid=True,
+        gridcolor="lightgrey",
+        gridwidth=0.5,
+        zeroline=False,
+        linecolor="black",
+        mirror=True,
+        ticks="outside",
+    ),
+)
+
+frame_stem = image_array.img_paths[selected_frame_idx].stem
+output_html = (
+    OUTPUT_DIR / f"trajectories_burrows_{frame_stem}_{timestamp}.html"
+)
+fig.write_html(str(output_html), include_plotlyjs=True)
+print(f"Saved interactive plot to {output_html}")
+fig.show(renderer="browser")
+
+# %%
+# del processor, model; gc.collect(); torch.cuda.empty_cache()
 # %%
