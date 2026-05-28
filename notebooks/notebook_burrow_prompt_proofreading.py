@@ -1,21 +1,54 @@
 # %%
+from datetime import datetime  # noqa: E402
 from pathlib import Path
 
+import datashader as ds
+import datashader.transfer_functions as tf
 import napari
 import numpy as np
 import pandas as pd
+import xarray as xr
 from PIL import Image
 
-# %%
-images_dir = (
-    "/Users/sofia/arc/project_Zoo_crabs/crab_loops_end_frames_slurm2764495"
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Input data
+images_dir = "/home/sminano/swc/project_crabs/burrow_mean_image_slurm_3014447"
+prompt_coords_dir = (
+    "/home/sminano/swc/project_crabs/burrow_prompts_per_day_20260423_143244"
+)
+crabs_zarr_dataset = (
+    Path.home()
+    / "swc"
+    / "project_crabs"
+    / "data"
+    / "_CrabTracks"
+    / "CrabTracks-slurm2478780-2478861-2489356.zarr"
 )
 
-# per video or per date?
-prompt_coords_dir = "/Users/sofia/arc/project_Zoo_crabs/burrow_prompts_slurm_3012602/coords_20260519_105922"
+# Select whether prompts are grouped by video or by date
+flag_using_date_prompts = True
+
+
+# Exemplars csv
+OUTPUT_DIR = Path(
+    "/home/sminano/swc/project_crabs/crabs-exploration/output_burrows_sam3"
+)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+# Trajectory rasterisation params (datashader)
+DYNSPREAD_THRESHOLD = 0.975
+TRAJ_COLOR = "#c3ff1f"
+
+# If the cache directory already exists, we skip rasterisation and load
+# from disk
+traj_cache_dir = Path(
+    "/home/sminano/swc/project_crabs/burrow_trajectory_rasters"
+)
 
 
 # %%%%%%%%%%
+# Helpers
 class ImageArrayLazy:
     """A lazy array for images in a list."""
 
@@ -38,77 +71,188 @@ class ImageArrayLazy:
         # B, H, W, C
 
 
+def _rasterise_video_trajectories(
+    dt,
+    video_str,
+    canvas,
+    img_h_i,
+    img_w_i,
+    traj_color=TRAJ_COLOR,
+    dynspread_th=DYNSPREAD_THRESHOLD,
+):
+    """Return (H, W, 4) uint8 RGBA with the video's trajectories."""
+    # Return zeros if video not in dataset
+    if video_str not in dt:
+        return np.zeros((img_h_i, img_w_i, 4), dtype=np.uint8)
+
+    # Get non-nan x,y coords
+    position = dt[video_str].to_dataset().position
+    x = position.sel(space="x").values.reshape(-1)
+    y = position.sel(space="y").values.reshape(-1)
+    valid = ~np.isnan(x) & ~np.isnan(y)
+
+    # Return zeros if no valid coords
+    if not valid.any():
+        return np.zeros((img_h_i, img_w_i, 4), dtype=np.uint8)
+
+    # add data to canvas and rasterise
+    agg = canvas.points(pd.DataFrame({"x": x[valid], "y": y[valid]}), "x", "y")
+    shaded = tf.shade(agg, cmap=[traj_color])
+    shaded = tf.dynspread(shaded, threshold=dynspread_th)
+
+    # datashader y-origin is bottom; flip to match image y-origin (top)
+    return np.array(shaded.to_pil().transpose(Image.FLIP_TOP_BOTTOM))
+
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Read frames as a lazy array and map each frame to its video / date
 list_image_files = sorted(list(Path(images_dir).glob("*.png")))
 image_array = ImageArrayLazy(list_image_files)
-
 
 list_video_per_img = [
     img.stem.split("_", 1)[0].split("-Loop")[0]
     for img in image_array.img_paths
 ]
-
 list_date_per_img = [video.split("-")[0] for video in list_video_per_img]
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%
+# Per-frame group string used to look up prompts / trajectories
+list_group_per_img = (
+    list_date_per_img if flag_using_date_prompts else list_video_per_img
+)
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Read prompt data (one CSV per group, concatenated)
 list_prompt_csv = sorted(list(Path(prompt_coords_dir).glob("*.csv")))
-list_df = []
-for file in list_prompt_csv:
-    list_df.append(pd.read_csv(file))
+df_prompts = pd.concat([pd.read_csv(f) for f in list_prompt_csv])
 
-df_prompts = pd.concat(list_df)
-df_prompts_points = df_prompts.drop(
-    columns=[
-        "prompt_bbox_xmin",
-        "prompt_bbox_ymin",
-        "prompt_bbox_xmax",
-        "prompt_bbox_ymax",
-    ]
-)
-df_prompts_bboxes = df_prompts.drop(
-    columns=["prompt_point_x", "prompt_point_y"]
-)
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Load frames in napari viewer
-
-viewer = napari.Viewer()
-viewer.add_image(np.asarray(image_array), name="image")
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%
-# Load prompts for SAM3
-
-# format prompt data for napari
-prompts_yx_per_group_id = {
-    key: group[["prompt_point_y", "prompt_point_x"]].to_numpy()
-    for key, group in df_prompts_points.groupby("group_id")
+# bbox prompts in pixel xyxy, keyed by group_id
+bboxes_xyxy_per_group = {
+    key: group[
+        [
+            "prompt_bbox_xmin",
+            "prompt_bbox_ymin",
+            "prompt_bbox_xmax",
+            "prompt_bbox_ymax",
+        ]
+    ].to_numpy()
+    for key, group in df_prompts.groupby("group_id")
 }
 
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Build napari shapes data for bbox prompts.
+# napari shapes layer expects each rectangle as a (2, 3) array of opposite
+# corners in (z, y, x) for a 3D viewer.
+list_bbox_shapes = []
+for frame_idx, group_str in enumerate(list_group_per_img):
+    bboxes = bboxes_xyxy_per_group.get(group_str)
+    if bboxes is None:
+        continue
+    for x1, y1, x2, y2 in bboxes:
+        list_bbox_shapes.append(
+            np.array(
+                [[frame_idx, y1, x1], [frame_idx, y2, x2]],
+                dtype=float,
+            )
+        )
 
-# map prompts to frames
-list_zyx = []
-start_idx = 0
-for video_str, yx in prompts_yx_per_group_id.items():
-    n_frames = sum(
-        [video_str == im for im in list_video_per_img]
-    )  # list_date_per_img? list_video_per_img
-    zyx = np.concat(
-        [
-            np.c_[np.ones((yx.shape[0], 1)) * id + start_idx, yx]
-            for id in range(n_frames)
-        ],
-        axis=0,
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Build a per-frame RGBA trajectory image stack.
+# For each frame we rasterise the trajectories of its corresponding video
+# onto a transparent canvas matching the frame resolution.
+
+# If rasters do not exist, generate rasters and save
+if not traj_cache_dir.exists():
+    # Read dataset
+    dt = xr.open_datatree(crabs_zarr_dataset, engine="zarr", chunks={})
+
+    # create output dir
+    traj_cache_dir.mkdir(parents=True)
+
+    # Prepare canvas
+    img_h_i, img_w_i = image_array.img_h, image_array.img_w
+    canvas = ds.Canvas(
+        plot_width=img_w_i,
+        plot_height=img_h_i,
+        x_range=(0, img_w_i),
+        y_range=(0, img_h_i),
     )
-    list_zyx.append(zyx)
-    start_idx += n_frames
 
-# %%
-# frame, y, x
-viewer.add_points(np.concat(list_zyx, axis=0), face_color='red', size=35)
+    for group_str in set(list_group_per_img):
+        # rasterise
+        video_traj_array = _rasterise_video_trajectories(
+            dt,
+            group_str,
+            canvas,
+            img_h_i,
+            img_w_i,
+        )
+        # save as png
+        Image.fromarray(video_traj_array, mode="RGBA").save(
+            traj_cache_dir / f"{group_str}.png"
+        )
 
-# %%%%%%%%%%%%%%%%%%%%%
-# Load SAM3 masks
-# viewer.add_labels(np.asarray(mask_array), name=f"{LABEL_NAME} masks")
+
+# load array from saved data
+traj_paths = [traj_cache_dir / f"{v}.png" for v in list_group_per_img]
+traj_array = ImageArrayLazy(traj_paths) # sorts image filenames alphabetically!
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Load all layers in napari
+viewer = napari.Viewer()
+
+# RGB frames as an image layer
+viewer.add_image(image_array, name="frames", rgb=True)
+
+# Trajectories as a transparent RGBA image layer aligned with the frames
+viewer.add_image(traj_array, name="trajectories", rgb=True)
+
+# Bbox prompts as a shapes layer
+viewer.add_shapes(
+    list_bbox_shapes,
+    shape_type="rectangle",
+    edge_color="lime",
+    face_color="transparent",
+    edge_width=2,
+    name="bbox prompts",
+)
+
+# Empty points layer ready for red cross markers
+viewer.add_points(
+    np.empty((0, 3)),
+    ndim=3,
+    name="manual points",
+    symbol="x",
+    face_color="red",
+    edge_color="red",
+    size=35,
+)
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Export data in "manual points" layer as a csv.
+
+# Get data from napari
+# The points layer holds (z, y, x) coordinates where z is the frame index;
+points_data = viewer.layers["manual points"].data  # (N, 3): z, y, x
+frame_idx_per_point = (points_data[:, 0]).astype(int)
+
+# Build dataframe
+# group_id is set to the corresponding RGB image filename
+df_manual_points = pd.DataFrame(
+    {
+        "group_id": [
+            image_array.img_paths[i].name for i in frame_idx_per_point
+        ],
+        "prompt_point_x": points_data[:, 2],
+        "prompt_point_y": points_data[:, 1],
+    }
+)
+
+# Export as csv
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+output_csv = OUTPUT_DIR / f"manual_prompt_points_{timestamp}.csv"
+df_manual_points.to_csv(output_csv, index=False)
+print(f"Saved {len(df_manual_points)} manual points to {output_csv}")
 
 # %%
