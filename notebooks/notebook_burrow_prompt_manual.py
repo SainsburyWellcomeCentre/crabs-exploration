@@ -1,5 +1,7 @@
 # %%
+import os
 from datetime import datetime  # noqa: E402
+from functools import partial
 from pathlib import Path
 
 import datashader as ds
@@ -35,6 +37,8 @@ OUTPUT_DIR = Path(
 )
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# autosave
+# autosave_csv = OUTPUT_DIR / "manual_prompt_points_autosave.csv"
 
 # Trajectory rasterisation params (datashader)
 DYNSPREAD_THRESHOLD = 0.975
@@ -102,6 +106,44 @@ def _rasterise_video_trajectories(
 
     # datashader y-origin is bottom; flip to match image y-origin (top)
     return np.array(shaded.to_pil().transpose(Image.FLIP_TOP_BOTTOM))
+
+
+def _points_to_dataframe(points_data):
+    frame_idx_per_point = points_data[:, 0].astype(int)
+    return pd.DataFrame(
+        {
+            "group_id": [
+                image_array.img_paths[i].name for i in frame_idx_per_point
+            ],
+            "prompt_point_x": points_data[:, 2],
+            "prompt_point_y": points_data[:, 1],
+        }
+    )
+
+
+def _autosave_manual_points(autosave_csv, event=None):
+    """Define callback for saving manual point labels.
+    
+    Atomic write via tmp + os.replace so a crash mid-write can't corrupt
+    the previous good file. "Atomic" here means: at every moment, the file 
+    at autosave_csv is either the complete old version or the complete 
+    new version — never a half-written mix.
+    """
+    # skip the "adding", "removing" and changing intermediate events
+    if event is not None and getattr(event, "action", None) not in (
+        None, "added", "removed", "changed"
+    ):
+        return  
+    
+    points_data = viewer.layers["manual points"].data
+    df = _points_to_dataframe(points_data)
+
+    tmp_path = autosave_csv.with_suffix(".csv.tmp")
+    df.to_csv(tmp_path, index=False)
+
+    # saving and replacing is more robust to partial files if crashes;
+    # replacing is instant, if to_csv fails we have old version
+    os.replace(tmp_path, autosave_csv)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -195,8 +237,14 @@ if not traj_cache_dir.exists():
 
 # load array from saved data
 traj_paths = [traj_cache_dir / f"{v}.png" for v in list_group_per_img]
-traj_array = ImageArrayLazy(traj_paths) # sorts image filenames alphabetically!
+traj_array = ImageArrayLazy(
+    traj_paths
+)  # sorts image filenames alphabetically!
 
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Set up path for saving manual labels
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+output_csv = OUTPUT_DIR / f"manual_prompt_points_{timestamp}.csv"
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load all layers in napari
@@ -229,30 +277,30 @@ viewer.add_points(
     size=35,
 )
 
+
+# Set up autosave "manual points" to CSV 
+# whenever points are added, removed or moved
+viewer.layers["manual points"].events.data.connect(
+    partial(_autosave_manual_points, autosave_csv=output_csv)
+)
+
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Export data in "manual points" layer as a csv.
 
-# Get data from napari
-# The points layer holds (z, y, x) coordinates where z is the frame index;
-points_data = viewer.layers["manual points"].data  # (N, 3): z, y, x
-frame_idx_per_point = (points_data[:, 0]).astype(int)
+# # Get data from napari
+# # The points layer holds (z, y, x) coordinates where z is the frame index;
+# points_data = viewer.layers["manual points"].data  # (N, 3): z, y, x
+# frame_idx_per_point = (points_data[:, 0]).astype(int)
 
-# Build dataframe
-# group_id is set to the corresponding RGB image filename
-df_manual_points = pd.DataFrame(
-    {
-        "group_id": [
-            image_array.img_paths[i].name for i in frame_idx_per_point
-        ],
-        "prompt_point_x": points_data[:, 2],
-        "prompt_point_y": points_data[:, 1],
-    }
-)
+# # Build dataframe
+# # group_id is set to the corresponding RGB image filename
+# df_manual_points = _points_to_dataframe(points_data)
 
-# Export as csv
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-output_csv = OUTPUT_DIR / f"manual_prompt_points_{timestamp}.csv"
-df_manual_points.to_csv(output_csv, index=False)
-print(f"Saved {len(df_manual_points)} manual points to {output_csv}")
+# # Export as csv
+# timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+# output_csv = OUTPUT_DIR / f"manual_prompt_points_{timestamp}.csv"
+# df_manual_points.to_csv(output_csv, index=False)
+# print(f"Saved {len(df_manual_points)} manual points to {output_csv}")
 
 # %%
