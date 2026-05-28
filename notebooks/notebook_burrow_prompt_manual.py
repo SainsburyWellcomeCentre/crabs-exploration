@@ -323,22 +323,4 @@ viewer.layers["manual points"].mode = "add"
 # First arg is the axis index, second is the step value
 viewer.dims.set_current_step(0, 0)
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Export data in "manual points" layer as a csv.
-
-# # Get data from napari
-# # The points layer holds (z, y, x) coordinates where z is the frame index;
-# points_data = viewer.layers["manual points"].data  # (N, 3): z, y, x
-# frame_idx_per_point = (points_data[:, 0]).astype(int)
-
-# # Build dataframe
-# # group_id is set to the corresponding RGB image filename
-# df_manual_points = _points_to_dataframe(points_data)
-
-# # Export as csv
-# timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-# output_csv = OUTPUT_DIR / f"manual_prompt_points_{timestamp}.csv"
-# df_manual_points.to_csv(output_csv, index=False)
-# print(f"Saved {len(df_manual_points)} manual points to {output_csv}")
-
 # %%
