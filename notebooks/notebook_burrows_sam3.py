@@ -4,15 +4,6 @@ Follows the official SAM3 image predictor example:
 https://github.com/facebookresearch/sam3/blob/main/examples/sam3_image_predictor_example.ipynb
 and https://github.com/facebookresearch/sam3#basic-usage
 
-
-Prompt data is produced upstream (one CSV per video, grouped by ``group_id``)
-with columns:
-  prompt_point_x, prompt_point_y,
-  prompt_bbox_xmin, prompt_bbox_ymin, prompt_bbox_xmax, prompt_bbox_ymax
-
-Only the bbox columns are used here. With ``PROMPT_TYPE = "point"`` the point
-prompts are *derived* from the bboxes (interior point of the darkest connected
-blob inside each bbox), not read from the CSV ``prompt_point_*`` columns.
 """
 # /// script
 # requires-python = ">=3.11"
@@ -76,32 +67,15 @@ from skimage.measure import regionprops
 # - prompt_coords_dir: directory of per-video prompt CSVs
 
 images_dir = "/home/sminano/swc/project_crabs/burrow_mean_image_slurm_3014447"
-prompt_coords_dir = (
-    "/home/sminano/swc/project_crabs/burrow_prompts_per_day_20260423_143244"
+manual_prompts_csv = (
+    "/home/sminano/swc/project_crabs/manual_prompt_points_20260528_163908.csv"
 )
-# "/home/sminano/swc/project_crabs/burrow_prompts_slurm_3012602/coords_20260519_105922"
-
 
 # Prediction params
 TEXT_PROMPT = "animal burrow entrance"  # set to None to skip the text prompt
 CONF_THRESHOLD = (
     0.3  # masks below this threshold are not scaled up to full res
 )
-
-# -------------------------
-# Point-prompt computation
-# -------------------------
-# Select whether we are using video prompts or date prompts
-flag_using_date_prompts = True
-
-# Geometric prompt type: "bounding_box" or "point".
-# NOTE: "point" uses the dark-blob points derived from the CSV bboxes
-# (see derive_points_from_bboxes). Default is "point".
-PROMPT_TYPE = "point"
-
-# Minimum size of a dark connected component (as a fraction of the bbox
-# area) for it to be considered a blob when deriving a point prompt.
-MIN_AREA_FRAC = 0.02
 
 # -------------------------
 # Postprocessing of masks
@@ -246,174 +220,6 @@ def add_point_prompt(processor, inference_state, point_xy, label=True):
 
 
 # TODO: review
-def compute_interior_point_bbox(
-    image_hwc,
-    bbox_xyxy,
-    gaussian_sigma=1.0,
-    min_area_frac=0.02,
-    blob_connectivity=2.0,
-):
-    """Return an interior point ``(x, y)`` of the dark blob inside a bbox.
-
-    This function segments the darkest connected region within ``bbox_xyxy``
-    and returns the point furthest from that region's boundary
-    (using the distance-transform peak), which is guaranteed to lie inside the
-    blob.
-
-    Connected components smaller than ``min_area_frac`` of the bbox area are
-    discarded as noise; among the rest the darkest one (lowest mean intensity)
-    is chosen.
-
-    Falls back to the bbox centre when no plausible dark blob is found.
-
-    ``bbox_xyxy`` is in pixel ``(xmin, ymin, xmax, ymax)`` coordinates and
-    the returned point is also in pixel ``(x, y)`` coordinates.
-    """
-    # Compute bbox centre in pixels
-    # 1 == min; 2 == max
-    x1, y1, x2, y2 = bbox_xyxy
-    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-
-    # Convert bbox corners (floats) to integer pixel indices for slicing
-    # 1 == min; 2 == max
-    # NOTE: slice stops (bx2, by2) are **exclusive**, so they
-    # can be equal to img_w, img_h, but not slice starts
-    # (which are clamped to img_w-1/img_h-1)
-    img_h, img_w = image_hwc.shape[:2]
-    box_col_1 = int(round(np.clip(x1, 0, img_w - 1)))
-    box_col_2 = int(round(np.clip(x2, 0, img_w)))
-    box_row_1 = int(round(np.clip(y1, 0, img_h - 1)))
-    box_row_2 = int(round(np.clip(y2, 0, img_h)))
-
-    # If degenerate box: fall back to the bbox centre
-    # (1 == min; 2 == max)
-    if box_col_2 <= box_col_1 or box_row_2 <= box_row_1:
-        return (float(cx), float(cy))
-
-    # Compute a pseudo grayscale crop of the bbox
-    # NOTE: averaging channels is a quick-and-dirty grayscale conversion
-    # (vs luminance-weighted like 0.299 R + 0.587 G + 0.114 B)
-    img_f = np.asarray(image_hwc).astype(np.float32)
-    gray = img_f.mean(axis=-1) if img_f.ndim == 3 else img_f
-    crop = gray[box_row_1:box_row_2, box_col_1:box_col_2]
-
-    # Apply Guassian smoothing to suppress pixel noise before thresholding
-    crop_smoothed = gaussian(crop, sigma=gaussian_sigma, preserve_range=True)
-
-    # Binarise crop using Otsu threshold
-    # Otsu th: splits pixels in two sets (light and dark), s.t the
-    # weighted sum of within-class variances is minimised
-    # (i.e., between-class variance is maximised). The sum is weighted
-    # by class probability.
-    # Pixels strictly below the threshold are taken as "dark" or
-    # background.
-    # Otsu needs >1 distinct intensity -> if that fails, fall back
-    # to returning the bbox centre
-    # https://en.wikipedia.org/wiki/Otsu%27s_method
-    try:
-        otsu_th = threshold_otsu(crop_smoothed)
-    except ValueError:
-        return (cx, cy)
-    # binarise (True = dark)
-    crop_dark_mask = crop_smoothed < otsu_th
-
-    # Get connected-regions from the binarised image
-    # (connected-component labelling of the dark mask)
-    # TODO: change to connectivity=2?
-    labels, n_regions = sk_label(
-        crop_dark_mask, return_num=True, connectivity=blob_connectivity
-    )
-    if n_regions == 0:
-        # if no regions found, return the bbox centre
-        return (cx, cy)
-
-    # Select darkest blob from those above area threshold
-    min_area_pixels = min_area_frac * crop.size
-    out_label, lowest_brightness = None, None
-    for lbl in range(1, n_regions + 1):  # skip 0 (background)
-        single_lbl_mask = labels == lbl
-        # Skip blobl if area below threshold
-        if single_lbl_mask.sum() < min_area_pixels:
-            continue
-        # Compute mean brightness of blob
-        brightness = crop_smoothed[single_lbl_mask].mean()
-        # Keep blob if its brightness is the lowest so far
-        if lowest_brightness is None or brightness < lowest_brightness:
-            out_label, lowest_brightness = single_lbl_mask, brightness
-
-    # If no blob passes the thresholding, return centre of bbox
-    if out_label is None:
-        return (cx, cy)
-
-    # From the selected blob, compute its
-    # point furthest from the blob boundary
-    # (it will be robustly inside the blob)
-    # distance_transform_edt computes for each True pixel the
-    # distance (in pixels) to the closest False pixel
-    dist2boundary_map = ndi.distance_transform_edt(out_label)
-    d_row, d_col = np.unravel_index(
-        np.argmax(dist2boundary_map), dist2boundary_map.shape
-    )  # convert flat index to row,col
-
-    # We assume pixel centre convention (like numpy, matplotlib, sam3)
-    # the centre of the top left pixel is at (0,0)
-    return (float(box_col_1 + d_col), float(box_row_1 + d_row))
-
-
-# TODO: review
-def derive_points_from_bboxes(image_hwc, bboxes_xyxy, **kwargs):
-    """Derive one dark-blob point per bbox; returns an ``(N, 2)`` array."""
-    if len(bboxes_xyxy) == 0:
-        return np.empty((0, 2), dtype=np.float32)
-    return np.array(
-        [
-            compute_interior_point_bbox(image_hwc, bbox, **kwargs)
-            for bbox in bboxes_xyxy
-        ],
-        dtype=np.float32,
-    )
-
-
-# TODO: review
-def add_geometric_prompts(processor, state, boxes_cxcywh_norm, labels=None):
-    """Add multiple box prompts at once and run inference a single time.
-
-    ``boxes_cxcywh_norm`` is an ``(N, 4)`` array of cxcywh boxes normalized to
-    ``[0, 1]``. Mirrors ``Sam3Processor.add_geometric_prompt`` but appends the
-    whole batch to the geometric prompt before one ``_forward_grounding`` call,
-    avoiding the N-1 redundant grounding passes of a per-box loop.
-
-    The official docs use the public per-box loop because
-    add_geometric_prompt has no batched form.
-    """
-    if "backbone_out" not in state:
-        raise ValueError("call processor.set_image before adding a prompt")
-    if "language_features" not in state["backbone_out"]:
-        # no text prompt: fall back to a dummy "visual" text prompt
-        dummy_text = processor.model.backbone.forward_text(
-            ["visual"], device=processor.device
-        )
-        state["backbone_out"].update(dummy_text)
-    if "geometric_prompt" not in state:
-        state["geometric_prompt"] = processor.model._get_dummy_prompt()
-
-    # boxes: (n_boxes, batch, 4); labels: (n_boxes, batch)
-    boxes = torch.tensor(
-        boxes_cxcywh_norm, device=processor.device, dtype=torch.float32
-    ).view(-1, 1, 4)
-    n = boxes.shape[0]
-    if labels is None:
-        labels = torch.ones(n, 1, dtype=torch.bool, device=processor.device)
-    else:
-        labels = torch.as_tensor(
-            labels, device=processor.device, dtype=torch.bool
-        ).view(n, 1)
-    state["geometric_prompt"].append_boxes(boxes, labels)
-
-    return processor._forward_grounding(state)
-
-
-# TODO: review
 def postprocess_masks(
     masks,
     min_area,
@@ -481,7 +287,6 @@ list_image_files = sorted(list(Path(images_dir).glob("*.png")))
 list_video_per_img = [
     img_p.stem.split("_", 1)[0].split("-Loop")[0] for img_p in list_image_files
 ]
-list_date_per_img = [video.split("-")[0] for video in list_video_per_img]
 
 # Get image array
 image_array = ImageArrayLazy(list_image_files)
@@ -500,12 +305,10 @@ n_images, image_h, image_w = image_array.shape[:3]
 metadata_dict = {
     "sam3_model": "sam3_image",
     "source_images_dir": str(images_dir),
-    "prompt_coords_dir": str(prompt_coords_dir),
+    "manual_prompts_csv": str(manual_prompts_csv),
     "n_images": n_images,
     "image_shape": [image_h, image_w],
     "text_prompt": TEXT_PROMPT,
-    "prompt_type": PROMPT_TYPE,
-    "bbox_to_point_min_area_frac": MIN_AREA_FRAC,
     "sam3_confidence_threshold": CONF_THRESHOLD,
     "postproc_min_mask_area_PIXELS": MIN_MASK_AREA_PIXELS,
     "postproc_max_mask_area_frac": MAX_MASK_AREA_FRAC,
@@ -523,158 +326,45 @@ mask_zarr = create_mask_zarr(
 )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Load prompts (one CSV per video, concatenated)
+# Load point prompts (one or more CSVs in prompt_coords_dir)
+# CSV columns: group_id, prompt_point_x, prompt_point_y
+# group_id has format "<video>_mean_n<frame>.png"; the video string is
+# everything before "_mean".
+df_prompts = pd.read_csv(manual_prompts_csv)
 
-# Build df with all prompt data
-list_prompt_csv = sorted(list(Path(prompt_coords_dir).glob("*.csv")))
-df_prompts = pd.concat([pd.read_csv(f) for f in list_prompt_csv])
-
-# bbox prompts in pixel xyxy, keyed by group_id (== video string)
-bboxes_xyxy_per_video = {
-    key: group[
-        [
-            "prompt_bbox_xmin",
-            "prompt_bbox_ymin",
-            "prompt_bbox_xmax",
-            "prompt_bbox_ymax",
-        ]
-    ].to_numpy()
-    for key, group in df_prompts.groupby("group_id")
+# point prompts in pixel xy, keyed by video string
+points_xy_per_video = {
+    video.split("_")[0]: group[["prompt_point_x", "prompt_point_y"]].to_numpy(
+        dtype=np.float32
+    )
+    for video, group in df_prompts.groupby("group_id")
 }
-
 # %%
 %matplotlib widget
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Interactively select which prompts to pass to SAM3.
-# Selection is always on the bboxes: click a box to toggle it
-# (red = selected/kept, lime = excluded). In "point" mode the derived
-# point prompts are additionally drawn as `x` markers for reference.
+# Visualise the point prompts for a selected frame.
 
-# TODO: loop thru images, export selected promtps
+selected_frame_idx = 26
+selected_video = list_video_per_img[selected_frame_idx]
+prompt_points = points_xy_per_video[selected_video]
 
-# Select a frame and get its group string
-selected_frame_idx = 14
-if flag_using_date_prompts:
-    selected_frame_group_str = list_date_per_img[selected_frame_idx]
-else:
-    selected_frame_group_str = list_video_per_img[selected_frame_idx]
-
-# Get array of candidate prompts for this frame
-candidate_bboxes = bboxes_xyxy_per_video[selected_frame_group_str]
-if PROMPT_TYPE == "point":
-    derived_points = derive_points_from_bboxes(
-        image_array[selected_frame_idx],
-        candidate_bboxes,
-        gaussian_sigma=1.5,
-        min_area_frac=MIN_AREA_FRAC,
-        blob_connectivity=2,
-    )
-
-# Initialise mask of selected candidate prompts
-slc_interactively = np.zeros(
-    len(candidate_bboxes),
-    dtype=bool,
-)  # start all unselected
-
-# Plot image
 fig, ax = plt.subplots()
 ax.imshow(image_array[selected_frame_idx])
+ax.scatter(
+    prompt_points[:, 0],
+    prompt_points[:, 1],
+    c="lime",
+    marker="x",
+    s=120,
+)
 ax.set_axis_off()
-
-# plot candidate bbox prompts
-bbox_artists = []
-for x1, y1, x2, y2 in candidate_bboxes:
-    r = patches.Rectangle(
-        (x1, y1),
-        x2 - x1,
-        y2 - y1,
-        fill=False,
-        linewidth=2,
-        edgecolor="lime",
-    )
-    ax.add_patch(r)
-    bbox_artists.append(r)
-
-# in "point" mode, add an `x` marker per
-# candidate bbox prompt
-point_artists = []
-if PROMPT_TYPE == "point":
-    for x, y in derived_points:
-        (pt,) = ax.plot(
-            x,
-            y,
-            marker="x",
-            markersize=14,
-            markeredgecolor="lime",
-        )
-        point_artists.append(pt)
-
-
-def _set_color(i):
-    """Set color to red if prompt is selected, else lime."""
-    color = "red" if slc_interactively[i] else "lime"
-    # for bboxes
-    bbox_artists[i].set_edgecolor(color)
-    # for points
-    if PROMPT_TYPE == "point":
-        point_artists[i].set_markeredgecolor(color)
-
-
-def _refresh_title():
-    """Update title to show image filename, total and selected promtps."""
-    ax.set_title(
-        f"{image_array.img_paths[selected_frame_idx].name}"
-        f"(prompts {selected_frame_group_str}: "
-        f"{slc_interactively.sum()}/{len(slc_interactively)} selected)"
-    )
-
-
-def _hit_index(event):
-    """Return the index of the clicked bbox, or None."""
-    for i, (x1, y1, x2, y2) in enumerate(candidate_bboxes):
-        if x1 <= event.xdata <= x2 and y1 <= event.ydata <= y2:
-            return i  # first match only — minimal handling of overlaps
-    return None
-
-
-def _on_click(event):
-    """Handle a click on the image: toggle the hit bbox and refresh."""
-    # If click was outside image, return
-    if event.inaxes != ax:
-        return
-
-    # Return index of clicked bbox (or None)
-    i = _hit_index(event)
-
-    # If returned index is not None, change status and color
-    if i is not None:
-        slc_interactively[i] = not slc_interactively[i]
-        _set_color(i)
-
-    # Update title
-    _refresh_title()
-
-    # schedule a redraw to happen in the next idle event
-    # (lazy sibling of fig.canvas.draw, it coalesces multiple draw requests)
-    fig.canvas.draw_idle()
-
-
-_refresh_title()
-fig.canvas.mpl_connect("button_press_event", _on_click)
+ax.set_title(
+    f"{image_array.img_paths[selected_frame_idx].name} "
+    f"({selected_video}): {len(prompt_points)} prompts"
+)
 plt.show()
 
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Commit prompts selected interactively
-# NOTE: the inference loop reads the `bboxes_xyxy_per_video` dict.
-
-bboxes_xyxy_per_video[selected_frame_group_str] = candidate_bboxes[
-    slc_interactively
-]
-print(f"{selected_frame_group_str}: kept {slc_interactively.sum()} prompts")
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# TODO: SEPARATE SCRIPT
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Build SAM3 image model and processor
@@ -705,14 +395,11 @@ frame_scores = {}  # frame_idx -> {mask_id: score}
 
 for frame_idx in [selected_frame_idx]:  # range(len(image_array)):
     # Get corresponding video
-    if flag_using_date_prompts:
-        video_str = list_date_per_img[frame_idx]
-    else:
-        video_str = list_video_per_img[frame_idx]
+    video_str = list_video_per_img[frame_idx]
 
-    # Get bbox prompts for that video (the master prompt store)
-    prompts = bboxes_xyxy_per_video.get(video_str)
-    if prompts is None or len(prompts) == 0:
+    # Get point prompts for that video (the master prompt store)
+    points_xy = points_xy_per_video.get(video_str)
+    if points_xy is None or len(points_xy) == 0:
         print(f"Frame {frame_idx} ({video_str}): no prompts, skipping")
         continue
 
@@ -731,47 +418,14 @@ for frame_idx in [selected_frame_idx]:  # range(len(image_array)):
             state=inference_state, prompt=TEXT_PROMPT
         )
 
-    # Add geometric prompts (boxes or points)
-    if PROMPT_TYPE == "bounding_box":
-        # bbox exemplars: xyxy (pixels) -> xywh -> cxcywh -> normalized
-        boxes_xywh = prompts.astype(np.float32).copy()
-        boxes_xywh[:, 2] -= boxes_xywh[:, 0]  # w = xmax - xmin
-        boxes_xywh[:, 3] -= boxes_xywh[:, 1]  # h = ymax - ymin
-        boxes_cxcywh = box_xywh_to_cxcywh(torch.tensor(boxes_xywh).view(-1, 4))
-        # TODO: replace sam3 function with numpy one?
-        norm_boxes_cxcywh = normalize_bbox(
-            boxes_cxcywh, width, height
-        ).tolist()
-        # for box in norm_boxes_cxcywh:
-        #     inference_state = processor.add_geometric_prompt(
-        #         state=inference_state, box=box, label=True
-        #     )
+    # Add point prompts: xy (pixels) -> normalized [0, 1]
+    norm_points_xy = points_xy / np.array([width, height], dtype=np.float32)
 
-        # TODO: do I need a loop like in the commented section above?
-        # NOTE: add_geometric_prompt / set_text_prompt run inference internally
-        # and return the updated state
-        inference_state = add_geometric_prompts(
-            processor, inference_state, norm_boxes_cxcywh
+    # TODO: can I pass the array of points directly, rather than looping?
+    for px, py in norm_points_xy:
+        inference_state = add_point_prompt(
+            processor, inference_state, (float(px), float(py)), label=True
         )
-    else:
-        # derive a dark-blob point per bbox from *this* frame's image,
-        # then xy (pixels) -> normalized [0, 1]
-        points_xy = derive_points_from_bboxes(
-            image_array[frame_idx],
-            prompts,
-            gaussian_sigma=1.5,
-            min_area_frac=MIN_AREA_FRAC,
-            blob_connectivity=2,
-        )
-        norm_points_xy = points_xy / np.array(
-            [width, height], dtype=np.float32
-        )
-
-        # TODO: can I pass the array of points directly, rather than looping?
-        for px, py in norm_points_xy:
-            inference_state = add_point_prompt(
-                processor, inference_state, (float(px), float(py)), label=True
-            )
 
     # Express results as an ID-encoded mask
     # boolean masks (N, H, W) -> ID-encoded (H, W); higher ID wins on overlap
@@ -845,10 +499,7 @@ print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
 # Visualise one frame: prompt boxes + predicted masks
 
 frame_idx = processed_frames[0]
-if flag_using_date_prompts:
-    video_str = list_date_per_img[frame_idx]
-else:
-    video_str = list_video_per_img[frame_idx]
+video_str = list_video_per_img[frame_idx]
 image = Image.fromarray(image_array[frame_idx])
 
 
@@ -865,21 +516,14 @@ n_masks = len(mask_ids)
 fig, ax = plt.subplots()
 ax.imshow(image)
 ax.imshow(masked, cmap="tab10", alpha=0.5, interpolation="nearest")
-if PROMPT_TYPE == "point":
-    pts = derive_points_from_bboxes(
-        image_array[frame_idx],
-        bboxes_xyxy_per_video[video_str],
-        gaussian_sigma=1.5,
-        min_area_frac=MIN_AREA_FRAC,
-        blob_connectivity=2,
-    )
-    ax.scatter(
-        pts[:, 0],
-        pts[:, 1],
-        c="lime",
-        marker="x",
-        s=120,
-    )
+pts = points_xy_per_video[video_str]
+ax.scatter(
+    pts[:, 0],
+    pts[:, 1],
+    c="lime",
+    marker="x",
+    s=120,
+)
 
 ax.set_axis_off()
 ax.set_title(f"{image_array.img_paths[frame_idx].stem} - {n_masks} masks")
@@ -958,21 +602,14 @@ ax.set_title(
 
 
 # add prompts
-if PROMPT_TYPE == "point":
-    pts = derive_points_from_bboxes(
-        image_array[frame_idx],
-        bboxes_xyxy_per_video[video_str],
-        gaussian_sigma=1.5,
-        min_area_frac=MIN_AREA_FRAC,
-        blob_connectivity=2,
-    )
-    ax.scatter(
-        pts[:, 0],
-        pts[:, 1],
-        c="lime",
-        marker="x",
-        s=120,
-    )
+pts = points_xy_per_video[video_str]
+ax.scatter(
+    pts[:, 0],
+    pts[:, 1],
+    c="lime",
+    marker="x",
+    s=120,
+)
 
 # hover tooltip: show the mask ID + score under the cursor
 annot = ax.annotate(
@@ -1055,15 +692,16 @@ new_bboxes_xyxy = np.array(new_bboxes_xyxy, dtype=np.float32).reshape(-1, 4)
 print(f"{len(new_bboxes_xyxy)} predicted masks selected for re-prompting")
 
 # %%
-# 3. Derive a dark-blob point per new bbox (existing helper)
+# 3. Derive a point per new bbox (existing helper)
 # TODO\; maybe here I could just compute the centroid of the mask?
-new_points_xy = derive_points_from_bboxes(
-    img_iter,
-    new_bboxes_xyxy,
-    gaussian_sigma=1.5,
-    min_area_frac=MIN_AREA_FRAC,
-    blob_connectivity=2,
-)
+# new_points_xy = derive_points_from_bboxes(
+#     img_iter,
+#     new_bboxes_xyxy,
+#     gaussian_sigma=1.5,
+#     min_area_frac=MIN_AREA_FRAC,
+#     blob_connectivity=2,
+# )
+new_points_xy = 0.5*(new_bboxes_xyxy[:,:2] + new_bboxes_xyxy[:,2:])
 
 # %%
 # plot old and new prompts
@@ -1336,7 +974,7 @@ axes[1].scatter(
 plt.tight_layout()
 plt.show()
 # %%
-# %%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Plot trajectories on top of tiled burrow masks
 # Overlay per-individual crab trajectories (from the CrabTracks zarr datatree)
 # on the selected frame, alongside the tiled-pass burrow masks.
@@ -1497,6 +1135,21 @@ fig.add_trace(
     )
 )
 
+# Manual prompts as crosses
+manual_pts = points_xy_per_video[video_str]
+prompts_trace_idx = len(fig.data)
+fig.add_trace(
+    go.Scatter(
+        x=manual_pts[:, 0],
+        y=manual_pts[:, 1],
+        mode="markers",
+        marker=dict(symbol="x", color="lime", size=10, line=dict(width=0.1)),
+        name=f"manual prompts ({len(manual_pts)})",
+        showlegend=False,
+        hoverinfo="skip",
+    )
+)
+
 fig.update_layout(
     title=(
         f"{image_array.img_paths[selected_frame_idx].stem} - "
@@ -1535,14 +1188,18 @@ fig.update_layout(
                     args=[{"visible": False}, [traj_trace_idx]],
                     args2=[{"visible": True}, [traj_trace_idx]],
                 ),
+                dict(
+                    label="toggle prompts",
+                    method="restyle",
+                    args=[{"visible": False}, [prompts_trace_idx]],
+                    args2=[{"visible": True}, [prompts_trace_idx]],
+                ),
             ],
         )
     ],
     xaxis=dict(
         range=[0, img_w_i],
-        showgrid=True,
-        gridcolor="lightgrey",
-        gridwidth=0.5,
+        showgrid=False,
         zeroline=False,
         linecolor="black",
         mirror=True,
@@ -1550,9 +1207,7 @@ fig.update_layout(
     ),
     yaxis=dict(
         range=[img_h_i, 0],  # invert y so image origin is top-left
-        showgrid=True,
-        gridcolor="lightgrey",
-        gridwidth=0.5,
+        showgrid=False,
         zeroline=False,
         linecolor="black",
         mirror=True,
