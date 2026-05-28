@@ -12,27 +12,31 @@ from PIL import Image
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
-images_dir = "/home/sminano/swc/project_crabs/burrow_mean_image_slurm_3014447"
+project_dir = Path("/Users/sofia/arc/project_Zoo_crabs/")
+
+# mean frames per video
+images_dir = project_dir / "burrow_mean_image_slurm_3014447"
+
+# path to csv with candidate prompts derived from trajectory data
 prompt_coords_dir = (
-    "/home/sminano/swc/project_crabs/burrow_prompts_per_day_20260423_143244"
-)
-crabs_zarr_dataset = (
-    Path.home()
-    / "swc"
-    / "project_crabs"
-    / "data"
-    / "_CrabTracks"
-    / "CrabTracks-slurm2478780-2478861-2489356.zarr"
+    project_dir / "burrow_prompts_per_day_20260423_143244"
+    # project_dir / "burrow_prompts_per_video_20260423_153811"
 )
 
 # Select whether prompts are grouped by video or by date
-flag_using_date_prompts = True
+flag_using_video_prompts = bool("video" in prompt_coords_dir.stem)
+
+# path to trajectory dataset
+crabs_zarr_dataset = (
+    Path.home()
+    / "swc"
+    / "CrabTracks"
+    / "CrabTracks-slurm2478780-2478861-2489356.zarr"
+)
 
 
 # Exemplars csv
-OUTPUT_DIR = Path(
-    "/home/sminano/swc/project_crabs/crabs-exploration/output_burrows_sam3"
-)
+OUTPUT_DIR = project_dir / "crabs-exploration" / "output_burrows_sam3"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -42,9 +46,7 @@ TRAJ_COLOR = "#c3ff1f"
 
 # If the cache directory already exists, we skip rasterisation and load
 # from disk
-traj_cache_dir = Path(
-    "/home/sminano/swc/project_crabs/burrow_trajectory_rasters"
-)
+traj_cache_dir = project_dir / "burrow_trajectory_rasters"
 
 
 # %%%%%%%%%%
@@ -117,7 +119,7 @@ list_date_per_img = [video.split("-")[0] for video in list_video_per_img]
 
 # Per-frame group string used to look up prompts / trajectories
 list_group_per_img = (
-    list_date_per_img if flag_using_date_prompts else list_video_per_img
+    list_video_per_img if flag_using_video_prompts else list_date_per_img
 )
 
 
@@ -144,20 +146,26 @@ bboxes_xyxy_per_group = {
 # napari shapes layer expects each rectangle as a (2, 3) array of opposite
 # corners in (z, y, x) for a 3D viewer.
 list_bbox_shapes = []
-for frame_idx, group_str in enumerate(list_group_per_img):
-    bboxes = bboxes_xyxy_per_group.get(group_str)
+for frame_idx, video_str in enumerate(list_group_per_img):
+    bboxes = bboxes_xyxy_per_group.get(video_str)
     if bboxes is None:
         continue
     for x1, y1, x2, y2 in bboxes:
         list_bbox_shapes.append(
             np.array(
-                [[frame_idx, y1, x1], [frame_idx, y2, x2]],
+                [
+                    [frame_idx, y1, x1],
+                    [frame_idx, y1, x2],
+                    [frame_idx, y2, x2],
+                    [frame_idx, y2, x1],
+                ],
                 dtype=float,
             )
         )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Build a per-frame RGBA trajectory image stack.
+# Build a per-video RGBA trajectory image stack.
+# Frames are computed per video, so we show the trajectories per video too.
 # For each frame we rasterise the trajectories of its corresponding video
 # onto a transparent canvas matching the frame resolution.
 
@@ -178,24 +186,26 @@ if not traj_cache_dir.exists():
         y_range=(0, img_h_i),
     )
 
-    for group_str in set(list_group_per_img):
+    for video_str in list_video_per_img:
         # rasterise
         video_traj_array = _rasterise_video_trajectories(
             dt,
-            group_str,
+            video_str,
             canvas,
             img_h_i,
             img_w_i,
         )
         # save as png
         Image.fromarray(video_traj_array, mode="RGBA").save(
-            traj_cache_dir / f"{group_str}.png"
+            traj_cache_dir / f"{video_str}.png"
         )
 
-
+# %%
 # load array from saved data
-traj_paths = [traj_cache_dir / f"{v}.png" for v in list_group_per_img]
-traj_array = ImageArrayLazy(traj_paths) # sorts image filenames alphabetically!
+traj_paths = [traj_cache_dir / f"{v}.png" for v in list_video_per_img]
+traj_array = ImageArrayLazy(
+    traj_paths
+)  # sorts image filenames alphabetically!
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -203,12 +213,12 @@ traj_array = ImageArrayLazy(traj_paths) # sorts image filenames alphabetically!
 viewer = napari.Viewer()
 
 # RGB frames as an image layer
-viewer.add_image(image_array, name="frames", rgb=True)
+viewer.add_image(np.asarray(image_array), name="frames", rgb=True)
 
 # Trajectories as a transparent RGBA image layer aligned with the frames
-viewer.add_image(traj_array, name="trajectories", rgb=True)
+viewer.add_image(np.asarray(traj_array), name="trajectories", rgb=True)
 
-# Bbox prompts as a shapes layer
+# Bbox prompts (computed per-day) as a shapes layer
 viewer.add_shapes(
     list_bbox_shapes,
     shape_type="rectangle",
@@ -219,18 +229,21 @@ viewer.add_shapes(
 )
 
 # Empty points layer ready for red cross markers
+# TODO: reduce line width
 viewer.add_points(
     np.empty((0, 3)),
     ndim=3,
     name="manual points",
     symbol="x",
-    face_color="red",
-    edge_color="red",
+    face_color="transparent",
+    border_color="red",
     size=35,
+    border_width=0.1
 )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Export data in "manual points" layer as a csv.
+# TODO: maybe save the point results to a zarr as I go, then export as csv?
 
 # Get data from napari
 # The points layer holds (z, y, x) coordinates where z is the frame index;
