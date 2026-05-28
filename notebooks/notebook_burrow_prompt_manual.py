@@ -1,5 +1,7 @@
 # %%
+import os
 from datetime import datetime  # noqa: E402
+from functools import partial
 from pathlib import Path
 
 import datashader as ds
@@ -17,15 +19,6 @@ project_dir = Path("/Users/sofia/arc/project_Zoo_crabs/")
 # mean frames per video
 images_dir = project_dir / "burrow_mean_image_slurm_3014447"
 
-# path to csv with candidate prompts derived from trajectory data
-prompt_coords_dir = (
-    project_dir / "burrow_prompts_per_day_20260423_143244"
-    # project_dir / "burrow_prompts_per_video_20260423_153811"
-)
-
-# Select whether prompts are grouped by video or by date
-flag_using_video_prompts = bool("video" in prompt_coords_dir.stem)
-
 # path to trajectory dataset
 crabs_zarr_dataset = (
     Path.home()
@@ -34,12 +27,17 @@ crabs_zarr_dataset = (
     / "CrabTracks-slurm2478780-2478861-2489356.zarr"
 )
 
+# -----------
+# path to csv with candidate bbox prompts derived from trajectory data
+prompt_coords_dir = (
+    # project_dir / "burrow_prompts_per_day_20260423_143244"
+    project_dir / "burrow_prompts_per_video_20260423_153811"
+)
 
-# Exemplars csv
-OUTPUT_DIR = project_dir / "crabs-exploration" / "output_burrows_sam3"
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+# Select whether candidate bbox prompts are grouped by video or by date
+flag_using_video_prompts = bool("video" in prompt_coords_dir.stem)
 
-
+# -----------
 # Trajectory rasterisation params (datashader)
 DYNSPREAD_THRESHOLD = 0.975
 TRAJ_COLOR = "#c3ff1f"
@@ -47,6 +45,16 @@ TRAJ_COLOR = "#c3ff1f"
 # If the cache directory already exists, we skip rasterisation and load
 # from disk
 traj_cache_dir = project_dir / "burrow_trajectory_rasters"
+
+# -----------
+# Directory for output csv (autosaved)
+OUTPUT_DIR = project_dir / "burrow_manual_exemplars"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Optional: load existing manual annotations at startup. Set to None to start empty.
+initial_points_csv: Path | None = Path(
+    "/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/burrow_manual_exemplars/manual_prompt_points_20260528_154656.csv"
+)
 
 
 # %%%%%%%%%%
@@ -104,6 +112,54 @@ def _rasterise_video_trajectories(
 
     # datashader y-origin is bottom; flip to match image y-origin (top)
     return np.array(shaded.to_pil().transpose(Image.FLIP_TOP_BOTTOM))
+
+
+def _points_to_dataframe(points_data):
+    frame_idx_per_point = points_data[:, 0].astype(int)
+    return pd.DataFrame(
+        {
+            "group_id": [
+                image_array.img_paths[i].name for i in frame_idx_per_point
+            ],
+            "prompt_point_x": points_data[:, 2],
+            "prompt_point_y": points_data[:, 1],
+        }
+    )
+
+
+def _dataframe_to_points(df, img_paths):
+    """Convert saved CSV rows back to (N, 3) napari points (z, y, x)."""
+    name_to_idx = {p.name: i for i, p in enumerate(img_paths)}
+    z = df["group_id"].map(name_to_idx).to_numpy()
+    return np.column_stack([z, df["prompt_point_y"], df["prompt_point_x"]])
+
+
+def _autosave_manual_points(autosave_csv, event=None):
+    """Define callback for saving manual point labels.
+
+    Atomic write via tmp + os.replace so a crash mid-write can't corrupt
+    the previous good file. "Atomic" here means: at every moment, the file
+    at autosave_csv is either the complete old version or the complete
+    new version — never a half-written mix.
+    """
+    # skip the "adding", "removing" and changing intermediate events
+    if event is not None and getattr(event, "action", None) not in (
+        None,
+        "added",
+        "removed",
+        "changed",
+    ):
+        return
+
+    points_data = viewer.layers["manual points"].data
+    df = _points_to_dataframe(points_data)
+
+    tmp_path = autosave_csv.with_suffix(".csv.tmp")
+    df.to_csv(tmp_path, index=False)
+
+    # saving and replacing is more robust to partial files if crashes;
+    # replacing is instant, if to_csv fails we have old version
+    os.replace(tmp_path, autosave_csv)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -207,6 +263,10 @@ traj_array = ImageArrayLazy(
     traj_paths
 )  # sorts image filenames alphabetically!
 
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Set up path for saving manual labels
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+output_csv = OUTPUT_DIR / f"manual_prompt_points_{timestamp}.csv"
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load all layers in napari
@@ -228,44 +288,57 @@ viewer.add_shapes(
     name="bbox prompts",
 )
 
-# Empty points layer ready for red cross markers
-# TODO: reduce line width
+# Points layer ready for red cross markers.
+# Optionally pre-populated from a previously saved CSV.
+if initial_points_csv is not None and initial_points_csv.exists():
+    initial_points = _dataframe_to_points(
+        pd.read_csv(initial_points_csv),
+        image_array.img_paths,
+    )
+else:
+    initial_points = np.empty((0, 3))
+
 viewer.add_points(
-    np.empty((0, 3)),
+    initial_points,
     ndim=3,
     name="manual points",
     symbol="x",
     face_color="transparent",
     border_color="red",
     size=35,
-    border_width=0.1
 )
+
+# Set up autosave "manual points" to CSV
+# whenever points are added, removed or moved
+viewer.layers["manual points"].events.data.connect(
+    partial(_autosave_manual_points, autosave_csv=output_csv)
+)
+
+# %%
+# Set points layer as active and in "Add" mode
+viewer.layers.selection.active = viewer.layers["manual points"]
+viewer.layers["manual points"].mode = "add"
+
+# Set slider to frame 0
+# First arg is the axis index, second is the step value
+viewer.dims.set_current_step(0, 0)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Export data in "manual points" layer as a csv.
-# TODO: maybe save the point results to a zarr as I go, then export as csv?
 
-# Get data from napari
-# The points layer holds (z, y, x) coordinates where z is the frame index;
-points_data = viewer.layers["manual points"].data  # (N, 3): z, y, x
-frame_idx_per_point = (points_data[:, 0]).astype(int)
+# # Get data from napari
+# # The points layer holds (z, y, x) coordinates where z is the frame index;
+# points_data = viewer.layers["manual points"].data  # (N, 3): z, y, x
+# frame_idx_per_point = (points_data[:, 0]).astype(int)
 
-# Build dataframe
-# group_id is set to the corresponding RGB image filename
-df_manual_points = pd.DataFrame(
-    {
-        "group_id": [
-            image_array.img_paths[i].name for i in frame_idx_per_point
-        ],
-        "prompt_point_x": points_data[:, 2],
-        "prompt_point_y": points_data[:, 1],
-    }
-)
+# # Build dataframe
+# # group_id is set to the corresponding RGB image filename
+# df_manual_points = _points_to_dataframe(points_data)
 
-# Export as csv
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-output_csv = OUTPUT_DIR / f"manual_prompt_points_{timestamp}.csv"
-df_manual_points.to_csv(output_csv, index=False)
-print(f"Saved {len(df_manual_points)} manual points to {output_csv}")
+# # Export as csv
+# timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+# output_csv = OUTPUT_DIR / f"manual_prompt_points_{timestamp}.csv"
+# df_manual_points.to_csv(output_csv, index=False)
+# print(f"Saved {len(df_manual_points)} manual points to {output_csv}")
 
 # %%
