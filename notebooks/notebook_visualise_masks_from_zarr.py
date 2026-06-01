@@ -7,11 +7,10 @@ import dask.array as da
 import matplotlib.pyplot as plt
 import napari
 import numpy as np
-import sparse
 import xarray as xr
-import zarr
 from ethology.io.annotations import load_bboxes
 from PIL import Image
+from skimage.measure import label, regionprops
 
 # %%
 # %matplotlib widget
@@ -64,6 +63,11 @@ def ellipses_from_labels(label_image):
     minor_axes : list of (2, 2) arrays
         Endpoint pairs for the minor axis (y, x).
     """
+    # label connected components if a boolean mask is passed in
+    # NOTE: overlapping or touching masks are merged
+    if np.issubdtype(np.asarray(label_image).dtype, bool):
+        label_image = label(label_image)
+
     ellipse_corners = []
     major_axes = []
     minor_axes = []
@@ -124,12 +128,15 @@ ds_bboxes.attrs["image_array"] = image_array
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Load masks
-zarr_root = zarr.open(
-    DATA_DIR / f"{LABEL_NAME} masks.zarr",
-    mode="r",
-)
+# zarr_root = zarr.open(
+#     DATA_DIR / "annotations" / "masks_20260324_192631.zarr",
+#     mode="r",
+# )
 
-mask_da_array = da.from_zarr(zarr_root["masks"])
+# mask_da_array = da.from_zarr(zarr_root["masks"])
+
+mask_da_array = da.from_zarr(DATA_DIR / "annotations" / "masks_20260324_192631.zarr")
+
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -214,7 +221,7 @@ ax.imshow(
 mask_array = mask_da_array
 viewer = napari.Viewer()
 
-# viewer.add_image(np.asarray(image_array).moveaxis(0, -1, 1, 2), name="image")
+viewer.add_image(np.asarray(image_array), name="frames", rgb=True)
 
 viewer.add_labels(np.asarray(mask_array), name=f"{LABEL_NAME} masks")
 
@@ -266,3 +273,5 @@ viewer.add_shapes(
     edge_width=4,
     name="major axes",
 )
+
+# %%
