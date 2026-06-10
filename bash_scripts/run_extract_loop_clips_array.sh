@@ -61,33 +61,26 @@ if [[ $SLURM_ARRAY_TASK_COUNT -ne $NUM_CSV_ROWS ]]; then
 fi
 
 # -----------------------------
-# Create virtual environment
+# Set up uv
 # -----------------------------
-# TODO: replace with uv
-module load miniconda
+# extract_loop_clips.py is a standalone (PEP 723) script: uv fetches it
+# from the repository, resolves its inline dependencies into an ephemeral
+# environment, and runs it. No package install or virtual environment is
+# needed.
+module load uv
 
-ENV_NAME=crabs-extract-$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID
-ENV_PREFIX=$TMPDIR/$ENV_NAME
+# set uv cache dir to /ceph/scratch/sminano
+# (should be faster than the home directory cache and gets purged regularly)
+export UV_CACHE_DIR=/ceph/scratch/sminano/uv-cache
+# copy (instead of symlink) files across filesystems (ceph cache vs tmpfs)
+export UV_LINK_MODE=copy
+export UV_HTTP_TIMEOUT=120  # seconds
 
-conda create \
-    --prefix $ENV_PREFIX \
-    -y \
-    python=3.12
+# Remote URL of the standalone script for the selected branch
+SCRIPT_URL="https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/$GIT_BRANCH/scripts/extract_loop_clips.py"
 
-# activate environment
-source activate $ENV_PREFIX
-
-# install crabs package in virtual env
-python -m pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
-
-# log pip and python locations
-echo $ENV_PREFIX
-which python
-which pip
-
-# print the version of crabs package (last number is the commit hash)
 echo "Git branch: $GIT_BRANCH"
-conda list crabs
+echo "Script: $SCRIPT_URL"
 echo "-----"
 
 # ---------------------------------------
@@ -103,7 +96,7 @@ fi
 # -------------------------
 # Run extraction script
 # -------------------------
-extract-loops \
+uv run "$SCRIPT_URL" \
     --csv_filepath $CSV_PATH \
     --input_dir $INPUT_DIR \
     --output_dir $OUTPUT_DIR \
@@ -113,12 +106,6 @@ extract-loops \
 
 echo "Completed extraction of clip with task ID = $SLURM_ARRAY_TASK_ID"
 echo "--------------------------------------------------------"
-
-# -----------------------------
-# Cleanup
-# ----------------------------
-conda deactivate
-conda remove --prefix $ENV_PREFIX --all -y
 
 # ------------------
 # Copy logs to LOG_DIR
