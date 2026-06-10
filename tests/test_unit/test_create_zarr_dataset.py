@@ -342,6 +342,6 @@ def test_create_final_zarr_store(
     ],
 )
 def test_renumber_individuals(width, expected_output):
-    ds = xr.Dataset(coords={"individuals": ["id_1", "id_3", "id_7"]})
+    ds = xr.Dataset(coords={"individual": ["id_1", "id_3", "id_7"]})
     result = _renumber_individuals(ds, width=width)
-    assert list(result.individuals.values) == expected_output
+    assert list(result.individual.values) == expected_output

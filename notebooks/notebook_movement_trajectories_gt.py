@@ -37,7 +37,7 @@ print(ds_gt)
 # Print summary
 print(f"{ds_gt.source_file}")
 print(f"Number of frames: {ds_gt.sizes['time']}")
-print(f"Number of individuals: {ds_gt.sizes['individuals']}")
+print(f"Number of individuals: {ds_gt.sizes['individual']}")
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Read predictions as a movement dataset
@@ -49,7 +49,7 @@ print(ds_pred)
 # Print summary
 print(f"{ds_pred.source_file}")
 print(f"Number of frames: {ds_pred.sizes['time']}")
-print(f"Number of individuals: {ds_pred.sizes['individuals']}")
+print(f"Number of individuals: {ds_pred.sizes['individual']}")
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Check predicted and ground truth labels
@@ -79,14 +79,14 @@ fig.subplots_adjust(hspace=0.6, wspace=0.5)
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Compare lengths of trajectories
 non_nan_frames_gt = {}
-for ind, id_str in enumerate(ds_gt.individuals):
+for ind, id_str in enumerate(ds_gt.individual):
     non_nan_frames_gt[ind] = (
         len(ds_gt.time)
         - ds_gt.position[:, ind, :].isnull().any(axis=1).sum().item()
     )
 
 non_nan_frames_pred = {}
-for ind, id_str in enumerate(ds_pred.individuals):
+for ind, id_str in enumerate(ds_pred.individual):
     non_nan_frames_pred[ind] = (
         len(ds_pred.time)
         - ds_pred.position[:, ind, :].isnull().any(axis=1).sum().item()
@@ -110,7 +110,7 @@ out = ax.hist(
 ax.set_xlabel("n frames with same ID")
 ax.set_ylabel("n tracks")
 ax.tick_params(labeltop=False, labelright=True, right=True, which="both")
-ax.hlines(y=len(ds_gt.individuals), xmin=0, xmax=len(ds_gt.time), color="red")
+ax.hlines(y=len(ds_gt.individual), xmin=0, xmax=len(ds_gt.time), color="red")
 ax.legend(bbox_to_anchor=(1.0, 1.16))
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Check confidence of detections
@@ -146,7 +146,7 @@ for ds, title in zip(
     )
     color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-    for ind_idx in range(ds.sizes["individuals"]):
+    for ind_idx in range(ds.sizes["individual"]):
         # plot trajectories
         ax.scatter(
             x=ds.position[:, ind_idx, 0],  # nframes, nindividuals, x
@@ -162,7 +162,7 @@ for ds, title in zip(
             ax.text(
                 x=ds.position[start_frame, ind_idx, 0],
                 y=ds.position[start_frame, ind_idx, 1],
-                s=ds.individuals[ind_idx].item(),
+                s=ds.individual[ind_idx].item(),
                 fontsize=8,
                 color=color_cycle[ind_idx % len(color_cycle)],
             )
@@ -194,7 +194,7 @@ title = "Prediction - color by confidence of detection"
 
 for vmin in [0.0, 0.8]:
     fig, ax = plt.subplots(1, 1)
-    for ind_idx in range(ds.sizes["individuals"]):
+    for ind_idx in range(ds.sizes["individual"]):
         im = ax.scatter(
             x=ds.position[:, ind_idx, 0],  # nframes, nindividuals, x
             y=ds.position[:, ind_idx, 1],
