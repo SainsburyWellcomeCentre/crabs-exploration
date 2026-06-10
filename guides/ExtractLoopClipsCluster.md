@@ -54,7 +54,7 @@
     - `CSV_PATH`: path to the input csv file.
     - `INPUT_DIR`: path to the input directory containing the input videos.
     - `OUTPUT_DIR`: path to the output directory for the extracted loop clips.
-    - `GIT_BRANCH`: version of the 🦀 package to use. Usually we will use the version at the tip of the `main` branch.
+    - `GIT_BRANCH`: version of the standalone extraction script to fetch and run. Usually we will use the version at the tip of the `main` branch.
     - `VERIFY_FRAMES`: whether to verify frame count of the extracted clips matches the value in the csv file.
 
 
