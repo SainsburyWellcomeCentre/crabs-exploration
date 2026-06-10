@@ -59,16 +59,9 @@ from pathlib import Path
 import dask
 import dask.array as da
 import dask.dataframe as dd
-import datashader as ds
-import datashader.transfer_functions as tf
 import numpy as np
 import pandas as pd
-import plotly.colors as pc
-import plotly.graph_objects as go
 import xarray as xr
-from PIL import Image
-from skimage.feature import peak_local_max
-from skimage.filters import gaussian
 
 
 def _prompts_from_histogram(
@@ -89,6 +82,9 @@ def _prompts_from_histogram(
 
     Returns x,y coordinates, bboxes and peak relative values.
     """
+    # Lazy import: scikit-image is an opt-in 'burrows' extra, kept out of core
+    from skimage.feature import peak_local_max
+
     # Postprocess histogram: threshold + log + Gaussian
     smoothed = _apply_threshold_log_gaussian(
         counts,
@@ -179,6 +175,9 @@ def _compute_datashader_agg(
     Returns the aggregate as an xarray DataArray (same type as
     ``ds.Canvas().points(...)``), suitable for passing to ``tf.shade``.
     """
+    # Lazy import: datashader is an opt-in 'burrows' extra, kept out of core
+    import datashader as ds
+
     # Build the dataframe concatenating two single-column dataframes.
     # x_flat and y_flat share identical partitioning, so the axis=1
     # concat is a cheap. dd.from_dask_array wraps the existing 1D array
@@ -210,6 +209,9 @@ def _apply_threshold_log_gaussian(counts, percentile, sigma):
     - Take log(x+1) (avoids large bins dominanting)
     - Apply Gaussian filter to histogram
     """
+    # Lazy import: scikit-image is an opt-in 'burrows' extra, kept out of core
+    from skimage.filters import gaussian
+
     # Set to zero histogram bins whose counts are below the given percentile.
     min_count = np.percentile(counts, percentile)
     counts_filtered = np.where(counts >= min_count, counts, 0)
@@ -309,6 +311,12 @@ def plot_prompts_html(
     'x' peak markers and bbox rectangles, both coloured by relative peak
     intensity. The figure is saved as an html file.
     """
+    # Lazy imports: these are opt-in 'burrows' extras, kept out of core
+    import datashader.transfer_functions as tf
+    import plotly.colors as pc
+    import plotly.graph_objects as go
+    from PIL import Image
+
     img = tf.shade(agg, cmap=["#1f77b4"])
     img = tf.dynspread(img, threshold=dynspread_threshold)
 

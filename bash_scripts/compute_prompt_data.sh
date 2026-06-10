@@ -21,7 +21,7 @@ set -o pipefail
 # It runs:
 # - a script to compute the x,y coordinates for the burrow prompts,
 #   and saves the outputs to OUTPUT_DIR_COORDS
-# - a script to compute the frames to extract for the burrow prompts 
+# - a script to compute the frames to extract for the burrow prompts
 #   and saves the outputs to OUTPUT_DIR_FRAMES
 
 
@@ -31,14 +31,14 @@ set -o pipefail
 ZARR_STORE="/ceph/zoo/processed/CrabField/ramalhete_2023/CrabTracks/CrabTracks-slurm2478780-2478861-2489356.zarr"
 
 # Output directories
-# Note: The Python scripts will create burrow_prompts/coords_<ts>/ and 
-# burrow_prompts/frames_<ts>/ respectively (because they append the 
+# Note: The Python scripts will create burrow_prompts/coords_<ts>/ and
+# burrow_prompts/frames_<ts>/ respectively (because they append the
 # timestamp <ts> to the path passed).
 OUTPUT_DIR="/ceph/zoo/users/sminano/burrow_prompts_slurm_$SLURM_JOB_ID"
 OUTPUT_DIR_COORDS="$OUTPUT_DIR/coords" # will be timestamped
 OUTPUT_DIR_FRAMES="$OUTPUT_DIR/frames" # will be timestamped
 
-# Version of the codebase: branch (or tag/commit) to fetch the script from
+# Version of the codebase: branch (or tag/commit) to fetch the scripts from
 GIT_REPO=SainsburyWellcomeCentre/crabs-exploration
 GIT_BRANCH=smg/segment-burrows
 
@@ -48,13 +48,12 @@ DATA_GROUPING_COORD_PROMPTS="video"  # "video" or "date"
 # ------------------
 # Get script paths
 # ------------------
-
-# log the corresponding git commit
+# Resolve (and log) the commit the branch points to, and build the raw
+# URLs of the standalone (PEP 723) scripts at that exact commit.
 GIT_COMMIT_ID=$(git ls-remote "https://github.com/$GIT_REPO.git" "$GIT_BRANCH" | cut -f1)
 
-# Script URLs on GitHub
-SCRIPT_COORD_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$GIT_COMMIT_ID/crabs/utils/compute_burrow_prompt_coords.py"
-SCRIPT_FRAME_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$GIT_COMMIT_ID/crabs/utils/compute_burrow_prompt_frames.py"
+SCRIPT_COORD_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$GIT_COMMIT_ID/scripts/burrows/compute_burrow_prompt_coords.py"
+SCRIPT_FRAME_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$GIT_COMMIT_ID/scripts/burrows/compute_burrow_prompt_frames.py"
 
 
 
@@ -107,12 +106,10 @@ fi
 RESOLVED_OUTPUT_DIRS=()
 
 # run command
-# - we use --reinstall flag to force uv to rebuild
-#  the environment without wiping the cache directory 
-#  (this is useful because interrupted jobs may lead to
-#  corrupted environments that uv otherwise would use,
-#  so we force a fresh environment definition here)
-# - prepend /usr/bin/time -v to log maxRSS
+# - we use the --reinstall flag to force uv to rebuild the environment
+#   without wiping the cache directory (interrupted jobs may leave a
+#   corrupted env that uv would otherwise reuse)
+# - prepend /usr/bin/time -v to log maxRSS if needed
 
 # create temporary file to capture timestamped output directory
 COORDS_LOG=$(mktemp)
