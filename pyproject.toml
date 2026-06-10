@@ -34,7 +34,7 @@ dependencies = [
     "mlflow",
     "optuna",
     "numpy>=2.0.0",
-    "movement",
+    "movement>=0.17.0", # dimensions renamed to singular (individual, keypoint)
     "dask",
     "numba>=0.60.0",
     # to avoid conflict between movement and sleap-nn;
