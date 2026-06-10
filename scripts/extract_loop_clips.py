@@ -1,4 +1,16 @@
-"""Extract loop clips from input videos using ffmpeg."""
+"""Extract loop clips from input videos using ffmpeg.
+
+Standalone script: run with ``uv run scripts/extract_loop_clips.py ...``
+(uv installs the inline dependencies below into an ephemeral env). The
+``ffmpeg``/``ffprobe`` binaries must be available on PATH.
+"""
+
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "pandas",
+# ]
+# ///
 
 import argparse
 import subprocess

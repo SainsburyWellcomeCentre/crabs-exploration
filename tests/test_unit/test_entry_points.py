@@ -7,13 +7,13 @@ import pytest
     "cli_command",
     [
         "extract-frames",
-        "extract-loops",
         "combine-annotations",
         "train-detector",
         "evaluate-detector",
         "detect-and-track-video",
-        "extract-loops",
         "create-zarr-dataset",
+        "compute-burrow-prompt-frames",
+        "compute-burrow-prompt-coords",
     ],
 )
 def test_smoke(cli_command: str) -> None:

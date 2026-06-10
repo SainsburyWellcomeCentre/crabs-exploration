@@ -84,7 +84,6 @@ evaluate-detector = "crabs.detector.evaluate_model:app_wrapper"
 detect-and-track-video = "crabs.tracker.track_video:app_wrapper"
 # support scripts
 create-zarr-dataset = "crabs.zarr.create_dataset:app_wrapper"
-extract-loops = "crabs.clips.extract_loop_clips:app_wrapper"
 compute-burrow-prompt-frames = "crabs.burrows.compute_burrow_prompt_frames:app_wrapper"
 compute-burrow-prompt-coords = "crabs.burrows.compute_burrow_prompt_coords:app_wrapper"
 
