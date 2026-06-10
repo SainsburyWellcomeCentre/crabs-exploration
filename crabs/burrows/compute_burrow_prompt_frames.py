@@ -52,9 +52,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import xarray as xr
-from plotly.subplots import make_subplots
 
 
 def _counts_per_video_frame(ds_video: xr.Dataset) -> np.ndarray:
@@ -182,6 +180,10 @@ def plot_n_detections_html(
     markers at the selected (lowest-count) frames, and vertical lines at escape
     frames coloured by escape type.
     """
+    # Lazy import: plotly is an opt-in 'burrows' extra, kept out of core
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
     # Define line style per escape type
     # (the vertical line is shown at the start of the escape)
     map_escape_type_to_plotly_style = {
