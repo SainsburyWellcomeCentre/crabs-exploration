@@ -705,6 +705,11 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
     return args
 
 
-if __name__ == "__main__":
+def app_wrapper():
+    """Wrap function for computing burrow-prompt coordinates."""
     args = parse_args(sys.argv[1:])
     main(args)
+
+
+if __name__ == "__main__":
+    app_wrapper()
