@@ -67,14 +67,6 @@ notebooks = [
     "plotly",
     "datashader",
 ]
-# heavy, opt-in deps for the burrow-prompt commands; kept out of core so
-# `pip install crabs` stays lean (imported lazily in crabs/burrows/*)
-burrows = [
-    "plotly",
-    "datashader",
-    "scikit-image",
-    "pillow",
-]
 
 [project.scripts]
 extract-frames = "crabs.bboxes_labelling.extract_frames_to_label_w_sleap:app_wrapper"
@@ -84,8 +76,6 @@ evaluate-detector = "crabs.detector.evaluate_model:app_wrapper"
 detect-and-track-video = "crabs.tracker.track_video:app_wrapper"
 # support scripts
 create-zarr-dataset = "crabs.zarr.create_dataset:app_wrapper"
-compute-burrow-prompt-frames = "crabs.burrows.compute_burrow_prompt_frames:app_wrapper"
-compute-burrow-prompt-coords = "crabs.burrows.compute_burrow_prompt_coords:app_wrapper"
 
 [build-system]
 requires = ["setuptools>=77", "wheel", "setuptools_scm[toml]>=8"]
@@ -100,7 +90,16 @@ exclude = ["tests"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=crabs"
+# repo root on sys.path so tests can import the standalone scripts/ modules
+pythonpath = ["."]
 markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
+
+[tool.mypy]
+# scripts/ holds standalone (PEP 723) modules that tests import as
+# scripts.* (mirrors the pytest pythonpath above). Treat the repo root as
+# the package base so mypy derives the same module name from the file and
+# from the import, instead of seeing one source file under two names.
+explicit_package_bases = true
 
 [tool.setuptools_scm]
 

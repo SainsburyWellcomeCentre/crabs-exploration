@@ -481,11 +481,6 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
     return parser.parse_args(list_args)
 
 
-def app_wrapper():
-    """Wrap function for computing burrow-prompt frames."""
+if __name__ == "__main__":
     args = parse_args(sys.argv[1:])
     main(args)
-
-
-if __name__ == "__main__":
-    app_wrapper()
