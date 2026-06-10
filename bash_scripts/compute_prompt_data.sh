@@ -38,7 +38,7 @@ OUTPUT_DIR="/ceph/zoo/users/sminano/burrow_prompts_slurm_$SLURM_JOB_ID"
 OUTPUT_DIR_COORDS="$OUTPUT_DIR/coords" # will be timestamped
 OUTPUT_DIR_FRAMES="$OUTPUT_DIR/frames" # will be timestamped
 
-# Version of the codebase: branch (or tag/commit) to fetch the script from
+# Version of the codebase: branch (or tag/commit) to install the package from
 GIT_REPO=SainsburyWellcomeCentre/crabs-exploration
 GIT_BRANCH=smg/segment-burrows
 
@@ -46,15 +46,11 @@ GIT_BRANCH=smg/segment-burrows
 DATA_GROUPING_COORD_PROMPTS="video"  # "video" or "date"
 
 # ------------------
-# Get script paths
+# Resolve git commit
 # ------------------
-
-# log the corresponding git commit
+# Resolve (and log) the commit the branch points to, so we can pin the
+# install below to it and the logged commit is exactly what runs.
 GIT_COMMIT_ID=$(git ls-remote "https://github.com/$GIT_REPO.git" "$GIT_BRANCH" | cut -f1)
-
-# Script URLs on GitHub
-SCRIPT_COORD_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$GIT_COMMIT_ID/crabs/utils/compute_burrow_prompt_coords.py"
-SCRIPT_FRAME_PROMPTS_URL="https://raw.githubusercontent.com/$GIT_REPO/$GIT_COMMIT_ID/crabs/utils/compute_burrow_prompt_frames.py"
 
 
 
@@ -74,13 +70,33 @@ export UV_LINK_MODE=copy
 export UV_HTTP_TIMEOUT=120  # seconds
 
 
+# ---------------------------------------------
+# Create environment and install crabs package
+# ---------------------------------------------
+# compute-burrow-prompt-coords and compute-burrow-prompt-frames are entry
+# points of the crabs package, so we install crabs into a per-job virtual
+# environment and call the commands from it. We include the heavy, opt-in
+# 'burrows' extra (plotly, datashader, scikit-image, pillow), which these
+# commands need for the histogram/peak computation and the
+# --save-html-figure output. The install is pinned to the resolved commit.
+ENV_NAME=crabs-burrow-prompts-$SLURM_JOB_ID
+ENV_PREFIX=$TMPDIR/$ENV_NAME
+
+uv venv "$ENV_PREFIX" --python 3.12
+source "$ENV_PREFIX/bin/activate"
+
+uv pip install "crabs[burrows] @ git+https://github.com/$GIT_REPO.git@$GIT_COMMIT_ID"
+
+# log python location and installed crabs version
+which python
+uv pip show crabs
+
+
 # -------------------------
 # Log arguments
 # -------------------------
 echo "Git branch: $GIT_BRANCH"
 echo "Git commit ID: $GIT_COMMIT_ID"
-echo "Script to compute prompt coordinates URL: $SCRIPT_COORD_PROMPTS_URL"
-echo "Script to compute prompt frames URL: $SCRIPT_FRAME_PROMPTS_URL"
 echo "zarr_store: $ZARR_STORE"
 echo "output_dir: $OUTPUT_DIR"
 echo "output_dir coordinates: $OUTPUT_DIR_COORDS"
@@ -92,8 +108,8 @@ echo "-----"
 # -----------------------------------------
 # Run script to compute prompt coordinates
 # -----------------------------------------
-# uv run resolves the PEP 723 inline dependencies declared in the script
-# and runs it in an ephemeral environment.
+# compute-burrow-prompt-coords is a console entry point provided by the
+# crabs package installed in the active venv above.
 
 # Determine data grouping for computing burrow hotspots
 # if grouping by date, add the "--group-by-pattern" flag
@@ -106,19 +122,14 @@ fi
 # via lines of the form: "Output written to <path>."
 RESOLVED_OUTPUT_DIRS=()
 
-# run command
-# - we use --reinstall flag to force uv to rebuild
-#  the environment without wiping the cache directory
-#  (this is useful because interrupted jobs may lead to
-#  corrupted environments that uv otherwise would use,
-#  so we force a fresh environment definition here)
-# - prepend /usr/bin/time -v to log maxRSS
+# run command (the per-job venv with crabs[burrows] is already active)
+# - prepend /usr/bin/time -v to log maxRSS if needed
 
 # create temporary file to capture timestamped output directory
 COORDS_LOG=$(mktemp)
 
 echo "Computing prompt coordinates..."
-uv run --reinstall "$SCRIPT_COORD_PROMPTS_URL" \
+compute-burrow-prompt-coords \
     "$ZARR_STORE" \
     "$OUTPUT_DIR_COORDS" \
     $DATA_GROUPING_FLAG \
@@ -139,7 +150,7 @@ FRAMES_LOG=$(mktemp)
 
 # run command
 echo "Computing prompt frames..."
-uv run --reinstall "$SCRIPT_FRAME_PROMPTS_URL" \
+compute-burrow-prompt-frames \
     "$ZARR_STORE" \
     "$OUTPUT_DIR_FRAMES" \
     --save-html-figure 2>&1 | tee "$FRAMES_LOG"
@@ -161,3 +172,10 @@ cp slurm.$SLURM_JOB_ID.$SLURMD_NODENAME.{err,out} "$LOG_DIR"
 chmod 444 "$LOG_DIR"/slurm.$SLURM_JOB_ID.$SLURMD_NODENAME.{err,out}
 
 rm slurm.$SLURM_JOB_ID.$SLURMD_NODENAME.{err,out}
+
+
+# -----------------------------
+# Cleanup
+# -----------------------------
+deactivate
+rm -rf "$ENV_PREFIX"
