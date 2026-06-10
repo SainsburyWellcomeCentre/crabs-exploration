@@ -7,7 +7,8 @@ import dask.array as da
 import matplotlib.pyplot as plt
 import napari
 import numpy as np
-import sparse
+
+# import sparse
 import xarray as xr
 import zarr
 from ethology.io.annotations import load_bboxes
