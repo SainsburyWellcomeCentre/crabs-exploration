@@ -315,13 +315,6 @@ viewer.layers["manual points"].events.data.connect(
     partial(_autosave_manual_points, autosave_csv=output_csv)
 )
 
-
-# Set up autosave "manual points" to CSV
-# whenever points are added, removed or moved
-viewer.layers["manual points"].events.data.connect(
-    partial(_autosave_manual_points, autosave_csv=output_csv)
-)
-
 # %%
 # Set points layer as active and in "Add" mode
 viewer.layers.selection.active = viewer.layers["manual points"]
