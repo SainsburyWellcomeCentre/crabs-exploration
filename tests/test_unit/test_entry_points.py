@@ -7,12 +7,10 @@ import pytest
     "cli_command",
     [
         "extract-frames",
-        "extract-loops",
         "combine-annotations",
         "train-detector",
         "evaluate-detector",
         "detect-and-track-video",
-        "extract-loops",
         "create-zarr-dataset",
     ],
 )

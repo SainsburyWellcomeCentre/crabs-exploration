@@ -7,7 +7,7 @@ import pytest
 import xarray as xr
 import zarr
 
-from crabs.utils.create_zarr_dataset import (
+from crabs.zarr.create_dataset import (
     _clip_filename_to_clip_id,
     _get_video_fps,
     _group_files_per_video,
