@@ -12,7 +12,7 @@ or moved, so an interrupted session never loses annotations. An existing CSV
 can optionally be loaded at startup to continue a previous session.
 
 The rasterised trajectories are cached as one RGBA PNG per video under
-----raster-trajectories-dir. If that directory already exists, the cache is
+--raster-trajectories-dir. If that directory already exists, the cache is
 reused and the data is not recomputed from the trajectories zarr store.
 
 Output CSV columns (one row per manual point):
@@ -22,6 +22,11 @@ Output CSV columns (one row per manual point):
 
 The script can be run using `uv`, which creates an ephemeral environment
 with the required dependencies.
+
+Tip: launch the script from the parent directory to the rasterised trajectories
+if they exist (the script looks for the folder in the cwd, and if not present
+it will create it). The manual point annotations are saved to a folder under
+the current wording directory too.
 
 Usage:
 * To manually annotate burrow exemplar prompts, using the candidate prompts
@@ -232,7 +237,7 @@ def _compute_rasterised_trajectories_array(
 
 def _rasterise_and_save_trajectories(
     zarr_store,
-    traj_cache_dir,
+    raster_trajectories_dir,
     list_video_per_img,
     img_h,
     img_w,
@@ -249,7 +254,7 @@ def _rasterise_and_save_trajectories(
     dt = xr.open_datatree(zarr_store, engine="zarr", chunks={})
 
     # create output dir
-    traj_cache_dir.mkdir(parents=True)
+    raster_trajectories_dir.mkdir(parents=True)
 
     # Prepare canvas
     canvas = ds.Canvas(
@@ -272,7 +277,7 @@ def _rasterise_and_save_trajectories(
         )
         # save as png
         Image.fromarray(video_traj_array, mode="RGBA").save(
-            traj_cache_dir / f"{video_str}.png"
+            raster_trajectories_dir / f"{video_str}.png"
         )
 
 
@@ -326,10 +331,10 @@ def main(args: argparse.Namespace) -> None:
     # ------------------------------------------------------------------
     # Build a per-video RGBA trajectory image stack.
     # If the cache does not exist, generate rasters and save.
-    if not args.traj_cache_dir.exists():
+    if not args.raster_trajectories_dir.exists():
         _rasterise_and_save_trajectories(
             args.zarr_store,
-            args.traj_cache_dir,
+            args.raster_trajectories_dir,
             list_video_per_img,
             image_array.img_h,
             image_array.img_w,
@@ -339,7 +344,9 @@ def main(args: argparse.Namespace) -> None:
 
     # load array from saved data
     # (ImageArrayLazy sorts image filenames alphabetically!)
-    traj_paths = [args.traj_cache_dir / f"{v}.png" for v in list_video_per_img]
+    traj_paths = [
+        args.raster_trajectories_dir / f"{v}.png" for v in list_video_per_img
+    ]
     traj_array = ImageArrayLazy(traj_paths)
 
     # ------------------------------------------------------------------
@@ -447,7 +454,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         help=(
             "Path to the input trajectories zarr store, used to rasterise "
             "the per-video trajectory overlays. Only read if "
-            "----raster-trajectories-dir "
+            "--raster-trajectories-dir "
             "does not already exist. Usually a CrabTracks zarr file produced "
             "by create-zarr-dataset."
         ),
@@ -462,7 +469,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "----raster-trajectories-dir",
+        "--raster-trajectories-dir",
         type=Path,
         default=Path.cwd() / "burrow_trajectory_rasters",
         help=(
