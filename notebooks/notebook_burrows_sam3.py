@@ -211,19 +211,6 @@ def add_point_prompts(processor, inference_state, points_xy, labels=True):
         dtype=torch.bool,
     ).view(n_points, 1)  # (n_points, batch)
 
-    # Point prompts are batched together and padded?, this mask
-    # marks padded slots
-    # Here was set point_mask to False (boolean zero).
-    # The padding mechanism is only relevant when we pass multiple
-    # images with different number of prompts. It could be relevant
-    # if we switch to set_image_batch
-    # point_masks = torch.zeros(
-    #     1,
-    #     n_points,
-    #     dtype=torch.bool,
-    #     device=processor.device,
-    # )  # (batch, n_points)
-
     inference_state["geometric_prompt"].append_points(
         point_coords,
         point_labels,
@@ -488,156 +475,26 @@ for frame_idx in range(len(image_array)):
 
 print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
 
-# %%
-# # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# # Visualise one frame: prompt boxes + predicted masks
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Visualise ID-encoded masks in napari (masks over source frames)
 
-# frame_idx = processed_frames[0]
-# video_str = list_video_per_img[frame_idx]
-# image = Image.fromarray(image_array[frame_idx])
+import napari
+import zarr
 
+# Open the mask store (N, H, W) int16; 0 = background, >0 = instance ID.
+masks = zarr.open(output_masks_zarr, mode="r")  # or pass a path string
 
-# # Plot the ID-encoded masks read back from the zarr store
-# # TODO: why only 3 masks?
-# id_mask = mask_zarr[frame_idx]  # (H, W), 0 = background
-# masked = np.ma.masked_where(id_mask == 0, id_mask)
+# # Only some frames were annotated; the rest are all-zero. Restrict the
+# # viewer to the annotated frames so you don't scroll through empty ones.
+# annotated = masks.attrs.get("annotated_frames", list(range(masks.shape[0])))
 
-# # count number of masks
-# mask_ids = np.unique(id_mask)
-# mask_ids = mask_ids[mask_ids != 0]  # drop background
-# n_masks = len(mask_ids)
+# # Source frames as the background image (same H, W as the masks).
+# frames = np.stack([image_array[i] for i in annotated])  # (n, H, W, C)
+# labels = np.stack([masks[i] for i in annotated])          # (n, H, W)
 
-# fig, ax = plt.subplots()
-# ax.imshow(image)
-# ax.imshow(masked, cmap="tab10", alpha=0.5, interpolation="nearest")
-# pts = points_xy_per_video[video_str]
-# ax.scatter(
-#     pts[:, 0],
-#     pts[:, 1],
-#     c="lime",
-#     marker="x",
-#     s=120,
-# )
-
-# ax.set_axis_off()
-# ax.set_title(f"{image_array.img_paths[frame_idx].stem} - {n_masks} masks")
-
-# # hover tooltip: show the mask ID + area under the cursor
-# mask_areas = {int(mid): int((id_mask == mid).sum()) for mid in mask_ids}
-# hover_annot = ax.annotate(
-#     "",
-#     xy=(0, 0),
-#     xytext=(12, 12),
-#     textcoords="offset points",
-#     bbox=dict(boxstyle="round", fc="w"),
-#     fontsize=9,
-# )
-# hover_annot.set_visible(False)
-
-
-# def _on_hover_id(event):
-#     if event.inaxes != ax or event.xdata is None:
-#         if hover_annot.get_visible():
-#             hover_annot.set_visible(False)
-#             fig.canvas.draw_idle()
-#         return
-#     col, row = int(round(event.xdata)), int(round(event.ydata))
-#     visible = False
-#     if 0 <= row < id_mask.shape[0] and 0 <= col < id_mask.shape[1]:
-#         mid = int(id_mask[row, col])
-#         if mid != 0:
-#             hover_annot.xy = (event.xdata, event.ydata)
-#             hover_annot.set_text(f"id={mid}, {mask_areas[mid]} px")
-#             visible = True
-#     hover_annot.set_visible(visible)
-#     fig.canvas.draw_idle()
-
-
-# fig.canvas.mpl_connect("motion_notify_event", _on_hover_id)
-# plt.show()
-
-
-# # %%%%%%%%%%%%%%%%%%%%%
-# # Color masks by score
-# # Read the per-mask scores back from the zarr store and render each mask
-# # filled with its SAM3 score (continuous colormap). Hovering over a mask
-# # shows its ID and score.
-
-# id_mask = mask_zarr[frame_idx]  # (H, W), 0 = background
-# id_to_score = mask_zarr.attrs["mask_scores"][str(frame_idx)]  # {id: score}
-
-# # build a (H, W) float image holding each mask's score (NaN on background)
-# score_image = np.full(id_mask.shape, np.nan, dtype=float)
-# for id_str, score in id_to_score.items():
-#     score_image[id_mask == int(id_str)] = score
-# score_masked = np.ma.masked_invalid(score_image)
-
-# score_vals = np.array(list(id_to_score.values()), dtype=float)
-
-# fig, ax = plt.subplots()
-# ax.imshow(image)
-# im = ax.imshow(
-#     score_masked,
-#     cmap="viridis",
-#     alpha=0.6,
-#     interpolation="nearest",
-#     vmin=score_vals.min(),
-#     vmax=score_vals.max(),
-# )
-# cbar = fig.colorbar(im, ax=ax, label="SAM3 score")
-# # show the actual min/max scores as ticks (auto-ticks skip the extremes)
-# cbar.set_ticks([score_vals.min(), score_vals.max()])
-# cbar.set_ticklabels([f"{score_vals.min():.3f}", f"{score_vals.max():.3f}"])
-# ax.set_axis_off()
-# ax.set_title(
-#     f"{image_array.img_paths[frame_idx].stem} - "
-#     f"{len(id_to_score)} masks colored by score"
-# )
-
-
-# # add prompts
-# pts = points_xy_per_video[video_str]
-# ax.scatter(
-#     pts[:, 0],
-#     pts[:, 1],
-#     c="lime",
-#     marker="x",
-#     s=120,
-# )
-
-# # hover tooltip: show the mask ID + score under the cursor
-# annot = ax.annotate(
-#     "",
-#     xy=(0, 0),
-#     xytext=(12, 12),
-#     textcoords="offset points",
-#     bbox=dict(boxstyle="round", fc="w"),
-#     fontsize=9,
-# )
-# annot.set_visible(False)
-
-
-# def _on_hover(event):
-#     if event.inaxes != ax or event.xdata is None:
-#         if annot.get_visible():
-#             annot.set_visible(False)
-#             fig.canvas.draw_idle()
-#         return
-#     col, row = int(round(event.xdata)), int(round(event.ydata))
-#     visible = False
-#     if 0 <= row < id_mask.shape[0] and 0 <= col < id_mask.shape[1]:
-#         mid = int(id_mask[row, col])
-#         if mid != 0:
-#             annot.xy = (event.xdata, event.ydata)
-#             annot.set_text(f"id {mid}: {id_to_score[str(mid)]:.3f}")
-#             visible = True
-#     annot.set_visible(visible)
-#     fig.canvas.draw_idle()
-
-
-# fig.canvas.mpl_connect("motion_notify_event", _on_hover)
-# plt.show()
-
+viewer = napari.Viewer()
+viewer.add_image(np.asarray(image_array), name="frames", rgb=True)
+viewer.add_labels(masks, name="burrow masks")
 
 # %%%%%%%%%%%%%%%%%
 # Subsequent passes
