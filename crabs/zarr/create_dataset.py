@@ -41,7 +41,7 @@ warnings.filterwarnings(
 DEFAULT_CHUNK_SIZES = {
     "time": 1000,
     "space": -1,
-    "individuals": -1,
+    "individual": -1,
     "clip_id": 1,
 }
 
@@ -196,10 +196,8 @@ def _renumber_individuals(ds: xr.Dataset, width: int) -> xr.Dataset:
     Numbers are reset to range from 0 to N-1, with N being the maximum
     number of individuals.
     """
-    n = len(ds.individuals)
-    return ds.assign_coords(
-        individuals=[f"id_{i:0{width}d}" for i in range(n)]
-    )
+    n = len(ds.individual)
+    return ds.assign_coords(individual=[f"id_{i:0{width}d}" for i in range(n)])
 
 
 def create_temp_zarr_store(
@@ -316,7 +314,7 @@ def create_final_zarr_store(
             clip_node.to_dataset() for clip_node in dt_video.leaves
         ]
 
-        max_n_individuals = max(len(ds.individuals) for ds in list_clip_ds)
+        max_n_individuals = max(len(ds.individual) for ds in list_clip_ds)
         id_width = len(str(max_n_individuals - 1))
 
         # Concatenate all clip datasets along the clip_id dimension
