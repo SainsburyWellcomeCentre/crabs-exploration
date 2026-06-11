@@ -29,7 +29,7 @@ print(ds_gt)
 # Print summary
 print(f"{ds_gt.source_file}")
 print(f"Number of frames: {ds_gt.sizes['time']}")
-print(f"Number of individuals: {ds_gt.sizes['individuals']}")
+print(f"Number of individuals: {ds_gt.sizes['individual']}")
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # # Read predictions as a movement dataset
@@ -46,7 +46,7 @@ print(ds_pred)
 # Print summary
 print(f"{ds_pred.source_file}")
 print(f"Number of frames: {ds_pred.sizes['time']}")
-print(f"Number of individuals: {ds_pred.sizes['individuals']}")
+print(f"Number of individuals: {ds_pred.sizes['individual']}")
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -80,7 +80,7 @@ def plot_trajectories(
 
     # plot all if not specified
     if list_individuals_idcs is None:
-        list_individuals_idcs = range(ds.sizes["individuals"])
+        list_individuals_idcs = range(ds.sizes["individual"])
 
     # plot trajectory per individual
     list_artists = []

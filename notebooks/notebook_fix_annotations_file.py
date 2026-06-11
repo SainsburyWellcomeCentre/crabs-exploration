@@ -93,6 +93,6 @@ print(ds_gt)
 # Print summary
 print(f"{ds_gt.source_file}")
 print(f"Number of frames: {ds_gt.sizes['time']}")
-print(f"Number of individuals: {ds_gt.sizes['individuals']}")
+print(f"Number of individuals: {ds_gt.sizes['individual']}")
 
 # %%
