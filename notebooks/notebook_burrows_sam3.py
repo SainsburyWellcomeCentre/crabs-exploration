@@ -53,8 +53,7 @@ from sam3 import build_sam3_image_model
 from sam3.model.box_ops import box_xywh_to_cxcywh
 from sam3.model.sam3_image_processor import Sam3Processor
 from sam3.visualization_utils import (
-    normalize_bbox,
-    # TODO: replace with equivalent numpy function
+    normalize_bbox,  # TODO: replace with equivalent numpy function
 )
 from scipy import ndimage as ndi
 from skimage.filters import gaussian, threshold_otsu
@@ -72,18 +71,20 @@ manual_prompts_csv = (
 )
 
 # Prediction params
-TEXT_PROMPT = "animal burrow entrance"  # set to None to skip the text prompt
+TEXT_PROMPT = (
+   "hole"  # "crab burrow in sand"  # set to None to skip the text prompt
+)
 CONF_THRESHOLD = (
-    0.3  # masks below this threshold are not scaled up to full res
+    0.35  # masks below this threshold are not scaled up to full res
 )
 
 # -------------------------
 # Postprocessing of masks
 # -------------------------
 # TODO: change to pixels
-MIN_MASK_AREA_PIXELS = 100  # 200? in crab bodylengths?
-MAX_MASK_AREA_FRAC = 0.05
-MIN_SOLIDITY = 0.95  # 0.85
+MIN_MASK_AREA_PIXELS = 200  # 100  # 200? in crab bodylengths?
+MAX_MASK_AREA_PIXELS = 2500
+MIN_SOLIDITY = 0.95
 
 # Output dir for masks
 # TODO: add timestamp
@@ -93,6 +94,7 @@ OUTPUT_DIR = Path(
 
 # %%
 # %matplotlib widget
+
 
 # %%%%%%%%%%
 # Helpers
@@ -206,7 +208,7 @@ def add_point_prompts(processor, inference_state, points_xy, labels=True):
     ).view(n_points, 1, 2)  # (n_points, batch, 2)
 
     point_labels = torch.as_tensor(
-        np.broadcast_to(labels, (n_points,)),
+        np.broadcast_to(labels, (n_points,)).copy(),
         device=processor.device,
         dtype=torch.bool,
     ).view(n_points, 1)  # (n_points, batch)
@@ -221,65 +223,63 @@ def add_point_prompts(processor, inference_state, points_xy, labels=True):
     return processor._forward_grounding(inference_state)
 
 
-# TODO: review
 def postprocess_masks(
-    masks,
-    min_area,
-    max_area,
-    min_solidity,
-    verbose=True,
+    masks: np.ndarray, min_area: int, max_area: int, min_solidity: float
 ):
-    """Split disconnected masks, drop ones too large/small or not blob-like.
+    """Split masks into connected regions and filter.
 
-    ``masks`` is (N, H, W) boolean. Returns ``(kept, kept_obj_idx,
+    Regions are filtered based on area range and solidity.
+
+    ``masks`` is (N, H, W) boolean. Returns ``(kept, list_mask_idcs,
     drop_counts)`` where ``kept`` is a list of (H, W) boolean masks,
-    ``kept_obj_idx`` is the index (into ``masks``) of the source object each
+    ``list_mask_idcs`` is the index (into ``masks``) of the source object each
     kept mask came from (so per-object data like scores can be mapped onto
     the kept masks), and ``drop_counts`` is a dict counting how many
-    connected components were dropped per reason.
+    connected regions were dropped per reason.
 
-    Note that ``kept_obj_idx`` is needed because the function splits masks
-    into connected components, so a single SAM3 object can yield several
+    Note that ``list_mask_idcs`` is needed because the function splits masks
+    into connected components (regions), so a single SAM3 object can yield several
     kept masks (or none), and each must inherit the right score.
     """
-    # min_area = min_area_pixels * image_area
-    # max_area = max_area_frac * image_area
-    kept = []
-    kept_obj_idx = []
+    list_kept_bool_regions = []
+    list_mask_idcs = []
     drop_counts = {"area_low": 0, "area_high": 0, "solidity": 0}
-    for obj_idx, m in enumerate(masks.astype(bool)):
-        # 1. split into connected components
-        comp_labels = sk_label(m)
-        for prop in regionprops(comp_labels):
-            # 2. area filter
-            if prop.area < min_area:
+
+    # Loop thru masks
+    for mask_idx, mask in enumerate(masks.astype(bool)):
+        # Label connected regions in mask
+        # (connected regions are assigned the same int)
+        label_mask = sk_label(mask)
+
+        # Compute properties per region
+        list_regions_w_props = regionprops(label_mask)
+
+        # Loop thru regions
+        for region in list_regions_w_props:
+            # Filter by min area
+            if region.area < min_area:
                 drop_counts["area_low"] += 1
-                if verbose:
-                    print(
-                        f"  obj {obj_idx} comp {prop.label}: dropped "
-                        f"(area {prop.area} < {min_area:.0f})"
-                    )
                 continue
-            if prop.area > max_area:
+
+            # Filter by max area
+            if region.area > max_area:
                 drop_counts["area_high"] += 1
-                if verbose:
-                    print(
-                        f"  obj {obj_idx} comp {prop.label}: dropped "
-                        f"(area {prop.area} > {max_area:.0f})"
-                    )
                 continue
-            # 3. blob-likeness
-            if prop.solidity < min_solidity:
+
+            # Filter by solidity (proxy for blob-likeness)
+            # (ratio of pixels in the region to pixels of the convex hull,
+            # ranges from 0 (theoretical) to 1 (perfectly convex))
+            # convex_area ≥ area ≥ 1 for any real region
+            if region.solidity < min_solidity:
                 drop_counts["solidity"] += 1
-                if verbose:
-                    print(
-                        f"  obj {obj_idx} comp {prop.label}: dropped "
-                        f"(solidity {prop.solidity:.2f} < {min_solidity})"
-                    )
                 continue
-            kept.append(comp_labels == prop.label)
-            kept_obj_idx.append(obj_idx)
-    return kept, kept_obj_idx, drop_counts
+
+            # If all pass: retain that region within the mask
+            list_kept_bool_regions.append(label_mask == region.label)
+            # Keep track of the mask ID associated to this region too
+            list_mask_idcs.append(mask_idx)
+
+    return list_kept_bool_regions, list_mask_idcs, drop_counts
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -313,7 +313,7 @@ metadata_dict = {
     "text_prompt": TEXT_PROMPT,
     "sam3_confidence_threshold": CONF_THRESHOLD,
     "postproc_min_mask_area_PIXELS": MIN_MASK_AREA_PIXELS,
-    "postproc_max_mask_area_frac": MAX_MASK_AREA_FRAC,
+    "postproc_max_mask_area_PIXELS": MAX_MASK_AREA_PIXELS,
     "postproc_min_solidity": MIN_SOLIDITY,
     "mask_encoding": "instance_id",
     "background_label": 0,
@@ -371,7 +371,8 @@ processor = Sam3Processor(model, confidence_threshold=CONF_THRESHOLD)
 # Run inference on every frame and write ID-encoded masks to zarr
 
 processed_frames = []
-mask_scores_per_frame = {}  # frame_idx -> {mask_id: score}
+region_id_to_score_per_frame = {}  # frame_idx -> {mask_id: score}
+count_empty_frames = 0
 
 for frame_idx in range(len(image_array)):
     # Load image
@@ -381,7 +382,7 @@ for frame_idx in range(len(image_array)):
     # Get corresponding video
     video_str = list_video_per_img[frame_idx]
 
-    # Get normalised point prompts for that video 
+    # Get normalised point prompts for that video
     prompts_xy = points_xy_per_video.get(video_str)
     if prompts_xy is None or len(prompts_xy) == 0:
         print(f"Frame {frame_idx} ({video_str}): no prompts, skipping")
@@ -391,7 +392,7 @@ for frame_idx in range(len(image_array)):
 
     # --------------------
     # Pass image to processor and reset inference state
-    inference_state = processor.set_image(image) # maybe: set_image_batch?
+    inference_state = processor.set_image(image)  # maybe: set_image_batch?
     processor.reset_all_prompts(
         inference_state
     )  # mutates the state dict in place
@@ -406,7 +407,7 @@ for frame_idx in range(len(image_array)):
     inference_state = add_point_prompts(
         processor, inference_state, norm_points_xy, labels=True
     )
-     # --------------------
+    # --------------------
 
     # Get predicted boolean masks and scores
     # Move masks to CPU, then release this frame's GPU state before the
@@ -425,76 +426,70 @@ for frame_idx in range(len(image_array)):
 
     # -----------------------
     # Postprocess masks
-    kept_masks, kept_obj_idx, drop_counts = postprocess_masks(
+    list_kept_regions, list_mask_idcs, drop_counts = postprocess_masks(
         masks,
         MIN_MASK_AREA_PIXELS,
-        MAX_MASK_AREA_FRAC * image_h * image_w,
+        MAX_MASK_AREA_PIXELS,
         MIN_SOLIDITY,
     )
+    n_kept_regions = len(list_kept_regions)
+    n_total_regions = n_kept_regions + sum(drop_counts.values())
     print(
-        f"Frame {frame_idx} ({video_str}): postproc kept "
-        f"{len(kept_masks)}/{n_objects} objects, "
+        f"Frame {frame_idx} ({video_str}): postprocessing kept "
+        f"{n_kept_regions}/{n_total_regions} regions, "
         f"dropped {drop_counts}"
     )
-    if not kept_masks:
+    if not list_kept_regions:
         print(
             f"Frame {frame_idx} ({video_str}): no masks after postprocessing"
         )
+        count_empty_frames += 1
         continue
 
-    # -----------------------
-    # Compute id-encoded mask
+    # ------------------------------------
+    # Compute id-encoded mask per region
     # boolean masks (N, H, W) -> ID-encoded (H, W); higher ID wins on overlap
-    #
-    # n_masks may be different from n_objects because:
-    # - SAM3 can return a mask that is all False
-    # - when computing the id mask, if masks overlap we take the one with
-    #   higher ID. So completely overlapping masks disappear.
-    obj_ids = np.arange(1, len(kept_masks) + 1, dtype=np.int16)
-    id_mask = np.zeros((image_h, image_w), dtype=np.int16)
-    for oid, m in zip(obj_ids, kept_masks, strict=True):
-        id_mask[m] = oid
 
-    # Score per kept mask: each kept mask inherits the SAM3 score of the
-    # source object it was split from (kept_obj_idx maps back into `scores`).
-    kept_scores = scores[kept_obj_idx]
-    id_to_score = {
-        str(int(oid)): float(s)
-        for oid, s in zip(obj_ids, kept_scores, strict=True)
+    # initialise id-encode mask
+    id_mask = np.zeros((image_h, image_w), dtype=np.int16)
+
+    # loop thru region IDs
+    region_ids = np.arange(1, len(list_kept_regions) + 1, dtype=np.int16)
+    for region_id, bool_mask in zip(
+        region_ids,
+        list_kept_regions,
+        strict=True,
+    ):
+        id_mask[bool_mask] = region_id
+
+    # -----------------------
+    # Compute score per region
+    # Score for each region: each kept region inherits the SAM3 score of the
+    # mask it was split from (list_mask_idcs maps back into `scores`).
+    region_scores = scores[list_mask_idcs]
+    region_id_to_score = {
+        str(id): float(score)
+        for id, score in zip(region_ids, region_scores, strict=True)
     }
     # -----------------------
 
+    # Save results to zarr
     mask_zarr[frame_idx] = id_mask
+
+    # Log processed frames
     processed_frames.append(frame_idx)
-    mask_zarr.attrs["annotated_frames"] = processed_frames
-    # per-mask scores, keyed by frame index then mask id (zarr attrs are
-    # JSON, so keys are strings)
-    mask_scores_per_frame[str(frame_idx)] = id_to_score
-    mask_zarr.attrs["mask_scores"] = mask_scores_per_frame
-    print(f"Frame {frame_idx} ({video_str}): {len(kept_masks)} masks")
+
+    # Log scores per region (called mask in final store),
+    region_id_to_score_per_frame[str(frame_idx)] = region_id_to_score
+    mask_zarr.attrs["mask_scores"] = region_id_to_score_per_frame
+    print(f"Frame {frame_idx} ({video_str}): {len(list_kept_regions)} masks")
 
 print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Visualise ID-encoded masks in napari (masks over source frames)
+# Log processed frames
+mask_zarr.attrs["processed_frames"] = processed_frames
 
-import napari
-import zarr
-
-# Open the mask store (N, H, W) int16; 0 = background, >0 = instance ID.
-masks = zarr.open(output_masks_zarr, mode="r")  # or pass a path string
-
-# # Only some frames were annotated; the rest are all-zero. Restrict the
-# # viewer to the annotated frames so you don't scroll through empty ones.
-# annotated = masks.attrs.get("annotated_frames", list(range(masks.shape[0])))
-
-# # Source frames as the background image (same H, W as the masks).
-# frames = np.stack([image_array[i] for i in annotated])  # (n, H, W, C)
-# labels = np.stack([masks[i] for i in annotated])          # (n, H, W)
-
-viewer = napari.Viewer()
-viewer.add_image(np.asarray(image_array), name="frames", rgb=True)
-viewer.add_labels(masks, name="burrow masks")
+print(f"Frames with no masks: {count_empty_frames}")
 
 # %%%%%%%%%%%%%%%%%
 # Subsequent passes
@@ -512,9 +507,11 @@ viewer.add_labels(masks, name="burrow masks")
 
 PROMPT_SELECTION_MIN_SCORE = 0.0  # if CONF_THRESHOLD or 0, reuses all
 
+selected_frame_idx = 0
 img_iter = image_array[selected_frame_idx]
 img_h_i, img_w_i = img_iter.shape[:2]
 
+# ---------- Compute new prompts ----------------------
 # 1. Select High-score kept masks that contain no existing prompt points
 # get rows and column indices for each prompt
 prompt_rc = np.round(prompts_xy[:, ::-1]).astype(int)  # (N, 2) as (row, col)
@@ -522,7 +519,7 @@ prompt_rows = prompt_rc[:, 0].clip(0, img_h_i - 1)
 prompt_cols = prompt_rc[:, 1].clip(0, img_w_i - 1)
 
 new_bboxes_xyxy = []
-for m, s in zip(kept_masks, kept_scores):
+for m, s in zip(list_kept_regions, region_scores, strict=True):
     # skip masks with score below threshold
     if s <= PROMPT_SELECTION_MIN_SCORE:
         continue
@@ -543,8 +540,8 @@ new_bboxes_xyxy = np.array(new_bboxes_xyxy, dtype=np.float32).reshape(-1, 4)
 print(f"{len(new_bboxes_xyxy)} predicted masks selected for re-prompting")
 
 # %%
-# 3. Derive a point per new bbox 
-new_points_xy = 0.5*(new_bboxes_xyxy[:,:2] + new_bboxes_xyxy[:,2:])
+# 3. Derive a point per new bbox
+new_points_xy = 0.5 * (new_bboxes_xyxy[:, :2] + new_bboxes_xyxy[:, 2:])
 
 # %%
 # plot old and new prompts
@@ -664,7 +661,7 @@ def _run_sam3_points(image_pil, points_xy_px, area_for_postproc):
     kept, kept_idx, _ = postprocess_masks(
         masks,
         MIN_MASK_AREA_PIXELS,
-        MAX_MASK_AREA_FRAC * img_h_i * img_w_i,
+        MAX_MASK_AREA_PIXELS,  # MAX_MASK_AREA_FRAC * img_h_i * img_w_i,
         MIN_SOLIDITY,
         verbose=False,
     )
@@ -729,7 +726,7 @@ merged_masks, merged_scores = _merge_by_iou(
 # TODO: review this count, I dont get it
 print(
     f"{len(merged_masks)} masks after cross-tile merge "
-    f"(pass-1 had {len(kept_masks)})"
+    f"(pass-1 had {len(list_kept_regions)})"
 )
 
 # %%
@@ -757,8 +754,8 @@ if "tiled_mask_zarr" not in globals():
 # Encode merged masks as ID-mask (higher score won the IoU merge, so order
 # in `merged_masks` is high-to-low score; IDs follow that order).
 tiled_id_mask = np.zeros((image_h, image_w), dtype=np.int16)
-for oid, m in enumerate(merged_masks, start=1):
-    tiled_id_mask[m] = oid
+for region_id, m in enumerate(merged_masks, start=1):
+    tiled_id_mask[m] = region_id
 tiled_mask_zarr[selected_frame_idx] = tiled_id_mask
 
 tiled_id_to_score = {str(i + 1): float(s) for i, s in enumerate(merged_scores)}
