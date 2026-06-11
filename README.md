@@ -14,7 +14,7 @@ A toolkit for detecting and tracking crabs in the field.
 
 `crabs` uses neural networks to detect and track multiple crabs in the field. The detection model is based on the [Faster R-CNN](https://arxiv.org/abs/1506.01497) architecture. The tracking model is based on the [SORT](https://github.com/abewley/sort) tracking algorithm.
 
-The package supports Python 3.11 or 3.12, and is tested on Linux and MacOS.
+The package supports Python 3.12 or 3.13, and is tested on Linux and MacOS.
 
 We highly recommend running `crabs` on a machine with a dedicated graphics device, such as an NVIDIA GPU or an Apple M1+ chip.
 
