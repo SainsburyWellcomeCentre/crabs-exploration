@@ -344,30 +344,6 @@ points_xy_per_video = {
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Visualise the point prompts for a selected frame.
-
-# selected_frame_idx = 26
-# selected_video = list_video_per_img[selected_frame_idx]
-# prompt_points = points_xy_per_video[selected_video]
-
-# fig, ax = plt.subplots()
-# ax.imshow(image_array[selected_frame_idx])
-# ax.scatter(
-#     prompt_points[:, 0],
-#     prompt_points[:, 1],
-#     c="lime",
-#     marker="x",
-#     s=120,
-# )
-# ax.set_axis_off()
-# ax.set_title(
-#     f"{image_array.img_paths[selected_frame_idx].name} "
-#     f"({selected_video}): {len(prompt_points)} prompts"
-# )
-# plt.show()
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Build SAM3 image model and processor
 
 # to avoid bfloat16 (from model params) and float
@@ -392,23 +368,27 @@ processor = Sam3Processor(model, confidence_threshold=CONF_THRESHOLD)
 # Run inference on every frame and write ID-encoded masks to zarr
 
 processed_frames = []
-frame_scores = {}  # frame_idx -> {mask_id: score}
+mask_scores_per_frame = {}  # frame_idx -> {mask_id: score}
 
 for frame_idx in range(len(image_array)):
-    # Get corresponding video
-    video_str = list_video_per_img[frame_idx]
-
-    # Get point prompts for that video (the master prompt store)
-    points_xy = points_xy_per_video.get(video_str)
-    if points_xy is None or len(points_xy) == 0:
-        print(f"Frame {frame_idx} ({video_str}): no prompts, skipping")
-        continue
-
     # Load image
     image = Image.fromarray(image_array[frame_idx])
     width, height = image.size
-    inference_state = processor.set_image(image)
-    # maybe: set_image_batch?
+
+    # Get corresponding video
+    video_str = list_video_per_img[frame_idx]
+
+    # Get normalised point prompts for that video 
+    prompts_xy = points_xy_per_video.get(video_str)
+    if prompts_xy is None or len(prompts_xy) == 0:
+        print(f"Frame {frame_idx} ({video_str}): no prompts, skipping")
+        continue
+    # xy (pixels) -> normalized [0, 1]
+    norm_points_xy = prompts_xy / np.array([width, height], dtype=np.float32)
+
+    # --------------------
+    # Pass image to processor and reset inference state
+    inference_state = processor.set_image(image) # maybe: set_image_batch?
     processor.reset_all_prompts(
         inference_state
     )  # mutates the state dict in place
@@ -419,17 +399,15 @@ for frame_idx in range(len(image_array)):
             state=inference_state, prompt=TEXT_PROMPT
         )
 
-    # Add point prompts: xy (pixels) -> normalized [0, 1]
-    norm_points_xy = points_xy / np.array([width, height], dtype=np.float32)
-
+    # Add normalised point prompts
     # TODO: can I pass the array of points directly, rather than looping?
     for px, py in norm_points_xy:
         inference_state = add_point_prompt(
             processor, inference_state, (float(px), float(py)), label=True
         )
+     # --------------------
 
-    # Express results as an ID-encoded mask
-    # boolean masks (N, H, W) -> ID-encoded (H, W); higher ID wins on overlap
+    # Get predicted boolean masks and scores
     # Move masks to CPU, then release this frame's GPU state before the
     # next frame: otherwise the previous state (backbone features +
     # full-res masks_logits) stays alive during the next forward pass.
@@ -463,13 +441,14 @@ for frame_idx in range(len(image_array)):
         )
         continue
 
+    # -----------------------
     # Compute id-encoded mask
+    # boolean masks (N, H, W) -> ID-encoded (H, W); higher ID wins on overlap
+    #
     # n_masks may be different from n_objects because:
     # - SAM3 can return a mask that is all False
     # - when computing the id mask, if masks overlap we take the one with
     #   higher ID. So completely overlapping masks disappear.
-    # obj_ids = np.arange(1, n_objects + 1, dtype=np.int16)[:, None, None]
-    # id_mask = (masks.astype(bool) * obj_ids).max(axis=0)
     obj_ids = np.arange(1, len(kept_masks) + 1, dtype=np.int16)
     id_mask = np.zeros((image_h, image_w), dtype=np.int16)
     for oid, m in zip(obj_ids, kept_masks, strict=True):
@@ -489,13 +468,13 @@ for frame_idx in range(len(image_array)):
     mask_zarr.attrs["annotated_frames"] = processed_frames
     # per-mask scores, keyed by frame index then mask id (zarr attrs are
     # JSON, so keys are strings)
-    frame_scores[str(frame_idx)] = id_to_score
-    mask_zarr.attrs["mask_scores"] = frame_scores
+    mask_scores_per_frame[str(frame_idx)] = id_to_score
+    mask_zarr.attrs["mask_scores"] = mask_scores_per_frame
     print(f"Frame {frame_idx} ({video_str}): {len(kept_masks)} masks")
 
 print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
 
-
+# %%
 # # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # # Visualise one frame: prompt boxes + predicted masks
 
@@ -667,7 +646,7 @@ img_h_i, img_w_i = img_iter.shape[:2]
 
 # 1. Select High-score kept masks that contain no existing prompt points
 # get rows and column indices for each prompt
-prompt_rc = np.round(points_xy[:, ::-1]).astype(int)  # (N, 2) as (row, col)
+prompt_rc = np.round(prompts_xy[:, ::-1]).astype(int)  # (N, 2) as (row, col)
 prompt_rows = prompt_rc[:, 0].clip(0, img_h_i - 1)
 prompt_cols = prompt_rc[:, 1].clip(0, img_w_i - 1)
 
@@ -703,12 +682,12 @@ new_points_xy = 0.5*(new_bboxes_xyxy[:,:2] + new_bboxes_xyxy[:,2:])
 fig, ax = plt.subplots()
 ax.imshow(img_iter)
 ax.scatter(
-    points_xy[:, 0],
-    points_xy[:, 1],
+    prompts_xy[:, 0],
+    prompts_xy[:, 1],
     c="lime",
     marker="x",
     s=120,
-    label=f"old ({len(points_xy)})",
+    label=f"old ({len(prompts_xy)})",
 )
 if len(new_points_xy):
     ax.scatter(
@@ -734,7 +713,7 @@ ax.set_axis_off()
 ax.legend(loc="upper right")
 ax.set_title(
     f"{image_array.img_paths[selected_frame_idx].stem} - "
-    f"{len(points_xy)} old + {len(new_points_xy)} new prompts"
+    f"{len(prompts_xy)} old + {len(new_points_xy)} new prompts"
 )
 plt.show()
 
@@ -762,10 +741,10 @@ H, W = img_full.shape[:2]
 full_area = H * W
 
 # exemplar pool: old + new point prompts (pixel xy, full-image frame)
-pool_points = np.vstack([points_xy, new_points_xy]).astype(np.float32)
+pool_points = np.vstack([prompts_xy, new_points_xy]).astype(np.float32)
 print(
     f"exemplar pool: {len(pool_points)} points "
-    f"({len(points_xy)} old + {len(new_points_xy)} new)"
+    f"({len(prompts_xy)} old + {len(new_points_xy)} new)"
 )
 
 
