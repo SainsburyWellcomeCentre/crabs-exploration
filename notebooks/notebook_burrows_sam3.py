@@ -142,17 +142,24 @@ def create_mask_zarr(
     return mask_zarr
 
 
-def add_point_prompt(processor, inference_state, point_xy, label=True):
-    """Add a single point prompt to the inference state.
+def add_point_prompts(processor, inference_state, points_xy, labels=True):
+    """Add point prompts to the inference state.
 
     This function mirrors ``Sam3Processor.add_geometric_prompt`` but appends
-    a point as a geometric prompt instead of a bounding box. It relies on SAM3
+    points as geometric prompts instead of a bounding box. It relies on SAM3
     internals (``_get_dummy_prompt`` and ``_forward_grounding``) as the
     processor does not expose a public point method.
 
-    Note: ``point_xy`` is an ``(x, y)`` pair normalized to ``[0, 1]``. The
-    label sets the input point prompt as positive (if `True`, default) or
-    negative (if `False`).
+    All points are appended and the grounding forward pass runs **once** at
+    the end (rather than once per point). Re-running ``_forward_grounding``
+    after every point recomputes full-resolution masks for all accumulated
+    objects each time, which is wasteful and blows up GPU memory.
+
+    Note: ``points_xy`` is an ``(N, 2)`` array of ``(x, y)`` pairs normalized
+    to ``[0, 1]`` (a single ``(x, y)`` pair is also accepted). ``labels``
+    sets each input point as positive (``True``, default) or negative
+    (``False``); pass a scalar to apply the same label to all points, or an
+    ``(N,)`` sequence for per-point labels.
     """
     # Throw error if image not passed thru backbone yet
     # (if passed, SAM3 stashes the backbone resulting features under the key
@@ -185,19 +192,24 @@ def add_point_prompt(processor, inference_state, point_xy, label=True):
             # is passed as prompt to the next frame.
         )
 
-    # Add input point prompt with their labels to the inferecence state
-    # NOTE: here, n_points = 1 and batch=1
+    # Add input point prompts with their labels to the inference state
+    # NOTE: here batch=1, n_points = N (the number of points passed in)
+    points_xy = np.atleast_2d(
+        np.asarray(points_xy, dtype=np.float32)
+    )  # (N, 2)
+    n_points = points_xy.shape[0]
+
     point_coords = torch.tensor(
-        point_xy,
+        points_xy,
         device=processor.device,
         dtype=torch.float32,
-    ).view(1, 1, 2)  # (n_points, batch, 2)
+    ).view(n_points, 1, 2)  # (n_points, batch, 2)
 
-    point_labels = torch.tensor(
-        [label],
+    point_labels = torch.as_tensor(
+        np.broadcast_to(labels, (n_points,)),
         device=processor.device,
         dtype=torch.bool,
-    ).view(1, 1)  # (n_points, batch)
+    ).view(n_points, 1)  # (n_points, batch)
 
     # Point prompts are batched together and padded?, this mask
     # marks padded slots
@@ -207,7 +219,7 @@ def add_point_prompt(processor, inference_state, point_xy, label=True):
     # if we switch to set_image_batch
     # point_masks = torch.zeros(
     #     1,
-    #     1,
+    #     n_points,
     #     dtype=torch.bool,
     #     device=processor.device,
     # )  # (batch, n_points)
@@ -218,6 +230,7 @@ def add_point_prompt(processor, inference_state, point_xy, label=True):
         # point_masks, # default is None, could be removed
     )
 
+    # Ground once over all accumulated prompts.
     return processor._forward_grounding(inference_state)
 
 
@@ -346,6 +359,9 @@ points_xy_per_video = {
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Build SAM3 image model and processor
 
+# Disable autograd for the whole notebook
+torch.inference_mode().__enter__()
+
 # to avoid bfloat16 (from model params) and float
 # (from input) mismatch
 if torch.cuda.is_available():
@@ -399,12 +415,10 @@ for frame_idx in range(len(image_array)):
             state=inference_state, prompt=TEXT_PROMPT
         )
 
-    # Add normalised point prompts
-    # TODO: can I pass the array of points directly, rather than looping?
-    for px, py in norm_points_xy:
-        inference_state = add_point_prompt(
-            processor, inference_state, (float(px), float(py)), label=True
-        )
+    # Add normalised point prompts (all at once; grounds a single time)
+    inference_state = add_point_prompts(
+        processor, inference_state, norm_points_xy, labels=True
+    )
      # --------------------
 
     # Get predicted boolean masks and scores
@@ -771,11 +785,13 @@ def _run_sam3_points(image_pil, points_xy_px, area_for_postproc):
     if TEXT_PROMPT is not None:
         state = processor.set_text_prompt(state=state, prompt=TEXT_PROMPT)
 
-    # point prompts
-    for px, py in points_xy_px / np.array([w, h], dtype=np.float32):
-        state = add_point_prompt(
-            processor, state, (float(px), float(py)), label=True
-        )
+    # point prompts (all at once; grounds a single time)
+    state = add_point_prompts(
+        processor,
+        state,
+        points_xy_px / np.array([w, h], dtype=np.float32),
+        labels=True,
+    )
 
     masks = state["masks"].cpu().numpy()
     scores = state["scores"].float().cpu().numpy()
