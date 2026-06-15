@@ -72,7 +72,7 @@ manual_prompts_csv = (
 
 # Prediction params
 TEXT_PROMPT = (
-   "hole"  # "crab burrow in sand"  # set to None to skip the text prompt
+    "hole"  # "crab burrow in sand"  # set to None to skip the text prompt
 )
 CONF_THRESHOLD = (
     0.35  # masks below this threshold are not scaled up to full res
@@ -120,28 +120,139 @@ class ImageArrayLazy:
         # B, H, W, C
 
 
-def create_mask_zarr(
-    zarr_store_path, zarr_array_shape, zarr_metadata_dict=None
+def initialise_mask_zarr(
+    output_dir,
+    images_dir,
+    manual_prompts_csv,
+    image_shape,
+    text_prompt,
+    conf_threshold,
+    min_mask_area_pixels,
+    max_mask_area_pixels,
+    min_solidity,
+    max_regions_per_image=500,
 ):
-    """Create a zarr store for ID-encoded masks and write metadata."""
-    # Unpack shape
-    n_images, image_h, image_w = zarr_array_shape[:3]
+    """Create mask ID encoded zarr store timestamped and with metadata."""
+    # Create a timestamped masks zarr store in the output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_masks_zarr = output_dir / f"masks_{timestamp}.zarr"
 
-    # Initialise store
-    # TODO: does this match OCTRON output?
-    mask_zarr = zarr.open(
-        zarr_store_path,
-        mode="w",
+    n_images, image_h, image_w = image_shape  # image_array.shape[:3]
+    metadata_dict = {
+        "sam3_model": "sam3_image",
+        "source_images_dir": str(images_dir),
+        "manual_prompts_csv": str(manual_prompts_csv),
+        "n_images": n_images,
+        "image_shape": [image_h, image_w],
+        "estim_max_regions_per_image": max_regions_per_image,
+        "text_prompt": text_prompt,
+        "sam3_confidence_threshold": conf_threshold,
+        "postproc_min_mask_area_PIXELS": min_mask_area_pixels,
+        "postproc_max_mask_area_PIXELS": max_mask_area_pixels,
+        "postproc_min_solidity": min_solidity,
+        "mask_encoding": "instance_id",
+        "background_label": 0,
+        "id_first_index": 1,
+        # mask instance IDs in the zarr store start at 1 (not 0),
+        # because 0 is reserved for the background label.
+    }
+
+    # Initialise root
+    root = zarr.open_group(output_masks_zarr, mode="w")
+
+    # Add mask array
+    _mask_zarr = root.create_array(
+        "masks",
         shape=(n_images, image_h, image_w),
         dtype="int16",
         fill_value=0,  # background
         chunks=(1, image_h, image_w),
     )
 
-    # Add metadata to store if available
-    if zarr_metadata_dict is not None:
-        mask_zarr.attrs.update(zarr_metadata_dict)
-    return mask_zarr
+    # Initialise scores array as a sibling of "masks"
+    # shape (n_frames, max_regions + 1); column 0 = background, unused -> NaN
+    _scores_zarr = root.create_array(
+        "scores",
+        shape=(n_images, max_regions_per_image + 1),
+        chunks=(1, max_regions_per_image + 1),
+        dtype="float32",
+        fill_value=np.nan,
+    )
+
+    # Add metadata to root if available
+    root.attrs.update(metadata_dict)
+
+    return root, output_masks_zarr
+
+
+# def create_mask_zarr(
+#     zarr_store_path, zarr_array_shape, zarr_metadata_dict=None
+# ):
+#     """Create a zarr group with an ID-encoded mask array and write metadata."""
+#     # Unpack shape
+#     n_images, image_h, image_w = zarr_array_shape[:3]
+
+#     # Initialise root and mask array
+#     root = zarr.open_group(zarr_store_path, mode="w")
+#     mask_zarr = root.create_array(
+#         "masks",
+#         shape=(n_images, image_h, image_w),
+#         dtype="int16",
+#         fill_value=0,  # background
+#         chunks=(1, image_h, image_w),
+#     )
+
+#     # Add metadata to root if available
+#     if zarr_metadata_dict is not None:
+#         root.attrs.update(zarr_metadata_dict)
+
+#     return root, mask_zarr
+
+
+def extract_normalised_point_prompts_per_video(
+    manual_prompts_csv: Path | str, img_w: float, img_h: float
+) -> dict:
+    """Compute dict mapping video to normalised point prompt coordinates."""
+    # Read from csv
+    df_prompts = pd.read_csv(manual_prompts_csv)
+
+    # point prompts in pixel xy ---> then normalised,
+    # keyed by video string
+    # normalise coordinates by image width and height
+    points_xy_normalised_per_video = {
+        video.split("_")[0]: (
+            group[["prompt_point_x", "prompt_point_y"]].to_numpy()
+            / np.array([img_w, img_h])
+        ).astype(np.float32)
+        for video, group in df_prompts.groupby("group_id")
+    }
+
+    return points_xy_normalised_per_video
+
+
+def add_prompts_to_inference_state(
+    processor, image, prompts_xy_norm, text_prompt=None
+):
+    """Add iamge, normalised points and text prompts to inference state."""
+    # Pass image to processor and reset inference state
+    inference_state = processor.set_image(image)
+    processor.reset_all_prompts(
+        inference_state
+    )  # mutates the state dict in place
+
+    # Add optional text prompt
+    if text_prompt is not None:
+        inference_state = processor.set_text_prompt(
+            state=inference_state, prompt=text_prompt
+        )
+
+    # Add normalised point prompts (all at once; grounds a single time)
+    inference_state = add_point_prompts(
+        processor, inference_state, prompts_xy_norm, labels=True
+    )
+
+    return inference_state
 
 
 def add_point_prompts(processor, inference_state, points_xy, labels=True):
@@ -223,8 +334,30 @@ def add_point_prompts(processor, inference_state, points_xy, labels=True):
     return processor._forward_grounding(inference_state)
 
 
+def extract_sam3_results_one_img(inference_state):
+    """Extract SAM3 boolean masks and scores for a single image.
+
+    Move masks to CPU, then release this frame's GPU state before the
+    next frame: otherwise the previous state (backbone features +
+    full-res masks_logits) stays alive during the next forward pass.
+    """
+    masks = inference_state["masks"].cpu().numpy()
+    scores = inference_state["scores"].float().cpu().numpy()  # (N,)
+    del inference_state
+    torch.cuda.empty_cache()
+
+    masks = masks.squeeze(1) if masks.ndim == 4 else masks  # (N, H, W)
+    n_objects = masks.shape[0]
+
+    return masks, scores, n_objects
+
+
 def postprocess_masks(
-    masks: np.ndarray, min_area: int, max_area: int, min_solidity: float
+    masks: np.ndarray,
+    scores: np.ndarray,
+    min_area: int,
+    max_area: int,
+    min_solidity: float,
 ):
     """Split masks into connected regions and filter.
 
@@ -279,69 +412,76 @@ def postprocess_masks(
             # Keep track of the mask ID associated to this region too
             list_mask_idcs.append(mask_idx)
 
-    return list_kept_bool_regions, list_mask_idcs, drop_counts
+    # Get list of scores for kept regions
+    list_kept_scores = scores[list_mask_idcs]
+
+    return list_kept_bool_regions, list_kept_scores, drop_counts
+
+
+def convert_bool_to_id_mask(list_kept_region_masks, img_h, img_w):
+    """Express boolean masks array as ID encoded mask.
+
+    Higher ID wins on overlap.
+    """
+    # initialise id-encode mask with all zeros
+    id_mask = np.zeros((img_h, img_w), dtype=np.int16)
+
+    # loop thru region IDs
+    region_ids = np.arange(1, len(list_kept_region_masks) + 1, dtype=np.int16)
+    for region_id, bool_mask in zip(
+        region_ids,
+        list_kept_region_masks,
+        strict=True,
+    ):
+        id_mask[bool_mask] = region_id
+
+    return id_mask, region_ids
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Load frames as a lazy array and map each frame to its video / date
+# Load frames as a lazy array and map each frame to its video
 
+# Get image array
 list_image_files = sorted(list(Path(images_dir).glob("*.png")))
+image_array = ImageArrayLazy(list_image_files)
+print(image_array.shape)
+
+# Get video per image
 list_video_per_img = [
     img_p.stem.split("_", 1)[0].split("-Loop")[0] for img_p in list_image_files
 ]
 
-# Get image array
-image_array = ImageArrayLazy(list_image_files)
-print(image_array.shape)
-
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Initialise the output ID-encoded mask zarr store
+# (includes scores)
 
-# Create a timestamped masks zarr store in the output directory
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-output_masks_zarr = OUTPUT_DIR / f"masks_{timestamp}.zarr"
-
-n_images, image_h, image_w = image_array.shape[:3]
-metadata_dict = {
-    "sam3_model": "sam3_image",
-    "source_images_dir": str(images_dir),
-    "manual_prompts_csv": str(manual_prompts_csv),
-    "n_images": n_images,
-    "image_shape": [image_h, image_w],
-    "text_prompt": TEXT_PROMPT,
-    "sam3_confidence_threshold": CONF_THRESHOLD,
-    "postproc_min_mask_area_PIXELS": MIN_MASK_AREA_PIXELS,
-    "postproc_max_mask_area_PIXELS": MAX_MASK_AREA_PIXELS,
-    "postproc_min_solidity": MIN_SOLIDITY,
-    "mask_encoding": "instance_id",
-    "background_label": 0,
-    "id_first_index": 1,
-    # mask instance IDs in the zarr store start at 1 (not 0),
-    # because 0 is reserved for the background label.
-}
-mask_zarr = create_mask_zarr(
-    output_masks_zarr,
-    (n_images, image_h, image_w),
-    zarr_metadata_dict=metadata_dict,
+image_shape = image_array.shape[:3]
+root, output_masks_zarr = initialise_mask_zarr(
+    OUTPUT_DIR,
+    images_dir,
+    manual_prompts_csv,
+    image_shape,
+    TEXT_PROMPT,
+    CONF_THRESHOLD,
+    MIN_MASK_AREA_PIXELS,
+    MAX_MASK_AREA_PIXELS,
+    MIN_SOLIDITY,
+    max_regions_per_image=500,  # ok?
 )
 
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Load point prompts (one or more CSVs in prompt_coords_dir)
+# Extract point prompts per video
 # CSV columns: group_id, prompt_point_x, prompt_point_y
 # group_id has format "<video>_mean_n<frame>.png"; the video string is
 # everything before "_mean".
-df_prompts = pd.read_csv(manual_prompts_csv)
 
-# point prompts in pixel xy, keyed by video string
-points_xy_per_video = {
-    video.split("_")[0]: group[["prompt_point_x", "prompt_point_y"]].to_numpy(
-        dtype=np.float32
-    )
-    for video, group in df_prompts.groupby("group_id")
-}
 
+# point prompts in **normalised** coords, keyed by video string
+points_xy_normalised_per_video = extract_normalised_point_prompts_per_video(
+    manual_prompts_csv
+)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Build SAM3 image model and processor
@@ -349,8 +489,8 @@ points_xy_per_video = {
 # Disable autograd for the whole notebook
 torch.inference_mode().__enter__()
 
-# to avoid bfloat16 (from model params) and float
-# (from input) mismatch
+# to avoid mismatch between bfloat16 (from model params)
+# and float (from input)
 if torch.cuda.is_available():
     torch.autocast("cuda", dtype=torch.bfloat16).__enter__()
 
@@ -359,7 +499,7 @@ if torch.cuda.is_available():
 # and forward pass operations
 model = build_sam3_image_model()
 
-# instantiate the processor
+# Instantiate the processor
 # (a wrapper around the model, handling I/O conversion, building
 # and mutation of the inference_state, prompt accumulation and
 # confidence thresholding)
@@ -370,126 +510,88 @@ processor = Sam3Processor(model, confidence_threshold=CONF_THRESHOLD)
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Run inference on every frame and write ID-encoded masks to zarr
 
-processed_frames = []
-region_id_to_score_per_frame = {}  # frame_idx -> {mask_id: score}
-count_empty_frames = 0
+count_postproc_frames_empty = 0
+postproc_frames_w_masks = []
 
 for frame_idx in range(len(image_array)):
     # Load image
     image = Image.fromarray(image_array[frame_idx])
-    width, height = image.size
+    img_w, img_h = image.size
 
     # Get corresponding video
     video_str = list_video_per_img[frame_idx]
 
-    # Get normalised point prompts for that video
-    prompts_xy = points_xy_per_video.get(video_str)
-    if prompts_xy is None or len(prompts_xy) == 0:
+    # Get point prompts normalised for that video
+    prompts_xy_norm = points_xy_normalised_per_video.get(video_str)
+    if prompts_xy_norm is None or len(prompts_xy_norm) == 0:
         print(f"Frame {frame_idx} ({video_str}): no prompts, skipping")
         continue
-    # xy (pixels) -> normalized [0, 1]
-    norm_points_xy = prompts_xy / np.array([width, height], dtype=np.float32)
 
-    # --------------------
-    # Pass image to processor and reset inference state
-    inference_state = processor.set_image(image)  # maybe: set_image_batch?
-    processor.reset_all_prompts(
-        inference_state
-    )  # mutates the state dict in place
-
-    # Add optional text prompt
-    if TEXT_PROMPT is not None:
-        inference_state = processor.set_text_prompt(
-            state=inference_state, prompt=TEXT_PROMPT
-        )
-
-    # Add normalised point prompts (all at once; grounds a single time)
-    inference_state = add_point_prompts(
-        processor, inference_state, norm_points_xy, labels=True
+    # Add all prompts to inference state
+    inference_state = add_prompts_to_inference_state(
+        processor,
+        image,
+        prompts_xy_norm,
+        text_prompt=TEXT_PROMPT,
     )
-    # --------------------
 
     # Get predicted boolean masks and scores
-    # Move masks to CPU, then release this frame's GPU state before the
-    # next frame: otherwise the previous state (backbone features +
-    # full-res masks_logits) stays alive during the next forward pass.
-    masks = inference_state["masks"].cpu().numpy()
-    scores = inference_state["scores"].float().cpu().numpy()  # (N,)
-    del inference_state
-    torch.cuda.empty_cache()
-
-    masks = masks.squeeze(1) if masks.ndim == 4 else masks  # (N, H, W)
-    n_objects = masks.shape[0]
+    masks, scores, n_objects = extract_sam3_results_one_img(inference_state)
     if n_objects == 0:
         print(f"Frame {frame_idx} ({video_str}): no detections")
         continue
 
-    # -----------------------
-    # Postprocess masks
-    list_kept_regions, list_mask_idcs, drop_counts = postprocess_masks(
+    # Split masks into "regions" and postprocess
+    list_kept_region_masks, list_kept_scores, drop_counts = postprocess_masks(
         masks,
+        scores,
         MIN_MASK_AREA_PIXELS,
         MAX_MASK_AREA_PIXELS,
         MIN_SOLIDITY,
     )
-    n_kept_regions = len(list_kept_regions)
+
+    # -------------------------------------------
+    # Log postprocessing results for this frame
+    # (n_total_regions: total regions split from masks)
+    if not list_kept_region_masks:
+        print(
+            f"Frame {frame_idx} ({video_str}): no masks after postprocessing"
+        )
+        count_postproc_frames_empty += 1
+        continue
+
+    n_kept_regions = len(list_kept_region_masks)
     n_total_regions = n_kept_regions + sum(drop_counts.values())
     print(
         f"Frame {frame_idx} ({video_str}): postprocessing kept "
         f"{n_kept_regions}/{n_total_regions} regions, "
         f"dropped {drop_counts}"
     )
-    if not list_kept_regions:
-        print(
-            f"Frame {frame_idx} ({video_str}): no masks after postprocessing"
-        )
-        count_empty_frames += 1
-        continue
 
     # ------------------------------------
     # Compute id-encoded mask per region
     # boolean masks (N, H, W) -> ID-encoded (H, W); higher ID wins on overlap
-
-    # initialise id-encode mask
-    id_mask = np.zeros((image_h, image_w), dtype=np.int16)
-
-    # loop thru region IDs
-    region_ids = np.arange(1, len(list_kept_regions) + 1, dtype=np.int16)
-    for region_id, bool_mask in zip(
-        region_ids,
-        list_kept_regions,
-        strict=True,
-    ):
-        id_mask[bool_mask] = region_id
-
-    # -----------------------
-    # Compute score per region
-    # Score for each region: each kept region inherits the SAM3 score of the
-    # mask it was split from (list_mask_idcs maps back into `scores`).
-    region_scores = scores[list_mask_idcs]
-    region_id_to_score = {
-        str(id): float(score)
-        for id, score in zip(region_ids, region_scores, strict=True)
-    }
-    # -----------------------
+    id_mask, region_ids = convert_bool_to_id_mask(
+        list_kept_region_masks, img_h, img_w
+    )
 
     # Save results to zarr
-    mask_zarr[frame_idx] = id_mask
+    root["masks"][frame_idx] = id_mask
+    root["scores"][frame_idx, region_ids] = list_kept_scores
 
-    # Log processed frames
-    processed_frames.append(frame_idx)
+    # Log frames with masks that survived
+    postproc_frames_w_masks.append(frame_idx)
 
-    # Log scores per region (called mask in final store),
-    region_id_to_score_per_frame[str(frame_idx)] = region_id_to_score
-    mask_zarr.attrs["mask_scores"] = region_id_to_score_per_frame
-    print(f"Frame {frame_idx} ({video_str}): {len(list_kept_regions)} masks")
+    print(
+        f"Frame {frame_idx} ({video_str}): {len(list_kept_region_masks)} masks"
+    )
 
 print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
 
 # Log processed frames
-mask_zarr.attrs["processed_frames"] = processed_frames
+root.attrs["frames_with_masks"] = postproc_frames_w_masks
 
-print(f"Frames with no masks: {count_empty_frames}")
+print(f"Frames with no masks: {count_postproc_frames_empty}")
 
 # %%%%%%%%%%%%%%%%%
 # Subsequent passes
@@ -514,12 +616,14 @@ img_h_i, img_w_i = img_iter.shape[:2]
 # ---------- Compute new prompts ----------------------
 # 1. Select High-score kept masks that contain no existing prompt points
 # get rows and column indices for each prompt
-prompt_rc = np.round(prompts_xy[:, ::-1]).astype(int)  # (N, 2) as (row, col)
+prompt_rc = np.round(prompts_xy_norm[:, ::-1]).astype(
+    int
+)  # (N, 2) as (row, col)
 prompt_rows = prompt_rc[:, 0].clip(0, img_h_i - 1)
 prompt_cols = prompt_rc[:, 1].clip(0, img_w_i - 1)
 
 new_bboxes_xyxy = []
-for m, s in zip(list_kept_regions, region_scores, strict=True):
+for m, s in zip(list_kept_region_masks, region_scores, strict=True):
     # skip masks with score below threshold
     if s <= PROMPT_SELECTION_MIN_SCORE:
         continue
@@ -542,48 +646,6 @@ print(f"{len(new_bboxes_xyxy)} predicted masks selected for re-prompting")
 # %%
 # 3. Derive a point per new bbox
 new_points_xy = 0.5 * (new_bboxes_xyxy[:, :2] + new_bboxes_xyxy[:, 2:])
-
-# %%
-# plot old and new prompts
-# old prompts (lime x), new prompts (cyan x) and the mask bboxes the new
-# points were derived from (cyan rectangles).
-fig, ax = plt.subplots()
-ax.imshow(img_iter)
-ax.scatter(
-    prompts_xy[:, 0],
-    prompts_xy[:, 1],
-    c="lime",
-    marker="x",
-    s=120,
-    label=f"old ({len(prompts_xy)})",
-)
-if len(new_points_xy):
-    ax.scatter(
-        new_points_xy[:, 0],
-        new_points_xy[:, 1],
-        c="cyan",
-        marker="x",
-        s=120,
-        label=f"new ({len(new_points_xy)})",
-    )
-for x1, y1, x2, y2 in new_bboxes_xyxy:
-    ax.add_patch(
-        patches.Rectangle(
-            (x1, y1),
-            x2 - x1,
-            y2 - y1,
-            fill=False,
-            linewidth=1.5,
-            edgecolor="cyan",
-        )
-    )
-ax.set_axis_off()
-ax.legend(loc="upper right")
-ax.set_title(
-    f"{image_array.img_paths[selected_frame_idx].stem} - "
-    f"{len(prompts_xy)} old + {len(new_points_xy)} new prompts"
-)
-plt.show()
 
 
 # %%%%%%%%%%%%%%%%%
@@ -609,10 +671,10 @@ H, W = img_full.shape[:2]
 full_area = H * W
 
 # exemplar pool: old + new point prompts (pixel xy, full-image frame)
-pool_points = np.vstack([prompts_xy, new_points_xy]).astype(np.float32)
+pool_points = np.vstack([prompts_xy_norm, new_points_xy]).astype(np.float32)
 print(
     f"exemplar pool: {len(pool_points)} points "
-    f"({len(prompts_xy)} old + {len(new_points_xy)} new)"
+    f"({len(prompts_xy_norm)} old + {len(new_points_xy)} new)"
 )
 
 
@@ -726,7 +788,7 @@ merged_masks, merged_scores = _merge_by_iou(
 # TODO: review this count, I dont get it
 print(
     f"{len(merged_masks)} masks after cross-tile merge "
-    f"(pass-1 had {len(list_kept_regions)})"
+    f"(pass-1 had {len(list_kept_region_masks)})"
 )
 
 # %%
