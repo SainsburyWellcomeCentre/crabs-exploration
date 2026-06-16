@@ -866,53 +866,6 @@ print(f"Saved combined ID-mask zarr to {output_combined_zarr}")
 
 
 
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# --- plot: pass-1 vs tiled result -----------------------------------------
-# Read both ID-masks back from zarr so we don't hold N full-res bool masks
-# in RAM, and use imshow instead of N ax.contour calls (much lighter).
-pass1_id_mask = masks_pass_1[selected_frame_idx]
-tiled_id_mask = tiled_mask_zarr[selected_frame_idx]
-n_pass1 = int(pass1_id_mask.max())
-n_tiled = int(tiled_id_mask.max())
-
-fig, axes = plt.subplots(1, 2, figsize=(16, 8))
-for ax, (title, id_arr) in zip(
-    axes,
-    [
-        (f"pass 1 - {n_pass1} masks", pass1_id_mask),
-        (f"tiled (option C) - {n_tiled} masks", tiled_id_mask),
-    ],
-    strict=True,
-):
-    ax.imshow(img_full)
-    ax.imshow(
-        np.ma.masked_where(id_arr == 0, id_arr),
-        cmap="tab10",
-        alpha=0.5,
-        interpolation="nearest",
-    )
-    ax.set_axis_off()
-    ax.set_title(title)
-# tile boundaries + exemplar pool overlaid on the tiled result
-for x0, y0, x1, y1 in tiles:
-    axes[1].add_patch(
-        patches.Rectangle(
-            (x0, y0),
-            x1 - x0,
-            y1 - y0,
-            fill=False,
-            edgecolor="cyan",
-            linewidth=0.7,
-            linestyle=":",
-        )
-    )
-axes[1].scatter(
-    pool_points[:, 0], pool_points[:, 1], c="lime", marker="x", s=40
-)
-plt.tight_layout()
-plt.show()
-# %%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Plot trajectories on top of tiled burrow masks
 # Overlay per-individual crab trajectories (from the CrabTracks zarr datatree)
