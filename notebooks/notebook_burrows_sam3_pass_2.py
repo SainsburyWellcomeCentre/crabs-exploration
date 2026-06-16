@@ -319,7 +319,6 @@ def postprocess_masks(
     return list_kept_bool_regions, list_kept_scores, drop_counts
 
 
-
 def compute_new_prompts_from_masks(
     bool_masks: np.ndarray,
     scores: np.ndarray,
@@ -402,6 +401,120 @@ def convert_id_mask_to_bool(id_mask):
     bool_masks = id_mask[None] == region_ids[:, None, None]
 
     return bool_masks, region_ids
+
+
+# %%
+# Tiled inference
+def _make_tiles(img_h, img_w, tile_side, tile_overlap) -> list[tuple[int]]:
+    """Overlapping (x0, y0, x1, y1) tiles covering the image.
+    
+    standard image coordinates (origin top-left, y increasing downward).
+    """
+    step = tile_side - tile_overlap
+
+    # we use set to easily remove tuple duplicates
+    # (near the edge, the clamping behaviour means
+    # many tiles can be "rounded" to the same tile)
+    tiles = set()
+
+    # loop thru candidate top left corner of tile
+    for y0 in range(0, max(1, img_h - tile_overlap), step):
+        for x0 in range(0, max(1, img_w - tile_overlap), step):
+            # compute bottom right corner of tile,
+            # clamped to image edge
+            x1 = min(x0 + tile_side, img_w)
+            y1 = min(y0 + tile_side, img_h)
+
+            # add (x0,y0,x1,y1) to set
+            tiles.add(
+                (
+                    # top left corner of tile; we
+                    # derive it from bottom right corner
+                    # so that tile always stays full sized
+                    # (for interior tiles, it matches x0,y0)
+                    max(0, x1 - tile_side), 
+                    max(0, y1 - tile_side),
+                    # bottom right corner of tile
+                    x1, 
+                    y1,
+                )
+            )
+    return sorted(tiles)
+
+
+def _run_sam3_points(image_pil, points_xy_norm, processor):
+    """Run SAM3 (text + points) on a (cropped) image; masks in its frame."""
+    # pass image
+    inference_state = processor.set_image(image_pil)
+    processor.reset_all_prompts(inference_state)
+
+    # add text prompt
+    if TEXT_PROMPT is not None:
+        inference_state = processor.set_text_prompt(
+            state=inference_state, prompt=TEXT_PROMPT
+        )
+
+    # add point prompts
+    inference_state = add_point_prompts(
+        processor,
+        inference_state,
+        points_xy_norm,
+        labels=True,
+    )
+
+    # Get results
+    masks = inference_state["masks"].cpu().numpy()
+    scores = inference_state["scores"].float().cpu().numpy()
+    del inference_state
+    torch.cuda.empty_cache()
+
+    masks = masks.squeeze(1) if masks.ndim == 4 else masks
+    if masks.shape[0] == 0:
+        return [], np.empty(0, dtype=float)
+
+    # postprocess masks
+    list_kept_masks, list_kept_scores, _drop_counts = postprocess_masks(
+        masks,
+        scores,
+        MIN_MASK_AREA_PIXELS,
+        MAX_MASK_AREA_PIXELS,
+        MIN_SOLIDITY,
+    )
+    return list_kept_masks, list_kept_scores
+
+
+def _merge_by_iou(masks, scores, iou_thresh, containment_thresh=0.8):
+    """Greedy IoU de-duplication of full-image masks; higher score wins on overlap."""
+    kept_masks, kept_scores = [], []
+    for score_idx in np.argsort(scores)[::-1]:  # high score first
+        single_mask = masks[score_idx]
+        single_mask_area = single_mask.sum()
+
+        # check if mask has duplicate in kept_masks
+        # (we count a duplicate if IOU > threshold or if
+        # containment > threshold)
+        is_duplicate = False
+        for k_mask in kept_masks:
+            # compute IOU wrt existing mask
+            inter_area = np.logical_and(single_mask, k_mask).sum()
+            union_area = single_mask_area + k_mask.sum() - inter_area
+            iou = inter_area / union_area if union_area else 0.0
+
+            # compute containment wrt existing mask
+            # (fraction of the SMALLER mask covered by the other)
+            smaller_area = min(single_mask_area, k_mask.sum())
+            containment = inter_area / smaller_area if smaller_area else 0.0
+
+            # check
+            if iou > iou_thresh or containment > containment_thresh:
+                is_duplicate = True
+                break
+
+        # if no duplicates found: add to list of kept masks
+        if not is_duplicate:
+            kept_masks.append(single_mask)
+            kept_scores.append(scores[score_idx])
+    return kept_masks, np.array(kept_scores)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -487,7 +600,7 @@ for frame_idx, video_str in enumerate(list_video_per_img):
     # if no manual prompts: continue
     prompts_xy_norm = points_xy_normalised_per_video.get(video_str)
     if prompts_xy_norm is None:
-        continue  
+        continue
 
     # Get pass-1 masks as boolean masks, and scores for this frame
     # (scores are indexed by region ID with NaN where absent; dropping NaN
@@ -511,7 +624,6 @@ for frame_idx, video_str in enumerate(list_video_per_img):
     )
 
 
-
 # %%%%%%%%%%%%%%%%%
 # Option C: tiled inference seeded by old + new point prompts
 # -----------------------------------------------------------
@@ -528,86 +640,13 @@ TILE_SIZE = int(img_h / 3)  # tile side in pixels
 TILE_OVERLAP = int(
     TILE_SIZE / 2
 )  # int(image_w*0.05) #256    # overlap between neighbouring tiles, in pixels
+# we should aim for burrows diameter < overlap, so that at least one tile captures
+# all burrows 
 MERGE_IOU = 0.5  # IoU above which two tile masks are the same burrow
 
 img_full = image_array[selected_frame_idx]
 H, W = img_full.shape[:2]
 full_area = H * W
-
-# Exemplar pool (old + new prompts) in pixel (x, y) for tile assignment
-pool_points = extended_prompts_xy_norm * np.array(
-    [img_w, img_h], dtype=np.float32
-)
-
-
-# %%
-def _make_tiles(img_h, img_w, tile, overlap):
-    """Overlapping (x0, y0, x1, y1) tiles covering the image."""
-    step = tile - overlap
-    tiles = set()
-    for y0 in range(0, max(1, img_h - overlap), step):
-        for x0 in range(0, max(1, img_w - overlap), step):
-            # clamp to image, then shift back so the tile stays full-sized
-            x1, y1 = min(x0 + tile, img_w), min(y0 + tile, img_h)
-            tiles.add((max(0, x1 - tile), max(0, y1 - tile), x1, y1))
-    return sorted(tiles)
-
-
-def _run_sam3_points(image_pil, points_xy_px, area_for_postproc):
-    """Run SAM3 (text + points) on a (cropped) image; masks in its frame."""
-    w, h = image_pil.size
-    state = processor.set_image(image_pil)
-    processor.reset_all_prompts(state)
-
-    # text prompt
-    if TEXT_PROMPT is not None:
-        state = processor.set_text_prompt(state=state, prompt=TEXT_PROMPT)
-
-    # point prompts (all at once; grounds a single time)
-    state = add_point_prompts(
-        processor,
-        state,
-        points_xy_px / np.array([w, h], dtype=np.float32),
-        labels=True,
-    )
-
-    masks = state["masks"].cpu().numpy()
-    scores = state["scores"].float().cpu().numpy()
-    del state
-    torch.cuda.empty_cache()
-
-    masks = masks.squeeze(1) if masks.ndim == 4 else masks
-    if masks.shape[0] == 0:
-        return [], np.empty(0, dtype=float)
-
-    # absolute pixel area limits stay constant regardless of tile size
-    kept, kept_scores, _ = postprocess_masks(
-        masks,
-        scores,
-        MIN_MASK_AREA_PIXELS,
-        MAX_MASK_AREA_PIXELS,
-        MIN_SOLIDITY,
-    )
-    return kept, kept_scores
-
-
-def _merge_by_iou(masks, scores, iou_thresh):
-    """Greedy IoU de-dup of full-image masks; higher score wins on overlap."""
-    kept_m, kept_s = [], []
-    for i in np.argsort(scores)[::-1]:  # high score first
-        m = masks[i]
-        area = m.sum()
-        is_dup = False
-        for km in kept_m:
-            inter = np.logical_and(m, km).sum()
-            union = area + km.sum() - inter
-            if union and inter / union > iou_thresh:
-                is_dup = True
-                break
-        if not is_dup:
-            kept_m.append(m)
-            kept_s.append(scores[i])
-    return kept_m, np.array(kept_s)
 
 
 # %%
