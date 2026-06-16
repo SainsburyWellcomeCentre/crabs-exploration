@@ -42,21 +42,13 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 from datetime import datetime
 from pathlib import Path
 
-import matplotlib.patches as patches
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 import zarr
 from PIL import Image
 from sam3 import build_sam3_image_model
-from sam3.model.box_ops import box_xywh_to_cxcywh
 from sam3.model.sam3_image_processor import Sam3Processor
-from sam3.visualization_utils import (
-    normalize_bbox,  # TODO: replace with equivalent numpy function
-)
-from scipy import ndimage as ndi
-from skimage.filters import gaussian, threshold_otsu
 from skimage.measure import label as sk_label
 from skimage.measure import regionprops
 
@@ -576,3 +568,5 @@ root.attrs["frames_with_masks"] = postproc_frames_w_masks
 
 print(f"Frames with no masks: {count_postproc_frames_empty}")
 
+
+# %%
