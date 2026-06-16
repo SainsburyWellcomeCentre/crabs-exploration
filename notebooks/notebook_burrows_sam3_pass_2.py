@@ -894,8 +894,12 @@ print(f"Saved combined ID-mask zarr to {output_combined_zarr}")
 # trajectories, and flag burrows with many trajectory samples. Saves a
 # self-contained interactive HTML and opens it in the browser.
 
+root_combined = zarr.open_group(str(output_combined_zarr), mode="r")
+dt = xr.open_datatree(CRABS_ZARR, engine="zarr", chunks={})
+
 plot_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 tab10_rgb = (np.array(plt.cm.tab10.colors) * 255).astype(np.uint8)  # (10, 3)
+pio.renderers.default = "browser"
 
 # each button uses args/args2 to act as an on/off switch for one overlay
 # (accepts a single trace index or a list, e.g. the per-burrow contour traces)
@@ -908,10 +912,6 @@ def _toggle_button(label, trace_idcs):
         args=[{"visible": False}, list(trace_idcs)],
         args2=[{"visible": True}, list(trace_idcs)],
     )
-
-
-root_combined = zarr.open_group(str(output_combined_zarr), mode="r")
-dt = xr.open_datatree(CRABS_ZARR, engine="zarr", chunks={})
 
 for frame_idx in range(n_images):
     video_str = list_video_per_img[frame_idx]
@@ -978,7 +978,6 @@ for frame_idx in range(n_images):
 
     # --------
     # build the figure
-    pio.renderers.default = "browser"
     fig = go.Figure()
 
     # image
@@ -1105,7 +1104,6 @@ for frame_idx in range(n_images):
     )
     fig.write_html(str(output_html), include_plotlyjs=True)
     print(f"Saved interactive plot to {output_html}")
-    fig.show(renderer="browser")
 
 # %%
 # del processor, model; gc.collect(); torch.cuda.empty_cache()
