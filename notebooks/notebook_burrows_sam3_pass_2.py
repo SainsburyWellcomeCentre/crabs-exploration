@@ -81,7 +81,6 @@ CONF_THRESHOLD = (
 # -------------------------
 # Postprocessing of masks
 # -------------------------
-# TODO: change to pixels
 MIN_MASK_AREA_PIXELS = 200  # 100  # 200? in crab bodylengths?
 MAX_MASK_AREA_PIXELS = 2500
 MIN_SOLIDITY = 0.95
@@ -91,6 +90,8 @@ MIN_SOLIDITY = 0.95
 OUTPUT_DIR = Path(
     "/home/sminano/swc/project_crabs/crabs-exploration/output_burrows_sam3"
 )
+
+MAX_REGIONS_PER_IMAGE = 500
 
 # %%
 # %matplotlib widget
@@ -343,8 +344,6 @@ def extract_sam3_results_one_img(inference_state):
     """
     masks = inference_state["masks"].cpu().numpy()
     scores = inference_state["scores"].float().cpu().numpy()  # (N,)
-    del inference_state
-    torch.cuda.empty_cache()
 
     masks = masks.squeeze(1) if masks.ndim == 4 else masks  # (N, H, W)
     n_objects = masks.shape[0]
@@ -438,6 +437,80 @@ def convert_bool_to_id_mask(list_kept_region_masks, img_h, img_w):
     return id_mask, region_ids
 
 
+def compute_new_prompts_from_masks(
+    list_masks: list[np.ndarray],
+    list_scores: list[float],
+    mask_min_score: float,
+    prompts_xy_norm: np.ndarray,
+    *,
+    img_h: int,
+    img_w: int,
+) -> np.ndarray:
+    """Derive new point prompts from the centroids of selected masks.
+
+    A mask contributes a new prompt only if its score exceeds
+    ``mask_min_score`` and none of the existing prompts fall inside it.
+    The new prompt is the centroid of the mask's bounding box.
+
+    Parameters
+    ----------
+    list_masks : list[np.ndarray]
+        Boolean masks, each of shape ``(img_h, img_w)``.
+    list_scores : list[float]
+        Confidence score for each mask, aligned with ``list_masks``.
+    mask_min_score : float
+        Masks with a score at or below this value are discarded.
+    prompts_xy_norm : np.ndarray
+        Existing prompts as ``(N, 2)`` normalised ``(x, y)`` coordinates
+        in ``[0, 1]``.
+    img_h : int
+        Image height in pixels.
+    img_w : int
+        Image width in pixels.
+
+    Returns
+    -------
+    np.ndarray
+        New prompts as ``(M, 2)`` normalised ``(x, y)`` coordinates in
+        ``[0, 1]``, one per retained mask. Shape ``(0, 2)`` if none qualify.
+
+    """
+    # De-normalise prompts back to pixel (col, row)
+    prompt_cols, prompt_rows = (
+        np.round(prompts_xy_norm * [img_w, img_h]).astype(int).T
+    )
+    # clip to the valid range of row, col values
+    prompt_rows = prompt_rows.clip(0, img_h - 1)
+    prompt_cols = prompt_cols.clip(0, img_w - 1)
+
+    # Select masks to extract prompts from
+    centroids = []
+    for mask, score in zip(list_masks, list_scores, strict=True):
+        # skip
+        # - masks with score below threshold
+        # - masks with a prompt point inside it
+        if (score <= mask_min_score) or mask[prompt_rows, prompt_cols].any():
+            continue
+
+        # compute bounding box around the mask -> pixel xyxy
+        # output from np.where is row (y-axis), col (x-axis) coordinate of each
+        # pixel in this mask
+        mask_rows, mask_cols = np.where(mask)
+
+        centroids.append(
+            [
+                (mask_cols.min() + mask_cols.max()) / 2,
+                (mask_rows.min() + mask_rows.max()) / 2,
+            ]
+        )
+
+    # return centroid of bboxes as new normalised prompts
+    return np.array(centroids, dtype=np.float32).reshape(-1, 2) / [
+        img_w,
+        img_h,
+    ]
+
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load frames as a lazy array and map each frame to its video
 
@@ -467,7 +540,7 @@ root, output_masks_zarr = initialise_mask_zarr(
     MIN_MASK_AREA_PIXELS,
     MAX_MASK_AREA_PIXELS,
     MIN_SOLIDITY,
-    max_regions_per_image=500,  # ok?
+    MAX_REGIONS_PER_IMAGE,  # ok?
 )
 
 
@@ -480,7 +553,7 @@ root, output_masks_zarr = initialise_mask_zarr(
 
 # point prompts in **normalised** coords, keyed by video string
 points_xy_normalised_per_video = extract_normalised_point_prompts_per_video(
-    manual_prompts_csv
+    manual_prompts_csv, image_array.img_w, image_array.img_h
 )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -537,6 +610,9 @@ for frame_idx in range(len(image_array)):
 
     # Get predicted boolean masks and scores
     masks, scores, n_objects = extract_sam3_results_one_img(inference_state)
+    del inference_state
+    torch.cuda.empty_cache()
+
     if n_objects == 0:
         print(f"Frame {frame_idx} ({video_str}): no detections")
         continue
@@ -575,6 +651,12 @@ for frame_idx in range(len(image_array)):
         list_kept_region_masks, img_h, img_w
     )
 
+    if region_ids.max() > MAX_REGIONS_PER_IMAGE:
+        print(
+            f"Frame {frame_idx}: {len(region_ids)} regions exceeds cap"
+            # will fail on write
+        )
+
     # Save results to zarr
     root["masks"][frame_idx] = id_mask
     root["scores"][frame_idx, region_ids] = list_kept_scores
@@ -588,7 +670,7 @@ for frame_idx in range(len(image_array)):
 
 print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
 
-# Log processed frames
+# Log frames with final masks
 root.attrs["frames_with_masks"] = postproc_frames_w_masks
 
 print(f"Frames with no masks: {count_postproc_frames_empty}")
@@ -609,43 +691,23 @@ print(f"Frames with no masks: {count_postproc_frames_empty}")
 
 PROMPT_SELECTION_MIN_SCORE = 0.0  # if CONF_THRESHOLD or 0, reuses all
 
-selected_frame_idx = 0
-img_iter = image_array[selected_frame_idx]
-img_h_i, img_w_i = img_iter.shape[:2]
+img_h, img_w = image_array[0].shape[:2]
 
-# ---------- Compute new prompts ----------------------
-# 1. Select High-score kept masks that contain no existing prompt points
-# get rows and column indices for each prompt
-prompt_rc = np.round(prompts_xy_norm[:, ::-1]).astype(
-    int
-)  # (N, 2) as (row, col)
-prompt_rows = prompt_rc[:, 0].clip(0, img_h_i - 1)
-prompt_cols = prompt_rc[:, 1].clip(0, img_w_i - 1)
+new_points_xy_norm = compute_new_prompts_from_masks(
+    list_kept_region_masks,
+    list_kept_scores,
+    PROMPT_SELECTION_MIN_SCORE,
+    prompts_xy_norm,
+    img_h=img_h,
+    img_w=img_w,
+)
 
-new_bboxes_xyxy = []
-for m, s in zip(list_kept_region_masks, region_scores, strict=True):
-    # skip masks with score below threshold
-    if s <= PROMPT_SELECTION_MIN_SCORE:
-        continue
-    # skip masks already covered by a prompt point
-    # (is any point prompt inside this mask?)
-    if m[prompt_rows, prompt_cols].any():
-        continue
-
-    # if it passes previous checks:
-    # compute bounding box around the mask -> pixel xyxy
-    # output from np.where is row (y-axis), col (x-axis) coordinate of each
-    # pixel in this mask
-    ys, xs = np.where(m)
-    # we get min/max to compute bbox
-    new_bboxes_xyxy.append([xs.min(), ys.min(), xs.max(), ys.max()])
-
-new_bboxes_xyxy = np.array(new_bboxes_xyxy, dtype=np.float32).reshape(-1, 4)
-print(f"{len(new_bboxes_xyxy)} predicted masks selected for re-prompting")
-
-# %%
-# 3. Derive a point per new bbox
-new_points_xy = 0.5 * (new_bboxes_xyxy[:, :2] + new_bboxes_xyxy[:, 2:])
+# combine all prompts
+extended_prompts_xy_norm = np.vstack([prompts_xy_norm, new_points_xy_norm])
+print(
+    f"exemplar pool: {len(extended_prompts_xy_norm)} points "
+    f"({len(prompts_xy_norm)} old + {len(new_points_xy_norm)} new)"
+)
 
 
 # %%%%%%%%%%%%%%%%%
@@ -660,7 +722,7 @@ new_points_xy = 0.5 * (new_bboxes_xyxy[:, :2] + new_bboxes_xyxy[:, 2:])
 # Per-tile masks are offset back to full-image coords and de-duplicated
 # across tile seams by IoU.
 
-TILE_SIZE = int(image_h / 3)  # tile side in pixels
+TILE_SIZE = int(img_h / 3)  # tile side in pixels
 TILE_OVERLAP = int(
     TILE_SIZE / 2
 )  # int(image_w*0.05) #256    # overlap between neighbouring tiles, in pixels
@@ -669,13 +731,6 @@ MERGE_IOU = 0.5  # IoU above which two tile masks are the same burrow
 img_full = image_array[selected_frame_idx]
 H, W = img_full.shape[:2]
 full_area = H * W
-
-# exemplar pool: old + new point prompts (pixel xy, full-image frame)
-pool_points = np.vstack([prompts_xy_norm, new_points_xy]).astype(np.float32)
-print(
-    f"exemplar pool: {len(pool_points)} points "
-    f"({len(prompts_xy_norm)} old + {len(new_points_xy)} new)"
-)
 
 
 # %%
