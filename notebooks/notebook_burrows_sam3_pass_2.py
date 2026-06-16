@@ -42,17 +42,24 @@ os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 from datetime import datetime
 from pathlib import Path
 
-import matplotlib.patches as patches
+import datashader as ds
+import datashader.transfer_functions as tf
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
+import plotly.io as pio
 import torch
+import xarray as xr
 import zarr
 from PIL import Image
 from sam3 import build_sam3_image_model
 from sam3.model.sam3_image_processor import Sam3Processor
+from skimage.measure import (
+    find_contours,
+    regionprops,
+)
 from skimage.measure import label as sk_label
-from skimage.measure import regionprops
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
@@ -90,9 +97,6 @@ MAX_REGIONS_PER_IMAGE = 500
 # -------------------------------------------------------------------
 PASS_1_MASKS_ZARR = OUTPUT_DIR / "masks_20260616_151414.zarr"
 
-# Frame to run the second pass on
-SELECTED_FRAME_IDX = 0
-
 # Min score for a pass-1 mask to seed a new prompt in the second pass
 PROMPT_SELECTION_MIN_SCORE = 0.0  # if CONF_THRESHOLD or 0, reuses all
 
@@ -103,6 +107,22 @@ TEXT_PROMPT = (
 CONF_THRESHOLD = (
     0.35  # masks below this threshold are not scaled up to full res
 )
+
+
+# ----------------
+# Plots
+# --------------
+
+CRABS_ZARR = (
+    Path.home()
+    / "swc"
+    / "project_crabs"
+    / "data"
+    / "_CrabTracks"
+    / "CrabTracks-slurm2478780-2478861-2489356.zarr"
+)
+DYNSPREAD_THRESHOLD = 0.975
+MIN_HITS_PER_BURROW = 30  # min trajectory samples in a mask to flag it (red)
 
 
 # %%%%%%%%%%
@@ -801,8 +821,11 @@ for frame_idx, video_str in enumerate(list_video_per_img):
 # IoU above which a pass-2 mask is treated as a duplicate of a kept mask
 CROSS_PASS_IOU = MERGE_IOU
 
-# MAX_REGIONS_PER_IMAGE for the combined store
-COMBINED_MAX_REGIONS = 1.5 * MAX_REGIONS_PER_IMAGE # ok?
+# MAX_REGIONS_PER_IMAGE for the combined store. Hard upper bound is
+# 2 * MAX_REGIONS_PER_IMAGE (both passes hit the cap with no cross-pass
+# dedup); 1.5x is usually plenty since dedup drops pass-2 duplicates. Must
+# be an int (it sets the scores/data_pass array width).
+COMBINED_MAX_REGIONS = int(1.5 * MAX_REGIONS_PER_IMAGE)
 
 # Fresh combined store (same schema as the per-pass stores)
 root_combined, output_combined_zarr = initialise_mask_zarr(
@@ -855,9 +878,7 @@ for frame_idx in range(n_images):
 
     # Encode and write masks + scores + provenance, all indexed by region ID
     # (IDs follow kept_masks order: pass-1 IDs first, then kept pass-2)
-    id_mask, region_ids = convert_bool_to_id_mask(
-        kept_masks, image_h, image_w
-    )
+    id_mask, region_ids = convert_bool_to_id_mask(kept_masks, image_h, image_w)
     root_combined["masks"][frame_idx] = id_mask
     root_combined["scores"][frame_idx, region_ids] = kept_scores
     data_pass_arr[frame_idx, region_ids] = kept_pass
@@ -865,114 +886,87 @@ for frame_idx in range(n_images):
 print(f"Saved combined ID-mask zarr to {output_combined_zarr}")
 
 
-
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Plot trajectories on top of tiled burrow masks
-# Overlay per-individual crab trajectories (from the CrabTracks zarr datatree)
-# on the selected frame, alongside the tiled-pass burrow masks.
+# Plot crab trajectories on top of the COMBINED burrow masks
+# -----------------------------------------------------------------------
+# For the selected frame: read the combined ID-mask (pass-1 + deduplicated
+# pass-2) back from the combined store, overlay per-individual crab
+# trajectories, and flag burrows with many trajectory samples. Saves a
+# self-contained interactive HTML and opens it in the browser.
 
-import xarray as xr  # noqa: E402
+plot_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-crabs_zarr_dataset = (
-    Path.home()
-    / "swc"
-    / "project_crabs"
-    / "data"
-    / "_CrabTracks"
-    / "CrabTracks-slurm2478780-2478861-2489356.zarr"  # "CrabTracks-slurm3012633.zarr"
+# selected image --- TODO: loop thru images
+selected_frame_idx = 0
+video_str = list_video_per_img[selected_frame_idx]
+img_h_i, img_w_i = image_array.img_h, image_array.img_w
+
+# combined masks for this frame
+# masks: ID-encoded (H, W); data_pass: per-region-ID origin (1 or 2)
+root_combined = zarr.open_group(str(output_combined_zarr), mode="r")
+combined_id_mask = root_combined["masks"][selected_frame_idx].astype(np.int32)
+n_masks = len(np.unique(combined_id_mask)) - 1
+
+# ------------
+# get manual prompts (normalised -> pixels)
+manual_pts = points_xy_normalised_per_video[video_str] * np.array(
+    [img_w_i, img_h_i], dtype=np.float32
 )
 
-dt = xr.open_datatree(crabs_zarr_dataset, engine="zarr", chunks={})
-
-# Get video data
-video_str = list_video_per_img[selected_frame_idx]
-ds_video = dt[video_str].to_dataset()
-
-# Flatten all (clip_id, time, individuals) samples and drop NaNs. No
-# trajectory-length filter here — every non-NaN sample is plotted, and the
-# minimum-hit threshold (MIN_HITS_PER_BURROW, below) controls which burrows
-# get flagged in red.
-position = ds_video.position  # (clip_id, time, individuals, space)
+# --------------
+# trajectories: flatten (clip_id, time, individuals) + drop NaNs
+dt = xr.open_datatree(CRABS_ZARR, engine="zarr", chunks={})
+position = dt[video_str].to_dataset().position
 x = position.sel(space="x").values.reshape(-1)
 y = position.sel(space="y").values.reshape(-1)
 valid = ~np.isnan(x) & ~np.isnan(y)
-x_clean, y_clean = x[valid], y[valid]
+x_traj, y_traj = x[valid], y[valid]
 del x, y, valid
 
-# Rasterise trajectory points with datashader: positions are
-# (clip_id, time, individuals, space) padded to max time across clips,
-# so we flatten x/y and drop NaNs (padding + missing detections) before
-# aggregating onto a full-res canvas.
-import datashader as ds  # noqa: E402
-import datashader.transfer_functions as tf  # noqa: E402
-
-DYNSPREAD_THRESHOLD = 0.975
-
-img_h_i, img_w_i = image_array.img_h, image_array.img_w
+# --------------
+# rasterise trajectory points to an RGBA overlay (datashader)
 canvas = ds.Canvas(
     plot_width=img_w_i,
     plot_height=img_h_i,
     x_range=(0, img_w_i),
     y_range=(0, img_h_i),
 )
-agg = canvas.points(pd.DataFrame({"x": x_clean, "y": y_clean}), "x", "y")
-traj_img = tf.shade(agg, cmap=["#c3ff1f"])
-traj_img = tf.dynspread(traj_img, threshold=DYNSPREAD_THRESHOLD)
-# datashader y-origin is bottom; flip to match image y-origin (top)
-traj_rgba = np.array(traj_img.to_pil().transpose(Image.FLIP_TOP_BOTTOM))
+agg = canvas.points(pd.DataFrame({"x": x_traj, "y": y_traj}), "x", "y")
+traj_shaded = tf.dynspread(
+    tf.shade(agg, cmap=["#c3ff1f"]),
+    threshold=DYNSPREAD_THRESHOLD,
+)
+# datashader y-origin is at the bottom; flip to match image y-origin (top)
+traj_rgba = np.array(traj_shaded.to_pil().transpose(Image.FLIP_TOP_BOTTOM))
 
-# ---------------------
-# Combine pass-1 + tiled ID-masks into one with non-colliding IDs. Tiled
-# IDs are shifted by n_pass1; on overlap pass-1 wins (i.e. tiled is only
-# written where pass-1 is background). All masks are rendered with one
-# colourmap so the two passes are visually undifferentiated.
-pass1_id_mask = masks_pass_1[selected_frame_idx]
-tiled_id_mask = tiled_mask_zarr[selected_frame_idx]
-n_pass1 = int(pass1_id_mask.max())
-n_tiled = int(tiled_id_mask.max())
-
-tiled_shifted = np.where(tiled_id_mask > 0, tiled_id_mask + n_pass1, 0)
-combined_id_mask = np.where(
-    pass1_id_mask > 0, pass1_id_mask, tiled_shifted
-).astype(np.int32)
-combined_masked = np.ma.masked_where(combined_id_mask == 0, combined_id_mask)
-n_combined_max_id = int(combined_id_mask.max())
-
-# Per-burrow trajectory-sample counts over the combined ID-mask. Sample
-# the ID-mask at the integer pixel under each trajectory point, then
-# bincount (index 0 = background, dropped via the [1:] slice below).
-MIN_HITS_PER_BURROW = 30  # min trajectory samples inside a mask to flag it
-
-traj_cols = np.round(x_clean).astype(int).clip(0, img_w_i - 1)
-traj_rows = np.round(y_clean).astype(int).clip(0, img_h_i - 1)
-ids_at_traj = combined_id_mask[traj_rows, traj_cols]
-hits_per_id = np.bincount(ids_at_traj, minlength=n_combined_max_id + 1)
-# +1 because IDs are 1-indexed (id 0 = background)
-hit_ids = np.where(hits_per_id[1:] >= MIN_HITS_PER_BURROW)[0] + 1
-
-# Interactive Plotly figure: saves a self-contained HTML and opens it in the
-# browser. Legend has two toggles: one for "masks" (all mask fills + red
-# hit-mask contours toggle together via legendgroup) and one for
-# "trajectories" (the datashader-rasterised trajectory overlay).
-import plotly.graph_objects as go  # noqa: E402
-import plotly.io as pio  # noqa: E402
-from skimage.measure import find_contours  # noqa: E402
-
-pio.renderers.default = "browser"
-
-# Build an RGBA overlay for the combined ID-mask using the tab10 colormap, so
-# all masks render as a single go.Image trace (one legend entry).
+# -------- 
+# plot masks as a single RGBA image (tab10, cycled over IDs) 
 tab10_rgb = (np.array(plt.cm.tab10.colors) * 255).astype(np.uint8)  # (10, 3)
 mask_rgba = np.zeros((img_h_i, img_w_i, 4), dtype=np.uint8)
-mask_nonzero = combined_id_mask > 0
-mask_rgba[mask_nonzero, :3] = tab10_rgb[
-    (combined_id_mask[mask_nonzero] - 1) % 10
-]
-mask_rgba[mask_nonzero, 3] = 128  # fill alpha ~= 0.5
+nonzero = combined_id_mask > 0
+mask_rgba[nonzero, :3] = tab10_rgb[(combined_id_mask[nonzero] - 1) % 10]
+mask_rgba[nonzero, 3] = 128  # fill alpha ~= 0.5
 
+# --------------
+# compute per-burrow trajectory-point counts 
+# sample the ID-mask under each (rounded) trajectory point, then bincount
+# (index 0 = background, dropped via the [1:] slice below)
+traj_cols = np.round(x_traj).astype(int).clip(0, img_w_i - 1)
+traj_rows = np.round(y_traj).astype(int).clip(0, img_h_i - 1)
+hits_per_id = np.bincount(
+    combined_id_mask[traj_rows, traj_cols], # IDs of masks that have traj data
+    minlength=n_masks + 1 
+    # to ensure the output vector has a slot for every ID, 
+    # even if it has no hits
+)
+hit_ids = np.where(hits_per_id[1:] >= MIN_HITS_PER_BURROW)[0] + 1  # 1-indexed
+
+# -------- 
+# build the figure 
+pio.renderers.default = "browser"
 fig = go.Figure()
 
-# Background frame: layout image (sits below all traces, not toggleable)
+# image
 fig.add_layout_image(
     source=Image.fromarray(image_array[selected_frame_idx]),
     xref="x",
@@ -985,23 +979,24 @@ fig.add_layout_image(
     layer="below",
 )
 
-# Masks overlay. go.Image traces cannot appear in the legend at all (no
-# `showlegend`/`legendgroup` properties), so we toggle them via layout
-# `updatemenus` buttons defined below. The red hit-mask contours are kept
-# as always-visible Scatter traces (showlegend=False -> no legend clutter).
+# mask fills: go.Image can't appear in the legend, so we toggle it via the
+# `updatemenus` buttons below
 masks_trace_idx = len(fig.data)
 fig.add_trace(
     go.Image(
         z=mask_rgba,
         colormodel="rgba256",
-        name=f"masks ({n_pass1} pass-1 + {n_tiled} tiled)",
+        name=f"masks ({n_masks})",
         hoverinfo="skip",
     )
 )
 
-# Red contours for hit masks: always visible, no legend entries
+# red contours for flagged burrows: no legend entries, toggled together via
+# the button below (one trace per contour, indices collected here)
+contour_trace_idcs = []
 for mid in hit_ids:
     for contour in find_contours(combined_id_mask == mid, 0.5):
+        contour_trace_idcs.append(len(fig.data))
         fig.add_trace(
             go.Scatter(
                 x=contour[:, 1],
@@ -1013,22 +1008,19 @@ for mid in hit_ids:
             )
         )
 
-# Trajectories overlay.
-# colormodel="rgba256" is required so plotly honours the alpha channel of
-# `z`; the default "rgb" would render the trajectory image as fully opaque
-# lime and hide every layer beneath it.
+# trajectories overlay
+# colormodel="rgba256" is required so plotly honours the alpha channel
 traj_trace_idx = len(fig.data)
 fig.add_trace(
     go.Image(
         z=traj_rgba,
         colormodel="rgba256",
-        name=f"trajectories ({position.sizes['individuals']} individuals)",
+        name="trajectories",
         hoverinfo="skip",
     )
 )
 
-# Manual prompts as crosses
-manual_pts = points_xy_per_video[video_str]
+# add original manual prompts as crosses
 prompts_trace_idx = len(fig.data)
 fig.add_trace(
     go.Scatter(
@@ -1042,11 +1034,24 @@ fig.add_trace(
     )
 )
 
+
+# each button uses args/args2 to act as an on/off switch for one overlay
+# (accepts a single trace index or a list, e.g. the per-burrow contour traces)
+def _toggle_button(label, trace_idcs):
+    if isinstance(trace_idcs, int):
+        trace_idcs = [trace_idcs]
+    return dict(
+        label=label,
+        method="restyle",
+        args=[{"visible": False}, list(trace_idcs)],
+        args2=[{"visible": True}, list(trace_idcs)],
+    )
+
+
 fig.update_layout(
     title=(
         f"{image_array.img_paths[selected_frame_idx].stem} - "
-        f"{position.sizes['individuals']} trajectories, "
-        f"{n_pass1} pass-1 + {n_tiled} tiled masks "
+        f"{n_masks} masks "
         f"({len(hit_ids)} with >= {MIN_HITS_PER_BURROW} samples)"
     ),
     xaxis_title="x (pixels)",
@@ -1055,9 +1060,6 @@ fig.update_layout(
     plot_bgcolor="white",
     paper_bgcolor="white",
     showlegend=False,
-    # Toggle buttons for the two image overlays. Each button uses
-    # args/args2 so it acts as an on/off switch (click once -> args
-    # applied, click again -> args2 applied).
     updatemenus=[
         dict(
             type="buttons",
@@ -1068,24 +1070,10 @@ fig.update_layout(
             yanchor="bottom",
             showactive=False,
             buttons=[
-                dict(
-                    label="toggle masks",
-                    method="restyle",
-                    args=[{"visible": False}, [masks_trace_idx]],
-                    args2=[{"visible": True}, [masks_trace_idx]],
-                ),
-                dict(
-                    label="toggle trajectories",
-                    method="restyle",
-                    args=[{"visible": False}, [traj_trace_idx]],
-                    args2=[{"visible": True}, [traj_trace_idx]],
-                ),
-                dict(
-                    label="toggle prompts",
-                    method="restyle",
-                    args=[{"visible": False}, [prompts_trace_idx]],
-                    args2=[{"visible": True}, [prompts_trace_idx]],
-                ),
+                _toggle_button("toggle masks", masks_trace_idx),
+                _toggle_button("toggle contours", contour_trace_idcs),
+                _toggle_button("toggle trajectories", traj_trace_idx),
+                _toggle_button("toggle prompts", prompts_trace_idx),
             ],
         )
     ],
@@ -1107,9 +1095,10 @@ fig.update_layout(
     ),
 )
 
+# -------- save + show -----------------------------------------------------
 frame_stem = image_array.img_paths[selected_frame_idx].stem
 output_html = (
-    OUTPUT_DIR / f"trajectories_burrows_{frame_stem}_{timestamp}.html"
+    OUTPUT_DIR / f"trajectories_burrows_{frame_stem}_{plot_timestamp}.html"
 )
 fig.write_html(str(output_html), include_plotlyjs=True)
 print(f"Saved interactive plot to {output_html}")
