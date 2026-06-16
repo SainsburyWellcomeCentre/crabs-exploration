@@ -526,35 +526,39 @@ def _run_sam3_points(image_pil, points_xy_norm, processor):
     return list_kept_masks, list_kept_scores
 
 
+def _is_duplicate(mask, kept_masks, iou_thresh, containment_thresh=0.8):
+    """Return True if ``mask`` duplicates any kept mask by IoU/containment.
+
+    A duplicate is flagged when, against any mask in ``kept_masks``, the IoU
+    exceeds ``iou_thresh`` or the containment (fraction of the SMALLER of the
+    two masks covered by the other) exceeds ``containment_thresh``.
+    """
+    mask_area = mask.sum()
+    for k_mask in kept_masks:
+        # IoU wrt existing mask
+        inter_area = np.logical_and(mask, k_mask).sum()
+        union_area = mask_area + k_mask.sum() - inter_area
+        iou = inter_area / union_area if union_area else 0.0
+
+        # containment wrt existing mask
+        smaller_area = min(mask_area, k_mask.sum())
+        containment = inter_area / smaller_area if smaller_area else 0.0
+
+        if iou > iou_thresh or containment > containment_thresh:
+            return True
+    return False
+
+
 def _merge_by_iou(masks, scores, iou_thresh, containment_thresh=0.8):
-    """Greedy IoU de-duplication of full-image masks; higher score wins on overlap."""
+    """Greedy IoU de-duplication of full-image masks; higher score wins."""
     kept_masks, kept_scores = [], []
     for score_idx in np.argsort(scores)[::-1]:  # high score first
         single_mask = masks[score_idx]
-        single_mask_area = single_mask.sum()
 
-        # check if mask has duplicate in kept_masks
-        # (we count a duplicate if IOU > threshold or if
-        # containment > threshold)
-        is_duplicate = False
-        for k_mask in kept_masks:
-            # compute IOU wrt existing mask
-            inter_area = np.logical_and(single_mask, k_mask).sum()
-            union_area = single_mask_area + k_mask.sum() - inter_area
-            iou = inter_area / union_area if union_area else 0.0
-
-            # compute containment wrt existing mask
-            # (fraction of the SMALLER mask covered by the other)
-            smaller_area = min(single_mask_area, k_mask.sum())
-            containment = inter_area / smaller_area if smaller_area else 0.0
-
-            # check
-            if iou > iou_thresh or containment > containment_thresh:
-                is_duplicate = True
-                break
-
-        # if no duplicates found: add to list of kept masks
-        if not is_duplicate:
+        # if no duplicate of an already-kept mask: keep it
+        if not _is_duplicate(
+            single_mask, kept_masks, iou_thresh, containment_thresh
+        ):
             kept_masks.append(single_mask)
             kept_scores.append(scores[score_idx])
     return kept_masks, np.array(kept_scores)
@@ -750,11 +754,10 @@ for frame_idx, video_str in enumerate(list_video_per_img):
             canvas_array = np.zeros((image_h, image_w), dtype=bool)
             # assign data from crop
             canvas_array[y0:y1, x0:x1] = crop_mask
-
             # add result to list of masks across all tiles
             list_tile_masks.append(canvas_array)
 
-        # add list of scores
+        # add to list of scores
         list_tile_scores.extend(list_scores.tolist())
 
     # Merge masks across tiles in this image
@@ -788,48 +791,80 @@ for frame_idx, video_str in enumerate(list_video_per_img):
 
 
 # %%
-# Merge pass 1 and pass 2 results?
+# Combine pass-1 and pass-2 into a fresh store (cross-pass IoU dedup)
 
+# Pass-1 masks are kept unconditionally; a pass-2 mask is dropped if it
+# duplicates an already-kept mask (pass 1, or an earlier-kept pass 2) by IoU
+# or containment. Provenance is recorded in a "data_pass" array (1 = pass-1,
+# 2 = pass-2), indexed by region ID exactly like "scores".
+
+# IoU above which a pass-2 mask is treated as a duplicate of a kept mask
+CROSS_PASS_IOU = MERGE_IOU
+
+# MAX_REGIONS_PER_IMAGE for the combined store
+COMBINED_MAX_REGIONS = 1.5 * MAX_REGIONS_PER_IMAGE # ok?
+
+# Fresh combined store (same schema as the per-pass stores)
+root_combined, output_combined_zarr = initialise_mask_zarr(
+    OUTPUT_DIR,
+    images_dir,
+    manual_prompts_csv,
+    image_array.shape[1:3],
+    TEXT_PROMPT,
+    CONF_THRESHOLD,
+    MIN_MASK_AREA_PIXELS,
+    MAX_MASK_AREA_PIXELS,
+    MIN_SOLIDITY,
+    COMBINED_MAX_REGIONS,
+    data_pass="combined",
+)
+
+# Provenance array
+# 0 = unused, 1 = pass-1, 2 = pass-2
+data_pass_arr = root_combined.create_array(
+    "data_pass",
+    shape=root_combined["scores"].shape,
+    chunks=(1, root_combined["scores"].shape[1]),
+    dtype="int8",
+    fill_value=0,
+)
 
 # %%
-# Persist tiled-pass masks to zarr and free intermediates before plotting.
-# A separate store from the pass-1 mask_zarr so both passes coexist on disk.
+# Get results of  pass 2
+masks_pass_2 = root_pass_2["masks"]
+scores_pass_2 = root_pass_2["scores"]
 
-# TODO: ideally we save to zarr as we go!
-import gc  # noqa: E402
+# Loop thru images
+for frame_idx in range(n_images):
+    # Pass-1 masks are kept unconditionally
+    # (scores indexed by region ID, aligned with the ascending-ID bool masks)
+    bool_1, ids_1 = convert_id_mask_to_bool(masks_pass_1[frame_idx])
+    kept_masks = list(bool_1)
+    kept_scores = list(scores_pass_1[frame_idx, ids_1])
+    kept_pass = [1] * len(kept_masks)
 
-if "tiled_mask_zarr" not in globals():
-    output_tiled_masks_zarr = OUTPUT_DIR / f"masks_tiled_{timestamp}.zarr"
-    tiled_metadata_dict = {
-        **metadata_dict,
-        "pass": "tiled",
-        "tile_size": TILE_SIZE,
-        "tile_overlap": TILE_OVERLAP,
-        "merge_iou": MERGE_IOU,
-    }
-    tiled_mask_zarr = create_mask_zarr(
-        output_tiled_masks_zarr,
-        (n_images, image_h, image_w),
-        zarr_metadata_dict=tiled_metadata_dict,
+    # Pass-2 masks added only if not a duplicate of an already-kept mask;
+    # highest score first so the strongest of any near-duplicates survives
+    bool_2, ids_2 = convert_id_mask_to_bool(masks_pass_2[frame_idx])
+    scr_2 = scores_pass_2[frame_idx, ids_2]
+    for i in np.argsort(scr_2)[::-1]:
+        if not _is_duplicate(bool_2[i], kept_masks, CROSS_PASS_IOU):
+            kept_masks.append(bool_2[i])
+            kept_scores.append(scr_2[i])
+            kept_pass.append(2)
+
+    # Encode and write masks + scores + provenance, all indexed by region ID
+    # (IDs follow kept_masks order: pass-1 IDs first, then kept pass-2)
+    id_mask, region_ids = convert_bool_to_id_mask(
+        kept_masks, image_h, image_w
     )
+    root_combined["masks"][frame_idx] = id_mask
+    root_combined["scores"][frame_idx, region_ids] = kept_scores
+    data_pass_arr[frame_idx, region_ids] = kept_pass
 
-# Encode merged masks as ID-mask (higher score won the IoU merge, so order
-# in `merged_masks` is high-to-low score; IDs follow that order).
-tiled_id_mask = np.zeros((image_h, image_w), dtype=np.int16)
-for region_id, m in enumerate(merged_masks, start=1):
-    tiled_id_mask[m] = region_id
-tiled_mask_zarr[selected_frame_idx] = tiled_id_mask
+print(f"Saved combined ID-mask zarr to {output_combined_zarr}")
 
-tiled_id_to_score = {str(i + 1): float(s) for i, s in enumerate(merged_scores)}
-tiled_scores_attr = dict(tiled_mask_zarr.attrs.get("mask_scores", {}))
-tiled_scores_attr[str(selected_frame_idx)] = tiled_id_to_score
-tiled_mask_zarr.attrs["mask_scores"] = tiled_scores_attr
-print(f"Saved tiled ID-mask zarr to {output_tiled_masks_zarr}")
 
-# Drop the big per-tile mask lists now that the result is on disk.
-del list_tile_masks, tile_scores, merged_masks, merged_scores
-gc.collect()
-torch.cuda.empty_cache()
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
