@@ -129,16 +129,50 @@ class ImageArrayLazy:
         # B, H, W, C
 
 
-def create_mask_zarr(
-    zarr_store_path, zarr_array_shape, zarr_metadata_dict=None
+def initialise_mask_zarr(
+    output_dir,
+    images_dir,
+    manual_prompts_csv,
+    image_shape,
+    text_prompt,
+    conf_threshold,
+    min_mask_area_pixels,
+    max_mask_area_pixels,
+    min_solidity,
+    max_regions_per_image=500,
+    data_pass=1,
 ):
-    """Create a zarr group with an ID-encoded mask array; return the array."""
-    # Unpack shape
-    n_images, image_h, image_w = zarr_array_shape[:3]
+    """Create mask ID encoded zarr store timestamped and with metadata."""
+    # Create a timestamped masks zarr store in the output directory
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_masks_zarr = output_dir / f"masks_pass_{data_pass}_{timestamp}.zarr"
 
-    # Initialise root and mask array
-    root = zarr.open_group(zarr_store_path, mode="w")
-    mask_zarr = root.create_array(
+    n_images, image_h, image_w = image_shape  # image_array.shape[:3]
+    metadata_dict = {
+        "sam3_model": "sam3_image",
+        "source_images_dir": str(images_dir),
+        "manual_prompts_csv": str(manual_prompts_csv),
+        "n_images": n_images,
+        "image_shape": [image_h, image_w],
+        "estim_max_regions_per_image": max_regions_per_image,
+        "text_prompt": text_prompt,
+        "sam3_confidence_threshold": conf_threshold,
+        "postproc_min_mask_area_PIXELS": min_mask_area_pixels,
+        "postproc_max_mask_area_PIXELS": max_mask_area_pixels,
+        "postproc_min_solidity": min_solidity,
+        "mask_encoding": "instance_id",
+        "background_label": 0,
+        "id_first_index": 1,
+        # mask instance IDs in the zarr store start at 1 (not 0),
+        # because 0 is reserved for the background label.
+    }
+
+    # Initialise root
+    root = zarr.open_group(output_masks_zarr, mode="w")
+
+    # Add mask array
+    _mask_zarr = root.create_array(
         "masks",
         shape=(n_images, image_h, image_w),
         dtype="int16",
@@ -146,11 +180,20 @@ def create_mask_zarr(
         chunks=(1, image_h, image_w),
     )
 
-    # Add metadata to root if available
-    if zarr_metadata_dict is not None:
-        root.attrs.update(zarr_metadata_dict)
+    # Initialise scores array as a sibling of "masks"
+    # shape (n_frames, max_regions + 1); column 0 = background, unused -> NaN
+    _scores_zarr = root.create_array(
+        "scores",
+        shape=(n_images, max_regions_per_image + 1),
+        chunks=(1, max_regions_per_image + 1),
+        dtype="float32",
+        fill_value=np.nan,
+    )
 
-    return mask_zarr
+    # Add metadata to root if available
+    root.attrs.update(metadata_dict)
+
+    return root, output_masks_zarr
 
 
 def extract_normalised_point_prompts_per_video(
@@ -407,7 +450,7 @@ def convert_id_mask_to_bool(id_mask):
 # Tiled inference
 def _make_tiles(img_h, img_w, tile_side, tile_overlap) -> list[tuple[int]]:
     """Overlapping (x0, y0, x1, y1) tiles covering the image.
-    
+
     standard image coordinates (origin top-left, y increasing downward).
     """
     step = tile_side - tile_overlap
@@ -432,10 +475,10 @@ def _make_tiles(img_h, img_w, tile_side, tile_overlap) -> list[tuple[int]]:
                     # derive it from bottom right corner
                     # so that tile always stays full sized
                     # (for interior tiles, it matches x0,y0)
-                    max(0, x1 - tile_side), 
+                    max(0, x1 - tile_side),
                     max(0, y1 - tile_side),
                     # bottom right corner of tile
-                    x1, 
+                    x1,
                     y1,
                 )
             )
@@ -535,30 +578,38 @@ list_video_per_img = [
 # Open the pass-1 ID-encoded masks zarr (read-only)
 # Produced by notebook_burrows_sam3_pass_1.py; holds "masks" and "scores".
 
-root_pass_1 = zarr.open_group(str(PASS_1_MASKS_ZARR), mode="r")
+root_pass_1 = zarr.open_group(str(PASS_1_MASKS_ZARR), mode="a")
 masks_pass_1 = root_pass_1["masks"]  # (n_images, H, W), int16 ID-encoded
 scores_pass_1 = root_pass_1["scores"]  # (n_images, max_regions + 1), float32
 
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Initialise zarr for results of pass 2
 n_images, image_h, image_w = image_array.shape[:3]
 
 # Timestamp + base metadata reused when persisting the tiled (pass-2) store
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-metadata_dict = {
-    "sam3_model": "sam3_image",
-    "source_images_dir": str(images_dir),
-    "manual_prompts_csv": str(manual_prompts_csv),
-    "pass_1_masks_zarr": str(PASS_1_MASKS_ZARR),
-    "n_images": n_images,
-    "image_shape": [image_h, image_w],
-    "text_prompt": TEXT_PROMPT,
-    "sam3_confidence_threshold": CONF_THRESHOLD,
-    "postproc_min_mask_area_PIXELS": MIN_MASK_AREA_PIXELS,
-    "postproc_max_mask_area_PIXELS": MAX_MASK_AREA_PIXELS,
-    "postproc_min_solidity": MIN_SOLIDITY,
-    "mask_encoding": "instance_id",
-    "background_label": 0,
-    "id_first_index": 1,
-}
+root_pass_2, _ = initialise_mask_zarr(
+    OUTPUT_DIR,
+    images_dir,
+    manual_prompts_csv,
+    image_array.shape[1:3],
+    TEXT_PROMPT,
+    CONF_THRESHOLD,
+    MIN_MASK_AREA_PIXELS,
+    MAX_MASK_AREA_PIXELS,
+    MIN_SOLIDITY,
+    MAX_REGIONS_PER_IMAGE,
+    data_pass=2,
+)
+
+# # add data origin (pass 1 or 2)
+# root_pass_2.create_array(
+#     "data_pass",
+#     shape=scores_pass_1.shape,
+#     chunks=(1, scores_pass_1.shape[1]),
+#     dtype="int8",
+#     fill_value=0,  # 0 = background / unused, 1 = pass-1, 2 = pass-2
+# )
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -598,8 +649,8 @@ points_xy_normalised_per_video = extract_normalised_point_prompts_per_video(
 extended_prompts_xy_norm_per_video = {}
 for frame_idx, video_str in enumerate(list_video_per_img):
     # if no manual prompts: continue
-    prompts_xy_norm = points_xy_normalised_per_video.get(video_str)
-    if prompts_xy_norm is None:
+    prompts_img_norm = points_xy_normalised_per_video.get(video_str)
+    if prompts_img_norm is None:
         continue
 
     # Get pass-1 masks as boolean masks, and scores for this frame
@@ -614,82 +665,131 @@ for frame_idx, video_str in enumerate(list_video_per_img):
     new_points_xy_norm = compute_new_prompts_from_masks(
         bool_masks,
         scores,
-        prompts_xy_norm,
+        prompts_img_norm,
         PROMPT_SELECTION_MIN_SCORE,
         img_h=image_h,
         img_w=image_w,
     )
     extended_prompts_xy_norm_per_video[video_str] = np.vstack(
-        [prompts_xy_norm, new_points_xy_norm]
+        [prompts_img_norm, new_points_xy_norm]
     )
 
 
 # %%%%%%%%%%%%%%%%%
-# Option C: tiled inference seeded by old + new point prompts
+# Tiled inference seeded by old + new point prompts
 # -----------------------------------------------------------
-# Exemplars are spatial, so they cannot be shared to a tile they do not
-# fall inside. Here `points_xy` (old) and `new_points_xy` (new) from the
-# iterative cell above form a single exemplar pool. The image is split into
-# overlapping tiles; each tile runs SAM3 with the text prompt + whatever
-# pool points land inside it (transformed to tile coords). Tiles with no
-# exemplar are skipped (text-only finds nothing here -> residual gap).
-# Per-tile masks are offset back to full-image coords and de-duplicated
-# across tile seams by IoU.
+# The image is split into overlapping tiles; each tile runs SAM3 with
+# the text prompt + whatever prompt points land inside it (transformed
+# to tile coords). Tiles with no point exemplars are skipped.
 
-TILE_SIZE = int(img_h / 3)  # tile side in pixels
-TILE_OVERLAP = int(
-    TILE_SIZE / 2
-)  # int(image_w*0.05) #256    # overlap between neighbouring tiles, in pixels
-# we should aim for burrows diameter < overlap, so that at least one tile captures
-# all burrows 
-MERGE_IOU = 0.5  # IoU above which two tile masks are the same burrow
+# tile side in pixels
+TILE_SIZE = int(image_h / 3)
 
-img_full = image_array[selected_frame_idx]
-H, W = img_full.shape[:2]
-full_area = H * W
+# overlap between neighbouring tiles, in pixels
+# we should aim for burrows diameter < overlap, so that at least each
+# burrow is covered by one full tile
+TILE_OVERLAP = int(TILE_SIZE / 2)  # int(image_w*0.05) #256
+
+# IoU above which two tile masks are merged
+MERGE_IOU = 0.5
 
 
 # %%
-# --- run tiled inference ---------------------------------------------------
-tiles = _make_tiles(H, W, TILE_SIZE, TILE_OVERLAP)
-tile_masks, tile_scores = [], []
-n_empty = 0
-for x0, y0, x1, y1 in tiles:
-    in_tile = (
-        (pool_points[:, 0] >= x0)
-        & (pool_points[:, 0] < x1)
-        & (pool_points[:, 1] >= y0)
-        & (pool_points[:, 1] < y1)
+# Run tiled inference
+n_images, image_h, image_w = image_array.shape[:3]
+
+for frame_idx, video_str in enumerate(list_video_per_img):
+    # Get image
+    img_full = image_array[frame_idx]
+
+    # Get point prompts in image pixel coordinates (not normalised)
+    prompts_img_norm = extended_prompts_xy_norm_per_video[video_str]
+    prompts_img_px = prompts_img_norm * np.array(
+        [image_w, image_h], dtype=np.float32
     )
-    if not in_tile.any():
-        n_empty += 1
-        continue  # no exemplar -> text-only finds nothing, skip this tile
-    crop = Image.fromarray(img_full[y0:y1, x0:x1])
-    kept, ksc = _run_sam3_points(
-        crop,
-        pool_points[in_tile] - np.array([x0, y0], dtype=np.float32),
-        full_area,
+
+    # Compute tiles
+    tiles = _make_tiles(image_h, image_w, TILE_SIZE, TILE_OVERLAP)
+
+    # Loop thru tiles
+    list_tile_masks, list_tile_scores = [], []
+    n_empty_tiles = 0
+    for x0, y0, x1, y1 in tiles:
+        # Check points within tile (comparing pixel coords)
+        in_tile = (
+            (prompts_img_px[:, 0] >= x0)
+            & (prompts_img_px[:, 1] >= y0)
+            & (prompts_img_px[:, 0] < x1)
+            & (prompts_img_px[:, 1] < y1)
+        )
+
+        # If none, continue
+        if not in_tile.any():
+            n_empty_tiles += 1
+            continue
+
+        # Express prompt points in crop-local pixels,
+        # then normalise to the crop size for SAM3
+        prompts_crop_px = prompts_img_px[in_tile] - np.array(
+            [x0, y0], dtype=np.float32
+        )
+        prompts_crop_norm = prompts_crop_px / np.array(
+            [x1 - x0, y1 - y0], dtype=np.float32
+        )
+
+        # Run SAM3 on crop with normalised point prompts
+        img_crop = Image.fromarray(img_full[y0:y1, x0:x1])
+        list_bool_masks, list_scores = _run_sam3_points(
+            img_crop,
+            prompts_crop_norm,
+            processor,
+        )
+
+        # Map each tile mask back into the full-image canvas
+        for crop_mask in list_bool_masks:
+            canvas_array = np.zeros((image_h, image_w), dtype=bool)
+            # assign data from crop
+            canvas_array[y0:y1, x0:x1] = crop_mask
+
+            # add result to list of masks across all tiles
+            list_tile_masks.append(canvas_array)
+
+        # add list of scores
+        list_tile_scores.extend(list_scores.tolist())
+
+    # Merge masks across tiles in this image
+    merged_masks, merged_scores = _merge_by_iou(
+        list_tile_masks,
+        list_tile_scores,  # np.array(list_tile_scores, dtype=float),
+        MERGE_IOU,
     )
-    # offset each tile mask back into the full-image canvas
-    for m in kept:
-        full = np.zeros((H, W), dtype=bool)
-        full[y0:y1, x0:x1] = m
-        tile_masks.append(full)
-    tile_scores.extend(ksc.tolist())
 
-print(f"{len(tiles)} tiles, {n_empty} skipped (no exemplar)")
-print(f"{len(tile_masks)} raw tile masks before merge")
-# Q: I assume this is before merging tiles?
+    # Keep only MAX_REGIONS_PER_IMAGE (zarr shape limit)
+    if len(merged_masks) > MAX_REGIONS_PER_IMAGE:
+        print(
+            f"Frame {frame_idx}: {len(list_tile_masks)} regions exceeds cap "
+            f"({MAX_REGIONS_PER_IMAGE}), clipping"
+        )
+        merged_masks = merged_masks[:MAX_REGIONS_PER_IMAGE]
+        merged_scores = merged_scores[:MAX_REGIONS_PER_IMAGE]
 
-merged_masks, merged_scores = _merge_by_iou(
-    tile_masks, np.array(tile_scores, dtype=float), MERGE_IOU
-)
+    # Compute id-encoded mask per region
+    # boolean masks (N, H, W) -> ID-encoded (H, W); higher ID wins on overlap
+    id_mask, region_ids = convert_bool_to_id_mask(
+        merged_masks, image_h, image_w
+    )
 
-# TODO: review this count, I dont get it
-print(
-    f"{len(merged_masks)} masks after cross-tile merge "
-    f"(pass-1 had {len(list_kept_region_masks)})"
-)
+    # Save ID-encoded masks for this image
+    root_pass_2["masks"][frame_idx] = id_mask
+    root_pass_2["scores"][frame_idx, region_ids] = merged_scores
+
+    # Delete big per image tile lists?
+    # ...
+
+
+# %%
+# Merge pass 1 and pass 2 results?
+
 
 # %%
 # Persist tiled-pass masks to zarr and free intermediates before plotting.
@@ -727,12 +827,12 @@ tiled_mask_zarr.attrs["mask_scores"] = tiled_scores_attr
 print(f"Saved tiled ID-mask zarr to {output_tiled_masks_zarr}")
 
 # Drop the big per-tile mask lists now that the result is on disk.
-del tile_masks, tile_scores, merged_masks, merged_scores
+del list_tile_masks, tile_scores, merged_masks, merged_scores
 gc.collect()
 torch.cuda.empty_cache()
 
 
-# %%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # --- plot: pass-1 vs tiled result -----------------------------------------
 # Read both ID-masks back from zarr so we don't hold N full-res bool masks
 # in RAM, and use imshow instead of N ax.contour calls (much lighter).
