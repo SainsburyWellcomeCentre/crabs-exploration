@@ -130,7 +130,7 @@ def _initialise_mask_zarr(
     # Create a timestamped masks zarr store in the output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_masks_zarr = output_dir / f"masks_{timestamp}.zarr"
+    output_masks_zarr = output_dir / f"masks_pass_1_{timestamp}.zarr"
 
     n_images, image_h, image_w = image_shape
 
@@ -315,9 +315,10 @@ def _postprocess_masks(
 
     Regions are filtered based on area range and solidity.
 
-    ``masks`` is (N, H, W) boolean. Returns ``(kept, list_kept_scores,
-    drop_counts)`` where ``kept`` is a list of (H, W) boolean masks,
-    ``list_kept_scores`` carries the source object's score onto each kept mask,
+    ``masks`` is (N, H, W) boolean. Returns ``(id_encoded_mask, surviving_ids,
+    surviving_scores, drop_counts)`` where ``id_encoded_mask`` is an
+    ID-encoded mask, ``surviving_scores`` carries the source object's score
+    onto each kept mask,
     and ``drop_counts`` is a dict counting how many connected regions were
     dropped per reason.
 
@@ -325,7 +326,7 @@ def _postprocess_masks(
     connected components (regions), so a single SAM3 object can yield several
     kept masks (or none), and each must inherit the right score.
     """
-    list_kept_bool_regions = []
+    kept_regions_bool_masks = []
     list_mask_idcs = []
     drop_counts = {"area_low": 0, "area_high": 0, "solidity": 0}
 
@@ -359,34 +360,75 @@ def _postprocess_masks(
                 continue
 
             # If all pass: retain that region within the mask
-            list_kept_bool_regions.append(label_mask == region.label)
+            kept_regions_bool_masks.append(label_mask == region.label)
             # Keep track of the mask ID associated to this region too
             list_mask_idcs.append(mask_idx)
 
     # Get list of scores for kept regions
-    list_kept_scores = scores[list_mask_idcs]
+    kept_regions_scores = scores[list_mask_idcs]
 
-    return list_kept_bool_regions, list_kept_scores, drop_counts
+    # -------------------------------
+    # Compute id-encoded mask per region
+    # boolean masks (N, H, W) -> ID-encoded (H, W); higher ID wins
+    id_encoded_mask, list_surviving_ids = _convert_bool_to_id_mask(
+        kept_regions_bool_masks, masks.shape[1:]
+    )
+    surviving_scores = kept_regions_scores[list_surviving_ids - 1]
+
+    # Log
+    drop_counts["id_overlap"] = len(list_mask_idcs) - len(list_surviving_ids)
+
+    return id_encoded_mask, list_surviving_ids, surviving_scores, drop_counts
 
 
-def _convert_bool_to_id_mask(list_kept_region_masks, img_h, img_w):
-    """Express boolean masks array as ID-encoded mask.
+def _convert_bool_to_id_mask(list_kept_region_masks, img_h_w):
+    """Express list of boolean mask arrays as a single ID-encoded mask.
 
-    Higher ID wins on overlap.
+    Higher ID wins on overlap. Returns the ID-encoded mask and the
+    ``surviving_ids``: the non-background IDs that still have at least one
+    pixel in the final mask.
     """
     # initialise id-encoded mask with all zeros
-    id_mask = np.zeros((img_h, img_w), dtype=np.int16)
+    id_encoded_mask = np.zeros(img_h_w, dtype=np.int16)
 
-    # loop thru region IDs
-    region_ids = np.arange(1, len(list_kept_region_masks) + 1, dtype=np.int16)
-    for region_id, bool_mask in zip(
-        region_ids,
-        list_kept_region_masks,
-        strict=True,
-    ):
-        id_mask[bool_mask] = region_id
+    # Paint each region in, assigning IDs from 1 upward (0 = background)
+    # Note that regions with higher ID will win in an overlap
+    for mask_idx, bool_mask in enumerate(list_kept_region_masks, start=1):
+        id_encoded_mask[bool_mask] = mask_idx
 
-    return id_mask, region_ids
+    # Compute the final IDs that survived the "higher ID wins" overlap collapse
+    surviving_ids = np.unique(id_encoded_mask)
+    surviving_ids = surviving_ids[surviving_ids != 0]
+
+    return id_encoded_mask, surviving_ids
+
+
+def _relabel_id_encoded_mask_to_dense(
+    id_encoded_mask,
+):
+    """Relabel old IDs -> dense 1..M.
+
+    This is so they fit the scores width and have no gaps.
+    """
+    # get old mask ids
+    old_mask_ids = np.asarray(
+        [id for id in np.unique(id_encoded_mask) if id != 0]
+    )
+    n_old_mask_ids = len(old_mask_ids)
+
+    # map old (array index) to new (array value) IDs
+    old_to_new_ids = np.zeros(id_encoded_mask.max() + 1, dtype=np.int16)
+    old_to_new_ids[old_mask_ids] = np.arange(
+        1, n_old_mask_ids + 1, dtype=np.int16
+    )
+
+    # apply map to id_encoded_mask
+    new_id_encoded_mask = old_to_new_ids[
+        id_encoded_mask
+    ]  # background (0) -> 0
+    new_ids = np.arange(1, n_old_mask_ids + 1)
+
+    return new_id_encoded_mask, new_ids
 
 
 def main(args: argparse.Namespace) -> None:
@@ -463,11 +505,13 @@ def main(args: argparse.Namespace) -> None:
         # Run inference on every frame and write ID-encoded masks to zarr
         count_postproc_frames_empty = 0
         postproc_frames_w_masks = []
+        # (frame_idx, n_masks) for every frame run through inference, including
+        # empty ones (0 masks); excludes frames skipped for having no prompts.
+        n_masks_per_frame = []
 
         for frame_idx in range(len(image_array)):
             # Load image
             image = Image.fromarray(image_array[frame_idx])
-            img_w, img_h = image.size
 
             # Get point prompts normalised for the corresponding video
             video_str = list_video_per_img[frame_idx]
@@ -491,14 +535,20 @@ def main(args: argparse.Namespace) -> None:
             del inference_state
             torch.cuda.empty_cache()
 
+            # Log if no detections
             if n_objects == 0:
                 print(f"Frame {frame_idx} ({video_str}): no detections")
+                n_masks_per_frame.append((frame_idx, 0))
                 continue
 
-            # Split masks into "regions" and postprocess
+            # Postprocess SAM3-predicted masks:
+            # - Split masks into "regions",
+            # - Filter out masks whose area is out of bounds,
+            # - Flatten overlaps via ID-encoding
             (
-                list_kept_region_masks,
-                list_kept_scores,
+                id_encoded_mask,
+                surviving_ids,
+                surviving_scores,
                 drop_counts,
             ) = _postprocess_masks(
                 masks,
@@ -508,62 +558,94 @@ def main(args: argparse.Namespace) -> None:
                 args.min_solidity,
             )
 
+            # -------------------------
             # Log postprocessing results for this frame
-            if not list_kept_region_masks:
+            n_surviving_regions = len(surviving_ids)
+            if n_surviving_regions == 0:
                 print(
                     f"Frame {frame_idx} ({video_str}): "
                     "no masks after postprocessing"
                 )
                 count_postproc_frames_empty += 1
+                n_masks_per_frame.append((frame_idx, 0))
                 continue
 
-            n_kept_regions = len(list_kept_region_masks)
-            n_total_regions = n_kept_regions + sum(drop_counts.values())
+            n_total_regions = n_surviving_regions + sum(drop_counts.values())
             print(
                 f"Frame {frame_idx} ({video_str}): postprocessing kept "
-                f"{n_kept_regions}/{n_total_regions} regions, "
-                f"dropped {drop_counts}"
+                f"{n_surviving_regions}/{n_total_regions} regions, "
+                f"dropped {drop_counts} (all before capping)."
             )
+            # -------------------------
 
-            # Clip to the per-frame region cap before encoding: region IDs
-            # index into the scores array, whose width is set by the cap, so
-            # any region beyond it would overflow the store. Keep the first
-            # ``max_regions_per_image`` regions (highest-ID regions win on
-            # overlap, so this drops the lowest IDs first).
-            if n_kept_regions > args.max_regions_per_image:
-                print(
-                    f"Frame {frame_idx}: {n_kept_regions} regions exceeds cap "
-                    f"({args.max_regions_per_image}), clipping"
-                )
-                list_kept_region_masks = list_kept_region_masks[
+            # Enforce the per-frame cap on max number of regions,
+            if n_surviving_regions > args.max_regions_per_image:
+                # we select the top M scoring ones
+                capped_sorted_idcs = np.argsort(surviving_scores)[::-1][
                     : args.max_regions_per_image
                 ]
-                list_kept_scores = list_kept_scores[
-                    : args.max_regions_per_image
-                ]
+                # Get corresponding "M" IDs and scores in score-order!
+                selected_ids = surviving_ids[capped_sorted_idcs]
+                selected_scores = surviving_scores[capped_sorted_idcs]
 
-            # Compute id-encoded mask per region
-            # boolean masks (N, H, W) -> ID-encoded (H, W); higher ID wins
-            id_mask, region_ids = _convert_bool_to_id_mask(
-                list_kept_region_masks, img_h, img_w
+                # Drop non-selected IDs from the mask
+                id_encoded_mask[~np.isin(id_encoded_mask, selected_ids)] = 0
+
+                # Re-sort the scores into ascending ID order from the selected
+                # IDs; this is required for the relabel step
+                order = np.argsort(selected_ids)
+                surviving_scores = selected_scores[order]
+
+            # ----------------
+            # Relabel old IDs -> dense 1..M so zarr array has no gaps
+            new_id_encoded_mask, new_ids = _relabel_id_encoded_mask_to_dense(
+                id_encoded_mask
             )
 
             # Save results to zarr
-            root["masks"][frame_idx] = id_mask
-            root["scores"][frame_idx, region_ids] = list_kept_scores
+            root["masks"][frame_idx] = new_id_encoded_mask
+            root["scores"][frame_idx, new_ids] = surviving_scores
 
-            # Log frames with masks that survived
+            # -------------------------
+            # Log final number of masks
+            n_masks_saved = len(new_ids)
+            n_masks_per_frame.append((frame_idx, n_masks_saved))
+            print(f"Frame {frame_idx} ({video_str}): {n_masks_saved} masks")
+
             postproc_frames_w_masks.append(frame_idx)
-            print(f"Frame {frame_idx} ({video_str}): {n_kept_regions} masks")
 
-    # Log frames with final masks
+    # Add extra metrics to zarr array
     root.attrs["frames_with_masks"] = postproc_frames_w_masks
-
+    root.attrs["n_masks_per_frame"] = n_masks_per_frame
     print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
+
+    # ----------------------------
+    # Summarise masks-per-frame statistics over every frame run through
+    # inference, including empty frames (0 masks).
     print(
-        f"Frames with no masks after postprocessing: "
+        f"N frames with no masks after postprocessing: "
         f"{count_postproc_frames_empty}"
     )
+    if n_masks_per_frame:
+        counts = np.array([n_masks for _, n_masks in n_masks_per_frame])
+        mean_masks = counts.mean()
+        print(
+            f"Stats for masks per frame (n={len(counts)} frames)"
+            f"mean={mean_masks:.2f}, "
+            f"median={np.median(counts):.1f}, "
+            f"min={counts.min()}, max={counts.max()}"
+        )
+
+        # Frame indices with fewer than the mean number of masks per frame
+        frames_below_mean = [
+            frame_idx
+            for frame_idx, n_masks in n_masks_per_frame
+            if n_masks < mean_masks
+        ]
+        print(
+            f"Frames with fewer than mean ({mean_masks:.2f}) masks per frame "
+            f"({len(frames_below_mean)} frames): {frames_below_mean}"
+        )
 
 
 def parse_args(list_args: list[str]) -> argparse.Namespace:
@@ -592,7 +674,8 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         "output_dir",
         type=Path,
         help=(
-            "Output directory. A timestamped 'masks_<YYYYMMDD_HHMMSS>.zarr' "
+            "Output directory. A timestamped "
+            "'masks_pass_1_<YYYYMMDD_HHMMSS>.zarr' "
             "store is created inside it, so multiple runs never collide."
         ),
     )
