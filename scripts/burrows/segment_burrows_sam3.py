@@ -45,12 +45,14 @@ and https://github.com/facebookresearch/sam3#basic-usage
 #   "zarr",
 #   "torch>=2.5.1",
 #   "torchvision>=0.20.1",
+#   "pycocotools",
 #   "sam3 @ git+https://github.com/facebookresearch/sam3.git",
 #   "einops",
 #   "huggingface_hub",
 #   "scikit-image",
 #   "numpy",
 #   "pandas",
+#   "psutil",  # undeclared transitive dep of sam3's video predictor
 # ]
 #
 # [tool.uv.sources]
