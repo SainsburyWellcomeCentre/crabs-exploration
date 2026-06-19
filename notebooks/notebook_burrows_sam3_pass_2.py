@@ -82,6 +82,10 @@ MIN_MASK_AREA_PIXELS = 200  # 100  # 200? in crab bodylengths?
 MAX_MASK_AREA_PIXELS = 2500
 MIN_SOLIDITY = 0.95
 
+# Connectivity used to merge masks into instances (skimage.measure.label):
+# 1 = orthogonal neighbours only (4-connectivity), 2 = include diagonals
+MASK_MERGE_CONNECTIVITY = 1
+
 # ----------------------
 # Output
 # ---------------------
@@ -125,9 +129,9 @@ CRABS_ZARR = (
 DYNSPREAD_THRESHOLD = 0.975
 
 # min trajectory samples in a burrow to
-# mark it with red contour
-# fps = 60
-MIN_HITS_PER_BURROW = 5 * 60  # approx frames in 5s
+# mark it with red contour, as a fraction
+# of the total video length
+MIN_HITS_PER_BURROW_FRAC = 0.10
 
 
 # %%%%%%%%%%
@@ -457,6 +461,74 @@ def convert_bool_to_id_mask(list_masks, img_h, img_w):
     return id_mask, region_ids
 
 
+def _merge_bool_masks_by_connectivity(
+    list_kept_region_masks, list_scores, img_h_w, connectivity
+):
+    """Merge boolean region masks into one ID-encoded mask by connectivity.
+
+    All region masks are OR-ed into a single binary canvas, then connected
+    components are labelled (``skimage.measure.label``) so that overlapping,
+    nested or touching regions collapse into a single instance. The resulting
+    labels are dense (``1..M``, with 0 = background).
+
+    Each merged instance inherits the **maximum** score among the regions that
+    contributed to it. Returns ``(id_encoded_mask, surviving_ids,
+    surviving_scores)`` with ``surviving_ids`` ascending (``1..M``) and
+    ``surviving_scores`` index-aligned to them.
+
+    ``connectivity`` is passed to ``skimage.measure.label``: 1 = orthogonal
+    neighbours only (4-connectivity), 2 = include diagonals (8-connectivity).
+    """
+    # Paint all regions into a single binary canvas (their union)
+    canvas = np.zeros(img_h_w, dtype=bool)
+    for bool_mask in list_kept_region_masks:
+        canvas |= bool_mask
+
+    # Label connected components; sk_label yields dense labels 1..M
+    id_encoded_mask = sk_label(canvas, connectivity=connectivity).astype(
+        np.int16
+    )
+    surviving_ids = np.unique(id_encoded_mask)
+    surviving_ids = surviving_ids[surviving_ids != 0]
+
+    # Merge scores by max: each input region is itself connected, so it falls
+    # entirely within one labelled component (all its pixels share one label).
+    # Since labels are dense, label - 1 is the slot in the scores array.
+    surviving_scores = np.full(len(surviving_ids), -np.inf, dtype=np.float32)
+    for bool_mask, score in zip(
+        list_kept_region_masks, list_scores, strict=True
+    ):
+        label = id_encoded_mask[bool_mask][0]
+        surviving_scores[label - 1] = max(surviving_scores[label - 1], score)
+
+    return id_encoded_mask, surviving_ids, surviving_scores
+
+
+def _relabel_id_encoded_mask_to_dense(id_encoded_mask):
+    """Relabel old IDs -> dense 1..M.
+
+    This is so they fit the scores width and have no gaps.
+    """
+    # get old mask ids
+    old_mask_ids = np.asarray(
+        [id for id in np.unique(id_encoded_mask) if id != 0]
+    )
+    n_old_mask_ids = len(old_mask_ids)
+
+    # map old (array index) to new (array value) IDs
+    old_to_new_ids = np.zeros(id_encoded_mask.max() + 1, dtype=np.int16)
+    old_to_new_ids[old_mask_ids] = np.arange(
+        1, n_old_mask_ids + 1, dtype=np.int16
+    )
+
+    # apply map to id_encoded_mask
+    # background (0) -> 0
+    new_id_encoded_mask = old_to_new_ids[id_encoded_mask]
+    new_ids = np.arange(1, n_old_mask_ids + 1)
+
+    return new_id_encoded_mask, new_ids
+
+
 def convert_id_mask_to_bool(id_mask):
     """Express an ID-encoded mask as a boolean masks array.
 
@@ -472,6 +544,16 @@ def convert_id_mask_to_bool(id_mask):
     bool_masks = id_mask[None] == region_ids[:, None, None]
 
     return bool_masks, region_ids
+
+
+def _get_video_length(ds_video: xr.Dataset) -> float:
+    """Return the video length in minutes and frames from the zarr coords/attrs.
+
+    A clip goes from end of previous escape (or start of video if there is
+    no previous escape) to end of current escape.
+    """
+    n_frames = int(ds_video.clip_last_frame_0idx.max().compute()) + 1
+    return (n_frames / float(ds_video.fps) / 60, n_frames)
 
 
 # %%
@@ -537,7 +619,7 @@ def _run_sam3_points(image_pil, points_xy_norm, processor):
     masks = inference_state["masks"].cpu().numpy()
     scores = inference_state["scores"].float().cpu().numpy()
     del inference_state
-    torch.cuda.empty_cache()
+    # torch.cuda.empty_cache()
 
     masks = masks.squeeze(1) if masks.ndim == 4 else masks
     if masks.shape[0] == 0:
@@ -662,7 +744,7 @@ root_combined, output_combined_zarr = initialise_mask_zarr(
 )
 
 # Provenance array
-# 0 = unused, 1 = pass-1, 2 = pass-2
+# 0 = unused, 1 = pass-1 only, 2 = pass-2 only, 3 = both passes (merged)
 data_pass_arr = root_combined.create_array(
     "data_pass",
     shape=root_combined["scores"].shape,
@@ -757,6 +839,9 @@ processor = Sam3Processor(model, confidence_threshold=CONF_THRESHOLD)
 # Run tiled inference
 n_images, image_h, image_w = image_array.shape[:3]
 
+# Compute tiles
+tiles = _make_tiles(image_h, image_w, TILE_SIZE, TILE_OVERLAP)
+
 for frame_idx, video_str in enumerate(list_video_per_img):
     # Get image
     img_full = image_array[frame_idx]
@@ -766,9 +851,6 @@ for frame_idx, video_str in enumerate(list_video_per_img):
     prompts_img_px = prompts_img_norm * np.array(
         [image_w, image_h], dtype=np.float32
     )
-
-    # Compute tiles
-    tiles = _make_tiles(image_h, image_w, TILE_SIZE, TILE_OVERLAP)
 
     # Loop thru tiles
     list_tile_masks, list_tile_scores = [], []
@@ -822,6 +904,8 @@ for frame_idx, video_str in enumerate(list_video_per_img):
         list_tile_scores.extend(list_scores.tolist())
 
     # Merge masks across tiles in this image
+    # TODO: change to connectivity merge too?
+    # (if they overlap, are they connected?)
     merged_masks, merged_scores = _merge_by_iou(
         list_tile_masks,
         list_tile_scores,  # np.array(list_tile_scores, dtype=float),
@@ -860,43 +944,82 @@ for frame_idx, video_str in enumerate(list_video_per_img):
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Combine pass-1 and pass-2 into a fresh zarr store (cross-pass IoU dedup)
+# Combine pass-1 and pass-2 into a fresh zarr store (connectivity merge)
+#
+# All pass-1 and pass-2 masks are projected onto one canvas and relabelled by
+# connectivity: overlapping, nested or touching regions across passes collapse
+# into a single instance (inheriting the max contributor score). Provenance per
+# merged region: 1 = pass-1 only, 2 = pass-2 only, 3 = both passes contributed.
 
-# IoU above which a pass-2 mask is treated as a duplicate of a kept mask
-CROSS_PASS_IOU = MERGE_IOU
-
-# Get results of  pass 2
+# Get results of pass 2
 masks_pass_2 = root_pass_2["masks"]
 scores_pass_2 = root_pass_2["scores"]
 
 # Loop thru images
-# TODO: change this to simply project all on one plane,
-# and then relabel based on connectivity
-# (Why not that in pass 1?)
 for frame_idx in range(n_images):
-    # Pass-1 masks are kept unconditionally
-    # (scores indexed by region ID, aligned with the ascending-ID bool masks)
+    # Pass-1 and pass-2 masks as boolean arrays + their scores (by region ID;
+    # scores indexed by region ID, aligned with the ascending-ID bool masks)
     bool_1, ids_1 = convert_id_mask_to_bool(masks_pass_1[frame_idx])
-    kept_masks = list(bool_1)
-    kept_scores = list(scores_pass_1[frame_idx, ids_1])
-    kept_pass = [1] * len(kept_masks)
-
-    # Pass-2 masks added only if not a duplicate of an already-kept mask;
-    # highest score first so the strongest of any near-duplicates survives
     bool_2, ids_2 = convert_id_mask_to_bool(masks_pass_2[frame_idx])
+    scr_1 = scores_pass_1[frame_idx, ids_1]
     scr_2 = scores_pass_2[frame_idx, ids_2]
-    for i in np.argsort(scr_2)[::-1]:
-        if not _is_duplicate(bool_2[i], kept_masks, CROSS_PASS_IOU):
-            kept_masks.append(bool_2[i])
-            kept_scores.append(scr_2[i])
-            kept_pass.append(2)
 
-    # Encode and write masks + scores + provenance, all indexed by region ID
-    # (IDs follow kept_masks order: pass-1 IDs first, then kept pass-2)
-    id_mask, region_ids = convert_bool_to_id_mask(kept_masks, image_h, image_w)
+    # Merge all masks by connectivity (a merged instance keeps the max score)
+    all_masks = list(bool_1) + list(bool_2)
+    all_scores = np.concatenate([scr_1, scr_2])
+    id_mask, region_ids, region_scores = _merge_bool_masks_by_connectivity(
+        all_masks, all_scores, (image_h, image_w), MASK_MERGE_CONNECTIVITY
+    )
+
+    # Enforce the combined-store cap on number of regions (scores array width)
+    if len(region_ids) > COMBINED_MAX_REGIONS:
+        print(
+            f"Frame {frame_idx}: {len(region_ids)} regions exceeds cap "
+            f"({COMBINED_MAX_REGIONS}), keeping the top-scoring ones"
+        )
+        # select the top-M scoring regions
+        top_idcs = np.argsort(region_scores)[::-1][:COMBINED_MAX_REGIONS]
+        selected_ids = region_ids[top_idcs]
+        selected_scores = region_scores[top_idcs]
+
+        # drop non-selected IDs from the mask
+        id_mask[~np.isin(id_mask, selected_ids)] = 0
+
+        # re-sort scores into ascending ID order for the relabel step
+        region_scores = selected_scores[np.argsort(selected_ids)]
+
+        # capping leaves gaps in the IDs, so relabel old IDs -> dense 1..M
+        id_mask, region_ids = _relabel_id_encoded_mask_to_dense(id_mask)
+
+    # Provenance per merged region: which pass(es) contributed to each label.
+    # A region belongs to a pass if that pass painted any pixel into it; since
+    # each source mask is connected it lands entirely within one label.
+    canvas_1 = (
+        np.any(bool_1, axis=0)
+        if len(bool_1)
+        else np.zeros((image_h, image_w), dtype=bool)
+    )
+    canvas_2 = (
+        np.any(bool_2, axis=0)
+        if len(bool_2)
+        else np.zeros((image_h, image_w), dtype=bool)
+    )
+    labels_1 = set(np.unique(id_mask[canvas_1]).tolist()) - {0}
+    labels_2 = set(np.unique(id_mask[canvas_2]).tolist()) - {0}
+    region_pass = np.array(
+        [
+            3
+            if (rid in labels_1 and rid in labels_2)
+            else (1 if rid in labels_1 else 2)
+            for rid in region_ids.tolist()
+        ],
+        dtype=np.int8,
+    )
+
+    # Write masks + scores + provenance, all indexed by region ID
     root_combined["masks"][frame_idx] = id_mask
-    root_combined["scores"][frame_idx, region_ids] = kept_scores
-    data_pass_arr[frame_idx, region_ids] = kept_pass
+    root_combined["scores"][frame_idx, region_ids] = region_scores
+    data_pass_arr[frame_idx, region_ids] = region_pass
 
 print(f"Saved combined ID-mask zarr to {output_combined_zarr}")
 
