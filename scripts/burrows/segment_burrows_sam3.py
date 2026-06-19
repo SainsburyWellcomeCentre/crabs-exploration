@@ -6,9 +6,11 @@ prompt), and postprocess the predicted masks. Postprocessing splits each mask
 into connected regions and keeps only those within an area range and above a
 solidity threshold.
 
-The surviving regions are written, per frame, into a single ID-encoded mask
-zarr store (background = 0, regions = 1, 2, ...; higher ID wins on overlap),
-alongside a sibling array with the SAM3 confidence score per region.
+The surviving regions are merged by connectivity into instances (overlapping,
+nested or touching regions collapse into one, which inherits the max score
+among its contributors) and written, per frame, into a single ID-encoded mask
+zarr store (background = 0, regions = 1, 2, ...), alongside a sibling array
+with the SAM3 confidence score per region.
 
 The store is timestamped and laid out as:
     masks_<YYYYMMDD_HHMMSS>.zarr
@@ -310,21 +312,21 @@ def _postprocess_masks(
     min_area: int,
     max_area: int,
     min_solidity: float,
+    connectivity: int,
 ):
-    """Split masks into connected regions and filter.
+    """Split masks into connected regions, filter, and merge by connectivity.
 
-    Regions are filtered based on area range and solidity.
+    Regions are filtered based on area range and solidity, then merged into
+    instances by connectivity (overlapping, nested or touching regions
+    collapse into one instance; ``connectivity`` is passed to
+    ``skimage.measure.label``).
 
     ``masks`` is (N, H, W) boolean. Returns ``(id_encoded_mask, surviving_ids,
     surviving_scores, drop_counts)`` where ``id_encoded_mask`` is an
-    ID-encoded mask, ``surviving_scores`` carries the source object's score
-    onto each kept mask,
-    and ``drop_counts`` is a dict counting how many connected regions were
-    dropped per reason.
-
-    The score mapping is needed because the function splits masks into
-    connected components (regions), so a single SAM3 object can yield several
-    kept masks (or none), and each must inherit the right score.
+    ID-encoded mask, ``surviving_scores`` carries the max source score onto
+    each merged instance, and ``drop_counts`` is a dict counting how many
+    connected regions were dropped per reason (plus how many were absorbed by
+    merging, under ``"merged"``).
     """
     kept_regions_bool_masks = []
     list_mask_idcs = []
@@ -368,39 +370,68 @@ def _postprocess_masks(
     kept_regions_scores = scores[list_mask_idcs]
 
     # -------------------------------
-    # Compute id-encoded mask per region
-    # boolean masks (N, H, W) -> ID-encoded (H, W); higher ID wins
-    id_encoded_mask, list_surviving_ids = _convert_bool_to_id_mask(
-        kept_regions_bool_masks, masks.shape[1:]
+    # Merge regions into instances by connectivity:
+    # boolean masks (N, H, W) -> ID-encoded (H, W); overlapping, nested or
+    # touching regions collapse into one instance that inherits the max
+    # contributor score
+    id_encoded_mask, surviving_ids, surviving_scores = (
+        _merge_bool_masks_by_connectivity(
+            kept_regions_bool_masks,
+            kept_regions_scores,
+            masks.shape[1:],
+            connectivity,
+        )
     )
-    surviving_scores = kept_regions_scores[list_surviving_ids - 1]
 
-    # Log
-    drop_counts["id_overlap"] = len(list_mask_idcs) - len(list_surviving_ids)
+    # Log how many regions were absorbed into another by the merge
+    drop_counts["merged"] = len(list_mask_idcs) - len(surviving_ids)
 
-    return id_encoded_mask, list_surviving_ids, surviving_scores, drop_counts
+    return id_encoded_mask, surviving_ids, surviving_scores, drop_counts
 
 
-def _convert_bool_to_id_mask(list_kept_region_masks, img_h_w):
-    """Express list of boolean mask arrays as a single ID-encoded mask.
+def _merge_bool_masks_by_connectivity(
+    list_kept_region_masks, list_scores, img_h_w, connectivity
+):
+    """Merge boolean region masks into one ID-encoded mask by connectivity.
 
-    Higher ID wins on overlap. Returns the ID-encoded mask and the
-    ``surviving_ids``: the non-background IDs that still have at least one
-    pixel in the final mask.
+    All region masks are OR-ed into a single binary canvas, then connected
+    components are labelled (``skimage.measure.label``) so that overlapping,
+    nested or touching regions collapse into a single instance. The resulting
+    labels are dense (``1..M``, with 0 = background).
+
+    Each merged instance inherits the **maximum** score among the regions that
+    contributed to it. Returns ``(id_encoded_mask, surviving_ids,
+    surviving_scores)`` with ``surviving_ids`` ascending (``1..M``) and
+    ``surviving_scores`` index-aligned to them.
+
+    ``connectivity`` is passed to ``skimage.measure.label``: 1 = orthogonal
+    neighbours only (4-connectivity), 2 = include diagonals (8-connectivity).
     """
-    # initialise id-encoded mask with all zeros
-    id_encoded_mask = np.zeros(img_h_w, dtype=np.int16)
+    # Paint all regions into a single binary canvas (their union)
+    canvas = np.zeros(img_h_w, dtype=bool)
+    for bool_mask in list_kept_region_masks:
+        canvas |= bool_mask
 
-    # Paint each region in, assigning IDs from 1 upward (0 = background)
-    # Note that regions with higher ID will win in an overlap
-    for mask_idx, bool_mask in enumerate(list_kept_region_masks, start=1):
-        id_encoded_mask[bool_mask] = mask_idx
-
-    # Compute the final IDs that survived the "higher ID wins" overlap collapse
+    # Label connected components; sk_label yields dense labels 1..M
+    id_encoded_mask = sk_label(canvas, connectivity=connectivity).astype(
+        np.int16
+    )
     surviving_ids = np.unique(id_encoded_mask)
     surviving_ids = surviving_ids[surviving_ids != 0]
 
-    return id_encoded_mask, surviving_ids
+    # Merge scores by max: each input region is itself connected, so it falls
+    # entirely within one labelled component (all its pixels share one label).
+    # Since labels are dense, label - 1 is the slot in the scores array.
+    # (every label has at least 1 contributor, so np.inf should not leak into
+    # the zarr)
+    surviving_scores = np.full(len(surviving_ids), -np.inf, dtype=np.float32)
+    for bool_mask, score in zip(
+        list_kept_region_masks, list_scores, strict=True
+    ):
+        label = id_encoded_mask[bool_mask][0]
+        surviving_scores[label - 1] = max(surviving_scores[label - 1], score)
+
+    return id_encoded_mask, surviving_ids, surviving_scores
 
 
 def _relabel_id_encoded_mask_to_dense(
@@ -460,6 +491,7 @@ def main(args: argparse.Namespace) -> None:
         "postproc_min_mask_area_PIXELS": args.min_mask_area_pixels,
         "postproc_max_mask_area_PIXELS": args.max_mask_area_pixels,
         "postproc_min_solidity": args.min_solidity,
+        "postproc_mask_merge_connectivity": args.mask_merge_connectivity,
         "mask_encoding": "instance_id",
         "background_label": 0,
         "id_first_index": 1,
@@ -544,7 +576,7 @@ def main(args: argparse.Namespace) -> None:
             # Postprocess SAM3-predicted masks:
             # - Split masks into "regions",
             # - Filter out masks whose area is out of bounds,
-            # - Flatten overlaps via ID-encoding
+            # - Merge regions into instances by connectivity (max score)
             (
                 id_encoded_mask,
                 surviving_ids,
@@ -556,6 +588,7 @@ def main(args: argparse.Namespace) -> None:
                 args.min_mask_area_pixels,
                 args.max_mask_area_pixels,
                 args.min_solidity,
+                args.mask_merge_connectivity,
             )
 
             # -------------------------
@@ -574,7 +607,7 @@ def main(args: argparse.Namespace) -> None:
             print(
                 f"Frame {frame_idx} ({video_str}): postprocessing kept "
                 f"{n_surviving_regions}/{n_total_regions} regions, "
-                f"dropped {drop_counts} (all before capping)."
+                f"dropped/merged {drop_counts} (all before capping)."
             )
             # -------------------------
 
@@ -596,11 +629,14 @@ def main(args: argparse.Namespace) -> None:
                 order = np.argsort(selected_ids)
                 surviving_scores = selected_scores[order]
 
-            # ----------------
-            # Relabel old IDs -> dense 1..M so zarr array has no gaps
-            new_id_encoded_mask, new_ids = _relabel_id_encoded_mask_to_dense(
-                id_encoded_mask
-            )
+                # ----------------
+                # Capping leaves gaps in the IDs, so relabel old IDs -> dense
+                # 1..M (without capping the merge already yields dense labels)
+                new_id_encoded_mask, new_ids = (
+                    _relabel_id_encoded_mask_to_dense(id_encoded_mask)
+                )
+            else:
+                new_id_encoded_mask, new_ids = id_encoded_mask, surviving_ids
 
             # Save results to zarr
             root["masks"][frame_idx] = new_id_encoded_mask
@@ -723,6 +759,19 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         help=(
             "Minimum region solidity (region area / convex hull area, in "
             "[0, 1]) kept during postprocessing (default: 0.95)."
+        ),
+    )
+    parser.add_argument(
+        "--mask-merge-connectivity",
+        type=int,
+        choices=[1, 2],
+        default=1,
+        help=(
+            "Connectivity used to merge postprocessed regions into instances "
+            "(passed to skimage.measure.label): 1 = orthogonal neighbours "
+            "only (4-connectivity), 2 = include diagonals (8-connectivity). "
+            "Overlapping and nested regions merge regardless; this only "
+            "affects regions that merely touch (default: 1)."
         ),
     )
     parser.add_argument(
