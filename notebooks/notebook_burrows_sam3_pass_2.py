@@ -70,7 +70,10 @@ images_dir = "/home/sminano/swc/project_crabs/burrow_mean_image_slurm_3014447"
 manual_prompts_csv = (
     "/home/sminano/swc/project_crabs/manual_prompt_points_20260528_163908.csv"
 )
-
+PASS_1_MASKS_ZARR = (
+    "/home/sminano/swc/project_crabs/output_masks_pass_1/"
+    "masks_pass_1_20260618_162326.zarr"
+)
 
 # -------------------------
 # Postprocessing of masks
@@ -83,7 +86,6 @@ MIN_SOLIDITY = 0.95
 # Output
 # ---------------------
 # Output dir for masks
-# TODO: add timestamp
 OUTPUT_DIR = Path(
     "/home/sminano/swc/project_crabs/crabs-exploration/output_burrows_sam3"
 )
@@ -95,7 +97,6 @@ MAX_REGIONS_PER_IMAGE = 500
 # (ID-encoded "masks" + per-region "scores"). Point this at the
 # timestamped store written by the first pass.
 # -------------------------------------------------------------------
-PASS_1_MASKS_ZARR = OUTPUT_DIR / "masks_20260616_151414.zarr"
 
 # Min score for a pass-1 mask to seed a new prompt in the second pass
 PROMPT_SELECTION_MIN_SCORE = 0.0  # if CONF_THRESHOLD or 0, reuses all
@@ -109,9 +110,9 @@ CONF_THRESHOLD = (
 )
 
 
-# ----------------
-# Plots
-# --------------
+# -------------------
+# Trajectory plots
+# ------------------
 
 CRABS_ZARR = (
     Path.home()
@@ -122,7 +123,11 @@ CRABS_ZARR = (
     / "CrabTracks-slurm2478780-2478861-2489356.zarr"
 )
 DYNSPREAD_THRESHOLD = 0.975
-MIN_HITS_PER_BURROW = 30  # min trajectory samples in a mask to flag it (red)
+
+# min trajectory samples in a burrow to
+# mark it with red contour
+# fps = 60
+MIN_HITS_PER_BURROW = 5 * 60  # approx frames in 5s
 
 
 # %%%%%%%%%%
@@ -153,6 +158,8 @@ def initialise_mask_zarr(
     output_dir,
     images_dir,
     manual_prompts_csv,
+    pass_1_zarr_path,
+    # TODO: pass kwargs directly for flexibility?
     image_shape,
     text_prompt,
     conf_threshold,
@@ -173,6 +180,7 @@ def initialise_mask_zarr(
         "sam3_model": "sam3_image",
         "source_images_dir": str(images_dir),
         "manual_prompts_csv": str(manual_prompts_csv),
+        "pass_1_zarr_path": pass_1_zarr_path,
         "n_images": n_images,
         "image_shape": [image_h, image_w],
         "estim_max_regions_per_image": max_regions_per_image,
@@ -467,7 +475,7 @@ def convert_id_mask_to_bool(id_mask):
 
 
 # %%
-# Tiled inference
+# Helpers for tiled inference
 def _make_tiles(img_h, img_w, tile_side, tile_overlap) -> list[tuple[int]]:
     """Overlapping (x0, y0, x1, y1) tiles covering the image.
 
@@ -600,15 +608,16 @@ list_video_per_img = [
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Open the pass-1 ID-encoded masks zarr (read-only)
-# Produced by notebook_burrows_sam3_pass_1.py; holds "masks" and "scores".
+# Produced by scripts/burrows/segment_burrows_sam3.py;
+# holds "masks" and "scores".
 
-root_pass_1 = zarr.open_group(str(PASS_1_MASKS_ZARR), mode="a")
+root_pass_1 = zarr.open_group(str(PASS_1_MASKS_ZARR), mode="r")
 masks_pass_1 = root_pass_1["masks"]  # (n_images, H, W), int16 ID-encoded
 scores_pass_1 = root_pass_1["scores"]  # (n_images, max_regions + 1), float32
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Initialise zarr for results of pass 2
+# Initialise zarr for results of pass-2
 n_images, image_h, image_w = image_array.shape[:3]
 
 # Timestamp + base metadata reused when persisting the tiled (pass-2) store
@@ -616,7 +625,8 @@ root_pass_2, _ = initialise_mask_zarr(
     OUTPUT_DIR,
     images_dir,
     manual_prompts_csv,
-    image_array.shape[1:3],
+    PASS_1_MASKS_ZARR,
+    image_array.shape[:3],
     TEXT_PROMPT,
     CONF_THRESHOLD,
     MIN_MASK_AREA_PIXELS,
@@ -626,38 +636,40 @@ root_pass_2, _ = initialise_mask_zarr(
     data_pass=2,
 )
 
-# # add data origin (pass 1 or 2)
-# root_pass_2.create_array(
-#     "data_pass",
-#     shape=scores_pass_1.shape,
-#     chunks=(1, scores_pass_1.shape[1]),
-#     dtype="int8",
-#     fill_value=0,  # 0 = background / unused, 1 = pass-1, 2 = pass-2
-# )
+# %%%%%%%%%%%%%%%%%%%%%%%%%%
+# Initialise zarr for combined results
 
+# MAX_REGIONS_PER_IMAGE for the combined store. Hard upper bound is
+# 2 * MAX_REGIONS_PER_IMAGE (both passes hit the cap with no cross-pass
+# dedup); 1.5x is usually plenty since dedup drops pass-2 duplicates. Must
+# be an int (it sets the scores/data_pass array width).
+COMBINED_MAX_REGIONS = int(1.5 * MAX_REGIONS_PER_IMAGE)
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Build SAM3 image model and processor
+# Fresh combined store (same schema as the per-pass stores)
+root_combined, output_combined_zarr = initialise_mask_zarr(
+    OUTPUT_DIR,
+    images_dir,
+    manual_prompts_csv,
+    (str(root_pass_1.store.root), str(root_pass_2.store.root)),
+    image_array.shape[:3],
+    TEXT_PROMPT,
+    CONF_THRESHOLD,
+    MIN_MASK_AREA_PIXELS,
+    MAX_MASK_AREA_PIXELS,
+    MIN_SOLIDITY,
+    COMBINED_MAX_REGIONS,
+    data_pass="combined",
+)
 
-# Disable autograd for the whole notebook
-torch.inference_mode().__enter__()
-
-# to avoid mismatch between bfloat16 (from model params)
-# and float (from input)
-if torch.cuda.is_available():
-    torch.autocast("cuda", dtype=torch.bfloat16).__enter__()
-
-# Instiantiate model: holds weights, submodules
-# (backbone, text encoder, grounding head, mask decoder)
-# and forward pass operations
-model = build_sam3_image_model()
-
-# Instantiate the processor
-# (a wrapper around the model, handling I/O conversion, building
-# and mutation of the inference_state, prompt accumulation and
-# confidence thresholding)
-# NOTE: the model is accessible via processor.model
-processor = Sam3Processor(model, confidence_threshold=CONF_THRESHOLD)
+# Provenance array
+# 0 = unused, 1 = pass-1, 2 = pass-2
+data_pass_arr = root_combined.create_array(
+    "data_pass",
+    shape=root_combined["scores"].shape,
+    chunks=(1, root_combined["scores"].shape[1]),
+    dtype="int8",
+    fill_value=0,
+)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -700,7 +712,7 @@ for frame_idx, video_str in enumerate(list_video_per_img):
 
 
 # %%%%%%%%%%%%%%%%%
-# Tiled inference seeded by old + new point prompts
+# Parameters for tiled inference
 # -----------------------------------------------------------
 # The image is split into overlapping tiles; each tile runs SAM3 with
 # the text prompt + whatever prompt points land inside it (transformed
@@ -716,6 +728,29 @@ TILE_OVERLAP = int(TILE_SIZE / 2)  # int(image_w*0.05) #256
 
 # IoU above which two tile masks are merged
 MERGE_IOU = 0.5
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Build SAM3 image model and processor
+
+# Disable autograd for the whole notebook
+torch.inference_mode().__enter__()
+
+# to avoid mismatch between bfloat16 (from model params)
+# and float (from input)
+if torch.cuda.is_available():
+    torch.autocast("cuda", dtype=torch.bfloat16).__enter__()
+
+# Instiantiate model: holds weights, submodules
+# (backbone, text encoder, grounding head, mask decoder)
+# and forward pass operations
+model = build_sam3_image_model()
+
+# Instantiate the processor
+# (a wrapper around the model, handling I/O conversion, building
+# and mutation of the inference_state, prompt accumulation and
+# confidence thresholding)
+# NOTE: the model is accessible via processor.model
+processor = Sam3Processor(model, confidence_threshold=CONF_THRESHOLD)
 
 
 # %%
@@ -738,7 +773,12 @@ for frame_idx, video_str in enumerate(list_video_per_img):
     # Loop thru tiles
     list_tile_masks, list_tile_scores = [], []
     n_empty_tiles = 0
-    for x0, y0, x1, y1 in tiles:
+    for tile_idx, (x0, y0, x1, y1) in enumerate(tiles):
+        print(
+            f"Frame {frame_idx} ({video_str}): "
+            f"tile {tile_idx + 1}/{len(tiles)}"
+        )
+
         # Check points within tile (comparing pixel coords)
         in_tile = (
             (prompts_img_px[:, 0] >= x0)
@@ -750,6 +790,7 @@ for frame_idx, video_str in enumerate(list_video_per_img):
         # If none, continue
         if not in_tile.any():
             n_empty_tiles += 1
+            print("Empty tile, skipping...")
             continue
 
         # Express prompt points in crop-local pixels,
@@ -802,6 +843,14 @@ for frame_idx, video_str in enumerate(list_video_per_img):
         merged_masks, image_h, image_w
     )
 
+    # Log number of masks per frame
+    n_tiles_used = len(tiles) - n_empty_tiles
+    print(
+        f"Frame {frame_idx} ({video_str}): {len(region_ids)} masks "
+        f"({len(list_tile_masks)} tile masks merged to {len(merged_masks)}) "
+        f"from {n_tiles_used}/{len(tiles)} prompted tiles"
+    )
+
     # Save ID-encoded masks for this image
     root_pass_2["masks"][frame_idx] = id_mask
     root_pass_2["scores"][frame_idx, region_ids] = merged_scores
@@ -810,54 +859,20 @@ for frame_idx, video_str in enumerate(list_video_per_img):
     # ...
 
 
-# %%
-# Combine pass-1 and pass-2 into a fresh store (cross-pass IoU dedup)
-
-# Pass-1 masks are kept unconditionally; a pass-2 mask is dropped if it
-# duplicates an already-kept mask (pass 1, or an earlier-kept pass 2) by IoU
-# or containment. Provenance is recorded in a "data_pass" array (1 = pass-1,
-# 2 = pass-2), indexed by region ID exactly like "scores".
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Combine pass-1 and pass-2 into a fresh zarr store (cross-pass IoU dedup)
 
 # IoU above which a pass-2 mask is treated as a duplicate of a kept mask
 CROSS_PASS_IOU = MERGE_IOU
 
-# MAX_REGIONS_PER_IMAGE for the combined store. Hard upper bound is
-# 2 * MAX_REGIONS_PER_IMAGE (both passes hit the cap with no cross-pass
-# dedup); 1.5x is usually plenty since dedup drops pass-2 duplicates. Must
-# be an int (it sets the scores/data_pass array width).
-COMBINED_MAX_REGIONS = int(1.5 * MAX_REGIONS_PER_IMAGE)
-
-# Fresh combined store (same schema as the per-pass stores)
-root_combined, output_combined_zarr = initialise_mask_zarr(
-    OUTPUT_DIR,
-    images_dir,
-    manual_prompts_csv,
-    image_array.shape[1:3],
-    TEXT_PROMPT,
-    CONF_THRESHOLD,
-    MIN_MASK_AREA_PIXELS,
-    MAX_MASK_AREA_PIXELS,
-    MIN_SOLIDITY,
-    COMBINED_MAX_REGIONS,
-    data_pass="combined",
-)
-
-# Provenance array
-# 0 = unused, 1 = pass-1, 2 = pass-2
-data_pass_arr = root_combined.create_array(
-    "data_pass",
-    shape=root_combined["scores"].shape,
-    chunks=(1, root_combined["scores"].shape[1]),
-    dtype="int8",
-    fill_value=0,
-)
-
-# %%
 # Get results of  pass 2
 masks_pass_2 = root_pass_2["masks"]
 scores_pass_2 = root_pass_2["scores"]
 
 # Loop thru images
+# TODO: change this to simply project all on one plane,
+# and then relabel based on connectivity
+# (Why not that in pass 1?)
 for frame_idx in range(n_images):
     # Pass-1 masks are kept unconditionally
     # (scores indexed by region ID, aligned with the ascending-ID bool masks)
@@ -894,9 +909,13 @@ print(f"Saved combined ID-mask zarr to {output_combined_zarr}")
 # trajectories, and flag burrows with many trajectory samples. Saves a
 # self-contained interactive HTML and opens it in the browser.
 
+# Open combined masks zarr
 root_combined = zarr.open_group(str(output_combined_zarr), mode="r")
+
+# Load trajectory dataseet
 dt = xr.open_datatree(CRABS_ZARR, engine="zarr", chunks={})
 
+# plot params
 plot_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 tab10_rgb = (np.array(plt.cm.tab10.colors) * 255).astype(np.uint8)  # (10, 3)
 pio.renderers.default = "browser"
@@ -913,6 +932,8 @@ def _toggle_button(label, trace_idcs):
         args2=[{"visible": True}, list(trace_idcs)],
     )
 
+
+# Loop thru frames to plot
 for frame_idx in range(n_images):
     video_str = list_video_per_img[frame_idx]
     img_h_i, img_w_i = image_array.img_h, image_array.img_w
@@ -1107,4 +1128,4 @@ for frame_idx in range(n_images):
 
 # %%
 # del processor, model; gc.collect(); torch.cuda.empty_cache()
-# %%
+
