@@ -1039,9 +1039,15 @@ root_combined = zarr.open_group(str(output_combined_zarr), mode="r")
 dt = xr.open_datatree(CRABS_ZARR, engine="zarr", chunks={})
 
 # plot params
-plot_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 tab10_rgb = (np.array(plt.cm.tab10.colors) * 255).astype(np.uint8)  # (10, 3)
 pio.renderers.default = "browser"
+
+plot_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+output_dir_plots = (
+    OUTPUT_DIR / f"trajectories_{output_combined_zarr.stem}_{plot_timestamp}"
+)
+output_dir_plots.mkdir(parents=True, exist_ok=True)
+
 
 # each button uses args/args2 to act as an on/off switch for one overlay
 # (accepts a single trace index or a list, e.g. the per-burrow contour traces)
@@ -1057,9 +1063,10 @@ def _toggle_button(label, trace_idcs):
 
 
 # Loop thru frames to plot
+img_h_i, img_w_i = image_array.img_h, image_array.img_w
+
 for frame_idx in range(n_images):
     video_str = list_video_per_img[frame_idx]
-    img_h_i, img_w_i = image_array.img_h, image_array.img_w
 
     # combined masks for this frame
     # masks: ID-encoded (H, W); data_pass: per-region-ID origin (1 or 2)
@@ -1075,12 +1082,16 @@ for frame_idx in range(n_images):
 
     # --------------
     # trajectories: flatten (clip_id, time, individuals) + drop NaNs
+    video_minutes, video_n_frames = _get_video_length(
+        dt[video_str].to_dataset()
+    )
+
     position = dt[video_str].to_dataset().position
     x = position.sel(space="x").values.reshape(-1)
     y = position.sel(space="y").values.reshape(-1)
     valid = ~np.isnan(x) & ~np.isnan(y)
     x_traj, y_traj = x[valid], y[valid]
-    del x, y, valid
+    del position, x, y, valid
 
     # --------------
     # rasterise trajectory points to an RGBA overlay (datashader)
@@ -1109,15 +1120,22 @@ for frame_idx in range(n_images):
     # compute per-burrow trajectory-point counts
     # sample the ID-mask under each (rounded) trajectory point, then bincount
     # (index 0 = background, dropped via the [1:] slice below)
-    traj_cols = np.round(x_traj).astype(int).clip(0, img_w_i - 1)
-    traj_rows = np.round(y_traj).astype(int).clip(0, img_h_i - 1)
+    # round first, then keep only points whose pixel index is in bounds
+    # (rounding can push e.g. 4095.6 up to 4096, one past the last column)
+    cols = np.round(x_traj).astype(int)
+    rows = np.round(y_traj).astype(int)
+    in_frame = (cols >= 0) & (cols < img_w_i) & (rows >= 0) & (rows < img_h_i)
+    traj_cols = cols[in_frame]
+    traj_rows = rows[in_frame]
+
     hits_per_id = np.bincount(
         combined_id_mask[traj_rows, traj_cols],  # masks IDs with traj data
         minlength=max_mask_id + 1,
         # to ensure the output vector has a slot for every ID,
         # even if it has no hits or the ID is not defined
     )
-    hit_ids = np.where(hits_per_id[1:] >= MIN_HITS_PER_BURROW)[0] + 1
+    min_hits_per_burrow = int(MIN_HITS_PER_BURROW_FRAC * video_n_frames)
+    hit_ids = np.where(hits_per_id[1:] >= min_hits_per_burrow)[0] + 1
     # 1-indexed
 
     # --------
@@ -1197,8 +1215,10 @@ for frame_idx in range(n_images):
     fig.update_layout(
         title=(
             f"{image_array.img_paths[frame_idx].stem} - "
+            f"({video_minutes:.1f} min) "
             f"{n_masks} masks "
-            f"({len(hit_ids)} with >= {MIN_HITS_PER_BURROW} samples)"
+            f"({len(hit_ids)} with >= {MIN_HITS_PER_BURROW_FRAC*100:.0f}% "
+            "frames with crab)"
         ),
         xaxis_title="x (pixels)",
         yaxis_title="y (pixels)",
@@ -1243,12 +1263,9 @@ for frame_idx in range(n_images):
 
     # -------- save + show -----------------------------------------------------
     frame_stem = image_array.img_paths[frame_idx].stem
-    output_html = (
-        OUTPUT_DIR / f"trajectories_burrows_{frame_stem}_{plot_timestamp}.html"
-    )
+    output_html = output_dir_plots / f"trajectories_burrows_{frame_stem}.html"
     fig.write_html(str(output_html), include_plotlyjs=True)
     print(f"Saved interactive plot to {output_html}")
 
 # %%
 # del processor, model; gc.collect(); torch.cuda.empty_cache()
-
