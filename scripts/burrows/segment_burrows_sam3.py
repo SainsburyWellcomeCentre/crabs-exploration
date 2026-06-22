@@ -7,14 +7,18 @@ tile with only the prompt points that fall inside it, re-normalised to the
 tile's coordinates. Tiles with no prompt point are skipped. Running on smaller
 tiles helps SAM3 resolve small burrows that full-image inference misses.
 
-Each tile's predicted masks are mapped back onto the full-image canvas and then
-postprocessed: every mask is split into connected regions, of which only those
-within an area range and above a solidity threshold are kept.
+Each tile's predicted masks are split into connected regions and a cheap
+minimum-area filter drops speckle; the surviving regions are mapped back onto
+the full-image canvas.
 
-The surviving regions (pooled across all tiles of a frame) are merged into
-instances by overlap: two regions are fused when their intersection covers at
-least a threshold fraction of the smaller region's area (merging is
-transitive). Each instance inherits the max score among its contributors and is
+The regions (pooled across all tiles of a frame) are merged into instances by
+overlap: two regions are fused when their intersection covers at least a
+threshold fraction of the smaller region's area (merging is transitive). Each
+instance inherits the max score among its contributors. The assembled instances
+are then filtered by area (upper bound) and solidity -- applied here, after the
+merge, so a burrow clipped at a tile seam is judged as one whole blob rather
+than as its more-convex fragments (which a per-tile filter would preferentially
+keep, leaving the whole burrow split across instances). Surviving instances are
 written, per frame, into a single ID-encoded mask zarr store (background = 0,
 regions = 1, 2, ...), alongside a sibling array with the SAM3 score per region.
 
@@ -372,15 +376,22 @@ def _filter_masks_into_regions(
     masks: np.ndarray,
     scores: np.ndarray,
     min_area: int,
-    max_area: int,
-    min_solidity: float,
 ):
-    """Split masks into connected regions and filter by area and solidity.
+    """Split masks into connected regions and drop those below ``min_area``.
 
     ``masks`` is (N, H, W) boolean and ``scores`` is (N,) aligned with it. Each
     mask is split into connected regions (a single SAM3 mask isn't guaranteed
-    to be one clean blob); a region is kept only if its area is within
-    ``[min_area, max_area]`` and its solidity is at least ``min_solidity``.
+    to be one clean blob); a region is kept only if its area is at least
+    ``min_area``.
+
+    This is a cheap per-tile speckle filter run *before* the overlap merge. The
+    upper-area and solidity filters are deliberately applied afterwards, on the
+    assembled instances (see ``_filter_instances_by_area_solidity``): a burrow
+    clipped at a tile seam splits into smaller, more-convex fragments, so a
+    per-tile ``max_area``/solidity filter would preferentially keep those
+    fragments and drop the whole burrow, leaving it split across instances.
+    ``min_area`` is safe here because a fragment is never larger than the whole
+    burrow it came from.
 
     Returns ``(kept_regions_bool_masks, kept_regions_scores, drop_counts)``
     where ``kept_regions_bool_masks`` is a list of (H, W) boolean masks (in the
@@ -390,7 +401,7 @@ def _filter_masks_into_regions(
     """
     kept_regions_bool_masks = []
     list_mask_idcs = []
-    drop_counts = {"area_low": 0, "area_high": 0, "solidity": 0}
+    drop_counts = {"area_low": 0}
 
     # Loop thru masks
     for mask_idx, mask in enumerate(masks.astype(bool)):
@@ -400,30 +411,14 @@ def _filter_masks_into_regions(
         # guaranteed to be one clean blob
         label_mask = sk_label(mask)
 
-        # Compute properties per region
-        list_regions_w_props = regionprops(label_mask)
-
         # Loop thru regions
-        for region in list_regions_w_props:
-            # Filter by min area
+        for region in regionprops(label_mask):
+            # Filter by min area (cheap speckle removal before the merge)
             if region.area < min_area:
                 drop_counts["area_low"] += 1
                 continue
 
-            # Filter by max area
-            if region.area > max_area:
-                drop_counts["area_high"] += 1
-                continue
-
-            # Filter by solidity (proxy for blob-likeness)
-            # (ratio of pixels in the region to pixels of the convex hull,
-            # ranges from 0 (theoretical) to 1 (perfectly convex))
-            # convex_area >= area >= 1 for any real region
-            if region.solidity < min_solidity:
-                drop_counts["solidity"] += 1
-                continue
-
-            # If all pass: retain that region within the mask
+            # If it passes: retain that region within the mask
             kept_regions_bool_masks.append(label_mask == region.label)
             # Keep track of the mask ID associated to this region too
             list_mask_idcs.append(mask_idx)
@@ -641,6 +636,66 @@ def _relabel_id_encoded_mask_to_dense(
     return new_id_encoded_mask, new_ids
 
 
+def _filter_instances_by_area_solidity(
+    id_encoded_mask, surviving_ids, surviving_scores, max_area, min_solidity
+):
+    """Drop merged instances above ``max_area`` or below ``min_solidity``.
+
+    Operates on the assembled instances (after the overlap merge) rather than
+    on per-tile regions, so a burrow clipped at a tile seam is judged as one
+    whole blob instead of as its smaller, more-convex fragments. This is the
+    counterpart of the per-tile ``min_area`` pre-filter in
+    ``_filter_masks_into_regions``; see its docstring for the rationale.
+
+    ``surviving_ids`` are the instance IDs present in ``id_encoded_mask``
+    (ascending) and ``surviving_scores`` is index-aligned to them. Surviving
+    instances are relabelled to dense ``1..M``. Returns ``(new_id_encoded_mask,
+    new_ids, new_scores, drop_counts)`` with ``new_ids`` ascending,
+    ``new_scores`` index-aligned, and ``drop_counts`` counting the instances
+    dropped per reason.
+    """
+    drop_counts = {"area_high": 0, "solidity": 0}
+    score_by_id = dict(
+        zip(surviving_ids.tolist(), surviving_scores.tolist(), strict=True)
+    )
+
+    # Keep instances within the area cap and above the solidity threshold.
+    # (solidity is the ratio of region pixels to convex-hull pixels, in [0, 1],
+    # a proxy for blob-likeness)
+    keep_ids = []
+    for region in regionprops(id_encoded_mask):
+        if region.area > max_area:
+            drop_counts["area_high"] += 1
+            continue
+        if region.solidity < min_solidity:
+            drop_counts["solidity"] += 1
+            continue
+        keep_ids.append(region.label)
+
+    # Handle the all-dropped case
+    if not keep_ids:
+        return (
+            np.zeros_like(id_encoded_mask),
+            np.array([], dtype=np.int16),
+            np.array([], dtype=np.float32),
+            drop_counts,
+        )
+
+    # Zero out dropped instances and relabel survivors to dense 1..M
+    id_encoded_mask = id_encoded_mask.copy()
+    id_encoded_mask[~np.isin(id_encoded_mask, keep_ids)] = 0
+    new_id_encoded_mask, new_ids = _relabel_id_encoded_mask_to_dense(
+        id_encoded_mask
+    )
+
+    # Align scores to the ascending kept IDs (relabel preserves their order)
+    new_scores = np.array(
+        [score_by_id[i] for i in sorted(keep_ids)], dtype=np.float32
+    )
+
+    return new_id_encoded_mask, new_ids, new_scores, drop_counts
+
+
 def _cap_regions_per_image(
     id_encoded_mask, surviving_ids, surviving_scores, max_regions
 ):
@@ -801,7 +856,7 @@ def main(args: argparse.Namespace) -> None:
             # prompted tile (mapped back onto the full-image canvas).
             list_tile_masks = []
             list_tile_scores = []
-            tile_drop_counts = {"area_low": 0, "area_high": 0, "solidity": 0}
+            tile_drop_counts = {"area_low": 0}
             n_tiles_used = 0
             for x0, y0, x1, y1 in tiles:
                 # Select prompts inside this tile (full-image pixel coords)
@@ -845,15 +900,14 @@ def main(args: argparse.Namespace) -> None:
                 if n_objects == 0:
                     continue
 
-                # Split + filter tile masks into kept regions
-                # (all in crop coords)
+                # Split tile masks into regions and drop sub-min-area speckle
+                # (all in crop coords; max-area and solidity are applied later,
+                # on the merged instances)
                 kept_masks, kept_scores, drop_counts = (
                     _filter_masks_into_regions(
                         masks,
                         scores,
                         args.min_mask_area_pixels,
-                        args.max_mask_area_pixels,
-                        args.min_solidity,
                     )
                 )
                 for reason, count in drop_counts.items():
@@ -869,13 +923,30 @@ def main(args: argparse.Namespace) -> None:
             # -------------------------------------------------------------
             # Merge the pooled regions across tiles into instances by overlap
             n_regions_pre_merge = len(list_tile_masks)
-            id_encoded_mask, surviving_ids, surviving_scores = (
+            id_encoded_mask, merged_ids, merged_scores = (
                 _merge_bool_masks_by_overlap(
                     list_tile_masks,
                     np.asarray(list_tile_scores, dtype=np.float32),
                     (image_h, image_w),
                     args.overlap_threshold,
                 )
+            )
+            n_merged_regions = len(merged_ids)
+
+            # Filter the assembled instances by max-area and solidity (applied
+            # here, after the merge, so a burrow clipped at a tile seam is
+            # judged as one whole blob rather than as its more-convex pieces)
+            (
+                id_encoded_mask,
+                surviving_ids,
+                surviving_scores,
+                instance_drops,
+            ) = _filter_instances_by_area_solidity(
+                id_encoded_mask,
+                merged_ids,
+                merged_scores,
+                args.max_mask_area_pixels,
+                args.min_solidity,
             )
 
             # -------------------------
@@ -891,16 +962,19 @@ def main(args: argparse.Namespace) -> None:
                 n_masks_per_frame.append((frame_idx, 0))
                 continue
 
-            n_detected_regions = n_regions_pre_merge + sum(
-                tile_drop_counts.values()
+            n_detected_regions = (
+                n_regions_pre_merge + tile_drop_counts["area_low"]
             )
             print(
                 f"Frame {frame_idx} ({video_str}): "
                 f"{n_detected_regions} regions detected; "
-                f"after filters: {n_regions_pre_merge}; "
-                f"after overlap merge: {n_surviving_regions}; "
-                f"(all before capping; {n_tiles_used}/{len(tiles)} "
-                "prompted tiles).",
+                f"after min-area filter: {n_regions_pre_merge}; "
+                f"after overlap merge: {n_merged_regions}; "
+                f"after area/solidity filter: {n_surviving_regions} "
+                f"(dropped {instance_drops['area_high']} large, "
+                f"{instance_drops['solidity']} non-solid); "
+                f"before capping; "
+                f"{n_tiles_used}/{len(tiles)} prompted tiles.",
             )
             # -------------------------
 
