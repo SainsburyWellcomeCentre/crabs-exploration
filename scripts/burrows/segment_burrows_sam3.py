@@ -6,9 +6,10 @@ prompt), and postprocess the predicted masks. Postprocessing splits each mask
 into connected regions and keeps only those within an area range and above a
 solidity threshold.
 
-The surviving regions are merged by connectivity into instances (overlapping,
-nested or touching regions collapse into one, which inherits the max score
-among its contributors) and written, per frame, into a single ID-encoded mask
+The surviving regions are unioned and split into instances with a watershed
+transform (touching or partially overlapping blobs are separated; nested or
+heavily overlapping ones stay merged). Each instance inherits the max score
+among its contributors and is written, per frame, into a single ID-encoded mask
 zarr store (background = 0, regions = 1, 2, ...), alongside a sibling array
 with the SAM3 confidence score per region.
 
@@ -85,8 +86,11 @@ import zarr
 from PIL import Image
 from sam3 import build_sam3_image_model
 from sam3.model.sam3_image_processor import Sam3Processor
+from scipy import ndimage as ndi
+from skimage.feature import peak_local_max
 from skimage.measure import label as sk_label
 from skimage.measure import regionprops
+from skimage.segmentation import watershed
 
 
 class ImageArrayLazy:
@@ -312,21 +316,23 @@ def _postprocess_masks(
     min_area: int,
     max_area: int,
     min_solidity: float,
-    connectivity: int,
+    min_peak_distance: int,
 ):
-    """Split masks into connected regions, filter, and merge by connectivity.
+    """Split masks into connected regions, filter, then split by watershed.
 
-    Regions are filtered based on area range and solidity, then merged into
-    instances by connectivity (overlapping, nested or touching regions
-    collapse into one instance; ``connectivity`` is passed to
-    ``skimage.measure.label``).
+    Regions are filtered based on area range and solidity, then their union is
+    split into instances with a watershed transform (touching or partially
+    overlapping blobs are separated; nested or heavily overlapping ones stay
+    merged). ``min_peak_distance`` is the minimum spacing between
+    distance-transform peaks, passed to ``skimage.feature.peak_local_max``.
 
     ``masks`` is (N, H, W) boolean. Returns ``(id_encoded_mask, surviving_ids,
-    surviving_scores, drop_counts)`` where ``id_encoded_mask`` is an
-    ID-encoded mask, ``surviving_scores`` carries the max source score onto
-    each merged instance, and ``drop_counts`` is a dict counting how many
-    connected regions were dropped per reason (plus how many were absorbed by
-    merging, under ``"merged"``).
+    surviving_scores, drop_counts, n_kept_regions)`` where ``id_encoded_mask``
+    is an ID-encoded mask, ``surviving_scores`` carries the max source score
+    onto each instance, ``drop_counts`` is a dict counting how many connected
+    regions were dropped per reason (area/solidity, before watershed), and
+    ``n_kept_regions`` is how many regions passed the filters (watershed then
+    merges/splits these into the final instances).
     """
     kept_regions_bool_masks = []
     list_mask_idcs = []
@@ -336,6 +342,8 @@ def _postprocess_masks(
     for mask_idx, mask in enumerate(masks.astype(bool)):
         # Label connected regions in mask
         # (connected regions are assigned the same int)
+        # SAM3 returns a boolean mask, but a single mask isn't
+        # guaranteed to be one clean blob
         label_mask = sk_label(mask)
 
         # Compute properties per region
@@ -366,27 +374,45 @@ def _postprocess_masks(
             # Keep track of the mask ID associated to this region too
             list_mask_idcs.append(mask_idx)
 
+    # Get number of connected regions that passed the filters (pre-watershed)
+    n_regions_pre_watershed = len(list_mask_idcs)
+
     # Get list of scores for kept regions
     kept_regions_scores = scores[list_mask_idcs]
 
     # -------------------------------
-    # Merge regions into instances by connectivity:
-    # boolean masks (N, H, W) -> ID-encoded (H, W); overlapping, nested or
-    # touching regions collapse into one instance that inherits the max
-    # contributor score
+    # # Merge regions by connectivity:
+    # # we convert boolean masks (N, H, W) to ID-encoded (H, W) by projecting
+    # # and merging; overlapping, nested or touching regions collapse into
+    # # one mask that inherits the max contributor score
+    # id_encoded_mask, surviving_ids, surviving_scores = (
+    #     _merge_bool_masks_by_connectivity(
+    #         kept_regions_bool_masks,
+    #         kept_regions_scores,
+    #         masks.shape[1:],
+    #         connectivity,
+    #     )
+    # )
+
+    # Split the union of the kept regions into instances with watershed
+    # (touching / partially overlapping regions are separated; nested or
+    # heavily overlapping ones stay merged)
     id_encoded_mask, surviving_ids, surviving_scores = (
-        _merge_bool_masks_by_connectivity(
+        _split_bool_masks_by_watershed(
             kept_regions_bool_masks,
             kept_regions_scores,
             masks.shape[1:],
-            connectivity,
+            min_peak_distance,
         )
     )
 
-    # Log how many regions were absorbed into another by the merge
-    drop_counts["merged"] = len(list_mask_idcs) - len(surviving_ids)
-
-    return id_encoded_mask, surviving_ids, surviving_scores, drop_counts
+    return (
+        id_encoded_mask,
+        surviving_ids,
+        surviving_scores,
+        drop_counts,
+        n_regions_pre_watershed,
+    )
 
 
 def _merge_bool_masks_by_connectivity(
@@ -419,17 +445,68 @@ def _merge_bool_masks_by_connectivity(
     surviving_ids = np.unique(id_encoded_mask)
     surviving_ids = surviving_ids[surviving_ids != 0]
 
-    # Merge scores by max: each input region is itself connected, so it falls
-    # entirely within one labelled component (all its pixels share one label).
-    # Since labels are dense, label - 1 is the slot in the scores array.
-    # (every label has at least 1 contributor, so np.inf should not leak into
-    # the zarr)
+    # Compute merged scores as the max of contributing regions.
+
+    # one score per label ID, excluding 0
+    # (every label has at least 1 contributing region, so np.inf should not
+    # leak into the zarr)
     surviving_scores = np.full(len(surviving_ids), -np.inf, dtype=np.float32)
     for bool_mask, score in zip(
         list_kept_region_masks, list_scores, strict=True
     ):
+        # get *merged* label ID for this *unmerged* mask
+        # (i.e. get the final ID for this region)
         label = id_encoded_mask[bool_mask][0]
+        # get the max between this unmerged mask's score and the score of the
+        # final mask it contributes to
         surviving_scores[label - 1] = max(surviving_scores[label - 1], score)
+
+    return id_encoded_mask, surviving_ids, surviving_scores
+
+
+def _split_bool_masks_by_watershed(
+    list_kept_region_masks, list_scores, img_h_w, min_peak_distance
+):
+    """Project masks and then split using watershed."""
+    # Compute score_canvas: score per pixel of unmerged regions
+    score_canvas = np.full(img_h_w, -np.inf, dtype=np.float32)
+    for bool_mask, score in zip(
+        list_kept_region_masks, list_scores, strict=True
+    ):
+        np.maximum(score_canvas, score, where=bool_mask, out=score_canvas)
+
+    # Collapse all boolean masks into one canvas
+    canvas = np.zeros(img_h_w, dtype=bool)
+    for bool_mask in list_kept_region_masks:
+        canvas |= bool_mask
+
+    # Split masks using watershed (returns an ID-encoded mask)
+    # compute peaks of distance to background (0-value pixels)
+    distance = ndi.distance_transform_edt(canvas)
+    coords = peak_local_max(
+        distance, labels=canvas, min_distance=min_peak_distance
+    )
+    # express peaks as markers in a zero array, each with an
+    # ID assigned
+    markers = np.zeros(img_h_w, dtype=np.int32)
+    markers[tuple(coords.T)] = np.arange(1, len(coords) + 1)
+    id_encoded_mask = watershed(-distance, markers, mask=canvas).astype(
+        np.int16
+    )
+
+    # Compute surviving ids
+    surviving_ids = np.unique(id_encoded_mask)
+    surviving_ids = surviving_ids[surviving_ids != 0]
+
+    # Compute score per final mask as the max score of original masks
+    # that make it.
+    # Every basin pixel is inside the union, so score_canvas is finite
+    # -> no -inf leaks.
+    surviving_scores = ndi.maximum(
+        score_canvas,  # scores of unmerged masks
+        labels=id_encoded_mask,  # labels of final masks
+        index=surviving_ids,  # get one score per final mask
+    ).astype(np.float32)
 
     return id_encoded_mask, surviving_ids, surviving_scores
 
@@ -531,6 +608,7 @@ def main(args: argparse.Namespace) -> None:
         "postproc_max_mask_area_PIXELS": args.max_mask_area_pixels,
         "postproc_min_solidity": args.min_solidity,
         "postproc_mask_merge_connectivity": args.mask_merge_connectivity,
+        "postproc_watershed_min_peak_distance": args.min_peak_distance,
         "mask_encoding": "instance_id",
         "background_label": 0,
         "id_first_index": 1,
@@ -615,19 +693,20 @@ def main(args: argparse.Namespace) -> None:
             # Postprocess SAM3-predicted masks:
             # - Split masks into "regions",
             # - Filter out masks whose area is out of bounds,
-            # - Merge regions into instances by connectivity (max score)
+            # - Split the union of regions into instances by watershed
             (
                 id_encoded_mask,
                 surviving_ids,
                 surviving_scores,
                 drop_counts,
+                n_regions_pre_watershed,
             ) = _postprocess_masks(
                 masks,
                 scores,
                 args.min_mask_area_pixels,
                 args.max_mask_area_pixels,
                 args.min_solidity,
-                args.mask_merge_connectivity,
+                args.min_peak_distance,
             )
 
             # -------------------------
@@ -642,11 +721,15 @@ def main(args: argparse.Namespace) -> None:
                 n_masks_per_frame.append((frame_idx, 0))
                 continue
 
-            n_total_regions = n_surviving_regions + sum(drop_counts.values())
+            n_detected_regions = n_regions_pre_watershed + sum(
+                drop_counts.values()
+            )
             print(
-                f"Frame {frame_idx} ({video_str}): postprocessing kept "
-                f"{n_surviving_regions}/{n_total_regions} regions, "
-                f"dropped/merged {drop_counts} (all before capping)."
+                f"Frame {frame_idx} ({video_str}): "
+                f"{n_detected_regions} regions detected; "
+                f"after filters: {n_regions_pre_watershed}; ",
+                f"after watershed: {n_surviving_regions}; "
+                "(all before capping).",
             )
             # -------------------------
 
@@ -795,6 +878,19 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
             "only (4-connectivity), 2 = include diagonals (8-connectivity). "
             "Overlapping and nested regions merge regardless; this only "
             "affects regions that merely touch (default: 1)."
+        ),
+    )
+    parser.add_argument(
+        "--min-peak-distance",
+        type=int,
+        default=15,
+        help=(
+            "Minimum spacing in pixels between distance-transform peaks when "
+            "splitting the union of postprocessed regions into instances with "
+            "a watershed transform (passed to skimage.feature.peak_local_max)."
+            " Roughly the radius of a typical burrow: peaks closer than this "
+            "fuse into one instance, so smaller values split more "
+            "aggressively (default: 15)."
         ),
     )
     parser.add_argument(
