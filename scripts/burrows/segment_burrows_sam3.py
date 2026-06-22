@@ -205,20 +205,28 @@ def _extract_point_prompts_per_video(
 
 
 def _add_prompts_to_inference_state(
-    processor, image, prompts_xy_norm, text_prompt=None
+    processor, image, prompts_xy_norm, text_features=None
 ):
-    """Add image, normalised points and optional text prompt to the state."""
+    """Add image, normalised points and optional text features to the state.
+
+    ``text_features`` is the precomputed output of
+    ``model.backbone.forward_text([prompt])`` (image-independent, so encoded
+    once and reused across tiles/frames). When provided, it is injected into
+    the state directly instead of calling ``processor.set_text_prompt``, which
+    would re-encode the text and run an extra grounding pass with only the
+    dummy geometric prompt (immediately discarded once the points are added).
+    Pass ``None`` to rely on the point prompts only.
+    """
     # Pass image to processor and reset inference state
     inference_state = processor.set_image(image)
     processor.reset_all_prompts(
         inference_state
     )  # mutates the state dict in place
 
-    # Add optional text prompt
-    if text_prompt is not None:
-        inference_state = processor.set_text_prompt(
-            state=inference_state, prompt=text_prompt
-        )
+    # Inject the precomputed text features (mirrors set_text_prompt minus the
+    # text encoder pass and the premature grounding pass)
+    if text_features is not None:
+        inference_state["backbone_out"].update(text_features)
 
     # Add normalised point prompts (all at once; grounds a single time)
     inference_state = _add_point_prompts(
@@ -759,6 +767,16 @@ def main(args: argparse.Namespace) -> None:
             model, confidence_threshold=args.conf_threshold
         )
 
+        # Encode the text prompt once and reuse it across every tile and frame.
+        text_features = (
+            model.backbone.forward_text(
+                [args.text_prompt],
+                device=processor.device,
+            )
+            if args.text_prompt is not None
+            else None
+        )
+
         # --------------------------------------------------------------
         # Run inference on every frame and write ID-encoded masks to zarr
         count_postproc_frames_empty = 0
@@ -815,7 +833,7 @@ def main(args: argparse.Namespace) -> None:
                     processor,
                     crop_pil,
                     prompts_crop_norm,
-                    text_prompt=args.text_prompt,
+                    text_features=text_features,
                 )
 
                 # Get predicted masks and scores, then release GPU state
