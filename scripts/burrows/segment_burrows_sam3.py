@@ -1,17 +1,22 @@
-"""Segment burrows with SAM3 from per-video point prompts.
+"""Segment burrows with SAM3 from per-video point prompts (tiled inference).
 
 For every PNG frame in the input directory, we look up the manual point prompts
-for its video, run SAM3 image inference (optionally combined with a text
-prompt), and postprocess the predicted masks. Postprocessing splits each mask
-into connected regions and keeps only those within an area range and above a
-solidity threshold.
+for its video and run SAM3 image inference **tile by tile**: the frame is split
+into overlapping tiles and SAM3 (optionally with a text prompt) runs on each
+tile with only the prompt points that fall inside it, re-normalised to the
+tile's coordinates. Tiles with no prompt point are skipped. Running on smaller
+tiles helps SAM3 resolve small burrows that full-image inference misses.
 
-The surviving regions are merged into instances by overlap: two regions are
-fused when their intersection covers at least a threshold fraction of the
-smaller region's area (merging is transitive). Each instance inherits the max
-score among its contributors and is written, per frame, into a single
-ID-encoded mask zarr store (background = 0, regions = 1, 2, ...), alongside a
-sibling array with the SAM3 confidence score per region.
+Each tile's predicted masks are mapped back onto the full-image canvas and then
+postprocessed: every mask is split into connected regions, of which only those
+within an area range and above a solidity threshold are kept.
+
+The surviving regions (pooled across all tiles of a frame) are merged into
+instances by overlap: two regions are fused when their intersection covers at
+least a threshold fraction of the smaller region's area (merging is
+transitive). Each instance inherits the max score among its contributors and is
+written, per frame, into a single ID-encoded mask zarr store (background = 0,
+regions = 1, 2, ...), alongside a sibling array with the SAM3 score per region.
 
 The store is timestamped and laid out as:
     masks_<YYYYMMDD_HHMMSS>.zarr
@@ -35,6 +40,10 @@ Usage (dependencies are auto-installed via uv):
     uv run segment_burrows_sam3.py /path/to/images_dir \
         /path/to/manual_prompts.csv /path/to/out_dir \
         --min-mask-area-pixels 100 --max-mask-area-pixels 3000
+* Custom tile geometry (defaults derive from image height)
+    uv run segment_burrows_sam3.py /path/to/images_dir \
+        /path/to/manual_prompts.csv /path/to/out_dir \
+        --tile-size 1024 --tile-overlap 512
 
 Follows the official SAM3 image predictor example:
 https://github.com/facebookresearch/sam3/blob/main/examples/sam3_image_predictor_example.ipynb
@@ -170,28 +179,29 @@ def _initialise_mask_zarr(
     return root, output_masks_zarr
 
 
-def _extract_normalised_point_prompts_per_video(
-    manual_prompts_csv: Path | str, img_w: float, img_h: float
+def _extract_point_prompts_per_video(
+    manual_prompts_csv: Path | str,
 ) -> dict:
-    """Compute dict mapping video to normalised point prompt coordinates.
+    """Compute dict mapping video to point prompt pixel coordinates.
 
     The CSV ``group_id`` column has format ``<video>_mean_n<frame>.png``; the
-    video string is everything before the first underscore. Coordinates are
-    normalised by image width and height into ``[0, 1]``.
+    video string is everything before the first underscore. Coordinates are the
+    pixel (x, y) prompt locations as stored in the CSV. Tiled inference
+    re-normalises these to each crop's size downstream, so no full-image
+    normalisation is applied here.
     """
     # Read from csv
     df_prompts = pd.read_csv(manual_prompts_csv)
 
-    # point prompts in pixel xy ---> normalised, keyed by video string
-    points_xy_normalised_per_video = {
-        str(video).split("_")[0]: (
-            group[["prompt_point_x", "prompt_point_y"]].to_numpy()
-            / np.array([img_w, img_h])
-        ).astype(np.float32)
+    # point prompts in pixel xy, keyed by video string
+    points_xy_px_per_video = {
+        str(video).split("_")[0]: group[["prompt_point_x", "prompt_point_y"]]
+        .to_numpy()
+        .astype(np.float32)
         for video, group in df_prompts.groupby("group_id")
     }
 
-    return points_xy_normalised_per_video
+    return points_xy_px_per_video
 
 
 def _add_prompts_to_inference_state(
@@ -312,28 +322,63 @@ def _extract_sam3_results_one_img(inference_state):
     return masks, scores, n_objects
 
 
-def _postprocess_masks(
+def _make_tiles(
+    img_h: int, img_w: int, tile_side: int, tile_overlap: int
+) -> list[tuple[int, int, int, int]]:
+    """Overlapping (x0, y0, x1, y1) tiles covering the image.
+
+    Standard image coordinates (origin top-left, y increasing downward). Tiles
+    are clamped to the image edges and derived from their bottom-right corner
+    so that every tile stays full-sized (edge tiles shift inward rather than
+    shrink). ``tile_overlap`` is the overlap in pixels between neighbours; aim
+    for it to exceed a burrow's diameter so each burrow is fully contained in
+    at least one tile.
+    """
+    step = tile_side - tile_overlap
+
+    # we use a set to easily remove tuple duplicates (near the edge, the
+    # clamping behaviour means many tiles can be "rounded" to the same tile)
+    tiles = set()
+
+    # loop thru candidate top-left corner of tile
+    for y0 in range(0, max(1, img_h - tile_overlap), step):
+        for x0 in range(0, max(1, img_w - tile_overlap), step):
+            # compute bottom-right corner of tile, clamped to image edge
+            x1 = min(x0 + tile_side, img_w)
+            y1 = min(y0 + tile_side, img_h)
+
+            tiles.add(
+                (
+                    # top-left corner derived from the bottom-right corner so
+                    # the tile stays full-sized (matches x0,y0 in the interior)
+                    max(0, x1 - tile_side),
+                    max(0, y1 - tile_side),
+                    x1,
+                    y1,
+                )
+            )
+    return sorted(tiles)
+
+
+def _filter_masks_into_regions(
     masks: np.ndarray,
     scores: np.ndarray,
     min_area: int,
     max_area: int,
     min_solidity: float,
-    overlap_threshold: float,
 ):
-    """Split masks into connected regions, filter, then merge by overlap.
+    """Split masks into connected regions and filter by area and solidity.
 
-    Regions are filtered based on area range and solidity, then merged into
-    instances whenever two regions overlap sufficiently: their intersection
-    covers at least ``overlap_threshold`` of the smaller region's area. Merging
-    is transitive, and each instance inherits the max score among its members.
+    ``masks`` is (N, H, W) boolean and ``scores`` is (N,) aligned with it. Each
+    mask is split into connected regions (a single SAM3 mask isn't guaranteed
+    to be one clean blob); a region is kept only if its area is within
+    ``[min_area, max_area]`` and its solidity is at least ``min_solidity``.
 
-    ``masks`` is (N, H, W) boolean. Returns ``(id_encoded_mask, surviving_ids,
-    surviving_scores, drop_counts, n_kept_regions)`` where ``id_encoded_mask``
-    is an ID-encoded mask, ``surviving_scores`` carries the max source score
-    onto each instance, ``drop_counts`` is a dict counting how many connected
-    regions were dropped per reason (area/solidity, before merging), and
-    ``n_kept_regions`` is how many regions passed the filters (the overlap
-    merge then collapses these into the final instances).
+    Returns ``(kept_regions_bool_masks, kept_regions_scores, drop_counts)``
+    where ``kept_regions_bool_masks`` is a list of (H, W) boolean masks (in the
+    coordinate frame of the input ``masks``), ``kept_regions_scores`` carries
+    the source mask's score onto each kept region, and ``drop_counts`` counts
+    how many connected regions were dropped per reason.
     """
     kept_regions_bool_masks = []
     list_mask_idcs = []
@@ -375,59 +420,10 @@ def _postprocess_masks(
             # Keep track of the mask ID associated to this region too
             list_mask_idcs.append(mask_idx)
 
-    # Get number of connected regions that passed the filters (pre-merge)
-    n_regions_pre_merge = len(list_mask_idcs)
-
     # Get list of scores for kept regions
     kept_regions_scores = scores[list_mask_idcs]
 
-    # -------------------------------
-    # Collapse the kept regions into instances. Alternative strategies are
-    # kept below (commented out); toggle by un/commenting.
-
-    # # (a) Merge regions by connectivity:
-    # # we convert boolean masks (N, H, W) to ID-encoded (H, W) by projecting
-    # # and merging; overlapping, nested or touching regions collapse into
-    # # one mask that inherits the max contributor score
-    # id_encoded_mask, surviving_ids, surviving_scores = (
-    #     _merge_bool_masks_by_connectivity(
-    #         kept_regions_bool_masks,
-    #         kept_regions_scores,
-    #         masks.shape[1:],
-    #         connectivity,
-    #     )
-    # )
-
-    # # (b) Split the union of the kept regions into instances with watershed
-    # # (touching / partially overlapping regions are separated; nested or
-    # # heavily overlapping ones stay merged)
-    # id_encoded_mask, surviving_ids, surviving_scores = (
-    #     _split_bool_masks_by_watershed(
-    #         kept_regions_bool_masks,
-    #         kept_regions_scores,
-    #         masks.shape[1:],
-    #         min_peak_distance,
-    #     )
-    # )
-
-    # (c) Merge regions by overlap: two regions merge when their intersection
-    # covers at least ``overlap_threshold`` of the smaller region's area
-    id_encoded_mask, surviving_ids, surviving_scores = (
-        _merge_bool_masks_by_overlap(
-            kept_regions_bool_masks,
-            kept_regions_scores,
-            masks.shape[1:],
-            overlap_threshold,
-        )
-    )
-
-    return (
-        id_encoded_mask,
-        surviving_ids,
-        surviving_scores,
-        drop_counts,
-        n_regions_pre_merge,
-    )
+    return kept_regions_bool_masks, kept_regions_scores, drop_counts
 
 
 def _merge_bool_masks_by_connectivity(
@@ -690,9 +686,24 @@ def main(args: argparse.Namespace) -> None:
     ]
 
     # ------------------------------------------------------------------
-    # Initialise the output ID-encoded mask zarr store (includes scores)
+    # Resolve tile geometry. Defaults derive from the image height (a third of
+    # it for the tile side, half of that for the overlap)
     image_shape = image_array.shape[:3]
     n_images, image_h, image_w = image_shape
+    tile_size = args.tile_size if args.tile_size is not None else image_h // 3
+    tile_overlap = (
+        args.tile_overlap if args.tile_overlap is not None else tile_size // 2
+    )
+
+    # Compute tile (x0,y0,x1,y1) coordinates
+    tiles = _make_tiles(image_h, image_w, tile_size, tile_overlap)
+    print(
+        f"Tiling each {image_h}x{image_w} frame into {len(tiles)} tiles "
+        f"(size {tile_size}px, overlap {tile_overlap}px)"
+    )
+
+    # ------------------------------------------------------------------
+    # Initialise the output ID-encoded mask zarr store (includes scores)
     metadata_dict = {
         "sam3_model": "sam3_image",
         "source_images_dir": str(args.images_dir),
@@ -702,11 +713,12 @@ def main(args: argparse.Namespace) -> None:
         "estim_max_regions_per_image": args.max_regions_per_image,
         "text_prompt": args.text_prompt,
         "sam3_confidence_threshold": args.conf_threshold,
+        "inference_mode": "tiled",
+        "tile_size": tile_size,
+        "tile_overlap": tile_overlap,
         "postproc_min_mask_area_PIXELS": args.min_mask_area_pixels,
         "postproc_max_mask_area_PIXELS": args.max_mask_area_pixels,
         "postproc_min_solidity": args.min_solidity,
-        "postproc_mask_merge_connectivity": args.mask_merge_connectivity,
-        "postproc_watershed_min_peak_distance": args.min_peak_distance,
         "postproc_overlap_threshold": args.overlap_threshold,
         "mask_encoding": "instance_id",
         "background_label": 0,
@@ -722,11 +734,9 @@ def main(args: argparse.Namespace) -> None:
     )
 
     # ------------------------------------------------------------------
-    # Extract point prompts per video (normalised coords, keyed by video)
-    points_xy_normalised_per_video = (
-        _extract_normalised_point_prompts_per_video(
-            args.manual_prompts_csv, image_array.img_w, image_array.img_h
-        )
+    # Extract point prompts per video (pixel coords, keyed by video)
+    points_xy_px_per_video = _extract_point_prompts_per_video(
+        args.manual_prompts_csv
     )
 
     # ------------------------------------------------------------------
@@ -758,54 +768,96 @@ def main(args: argparse.Namespace) -> None:
         n_masks_per_frame = []
 
         for frame_idx in range(len(image_array)):
-            # Load image
-            image = Image.fromarray(image_array[frame_idx])
-
-            # Get point prompts normalised for the corresponding video
+            # Get point prompts (full-image pixel x, y) for the matching video
             video_str = list_video_per_img[frame_idx]
-            prompts_xy_norm = points_xy_normalised_per_video.get(video_str)
-            if prompts_xy_norm is None or len(prompts_xy_norm) == 0:
+            prompts_img_px = points_xy_px_per_video.get(video_str)
+            if prompts_img_px is None or len(prompts_img_px) == 0:
                 print(f"Frame {frame_idx} ({video_str}): no prompts, skipping")
                 continue
 
-            # Add all prompts to inference state
-            inference_state = _add_prompts_to_inference_state(
-                processor,
-                image,
-                prompts_xy_norm,
-                text_prompt=args.text_prompt,
-            )
+            # Load image as a numpy array (H, W, C) so tiles can be cropped
+            img_full = image_array[frame_idx]
 
-            # Get predicted boolean masks and scores, then release GPU state
-            masks, scores, n_objects = _extract_sam3_results_one_img(
-                inference_state
-            )
-            del inference_state
-            torch.cuda.empty_cache()
+            # -------------------------------------------------------------
+            # Run SAM3 tile by tile and pool the filtered regions of every
+            # prompted tile (mapped back onto the full-image canvas).
+            list_tile_masks = []
+            list_tile_scores = []
+            tile_drop_counts = {"area_low": 0, "area_high": 0, "solidity": 0}
+            n_tiles_used = 0
+            for x0, y0, x1, y1 in tiles:
+                # Select prompts inside this tile (full-image pixel coords)
+                in_tile = (
+                    (prompts_img_px[:, 0] >= x0)
+                    & (prompts_img_px[:, 1] >= y0)
+                    & (prompts_img_px[:, 0] < x1)
+                    & (prompts_img_px[:, 1] < y1)
+                )
+                # Skip tiles with no prompt point
+                if not in_tile.any():
+                    continue
+                n_tiles_used += 1
 
-            # Log if no detections
-            if n_objects == 0:
-                print(f"Frame {frame_idx} ({video_str}): no detections")
-                n_masks_per_frame.append((frame_idx, 0))
-                continue
+                # Express in-tile prompts as crop-local pixels, then normalise
+                # to the crop size for SAM3
+                prompts_crop_px = prompts_img_px[in_tile] - np.array(
+                    [x0, y0],
+                    dtype=np.float32,
+                )
+                prompts_crop_norm = prompts_crop_px / np.array(
+                    [x1 - x0, y1 - y0],
+                    dtype=np.float32,
+                )
 
-            # Postprocess SAM3-predicted masks:
-            # - Split masks into "regions",
-            # - Filter out masks whose area is out of bounds,
-            # - Merge sufficiently overlapping regions into instances
-            (
-                id_encoded_mask,
-                surviving_ids,
-                surviving_scores,
-                drop_counts,
-                n_regions_pre_merge,
-            ) = _postprocess_masks(
-                masks,
-                scores,
-                args.min_mask_area_pixels,
-                args.max_mask_area_pixels,
-                args.min_solidity,
-                args.overlap_threshold,
+                # Add prompts (text + points) to the inference state per crop
+                crop_pil = Image.fromarray(img_full[y0:y1, x0:x1])
+                inference_state = _add_prompts_to_inference_state(
+                    processor,
+                    crop_pil,
+                    prompts_crop_norm,
+                    text_prompt=args.text_prompt,
+                )
+
+                # Get predicted masks and scores, then release GPU state
+                masks, scores, n_objects = _extract_sam3_results_one_img(
+                    inference_state
+                )
+                del inference_state
+
+                if n_objects == 0:
+                    continue
+
+                # Split + filter tile masks into kept regions
+                # (all in crop coords)
+                kept_masks, kept_scores, drop_counts = (
+                    _filter_masks_into_regions(
+                        masks,
+                        scores,
+                        args.min_mask_area_pixels,
+                        args.max_mask_area_pixels,
+                        args.min_solidity,
+                    )
+                )
+                for reason, count in drop_counts.items():
+                    tile_drop_counts[reason] += count
+
+                # Map each kept region into a full-image boolean canvas
+                for crop_mask in kept_masks:
+                    canvas = np.zeros((image_h, image_w), dtype=bool)
+                    canvas[y0:y1, x0:x1] = crop_mask
+                    list_tile_masks.append(canvas)
+                list_tile_scores.extend(kept_scores.tolist())
+
+            # -------------------------------------------------------------
+            # Merge the pooled regions across tiles into instances by overlap
+            n_regions_pre_merge = len(list_tile_masks)
+            id_encoded_mask, surviving_ids, surviving_scores = (
+                _merge_bool_masks_by_overlap(
+                    list_tile_masks,
+                    np.asarray(list_tile_scores, dtype=np.float32),
+                    (image_h, image_w),
+                    args.overlap_threshold,
+                )
             )
 
             # -------------------------
@@ -814,21 +866,23 @@ def main(args: argparse.Namespace) -> None:
             if n_surviving_regions == 0:
                 print(
                     f"Frame {frame_idx} ({video_str}): "
-                    "no masks after postprocessing"
+                    f"no masks after postprocessing "
+                    f"({n_tiles_used}/{len(tiles)} prompted tiles)"
                 )
                 count_postproc_frames_empty += 1
                 n_masks_per_frame.append((frame_idx, 0))
                 continue
 
             n_detected_regions = n_regions_pre_merge + sum(
-                drop_counts.values()
+                tile_drop_counts.values()
             )
             print(
                 f"Frame {frame_idx} ({video_str}): "
                 f"{n_detected_regions} regions detected; "
-                f"after filters: {n_regions_pre_merge}; ",
+                f"after filters: {n_regions_pre_merge}; "
                 f"after overlap merge: {n_surviving_regions}; "
-                "(all before capping).",
+                f"(all before capping; {n_tiles_used}/{len(tiles)} "
+                "prompted tiles).",
             )
             # -------------------------
 
@@ -967,29 +1021,22 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--mask-merge-connectivity",
+        "--tile-size",
         type=int,
-        choices=[1, 2],
-        default=1,
+        default=None,
         help=(
-            "Connectivity used to merge postprocessed regions into instances "
-            "(passed to skimage.measure.label): 1 = orthogonal neighbours "
-            "only (4-connectivity), 2 = include diagonals (8-connectivity). "
-            "Overlapping and nested regions merge regardless; this only "
-            "affects regions that merely touch (default: 1)."
+            "Side length in pixels of the (square) tiles SAM3 runs on. "
+            "Defaults to a third of the image height when omitted."
         ),
     )
     parser.add_argument(
-        "--min-peak-distance",
+        "--tile-overlap",
         type=int,
-        default=15,
+        default=None,
         help=(
-            "Minimum spacing in pixels between distance-transform peaks when "
-            "splitting the union of postprocessed regions into instances with "
-            "a watershed transform (passed to skimage.feature.peak_local_max)."
-            " Roughly the radius of a typical burrow: peaks closer than this "
-            "fuse into one instance, so smaller values split more "
-            "aggressively (default: 15)."
+            "Overlap in pixels between neighbouring tiles. Should exceed a "
+            "burrow's diameter so each burrow is fully contained in at least "
+            "one tile. Defaults to half the tile size when omitted."
         ),
     )
     parser.add_argument(
