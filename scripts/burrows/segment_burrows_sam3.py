@@ -6,12 +6,12 @@ prompt), and postprocess the predicted masks. Postprocessing splits each mask
 into connected regions and keeps only those within an area range and above a
 solidity threshold.
 
-The surviving regions are unioned and split into instances with a watershed
-transform (touching or partially overlapping blobs are separated; nested or
-heavily overlapping ones stay merged). Each instance inherits the max score
-among its contributors and is written, per frame, into a single ID-encoded mask
-zarr store (background = 0, regions = 1, 2, ...), alongside a sibling array
-with the SAM3 confidence score per region.
+The surviving regions are merged into instances by overlap: two regions are
+fused when their intersection covers at least a threshold fraction of the
+smaller region's area (merging is transitive). Each instance inherits the max
+score among its contributors and is written, per frame, into a single
+ID-encoded mask zarr store (background = 0, regions = 1, 2, ...), alongside a
+sibling array with the SAM3 confidence score per region.
 
 The store is timestamped and laid out as:
     masks_<YYYYMMDD_HHMMSS>.zarr
@@ -87,6 +87,8 @@ from PIL import Image
 from sam3 import build_sam3_image_model
 from sam3.model.sam3_image_processor import Sam3Processor
 from scipy import ndimage as ndi
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components
 from skimage.feature import peak_local_max
 from skimage.measure import label as sk_label
 from skimage.measure import regionprops
@@ -316,23 +318,22 @@ def _postprocess_masks(
     min_area: int,
     max_area: int,
     min_solidity: float,
-    min_peak_distance: int,
+    overlap_threshold: float,
 ):
-    """Split masks into connected regions, filter, then split by watershed.
+    """Split masks into connected regions, filter, then merge by overlap.
 
-    Regions are filtered based on area range and solidity, then their union is
-    split into instances with a watershed transform (touching or partially
-    overlapping blobs are separated; nested or heavily overlapping ones stay
-    merged). ``min_peak_distance`` is the minimum spacing between
-    distance-transform peaks, passed to ``skimage.feature.peak_local_max``.
+    Regions are filtered based on area range and solidity, then merged into
+    instances whenever two regions overlap sufficiently: their intersection
+    covers at least ``overlap_threshold`` of the smaller region's area. Merging
+    is transitive, and each instance inherits the max score among its members.
 
     ``masks`` is (N, H, W) boolean. Returns ``(id_encoded_mask, surviving_ids,
     surviving_scores, drop_counts, n_kept_regions)`` where ``id_encoded_mask``
     is an ID-encoded mask, ``surviving_scores`` carries the max source score
     onto each instance, ``drop_counts`` is a dict counting how many connected
-    regions were dropped per reason (area/solidity, before watershed), and
-    ``n_kept_regions`` is how many regions passed the filters (watershed then
-    merges/splits these into the final instances).
+    regions were dropped per reason (area/solidity, before merging), and
+    ``n_kept_regions`` is how many regions passed the filters (the overlap
+    merge then collapses these into the final instances).
     """
     kept_regions_bool_masks = []
     list_mask_idcs = []
@@ -374,14 +375,17 @@ def _postprocess_masks(
             # Keep track of the mask ID associated to this region too
             list_mask_idcs.append(mask_idx)
 
-    # Get number of connected regions that passed the filters (pre-watershed)
-    n_regions_pre_watershed = len(list_mask_idcs)
+    # Get number of connected regions that passed the filters (pre-merge)
+    n_regions_pre_merge = len(list_mask_idcs)
 
     # Get list of scores for kept regions
     kept_regions_scores = scores[list_mask_idcs]
 
     # -------------------------------
-    # # Merge regions by connectivity:
+    # Collapse the kept regions into instances. Alternative strategies are
+    # kept below (commented out); toggle by un/commenting.
+
+    # # (a) Merge regions by connectivity:
     # # we convert boolean masks (N, H, W) to ID-encoded (H, W) by projecting
     # # and merging; overlapping, nested or touching regions collapse into
     # # one mask that inherits the max contributor score
@@ -394,15 +398,26 @@ def _postprocess_masks(
     #     )
     # )
 
-    # Split the union of the kept regions into instances with watershed
-    # (touching / partially overlapping regions are separated; nested or
-    # heavily overlapping ones stay merged)
+    # # (b) Split the union of the kept regions into instances with watershed
+    # # (touching / partially overlapping regions are separated; nested or
+    # # heavily overlapping ones stay merged)
+    # id_encoded_mask, surviving_ids, surviving_scores = (
+    #     _split_bool_masks_by_watershed(
+    #         kept_regions_bool_masks,
+    #         kept_regions_scores,
+    #         masks.shape[1:],
+    #         min_peak_distance,
+    #     )
+    # )
+
+    # (c) Merge regions by overlap: two regions merge when their intersection
+    # covers at least ``overlap_threshold`` of the smaller region's area
     id_encoded_mask, surviving_ids, surviving_scores = (
-        _split_bool_masks_by_watershed(
+        _merge_bool_masks_by_overlap(
             kept_regions_bool_masks,
             kept_regions_scores,
             masks.shape[1:],
-            min_peak_distance,
+            overlap_threshold,
         )
     )
 
@@ -411,7 +426,7 @@ def _postprocess_masks(
         surviving_ids,
         surviving_scores,
         drop_counts,
-        n_regions_pre_watershed,
+        n_regions_pre_merge,
     )
 
 
@@ -460,6 +475,89 @@ def _merge_bool_masks_by_connectivity(
         # get the max between this unmerged mask's score and the score of the
         # final mask it contributes to
         surviving_scores[label - 1] = max(surviving_scores[label - 1], score)
+
+    return id_encoded_mask, surviving_ids, surviving_scores
+
+
+def _merge_bool_masks_by_overlap(
+    list_kept_region_masks, list_scores, img_h_w, overlap_threshold
+):
+    """Merge boolean region masks that sufficiently overlap into instances.
+
+    Two regions are merged when their intersection covers at least
+    ``overlap_threshold`` of the *smaller* region's area, i.e. when
+    ``intersection / min(area_i, area_j) >= overlap_threshold``. Merging is
+    transitive: if A overlaps B and B overlaps C, all three collapse into a
+    single instance even if A and C do not directly overlap (connected
+    components of the overlap graph).
+
+    Each merged instance is the union of its member regions and inherits the
+    **maximum** score among them. Pixels shared by regions that were *not*
+    merged (overlap below the threshold) are assigned to the higher-scoring
+    instance. Returns ``(id_encoded_mask, surviving_ids, surviving_scores)``
+    with ``surviving_ids`` ascending and ``surviving_scores`` index-aligned.
+    """
+    n_regions = len(list_kept_region_masks)
+
+    # Handle the empty case
+    if n_regions == 0:
+        return (
+            np.zeros(img_h_w, dtype=np.int16),
+            np.array([], dtype=np.int16),
+            np.array([], dtype=np.float32),
+        )
+
+    scores = np.asarray(list_scores, dtype=np.float32)
+
+    # Flatten each region to its true-pixel indices and assemble a sparse
+    # (n_regions, n_pixels) matrix. Regions are small relative to the frame,
+    # so this is far cheaper in memory than a dense equivalent.
+    n_pixels = int(np.prod(img_h_w))
+    flat_indices = [np.flatnonzero(m.ravel()) for m in list_kept_region_masks]
+    indptr = np.concatenate(
+        [[0], np.cumsum([len(idx) for idx in flat_indices])]
+    )
+    indices = np.concatenate(flat_indices)
+    flat = csr_matrix(
+        (np.ones(len(indices), dtype=np.float32), indices, indptr),
+        shape=(n_regions, n_pixels),
+    )
+
+    # Pairwise intersection counts (n_regions, n_regions); the diagonal holds
+    # each region's own area (sum of 1s).
+    intersection = (flat @ flat.T).toarray()
+    areas = intersection.diagonal()
+
+    # Overlap = intersection / min(area_i, area_j). Two regions are adjacent
+    # when this reaches the threshold (self-pairs on the diagonal excluded).
+    # Areas are >= min_area (filtered upstream), so min_areas is never zero.
+    min_areas = np.minimum.outer(areas, areas)
+    adjacency = (intersection / min_areas) >= overlap_threshold
+    np.fill_diagonal(adjacency, False)
+
+    # Merge transitively: connected components of the overlap graph.
+    n_components, comp_labels = connected_components(
+        csr_matrix(adjacency), directed=False
+    )
+
+    # Score per component = max score among its member regions.
+    comp_scores = np.full(n_components, -np.inf, dtype=np.float32)
+    np.maximum.at(comp_scores, comp_labels, scores)
+
+    # Paint regions into the ID-encoded mask (component label + 1, since 0 is
+    # the background). Paint in ascending component-score order so pixels
+    # contested by unmerged regions go to the higher-scoring instance.
+    id_encoded_mask = np.zeros(img_h_w, dtype=np.int16)
+    for region_idx in np.argsort(comp_scores[comp_labels]):
+        id_encoded_mask[list_kept_region_masks[region_idx]] = (
+            comp_labels[region_idx] + 1
+        )
+
+    # Derive surviving IDs from the painted mask (a component fully hidden by
+    # higher-scoring overlaps would not appear) and align their scores.
+    surviving_ids = np.unique(id_encoded_mask)
+    surviving_ids = surviving_ids[surviving_ids != 0]
+    surviving_scores = comp_scores[surviving_ids - 1].astype(np.float32)
 
     return id_encoded_mask, surviving_ids, surviving_scores
 
@@ -609,6 +707,7 @@ def main(args: argparse.Namespace) -> None:
         "postproc_min_solidity": args.min_solidity,
         "postproc_mask_merge_connectivity": args.mask_merge_connectivity,
         "postproc_watershed_min_peak_distance": args.min_peak_distance,
+        "postproc_overlap_threshold": args.overlap_threshold,
         "mask_encoding": "instance_id",
         "background_label": 0,
         "id_first_index": 1,
@@ -693,20 +792,20 @@ def main(args: argparse.Namespace) -> None:
             # Postprocess SAM3-predicted masks:
             # - Split masks into "regions",
             # - Filter out masks whose area is out of bounds,
-            # - Split the union of regions into instances by watershed
+            # - Merge sufficiently overlapping regions into instances
             (
                 id_encoded_mask,
                 surviving_ids,
                 surviving_scores,
                 drop_counts,
-                n_regions_pre_watershed,
+                n_regions_pre_merge,
             ) = _postprocess_masks(
                 masks,
                 scores,
                 args.min_mask_area_pixels,
                 args.max_mask_area_pixels,
                 args.min_solidity,
-                args.min_peak_distance,
+                args.overlap_threshold,
             )
 
             # -------------------------
@@ -721,14 +820,14 @@ def main(args: argparse.Namespace) -> None:
                 n_masks_per_frame.append((frame_idx, 0))
                 continue
 
-            n_detected_regions = n_regions_pre_watershed + sum(
+            n_detected_regions = n_regions_pre_merge + sum(
                 drop_counts.values()
             )
             print(
                 f"Frame {frame_idx} ({video_str}): "
                 f"{n_detected_regions} regions detected; "
-                f"after filters: {n_regions_pre_watershed}; ",
-                f"after watershed: {n_surviving_regions}; "
+                f"after filters: {n_regions_pre_merge}; ",
+                f"after overlap merge: {n_surviving_regions}; "
                 "(all before capping).",
             )
             # -------------------------
@@ -891,6 +990,18 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
             " Roughly the radius of a typical burrow: peaks closer than this "
             "fuse into one instance, so smaller values split more "
             "aggressively (default: 15)."
+        ),
+    )
+    parser.add_argument(
+        "--overlap-threshold",
+        type=float,
+        default=0.5,
+        help=(
+            "Fraction of the smaller region's area that the intersection of "
+            "two regions must cover for them to be merged into one instance "
+            "(intersection / min(area_i, area_j), in [0, 1]). Merging is "
+            "transitive and each instance inherits the max contributor score "
+            "(default: 0.5)."
         ),
     )
     parser.add_argument(
