@@ -462,6 +462,45 @@ def _relabel_id_encoded_mask_to_dense(
     return new_id_encoded_mask, new_ids
 
 
+def _cap_regions_per_image(
+    id_encoded_mask, surviving_ids, surviving_scores, max_regions
+):
+    """Cap the number of regions per frame to the top ``max_regions`` scoring.
+
+    Keeps only the highest-scoring ``max_regions`` instances, drops the rest
+    from ``id_encoded_mask``, and relabels the remaining IDs to dense ``1..M``
+    (capping leaves gaps). Returns ``(new_id_encoded_mask, new_ids,
+    new_scores)`` with ``new_ids`` ascending and ``new_scores`` index-aligned.
+
+    If there are no more than ``max_regions`` regions, inputs are returned
+    unchanged (the merge already yields dense labels).
+    """
+    if len(surviving_ids) <= max_regions:
+        return id_encoded_mask, surviving_ids, surviving_scores
+
+    # we select the top M scoring ones
+    capped_sorted_idcs = np.argsort(surviving_scores)[::-1][:max_regions]
+    # Get corresponding "M" IDs and scores in score-order
+    selected_ids = surviving_ids[capped_sorted_idcs]
+    selected_scores = surviving_scores[capped_sorted_idcs]
+
+    # Drop non-selected IDs from the mask
+    id_encoded_mask[~np.isin(id_encoded_mask, selected_ids)] = 0
+
+    # Re-sort the scores into ascending ID order from the selected
+    # IDs; this is required for the relabel step
+    order = np.argsort(selected_ids)
+    new_scores = selected_scores[order]
+
+    # Capping leaves gaps in the IDs, so relabel old IDs -> dense
+    # 1..M (without capping the merge already yields dense labels)
+    new_id_encoded_mask, new_ids = _relabel_id_encoded_mask_to_dense(
+        id_encoded_mask
+    )
+
+    return new_id_encoded_mask, new_ids, new_scores
+
+
 def main(args: argparse.Namespace) -> None:
     """Run SAM3 burrow segmentation per frame and write masks to zarr."""
     # ------------------------------------------------------------------
@@ -611,32 +650,16 @@ def main(args: argparse.Namespace) -> None:
             )
             # -------------------------
 
-            # Enforce the per-frame cap on max number of regions,
-            if n_surviving_regions > args.max_regions_per_image:
-                # we select the top M scoring ones
-                capped_sorted_idcs = np.argsort(surviving_scores)[::-1][
-                    : args.max_regions_per_image
-                ]
-                # Get corresponding "M" IDs and scores in score-order!
-                selected_ids = surviving_ids[capped_sorted_idcs]
-                selected_scores = surviving_scores[capped_sorted_idcs]
-
-                # Drop non-selected IDs from the mask
-                id_encoded_mask[~np.isin(id_encoded_mask, selected_ids)] = 0
-
-                # Re-sort the scores into ascending ID order from the selected
-                # IDs; this is required for the relabel step
-                order = np.argsort(selected_ids)
-                surviving_scores = selected_scores[order]
-
-                # ----------------
-                # Capping leaves gaps in the IDs, so relabel old IDs -> dense
-                # 1..M (without capping the merge already yields dense labels)
-                new_id_encoded_mask, new_ids = (
-                    _relabel_id_encoded_mask_to_dense(id_encoded_mask)
+            # Enforce the per-frame cap on max number of regions: keep only
+            # the top-scoring ones and relabel the surviving IDs to dense 1..M
+            new_id_encoded_mask, new_ids, surviving_scores = (
+                _cap_regions_per_image(
+                    id_encoded_mask,
+                    surviving_ids,
+                    surviving_scores,
+                    args.max_regions_per_image,
                 )
-            else:
-                new_id_encoded_mask, new_ids = id_encoded_mask, surviving_ids
+            )
 
             # Save results to zarr
             root["masks"][frame_idx] = new_id_encoded_mask
