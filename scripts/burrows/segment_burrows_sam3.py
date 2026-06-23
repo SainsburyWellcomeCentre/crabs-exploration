@@ -19,13 +19,16 @@ are then filtered by area (upper bound) and solidity -- applied here, after the
 merge, so a burrow clipped at a tile seam is judged as one whole blob rather
 than as its more-convex fragments (which a per-tile filter would preferentially
 keep, leaving the whole burrow split across instances). Surviving instances are
-written, per frame, into a single ID-encoded mask zarr store (background = 0,
-regions = 1, 2, ...), alongside a sibling array with the SAM3 score per region.
+written into a per-video group of a timestamped zarr store as an ID-encoded
+mask (background = 0, regions = 1, 2, ...), alongside a sibling array with the
+SAM3 score per region.
 
-The store is timestamped and laid out as:
+The store is timestamped and laid out with one group per video:
     masks_<YYYYMMDD_HHMMSS>.zarr
-    ├── masks   (n_frames, H, W) int16   # ID-encoded masks
-    └── scores  (n_frames, max_regions + 1) float32  # score per region ID
+    └── <video>
+        ├── masks   (H, W) int16              # ID-encoded mask
+        └── scores  (max_regions + 1,) float32  # score per region ID
+                                                # (index 0 = background, NaN)
 
 The input prompt CSV is the one produced by annotate_burrow_prompts_manual.py,
 with columns:
@@ -164,48 +167,23 @@ class ImageArrayLazy:
 
 def _initialise_mask_zarr(
     output_dir: Path,
-    image_shape: tuple[int, int, int],
     metadata_dict: dict,
-    max_regions_per_image: int,
 ) -> tuple[zarr.Group, Path]:
-    """Create a timestamped ID-encoded mask zarr store with metadata.
+    """Create an empty timestamped zarr store with metadata.
 
-    The store holds a ``masks`` array (one ID-encoded mask per frame) and a
-    sibling ``scores`` array (one SAM3 confidence score per region ID). Mask
-    instance IDs start at 1, since 0 is reserved for the background label, so
-    the ``scores`` array has ``max_regions_per_image + 1`` columns (column 0,
-    the background, is unused and left as NaN).
+    The per-video ``masks`` and ``scores`` arrays are created lazily inside the
+    inference loop (one group per video). Mask instance IDs start at 1, since 0
+    is reserved for the background label, so each video's ``scores`` array has
+    ``max_regions_per_image + 1`` entries (index 0, the background, is unused
+    and left as NaN).
     """
     # Create a timestamped masks zarr store in the output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir.mkdir(parents=True, exist_ok=True)
     output_masks_zarr = output_dir / f"masks_{timestamp}.zarr"
 
-    n_images, image_h, image_w = image_shape
-
-    # Initialise root
+    # Initialise root and attach metadata; per-video arrays added downstream.
     root = zarr.open_group(output_masks_zarr, mode="w")
-
-    # Add ID-encoded mask array
-    root.create_array(
-        "masks",
-        shape=(n_images, image_h, image_w),
-        dtype="int16",
-        fill_value=0,  # background
-        chunks=(1, image_h, image_w),
-    )
-
-    # Initialise scores array as a sibling of "masks"
-    # shape (n_frames, max_regions + 1); column 0 = background, unused -> NaN
-    root.create_array(
-        "scores",
-        shape=(n_images, max_regions_per_image + 1),
-        chunks=(1, max_regions_per_image + 1),
-        dtype="float32",
-        fill_value=np.nan,
-    )
-
-    # Add metadata to root
     root.attrs.update(metadata_dict)
 
     return root, output_masks_zarr
@@ -767,8 +745,8 @@ def _toggle_button(label, trace_idcs):
     """Build a Plotly restyle button that toggles the given traces' visibility.
 
     Mirrors the helper in notebook_burrows_sam3_pass_2.py: the primary action
-    (``args``) hides the traces and the alternate action (``args2``) shows them,
-    so each click flips their visibility.
+    (``args``) hides the traces and the alternate action (``args2``) shows
+    them, so each click flips their visibility.
     """
     if isinstance(trace_idcs, int):
         trace_idcs = [trace_idcs]
@@ -824,12 +802,11 @@ def _compute_rasterised_trajectories_array(
     return np.array(shaded.to_pil().transpose(Image.FLIP_TOP_BOTTOM))
 
 
-def _write_html_plots(
+def _write_html_plots(  # noqa: C901
     image_array,
     list_video_per_img,
     points_xy_px_per_video,
-    masks_array,
-    scores_array,
+    root,
     output_dir,
     masks_zarr_stem,
     trajectories_zarr=None,
@@ -843,15 +820,17 @@ def _write_html_plots(
     the mask ID and its SAM3 score. Every layer is individually toggleable.
 
     When ``trajectories_zarr`` is given (a CrabTracks xarray datatree keyed by
-    video), each plot additionally gets a datashader trajectory-raster layer and
-    red contours around burrows occupied by a crab in at least
+    video), each plot additionally gets a datashader trajectory-raster layer
+    and red contours around burrows occupied by a crab in at least
     ``min_hits_per_burrow_frac`` of the video's frames; the title is enriched
     with the video length and hit count. These trajectory layers reproduce
     notebook_burrows_sam3_pass_2.py.
 
-    Masks and scores are read back from the just-written zarr arrays; frames are
-    read lazily from ``image_array``. One HTML is written per frame, including
-    frames with no prompts or no masks.
+    Masks and scores are read back from the just-written per-video zarr groups
+    (``root[f"{video}/masks"]`` is ``(H, W)`` and ``root[f"{video}/scores"]``
+    is ``(max_regions + 1,)``, indexed by mask ID); frames are read lazily from
+    ``image_array``. One HTML is written per frame, including frames with no
+    prompts or no masks.
     """
     import plotly.graph_objects as go
 
@@ -880,8 +859,10 @@ def _write_html_plots(
 
     for frame_idx in range(len(image_array)):
         video_str = list_video_per_img[frame_idx]
-        id_mask = masks_array[frame_idx].astype(np.int32)
-        scores_row = scores_array[frame_idx]
+        # Per-video arrays: masks is (H, W); scores is (max_regions + 1,)
+        # indexed by mask ID (column 0 = background, unused/NaN).
+        id_mask = root[f"{video_str}/masks"][:].astype(np.int32)
+        scores_row = root[f"{video_str}/scores"][:]
         n_masks = len(np.unique(id_mask)) - (1 if (id_mask == 0).any() else 0)
 
         # Colored mask overlay (tab10 cycled over IDs, ~0.5 alpha)
@@ -1093,7 +1074,7 @@ def _write_html_plots(
     print(f"Saved {len(image_array)} HTML plots to {output_dir_plots}")
 
 
-def main(args: argparse.Namespace) -> None:
+def main(args: argparse.Namespace) -> None:  # noqa: C901
     """Run SAM3 burrow segmentation per frame and write masks to zarr."""
     # ------------------------------------------------------------------
     # Load frames as a lazy array and map each frame to its video
@@ -1101,6 +1082,7 @@ def main(args: argparse.Namespace) -> None:
     image_array = ImageArrayLazy(list_image_files)
     print(f"Loaded {len(image_array)} frames of shape {image_array.shape[1:]}")
 
+    # we assume one video per image only
     list_video_per_img = [
         img_p.stem.split("_", 1)[0].split("-Loop")[0]
         for img_p in list_image_files
@@ -1149,9 +1131,7 @@ def main(args: argparse.Namespace) -> None:
     }
     root, output_masks_zarr = _initialise_mask_zarr(
         Path(args.output_dir),
-        image_shape,
         metadata_dict,
-        args.max_regions_per_image,
     )
 
     # ------------------------------------------------------------------
@@ -1199,8 +1179,29 @@ def main(args: argparse.Namespace) -> None:
         n_masks_per_frame = []
 
         for frame_idx in range(len(image_array)):
-            # Get point prompts (full-image pixel x, y) for the matching video
+            # Initialise zarr arrays
+            # ID-encoded mask array
             video_str = list_video_per_img[frame_idx]
+            root.create_array(
+                f"{video_str}/masks",
+                shape=(image_h, image_w),
+                dtype="int16",
+                fill_value=0,  # background
+                chunks=(image_h, image_w),
+            )
+
+            # Initialise scores array as a sibling of "masks", indexed by mask
+            # ID. Shape (max_regions + 1,); index 0 = background (unused, NaN).
+            root.create_array(
+                f"{video_str}/scores",
+                shape=(args.max_regions_per_image + 1,),
+                chunks=(args.max_regions_per_image + 1,),
+                dtype="float32",
+                fill_value=np.nan,
+            )
+
+            # -----------------------------------------
+            # Get point prompts (full-image pixel x, y) for the matching video
             prompts_img_px = points_xy_px_per_video.get(video_str)
             if prompts_img_px is None or len(prompts_img_px) == 0:
                 print(f"Frame {frame_idx} ({video_str}): no prompts, skipping")
@@ -1348,8 +1349,8 @@ def main(args: argparse.Namespace) -> None:
             )
 
             # Save results to zarr
-            root["masks"][frame_idx] = new_id_encoded_mask
-            root["scores"][frame_idx, new_ids] = surviving_scores
+            root[f"{video_str}/masks"] = new_id_encoded_mask
+            root[f"{video_str}/scores"][new_ids] = surviving_scores
 
             # -------------------------
             # Log final number of masks
@@ -1400,8 +1401,7 @@ def main(args: argparse.Namespace) -> None:
             image_array,
             list_video_per_img,
             points_xy_px_per_video,
-            root["masks"],
-            root["scores"],
+            root,
             Path(args.output_dir),
             output_masks_zarr.stem,
             trajectories_zarr=args.trajectories_zarr,
@@ -1531,9 +1531,10 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         action="store_true",
         help=(
             "If set, also write one interactive Plotly HTML plot per frame "
-            "into output_dir, overlaying the colored mask instances and manual "
-            "point prompts on the frame (masks/prompts/scores toggleable, with "
-            "the mask ID and SAM3 score on hover). Default: not set."
+            "into output_dir, overlaying the colored mask instances and "
+            "manual point prompts on the frame (masks/prompts/scores "
+            "toggleable, with the mask ID and SAM3 score on hover). "
+            "Default: not set."
         ),
     )
     parser.add_argument(
@@ -1542,8 +1543,8 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         default=None,
         help=(
             "Optional CrabTracks trajectories zarr (an xarray datatree keyed "
-            "by video). When given alongside --save-html-plots, each plot also "
-            "gets a datashader trajectory-raster layer and red activity "
+            "by video). When given alongside --save-html-plots, each plot "
+            "also gets a datashader trajectory-raster layer and red activity "
             "contours for burrows hit by a crab in at least "
             "--min-hits-per-burrow-frac of frames."
         ),
