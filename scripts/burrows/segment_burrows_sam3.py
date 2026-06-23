@@ -48,6 +48,13 @@ Usage (dependencies are auto-installed via uv):
     uv run segment_burrows_sam3.py /path/to/images_dir \
         /path/to/manual_prompts.csv /path/to/out_dir \
         --tile-size 1024 --tile-overlap 512
+* Also export an interactive HTML plot per frame (masks + prompts + scores)
+    uv run segment_burrows_sam3.py /path/to/images_dir \
+        /path/to/manual_prompts.csv /path/to/out_dir --save-html-plots
+* HTML plots with the crab-trajectory raster and activity contours overlaid
+    uv run segment_burrows_sam3.py /path/to/images_dir \
+        /path/to/manual_prompts.csv /path/to/out_dir --save-html-plots \
+        --trajectories-zarr /path/to/CrabTracks.zarr
 
 Follows the official SAM3 image predictor example:
 https://github.com/facebookresearch/sam3/blob/main/examples/sam3_image_predictor_example.ipynb
@@ -69,6 +76,9 @@ and https://github.com/facebookresearch/sam3#basic-usage
 #   "numpy",
 #   "pandas",
 #   "psutil",  # undeclared transitive dep of sam3's video predictor
+#   "plotly",  # optional HTML plot export (--save-html-plots)
+#   "datashader",  # optional trajectory raster layer (--trajectories-zarr)
+#   "xarray",  # optional trajectory datatree (--trajectories-zarr)
 # ]
 #
 # [tool.uv.sources]
@@ -103,9 +113,27 @@ from scipy import ndimage as ndi
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 from skimage.feature import peak_local_max
+from skimage.measure import find_contours, regionprops
 from skimage.measure import label as sk_label
-from skimage.measure import regionprops
 from skimage.segmentation import watershed
+
+# matplotlib's tab10 palette as (10, 3) uint8 RGB, cycled over mask IDs when
+# rendering the HTML overlays (hardcoded to avoid a matplotlib dependency).
+TAB10_RGB = np.array(
+    [
+        (31, 119, 180),
+        (255, 127, 14),
+        (44, 160, 44),
+        (214, 39, 40),
+        (148, 103, 189),
+        (140, 86, 75),
+        (227, 119, 194),
+        (127, 127, 127),
+        (188, 189, 34),
+        (23, 190, 207),
+    ],
+    dtype=np.uint8,
+)
 
 
 class ImageArrayLazy:
@@ -735,6 +763,336 @@ def _cap_regions_per_image(
     return new_id_encoded_mask, new_ids, new_scores
 
 
+def _toggle_button(label, trace_idcs):
+    """Build a Plotly restyle button that toggles the given traces' visibility.
+
+    Mirrors the helper in notebook_burrows_sam3_pass_2.py: the primary action
+    (``args``) hides the traces and the alternate action (``args2``) shows them,
+    so each click flips their visibility.
+    """
+    if isinstance(trace_idcs, int):
+        trace_idcs = [trace_idcs]
+    return dict(
+        label=label,
+        method="restyle",
+        args=[{"visible": False}, list(trace_idcs)],
+        args2=[{"visible": True}, list(trace_idcs)],
+    )
+
+
+def _get_video_length(ds_video):
+    """Return a video's length as ``(minutes, n_frames)`` from its zarr coords.
+
+    Copied from notebook_burrows_sam3_pass_2.py. A clip spans from the end of
+    the previous escape (or the video start) to the end of the current escape.
+    """
+    n_frames = int(ds_video.clip_last_frame_0idx.max().compute()) + 1
+    return (n_frames / float(ds_video.fps) / 60, n_frames)
+
+
+def _compute_rasterised_trajectories_array(
+    dt, video_str, canvas, img_h_i, img_w_i, traj_color, dynspread_th
+):
+    """Return (H, W, 4) uint8 RGBA with the video's trajectories.
+
+    Copied from annotate_burrow_prompts_manual.py. Returns a fully transparent
+    canvas when the video is absent from the datatree or has no valid
+    coordinates.
+    """
+    import datashader.transfer_functions as tf
+
+    # Return zeros if video not in dataset
+    if video_str not in dt:
+        return np.zeros((img_h_i, img_w_i, 4), dtype=np.uint8)
+
+    # Get non-nan x,y coords
+    position = dt[video_str].to_dataset().position
+    x = position.sel(space="x").values.reshape(-1)
+    y = position.sel(space="y").values.reshape(-1)
+    valid = ~np.isnan(x) & ~np.isnan(y)
+
+    # Return zeros if no valid coords
+    if not valid.any():
+        return np.zeros((img_h_i, img_w_i, 4), dtype=np.uint8)
+
+    # add data to canvas and rasterise
+    agg = canvas.points(pd.DataFrame({"x": x[valid], "y": y[valid]}), "x", "y")
+    shaded = tf.shade(agg, cmap=[traj_color])
+    shaded = tf.dynspread(shaded, threshold=dynspread_th)
+
+    # datashader y-origin is bottom; flip to match image y-origin (top)
+    return np.array(shaded.to_pil().transpose(Image.FLIP_TOP_BOTTOM))
+
+
+def _write_html_plots(
+    image_array,
+    list_video_per_img,
+    points_xy_px_per_video,
+    masks_array,
+    scores_array,
+    output_dir,
+    masks_zarr_stem,
+    trajectories_zarr=None,
+    min_hits_per_burrow_frac=0.10,
+    dynspread_threshold=0.975,
+):
+    """Write one interactive Plotly HTML plot per frame.
+
+    Each plot overlays the colored mask instances and the manual point prompts
+    on the frame, plus invisible hover markers at every mask centroid carrying
+    the mask ID and its SAM3 score. Every layer is individually toggleable.
+
+    When ``trajectories_zarr`` is given (a CrabTracks xarray datatree keyed by
+    video), each plot additionally gets a datashader trajectory-raster layer and
+    red contours around burrows occupied by a crab in at least
+    ``min_hits_per_burrow_frac`` of the video's frames; the title is enriched
+    with the video length and hit count. These trajectory layers reproduce
+    notebook_burrows_sam3_pass_2.py.
+
+    Masks and scores are read back from the just-written zarr arrays; frames are
+    read lazily from ``image_array``. One HTML is written per frame, including
+    frames with no prompts or no masks.
+    """
+    import plotly.graph_objects as go
+
+    img_h, img_w = image_array.img_h, image_array.img_w
+
+    # Open the optional trajectories datatree and build a reusable canvas
+    # (frames all share the same size, so one canvas serves every frame).
+    dt = None
+    canvas = None
+    if trajectories_zarr is not None:
+        import datashader as ds
+        import xarray as xr
+
+        dt = xr.open_datatree(trajectories_zarr, engine="zarr", chunks={})
+        canvas = ds.Canvas(
+            plot_width=img_w,
+            plot_height=img_h,
+            x_range=(0, img_w),
+            y_range=(0, img_h),
+        )
+
+    # Create a single timestamped output directory for this run's plots
+    plot_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir_plots = output_dir / f"plots_{masks_zarr_stem}_{plot_timestamp}"
+    output_dir_plots.mkdir(parents=True, exist_ok=True)
+
+    for frame_idx in range(len(image_array)):
+        video_str = list_video_per_img[frame_idx]
+        id_mask = masks_array[frame_idx].astype(np.int32)
+        scores_row = scores_array[frame_idx]
+        n_masks = len(np.unique(id_mask)) - (1 if (id_mask == 0).any() else 0)
+
+        # Colored mask overlay (tab10 cycled over IDs, ~0.5 alpha)
+        mask_rgba = np.zeros((img_h, img_w, 4), dtype=np.uint8)
+        nonzero = id_mask > 0
+        mask_rgba[nonzero, :3] = TAB10_RGB[(id_mask[nonzero] - 1) % 10]
+        mask_rgba[nonzero, 3] = 128  # fill alpha ~= 0.5
+
+        # Build the figure with the frame as the background image
+        fig = go.Figure()
+        fig.add_layout_image(
+            source=Image.fromarray(image_array[frame_idx]),
+            xref="x",
+            yref="y",
+            x=0,
+            y=0,  # top-left corner in data coords (y is inverted)
+            sizex=img_w,
+            sizey=img_h,
+            sizing="stretch",
+            layer="below",
+        )
+
+        # Mask fills layer
+        masks_trace_idx = len(fig.data)
+        fig.add_trace(
+            go.Image(
+                z=mask_rgba,
+                colormodel="rgba256",
+                name=f"masks ({n_masks})",
+                hoverinfo="skip",
+            )
+        )
+
+        # Optional trajectory-derived layers (contours + raster)
+        contour_trace_idcs = []
+        traj_trace_idx = None
+        n_hit_ids = 0
+        video_minutes = None
+        if dt is not None:
+            # Per-burrow trajectory hit counts -> high-activity burrow IDs
+            hit_ids = np.array([], dtype=np.int64)
+            if video_str in dt:
+                video_minutes, video_n_frames = _get_video_length(
+                    dt[video_str].to_dataset()
+                )
+                position = dt[video_str].to_dataset().position
+                x = position.sel(space="x").values.reshape(-1)
+                y = position.sel(space="y").values.reshape(-1)
+                valid = ~np.isnan(x) & ~np.isnan(y)
+                cols = np.round(x[valid]).astype(int)
+                rows = np.round(y[valid]).astype(int)
+                in_frame = (
+                    (cols >= 0) & (cols < img_w) & (rows >= 0) & (rows < img_h)
+                )
+                hits_per_id = np.bincount(
+                    id_mask[rows[in_frame], cols[in_frame]],
+                    minlength=int(id_mask.max()) + 1,
+                )
+                min_hits = int(min_hits_per_burrow_frac * video_n_frames)
+                hit_ids = np.where(hits_per_id[1:] >= min_hits)[0] + 1
+            n_hit_ids = len(hit_ids)
+
+            # Red contours around high-activity burrows
+            for mid in hit_ids:
+                for contour in find_contours(id_mask == mid, 0.5):
+                    contour_trace_idcs.append(len(fig.data))
+                    fig.add_trace(
+                        go.Scatter(
+                            x=contour[:, 1],
+                            y=contour[:, 0],
+                            mode="lines",
+                            line=dict(color="red", width=1.5),
+                            showlegend=False,
+                            hoverinfo="skip",
+                        )
+                    )
+
+            # Trajectory raster layer
+            traj_rgba = _compute_rasterised_trajectories_array(
+                dt,
+                video_str,
+                canvas,
+                img_h,
+                img_w,
+                "#c3ff1f",
+                dynspread_threshold,
+            )
+            traj_trace_idx = len(fig.data)
+            fig.add_trace(
+                go.Image(
+                    z=traj_rgba,
+                    colormodel="rgba256",
+                    name="trajectories",
+                    hoverinfo="skip",
+                )
+            )
+
+        # Manual point prompts (already pixel coords in this script)
+        prompts_trace_idx = None
+        manual_pts = points_xy_px_per_video.get(video_str)
+        if manual_pts is not None and len(manual_pts) > 0:
+            prompts_trace_idx = len(fig.data)
+            fig.add_trace(
+                go.Scatter(
+                    x=manual_pts[:, 0],
+                    y=manual_pts[:, 1],
+                    mode="markers",
+                    marker=dict(symbol="x", color="lime", size=10),
+                    name=f"manual prompts ({len(manual_pts)})",
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
+
+        # Invisible hover markers at each mask centroid (ID + SAM3 score)
+        scores_trace_idx = None
+        regions = regionprops(id_mask)
+        if regions:
+            centroid_ids = np.array([r.label for r in regions])
+            centroids = np.array(
+                [r.centroid for r in regions]
+            )  # (n, row, col)
+            centroid_scores = scores_row[centroid_ids]
+            scores_trace_idx = len(fig.data)
+            fig.add_trace(
+                go.Scatter(
+                    x=centroids[:, 1],
+                    y=centroids[:, 0],
+                    mode="markers",
+                    marker=dict(size=12, color="rgba(0,0,0,0)"),
+                    customdata=np.stack(
+                        [centroid_ids, centroid_scores], axis=1
+                    ),
+                    name="scores",
+                    showlegend=False,
+                    hovertemplate=(
+                        "id=%{customdata[0]:.0f}<br>"
+                        "score=%{customdata[1]:.3f}<extra></extra>"
+                    ),
+                )
+            )
+
+        # Title and toggle buttons
+        frame_stem = image_array.img_paths[frame_idx].stem
+        if video_minutes is not None:
+            title = (
+                f"{frame_stem} - ({video_minutes:.1f} min) {n_masks} masks "
+                f"({n_hit_ids} with >= "
+                f"{min_hits_per_burrow_frac * 100:.0f}% frames with crab)"
+            )
+        else:
+            title = f"{frame_stem} - {n_masks} masks"
+
+        buttons = [_toggle_button("toggle masks", masks_trace_idx)]
+        if prompts_trace_idx is not None:
+            buttons.append(_toggle_button("toggle prompts", prompts_trace_idx))
+        if scores_trace_idx is not None:
+            buttons.append(_toggle_button("toggle scores", scores_trace_idx))
+        if contour_trace_idcs:
+            buttons.append(
+                _toggle_button("toggle contours", contour_trace_idcs)
+            )
+        if traj_trace_idx is not None:
+            buttons.append(
+                _toggle_button("toggle trajectories", traj_trace_idx)
+            )
+
+        fig.update_layout(
+            title=title,
+            xaxis_title="x (pixels)",
+            yaxis_title="y (pixels)",
+            yaxis_scaleanchor="x",
+            plot_bgcolor="white",
+            paper_bgcolor="white",
+            showlegend=False,
+            updatemenus=[
+                dict(
+                    type="buttons",
+                    direction="right",
+                    x=0,
+                    xanchor="left",
+                    y=1.08,
+                    yanchor="bottom",
+                    showactive=False,
+                    buttons=buttons,
+                )
+            ],
+            xaxis=dict(
+                range=[0, img_w],
+                showgrid=False,
+                zeroline=False,
+                linecolor="black",
+                mirror=True,
+                ticks="outside",
+            ),
+            yaxis=dict(
+                range=[img_h, 0],  # invert y so image origin is top-left
+                showgrid=False,
+                zeroline=False,
+                linecolor="black",
+                mirror=True,
+                ticks="outside",
+            ),
+        )
+
+        output_html = output_dir_plots / f"masks_{frame_stem}.html"
+        fig.write_html(str(output_html), include_plotlyjs=True)
+
+    print(f"Saved {len(image_array)} HTML plots to {output_dir_plots}")
+
+
 def main(args: argparse.Namespace) -> None:
     """Run SAM3 burrow segmentation per frame and write masks to zarr."""
     # ------------------------------------------------------------------
@@ -1034,6 +1392,22 @@ def main(args: argparse.Namespace) -> None:
             f"({len(frames_below_mean)} frames): {frames_below_mean}"
         )
 
+    # ----------------------------
+    # Optionally write one interactive HTML plot per frame (masks + prompts +
+    # scores, plus trajectory layers when a trajectories zarr is given).
+    if args.save_html_plots:
+        _write_html_plots(
+            image_array,
+            list_video_per_img,
+            points_xy_px_per_video,
+            root["masks"],
+            root["scores"],
+            Path(args.output_dir),
+            output_masks_zarr.stem,
+            trajectories_zarr=args.trajectories_zarr,
+            min_hits_per_burrow_frac=args.min_hits_per_burrow_frac,
+        )
+
 
 def parse_args(list_args: list[str]) -> argparse.Namespace:
     """Parse CLI args."""
@@ -1150,6 +1524,38 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         help=(
             "Estimated upper bound on kept regions per frame; sets the number "
             "of columns of the scores array (default: 500)."
+        ),
+    )
+    parser.add_argument(
+        "--save-html-plots",
+        action="store_true",
+        help=(
+            "If set, also write one interactive Plotly HTML plot per frame "
+            "into output_dir, overlaying the colored mask instances and manual "
+            "point prompts on the frame (masks/prompts/scores toggleable, with "
+            "the mask ID and SAM3 score on hover). Default: not set."
+        ),
+    )
+    parser.add_argument(
+        "--trajectories-zarr",
+        type=Path,
+        default=None,
+        help=(
+            "Optional CrabTracks trajectories zarr (an xarray datatree keyed "
+            "by video). When given alongside --save-html-plots, each plot also "
+            "gets a datashader trajectory-raster layer and red activity "
+            "contours for burrows hit by a crab in at least "
+            "--min-hits-per-burrow-frac of frames."
+        ),
+    )
+    parser.add_argument(
+        "--min-hits-per-burrow-frac",
+        type=float,
+        default=0.10,
+        help=(
+            "Fraction of a video's frames a crab must occupy a burrow for it "
+            "to get a red activity contour in the HTML plots (only used with "
+            "--trajectories-zarr; default: 0.10)."
         ),
     )
 
