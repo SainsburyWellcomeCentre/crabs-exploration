@@ -13,6 +13,7 @@ import xarray as xr
 import zarr
 from ethology.io.annotations import load_bboxes
 from PIL import Image
+from skimage.measure import regionprops
 
 # %%
 # %matplotlib widget
