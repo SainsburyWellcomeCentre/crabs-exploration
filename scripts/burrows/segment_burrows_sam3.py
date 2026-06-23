@@ -151,7 +151,7 @@ def _initialise_mask_zarr(
     # Create a timestamped masks zarr store in the output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_masks_zarr = output_dir / f"masks_pass_1_{timestamp}.zarr"
+    output_masks_zarr = output_dir / f"masks_{timestamp}.zarr"
 
     n_images, image_h, image_w = image_shape
 
@@ -1062,7 +1062,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         type=Path,
         help=(
             "Output directory. A timestamped "
-            "'masks_pass_1_<YYYYMMDD_HHMMSS>.zarr' "
+            "'masks_<YYYYMMDD_HHMMSS>.zarr' "
             "store is created inside it, so multiple runs never collide."
         ),
     )
