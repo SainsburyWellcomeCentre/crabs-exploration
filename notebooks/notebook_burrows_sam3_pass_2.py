@@ -792,6 +792,37 @@ for frame_idx, video_str in enumerate(list_video_per_img):
         [prompts_img_norm, new_points_xy_norm]
     )
 
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Export extended point prompts to CSV
+# (same format as the manual prompts CSV: group_id, prompt_point_x,
+# prompt_point_y; coords de-normalised back to pixels)
+
+export_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+extended_prompts_csv = OUTPUT_DIR / f"extended_prompt_points_{export_timestamp}.csv"
+
+# Map each video string to its frame filename (paths and videos are aligned)
+filename_per_video = {
+    video_str: image_array.img_paths[frame_idx].name
+    for frame_idx, video_str in enumerate(list_video_per_img)
+}
+
+df_extended_prompts = pd.concat(
+    [
+        pd.DataFrame(
+            {
+                "group_id": filename_per_video[video_str],
+                "prompt_point_x": prompts_xy_norm[:, 0] * image_w,
+                "prompt_point_y": prompts_xy_norm[:, 1] * image_h,
+            }
+        )
+        for video_str, prompts_xy_norm in extended_prompts_xy_norm_per_video.items()
+    ],
+    ignore_index=True,
+)
+
+df_extended_prompts.to_csv(extended_prompts_csv, index=False)
+print(f"Saved extended prompts to {extended_prompts_csv}")
+
 
 # %%%%%%%%%%%%%%%%%
 # Parameters for tiled inference
