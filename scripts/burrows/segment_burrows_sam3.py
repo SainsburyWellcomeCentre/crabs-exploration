@@ -82,6 +82,7 @@ and https://github.com/facebookresearch/sam3#basic-usage
 #   "plotly",  # optional HTML plot export (--save-html-plots)
 #   "datashader",  # optional trajectory raster layer (--trajectories-zarr)
 #   "xarray",  # optional trajectory datatree (--trajectories-zarr)
+#   "dask",  # required by xarray to open the trajectory datatree lazily
 # ]
 #
 # [tool.uv.sources]
