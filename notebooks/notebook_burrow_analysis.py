@@ -5,9 +5,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray as xr
 import zarr
+from scipy.ndimage import center_of_mass
 
 # %%
-# %matplotlib widget
+%matplotlib widget
 
 # %%
 # Parameters
@@ -41,8 +42,8 @@ burrows_zarr = zarr.open_group(burrow_zarr, mode="r")
 burrows_masks = burrows_zarr["masks"]
 burrows_scores = burrows_zarr["scores"]
 # %%
-# Get non-nan trajectory data samples and unique ID
-video_str = "04.09.2023-01-Right"
+# Get non-nan trajectory data samples
+video_str = "05.09.2023-02-Right"
 ds_video = dt[video_str].to_dataset()
 n_frames = ds_video.clip_last_frame_0idx.max().values.item() + 1
 
@@ -56,14 +57,16 @@ y = y_da.values.reshape(-1)
 valid = ~np.isnan(x) & ~np.isnan(y)
 x_traj, y_traj = x[valid], y[valid]
 
-# ----------------
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Compute traj-clip ids
+
 # broadcast individuals/clip so the IDs match x and y element-by-element
 trajectory_ids = (
     x_da["individuals"].broadcast_like(x_da).values.reshape(-1)[valid]
 )  # can I avoid .values?
 clip_ids = x_da["clip_id"].broadcast_like(x_da).values.reshape(-1)[valid]
 
+# --- can this be simplified?
 # NOTE: trajectory IDs are reused across clips; to make a trajectory ID unique
 # across video we combine it with clip_id. Factorizing each 1-D array (native
 # dtype) and merging the codes avoids a slow row-wise unique over strings.
@@ -75,7 +78,6 @@ uniq_clip_ids, clip_id_as_int = np.unique(
     clip_ids,
     return_inverse=True,
 )
-
 # compute one integer per sample, representing a unique (traj_id, clip_id) pair
 combined = np.ravel_multi_index(
     (traj_id_as_int, clip_id_as_int),
@@ -84,19 +86,42 @@ combined = np.ravel_multi_index(
 
 # integers from ravel_multi_index can have gaps; here we densify them
 # using unique
-unique_traj_clip_id, id_traj_clip = np.unique(combined, return_inverse=True)
+# (traj_clip_id_dense_per_sample holds the indices of _unique_traj_clip_id;
+# we use it as a dense traj_clip_ID)
+_unique_traj_clip_id, traj_clip_id_dense_per_sample = np.unique(
+    combined, return_inverse=True
+)
+unique_traj_clip_id_dense = np.arange(traj_clip_id_dense_per_sample.max() + 1)
+# same as np.unique(traj_clip_id_dense_per_sample)
 
+# %%
+# Compute frame per sample
+frame_in_clip_per_sample = (
+    x_da["time"].broadcast_like(x_da).values.reshape(-1)[valid]
+)
+
+frame_in_video_per_sample = (
+    frame_in_clip_per_sample
+    + x_da["clip_first_frame_0idx"]
+    .broadcast_like(x_da)
+    .values.reshape(-1)[valid]
+)
+# %%
+# Free from memory
 del position_da, x, y, valid, trajectory_ids, clip_ids
 del traj_id_as_int, clip_id_as_int, combined
 
-# %%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Compute subset of visited burrows
-# TODO: to be changed to video-first indexing
-burrow_id_mask = burrows_masks[0, :]
+# TODO: to be changed when I move to zarr with video-first indexing
+list_videos = [lv.name for lv in dt.leaves]
+video_idx_zarr = np.argwhere(video_str==np.asarray(list_videos)).item()
+# ------------------
+burrow_id_mask = burrows_masks[video_idx_zarr, :] 
 burrow_ids = np.unique(burrow_id_mask)
 
 img_h, img_w = burrow_id_mask.shape
-cols = np.round(x_traj).astype(int)
+cols = np.round(x_traj).astype(int)  # floor?
 rows = np.round(y_traj).astype(int)
 in_frame = (cols >= 0) & (cols < img_w) & (rows >= 0) & (rows < img_h)
 traj_cols = cols[in_frame]
@@ -107,14 +132,27 @@ hits_per_id = np.bincount(
     minlength=burrow_ids.shape[0],
 )
 
-
 # n_hits_excl_zero = np.sum(hits_per_id[1:] >= min_hits_per_burrow)
-
 min_hits_per_burrow = int(min_samples_in_burrow_frac * n_frames)
 visited_burrow_ids = np.argwhere(hits_per_id >= min_hits_per_burrow).reshape(
     -1
 )
 visited_burrow_ids = visited_burrow_ids[visited_burrow_ids != 0]
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%
+# Compute visited burrow centroids
+visited_burrow_centroids_yx = center_of_mass(
+    np.ones(burrow_id_mask.shape, dtype=np.uint8),  # every pixel weight 1
+    burrow_id_mask,
+    index=visited_burrow_ids,
+)
+visited_burrow_centroids_xy = np.asarray(visited_burrow_centroids_yx)[:, ::-1]
+
+visited_burrow_to_xy = {
+    bid: visited_burrow_centroids_xy[k, :]
+    for k, bid in enumerate(visited_burrow_ids)
+}
 
 # %%
 # plot visited burrows
@@ -129,103 +167,206 @@ ax.set_xlabel("burrow ID")
 ax.set_ylabel("trajectory samples")
 
 # %%
-# Get the trajectory-clip IDs that intersect each visited burrow
-# TODO: right now a trajectory can be linked to several burrows
-# (e.g. if it intersects a few). I need to fix this so that
-# each trajectory is only fixed to one burrow (e.g. the one it sees
-# the most?)
-
-# burrow ID and trajectory ID for every in-frame sample
-burrow_ID_per_traj_sample = burrow_id_mask[traj_rows, traj_cols]
-traj_ids_per_sample = id_traj_clip[in_frame]
-
-# map each selected burrow -> unique trajectory IDs that fall on it
-visited_burrow_to_traj_ids = {
-    burrow_id: np.unique(
-        traj_ids_per_sample[burrow_ID_per_traj_sample == burrow_id]
-    )
-    for burrow_id in visited_burrow_ids
-}
-
-
-
-
-
-
-
-
-
-# %%
-# plot
-fig, ax = plt.subplots(1, 1)
-ax.imshow(np.isin(burrow_id_mask, list(visited_burrow_to_traj_ids.keys())))
-
-for burrow_id, traj_ids_arr in list(visited_burrow_to_traj_ids.items()):
-    # fig, ax = plt.subplots(1, 1)
-    # ax.imshow(burrow_id_mask==burrow_id)
-    slc_trajectories = np.isin(id_traj_clip, traj_ids_arr)
-    ax.scatter(x=x_traj[slc_trajectories], y=y_traj[slc_trajectories], s=0.5)
-
-# %%
-# Compute burrow centroids
-from scipy.ndimage import center_of_mass
-
-visited_burrow_centroids_yx = center_of_mass(
-    np.ones(burrow_id_mask.shape, dtype=np.uint8),  # every pixel weight 1
-    burrow_id_mask,
-    index=visited_burrow_ids,
-)
-visited_burrow_centroids_xy = np.asarray(visited_burrow_centroids_yx)[:, ::-1]
-
-visited_burrow_to_xy = {
-    bid: visited_burrow_centroids_xy[k, :]
-    for k, bid in enumerate(visited_burrow_to_traj_ids)
-}
-
-# %%
 # plot burrow centroids
 fig, ax = plt.subplots(1, 1)
-ax.imshow(np.isin(burrow_id_mask, list(visited_burrow_to_traj_ids.keys())))
+ax.imshow(np.isin(burrow_id_mask, visited_burrow_ids))
 
 for burrow_xy in visited_burrow_centroids_xy:
-    slc_trajectories = np.isin(id_traj_clip, traj_ids_arr)
+    # slc_trajectories = np.isin(dense_traj_clip_id_per_sample, traj_ids_arr)
     ax.scatter(x=burrow_xy[0], y=burrow_xy[1], s=15, marker="x")
 
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Assign trajectory-clip IDs to a single visited burrow
+# each trajectory is only fixed to one burrow
+# (the one it "sees" the most)
+
+# get burrow ID and trajectory ID for every in-frame sample
+burrow_ID_per_sample = burrow_id_mask[traj_rows, traj_cols]
+traj_ids_per_sample = traj_clip_id_dense_per_sample[in_frame]
+
+# Build a matrix of shape (traj_ids, visited_burrow_ids)
+# to keep track of their intersections
+count_matrix = np.zeros(
+    (unique_traj_clip_id_dense.shape[0], visited_burrow_ids.shape[0]),
+    dtype=int,
+)
+for b_id, burrow_id in enumerate(visited_burrow_ids):
+    dense_traj_ids, counts = np.unique(
+        traj_ids_per_sample[burrow_ID_per_sample == burrow_id],
+        return_counts=True,
+    )
+    count_matrix[dense_traj_ids, b_id] = counts
+
 # %%
-# Compute vector from burrow centroid
+# Reduce count matrix to consider visited traj IDs only
+# (this is because argmax of row all 0s will return 0)
+slc_rows = count_matrix.sum(axis=1) > 0
+visited_traj_ids = unique_traj_clip_id_dense[slc_rows]
+count_matrix_reduced = count_matrix[slc_rows, :]
+
+# Link each visited traj ID to the burrow it maximally
+# intersects with
+# NOTE: with argmax ties resolve to lowest column index
+burrow_id_per_visited_traj_id = visited_burrow_ids[
+    np.argmax(count_matrix_reduced, axis=1)
+]
+
+# Build dict mapping burrow ID to linked traj IDs
+visited_burrow_to_traj_ids = {}
+for burrow_id in visited_burrow_ids:
+    visited_burrow_to_traj_ids[burrow_id] = visited_traj_ids[
+        burrow_id_per_visited_traj_id == burrow_id
+    ]
+
+
+# %%
+# Check: each trajectory ID is linked to at most one burrow
+all_linked_traj_ids = np.concatenate(list(visited_burrow_to_traj_ids.values()))
+assert all_linked_traj_ids.size == np.unique(all_linked_traj_ids).size, (
+    "Some trajectory ID is linked to more than one burrow"
+)
+
+
+# %%
+# plot burrows and their linked trajectories
+fig, ax = plt.subplots(1, 1)
+ax.imshow(np.zeros_like(burrow_id_mask))  # , cmap="gray")
+
+cmap = plt.get_cmap("tab20")
+for k, (burrow_id, traj_ids_arr) in enumerate(
+    visited_burrow_to_traj_ids.items()
+):
+    color = cmap(k % cmap.N)
+    slc_trajectories = np.isin(traj_clip_id_dense_per_sample, traj_ids_arr)
+    ax.scatter(
+        x=x_traj[slc_trajectories],
+        y=y_traj[slc_trajectories],
+        s=0.5,
+        color=color,
+    )
+    ax.contour(
+        burrow_id_mask == burrow_id,
+        levels=[0.5],
+        colors=[color],
+        linewidths=1,
+    )
+
+
+# %%%%%%%%%%%%%%%%%%
+# Compute position relative to burrow centroid
 vec_burrow_to_points = {}
 for burrow_id, traj_ids_arr in list(visited_burrow_to_traj_ids.items()):
-    slc_trajectories = np.isin(id_traj_clip, traj_ids_arr)
+    slc_trajectories = np.isin(traj_clip_id_dense_per_sample, traj_ids_arr)
     vec_burrow_to_points[burrow_id] = (
-        np.c_[x_traj[slc_trajectories], y_traj[slc_trajectories]]
+        np.c_[
+            x_traj[slc_trajectories],
+            y_traj[slc_trajectories],
+        ]
         - visited_burrow_to_xy[burrow_id]
     )
 
+all_vec_burrow_to_points = np.concatenate(list(vec_burrow_to_points.values()))
+
 # %%
-# Compute distance to burrow centroid
-# OJO!!
-# A trajectory that passes through 3 burrows contributes its full sample
-# set 3 times (once relative to each centroid).
-# ---- How to fix that?
+# plot all trajectories with transparency with burrow centroid at the origin
+fig, ax = plt.subplots(1, 1)
+
+cmap = plt.get_cmap("tab20")
+for k, vec_arr in enumerate(vec_burrow_to_points.values()):
+    ax.scatter(
+        x=vec_arr[:, 0],
+        y=vec_arr[:, 1],
+        s=0.5,
+        color=cmap(0),
+        alpha=0.05,
+    )
+
+ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
+
+# rings at radial percentiles: each circle encloses a given fraction of
+# detections, so closely-spaced rings indicate high density
+ring_percentiles = [50, 75, 95, 100]
+all_radii = np.linalg.norm(all_vec_burrow_to_points, axis=1)
+ring_radii = np.percentile(all_radii, ring_percentiles)
+for pct, radius in zip(ring_percentiles, ring_radii, strict=True):
+    ax.add_patch(
+        plt.Circle(
+            (0, 0),
+            radius,
+            fill=False,
+            edgecolor="k",
+            linewidth=0.5,
+            linestyle="--",
+            alpha=0.5,
+            zorder=4,
+        )
+    )
+    ax.annotate(
+        f"{pct}% ({radius:.0f} px)",
+        xy=(0, -radius),
+        ha="center",
+        va="bottom",
+        fontsize=7,
+        color="k",
+        zorder=6,
+    )
+
+ax.set_aspect("equal")
+ax.invert_yaxis()  # match image coordinates (y down)
+ax.set_xlabel("$x_{burrow}$ (pixels)")
+ax.set_ylabel("$y_{burrow}$ (pixels)")
+ax.set_title("Trajectories in burrow coord syst")
+
+# %%
+# density (2D histogram) of points relative to the burrow centroid
+# all_vec_burrow_to_points = np.concatenate(list(vec_burrow_to_points.values()))
+
+bin_size = 5  # pixels
+half_extent = 300  # pixels, square window around the centroid
+bin_edges = np.arange(-half_extent, half_extent + bin_size, bin_size)
+
+fig, ax = plt.subplots(1, 1)
+_, _, _, im = ax.hist2d(
+    all_vec_burrow_to_points[:, 0],
+    all_vec_burrow_to_points[:, 1],
+    bins=[bin_edges, bin_edges],
+    cmin=1,  # leave empty bins blank
+)
+fig.colorbar(im, ax=ax, label="detections")
+
+ax.scatter(x=0, y=0, s=30, marker="x", color="r", zorder=5)
+ax.set_aspect("equal")
+ax.invert_yaxis()  # match image coordinates (y down)
+ax.set_xlabel("$x_{burrow}$ (pixels)")
+ax.set_ylabel("$y_{burrow}$ (pixels)")
+ax.set_title(f"Detection density ({bin_size} px bins)")
+
+
+# %%%%%%%%%%%%%%
+# Compute histogram of distance to burrow centroid
 
 # TODO: normalise distance to average bbox size of trajectories linked
 # to this burrow?
-all_vec_burrow_to_points = np.concatenate(list(vec_burrow_to_points.values()))
 fig, ax = plt.subplots()
 ax.hist(np.linalg.norm(all_vec_burrow_to_points, axis=1))
 ax.set_xlabel("pixels")
 ax.set_ylabel("detections")  # --- can I express this as time...?
 
-# Is it correct...? can I have 200_000 detections between 0 and 50 pixels of
-# the centroid? the total video has 107_548 frames
+
+# # single burrow
+# fig, ax = plt.subplots()
+# ax.hist(np.linalg.norm(vec_burrow_to_points[30], axis=1))
+# ax.set_xlabel("pixels")
+# ax.set_ylabel("detections")
 
 
-# %%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%
+# Compute theta angle relative to x-axis in BCS
 theta = np.arctan2(
     all_vec_burrow_to_points[:, 1], all_vec_burrow_to_points[:, 0]
 )
 
-# %%
 # Polar histogram of angles
 n_bins = 36
 counts, bin_edges = np.histogram(theta, bins=n_bins, range=(-np.pi, np.pi))
@@ -239,4 +380,47 @@ ax.set_theta_zero_location("E")
 ax.set_theta_direction(-1)  # theta increases in clockwise direction
 ax.set_title("Angle of detections relative to burrow centroid")
 
+# %%%%%%%%%%%%%%%%%%%%%%%
+# Compute distance to burrow in time
+for b_id in visited_burrow_to_traj_ids:
+    # sel_burrow_id = 30
+
+    position_wrt_burrow = vec_burrow_to_points[b_id]
+    slc_samples = np.isin(
+        traj_clip_id_dense_per_sample, visited_burrow_to_traj_ids[b_id]
+    )
+
+    # plot
+    fig, (ax, ax_traj) = plt.subplots(1, 2, figsize=(12, 5))
+
+    # left: distance to burrow over time, coloured by trajectory ID
+    cmap = plt.get_cmap("tab20")
+    ax.scatter(
+        x=frame_in_video_per_sample[slc_samples],
+        y=np.linalg.norm(position_wrt_burrow, axis=1),
+        c=traj_clip_id_dense_per_sample[slc_samples],
+        s=2.5,
+        cmap=cmap,
+    )
+    ax.set_xlabel("frame in video")
+    ax.set_ylabel("$d_{burrow}$ (pixels)")
+    ax.set_title(
+        f"Video: {video_str} ({n_frames / ds_video.fps / 60:.1f} min); burrow ID{b_id}"
+    )
+
+    # right: trajectories in burrow coord syst, coloured by frame number
+    sc = ax_traj.scatter(
+        x=position_wrt_burrow[:, 0],
+        y=position_wrt_burrow[:, 1],
+        c=frame_in_video_per_sample[slc_samples],
+        s=2.5,
+        cmap="viridis",
+    )
+    ax_traj.scatter(x=0, y=0, s=30, marker="x", color="r", zorder=5)
+    fig.colorbar(sc, ax=ax_traj, label="frame in video")
+    ax_traj.set_aspect("equal")
+    ax_traj.invert_yaxis()  # match image coordinates (y down)
+    ax_traj.set_xlabel("$x_{burrow}$ (pixels)")
+    ax_traj.set_ylabel("$y_{burrow}$ (pixels)")
+    ax_traj.set_title(f"burrow ID {b_id}")
 # %%
