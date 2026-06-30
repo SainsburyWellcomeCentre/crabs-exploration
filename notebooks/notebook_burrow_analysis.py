@@ -290,9 +290,46 @@ df = pd.DataFrame(
         "bbox_diag": bbox_diag,
     }
 )
-# %%
-# samples whose trajectory is linked to a visited burrow (used by most plots)
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Define dataframe for trajectories linked to a visited burrow only
+# (used by most plots)
 df_linked = df.dropna(subset=["burrow_id"]).copy()
+
+
+# %%
+# Resolve trajectories that overlap in time on the same burrow
+#
+# If two or more trajectory-clip IDs linked to the same burrow exist at the
+# same frame, only one can be kept. We drop the loser(s) *entirely* (all their
+# samples), not just the clashing rows. Greedy resolution: process trajectories
+# from largest to smallest and keep one only if none of its (burrow, frame)
+# slots are already taken by an already-kept trajectory. This guarantees the
+# kept set is conflict-free for any number of overlapping trajectories.
+
+# (burrow, frame) slots per traj, ordered largest traj first
+traj_ids_by_size = (
+    df_linked.groupby("traj_clip_id").size().sort_values(ascending=False).index
+)
+
+# A "slot" is a single (burrow_id, frame_in_video) pair 
+burrow_id_frame_per_traj = (
+    df_linked.groupby("traj_clip_id")
+    .apply(
+        lambda g: set(zip(g["burrow_id"], g["frame_in_video"])),
+        include_groups=False,
+    )
+    .loc[traj_ids_by_size]
+)
+
+occupied: set = set()
+traj_ids_to_keep = []
+for traj_id, burrow_id_frame in burrow_id_frame_per_traj.items():
+    if burrow_id_frame.isdisjoint(occupied):
+        traj_ids_to_keep.append(traj_id)
+        # apply union update to the set
+        occupied |= burrow_id_frame
+
+df_linked_filtered = df_linked[df_linked["traj_clip_id"].isin(traj_ids_to_keep)].copy()
 
 
 # %%
@@ -301,11 +338,11 @@ df_linked = df.dropna(subset=["burrow_id"]).copy()
 # of its traj-clip, broadcast back to every sample.
 # The factor is per-trajectory, so the *coordinates* (not just the
 # radius) must be normalised for the BL rings below to match the points.
-median_bbox_per_traj = df_linked.groupby("traj_clip_id")["bbox_diag"].transform(
+median_bbox_per_traj = df_linked_filtered.groupby("traj_clip_id")["bbox_diag"].transform(
     "median"
 )
-df_linked['x_burrow_bl'] = df_linked["x_burrow"] / median_bbox_per_traj
-df_linked['y_burrow_bl'] = df_linked["y_burrow"] / median_bbox_per_traj
+df_linked_filtered['x_burrow_bl'] = df_linked_filtered["x_burrow"] / median_bbox_per_traj
+df_linked_filtered['y_burrow_bl'] = df_linked_filtered["y_burrow"] / median_bbox_per_traj
 
 
 # %%
@@ -330,12 +367,12 @@ ax.hlines(
 ax.set_xlim([1, hits_per_id.shape[0] - 1])  # ok?
 ax.set_xlabel("burrow ID")
 ax.set_ylabel("trajectory samples")
-ax.set_title(f"n = {df_linked['burrow_id'].nunique()} selected burrows")
+ax.set_title(f"n = {df_linked_filtered['burrow_id'].nunique()} selected burrows")
 
 # %%
 # plot burrow centroids
 # (one centroid per visited burrow, read from the dataframe)
-burrow_centroids = df_linked.groupby("burrow_id")[
+burrow_centroids = df_linked_filtered.groupby("burrow_id")[
     ["burrow_centroid_x", "burrow_centroid_y"]
 ].first()
 
@@ -352,7 +389,7 @@ fig, ax = plt.subplots(1, 1)
 ax.imshow(np.zeros_like(burrow_id_mask))  # , cmap="gray")
 
 cmap = plt.get_cmap("tab20")
-for k, (burrow_id, group) in enumerate(df_linked.groupby("burrow_id")):
+for k, (burrow_id, group) in enumerate(df_linked_filtered.groupby("burrow_id")):
     color = cmap(k % cmap.N)
     ax.scatter(
         x=group["x"],
@@ -376,8 +413,8 @@ for k, (burrow_id, group) in enumerate(df_linked.groupby("burrow_id")):
 fig, ax = plt.subplots(1, 1)
 cmap = plt.get_cmap("tab20")
 ax.scatter(
-    x=df_linked["x_burrow_bl"],
-    y=df_linked["y_burrow_bl"],
+    x=df_linked_filtered["x_burrow_bl"],
+    y=df_linked_filtered["y_burrow_bl"],
     s=0.5,
     color=cmap(0),
     alpha=0.05,
@@ -388,7 +425,7 @@ ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
 # rings at radial percentiles: each circle encloses a given fraction of
 # detections, so closely-spaced rings indicate high density
 ring_percentiles = [50, 75, 95, 100]
-all_radii_norm = np.hypot(df_linked["x_burrow_bl"], df_linked["y_burrow_bl"])
+all_radii_norm = np.hypot(df_linked_filtered["x_burrow_bl"], df_linked_filtered["y_burrow_bl"])
 
 ring_radii = np.percentile(all_radii_norm, ring_percentiles)
 for pct, radius in zip(ring_percentiles, ring_radii, strict=True):
@@ -464,7 +501,7 @@ ax.set_ylabel("detections")  # --- can I express this as time...?
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
 # Compute theta angle relative to x-axis in BCS
-theta = np.arctan2(df_linked["y_burrow"], df_linked["x_burrow"])
+theta = np.arctan2(df_linked_filtered["y_burrow"], df_linked_filtered["x_burrow"])
 
 # Polar histogram of angles
 n_bins = 36
@@ -492,7 +529,7 @@ escape_intervals = [
     )
 ]
 
-for b_id, group in df_linked.groupby("burrow_id"):
+for b_id, group in df_linked_filtered.groupby("burrow_id"):
 
     d_burrow = np.hypot(group["x_burrow"], group["y_burrow"])
 
@@ -501,11 +538,12 @@ for b_id, group in df_linked.groupby("burrow_id"):
 
     # left: distance to burrow over time, coloured by trajectory ID
     # TODO: mark when in burrow?
+
     # shade the escape period(s) with light blue vertical bands
     for k, (f_start, f_end) in enumerate(escape_intervals):
         ax.axvspan(
-            f_start,
-            f_end,
+            f_start / ds_video.fps / 60,
+            f_end / ds_video.fps / 60,
             color="lightblue",
             alpha=0.4,
             zorder=0,
@@ -513,15 +551,17 @@ for b_id, group in df_linked.groupby("burrow_id"):
         )
     if escape_intervals:
         ax.legend(loc="upper right", fontsize=8)
+
+    # plot distance vs time
     cmap = plt.get_cmap("tab20")
     ax.scatter(
-        x=group["frame_in_video"],
+        x=group["frame_in_video"] / ds_video.fps / 60,
         y=d_burrow,
         c=group["traj_clip_id"],
         s=2.5,
         cmap=cmap,
     )
-    ax.set_xlabel("frame in video")
+    ax.set_xlabel("time (min)")
     ax.set_ylabel("$d_{burrow}$ (pixels)")
     ax.set_title(
         f"Video: {video_str} ({n_frames / ds_video.fps / 60:.1f} min); burrow ID{b_id}"
