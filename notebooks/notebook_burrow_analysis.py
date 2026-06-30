@@ -73,9 +73,21 @@ y = y_da.values.reshape(-1)
 valid = ~np.isnan(x) & ~np.isnan(y)
 x_traj, y_traj = x[valid], y[valid]
 
+# bbox size per sample: diagonal of the bbox sqrt(w**2 + h**2).
+# The diagonal ~ body length and is stable under in-plane rotation (an
+# axis-aligned bbox reshapes w/h as the crab turns, but the diagonal stays
+# ~constant), unlike the geometric mean sqrt(w * h) which tracks area and
+# dips toward 0 near axis alignment.
+# (same dims as position, so the flattened order and `valid` mask match)
+shape_da = ds_video.shape
+bbox_w = shape_da.sel(space="x").values.reshape(-1)[valid]
+bbox_h = shape_da.sel(space="y").values.reshape(-1)[valid]
+bbox_diag = np.hypot(bbox_w, bbox_h)
+
 # %%
 # Free from memory
 del position_da, x, y
+del shape_da, bbox_w, bbox_h
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -248,7 +260,6 @@ centroid_xy_per_sample = centroid_xy_per_traj[traj_clip_id_dense_per_sample]
 
 df = pd.DataFrame(
     {
-        "sample_idx": np.arange(x_traj.shape[0]),
         "x": x_traj,
         "y": y_traj,
         "traj_clip_id": traj_clip_id_dense_per_sample,
@@ -263,17 +274,32 @@ df = pd.DataFrame(
         "y_burrow": y_traj - centroid_xy_per_sample[:, 1],
         "frame_in_clip": frame_in_clip_per_sample,
         "frame_in_video": frame_in_video_per_sample,
+        "bbox_diag": bbox_diag,
     }
 )
-
+# %%
 # samples whose trajectory is linked to a visited burrow (used by most plots)
 df_linked = df.dropna(subset=["burrow_id"])
+
+
+# %%
+# Express position data in body lengths (BL):
+# divide each sample by the median bbox diagonal (~body length) 
+# of its traj-clip, broadcast back to every sample.
+# The factor is per-trajectory, so the *coordinates* (not just the
+# radius) must be normalised for the BL rings below to match the points.
+median_bbox_per_traj = df_linked.groupby("traj_clip_id")["bbox_diag"].transform(
+    "median"
+)
+df_linked['x_burrow_bl'] = df_linked["x_burrow"] / median_bbox_per_traj
+df_linked['y_burrow_bl'] = df_linked["y_burrow"] / median_bbox_per_traj
+
 
 # %%
 # Free from memory
 # (per-sample arrays now live in the dataframe)
 del x_traj, y_traj, traj_clip_id_dense_per_sample
-del frame_in_clip_per_sample, frame_in_video_per_sample
+del frame_in_clip_per_sample, frame_in_video_per_sample, bbox_diag
 del burrow_id_per_sample, centroid_xy_per_sample
 del burrow_id_per_traj, centroid_xy_per_traj
 
@@ -330,14 +356,15 @@ for k, (burrow_id, group) in enumerate(df_linked.groupby("burrow_id")):
 
 
 # %%
-# plot all trajectories with transparency with burrow centroid at the origin
-# (position relative to the burrow centroid lives in df["x_burrow"/"y_burrow"])
-fig, ax = plt.subplots(1, 1)
+# plot trajectories with burrow centroid at the origin
+# and in units of bodylengths (BL)
 
+
+fig, ax = plt.subplots(1, 1)
 cmap = plt.get_cmap("tab20")
 ax.scatter(
-    x=df_linked["x_burrow"],
-    y=df_linked["y_burrow"],
+    x=df_linked["x_burrow_bl"],
+    y=df_linked["y_burrow_bl"],
     s=0.5,
     color=cmap(0),
     alpha=0.05,
@@ -348,8 +375,9 @@ ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
 # rings at radial percentiles: each circle encloses a given fraction of
 # detections, so closely-spaced rings indicate high density
 ring_percentiles = [50, 75, 95, 100]
-all_radii = np.hypot(df_linked["x_burrow"], df_linked["y_burrow"])
-ring_radii = np.percentile(all_radii, ring_percentiles)
+all_radii_norm = np.hypot(df_linked["x_burrow_bl"], df_linked["y_burrow_bl"])
+
+ring_radii = np.percentile(all_radii_norm, ring_percentiles)
 for pct, radius in zip(ring_percentiles, ring_radii, strict=True):
     ax.add_patch(
         plt.Circle(
@@ -364,7 +392,7 @@ for pct, radius in zip(ring_percentiles, ring_radii, strict=True):
         )
     )
     ax.annotate(
-        f"{pct}% ({radius:.0f} px)",
+        f"{pct}% ({radius:.1f} BL)",
         xy=(0, -radius),
         ha="center",
         va="bottom",
@@ -375,8 +403,8 @@ for pct, radius in zip(ring_percentiles, ring_radii, strict=True):
 
 ax.set_aspect("equal")
 ax.invert_yaxis()  # match image coordinates (y down)
-ax.set_xlabel("$x_{burrow}$ (pixels)")
-ax.set_ylabel("$y_{burrow}$ (pixels)")
+ax.set_xlabel("$x_{burrow}$ (BL)")
+ax.set_ylabel("$y_{burrow}$ (BL)")
 ax.set_title("Trajectories in burrow coord syst")
 
 # %%
@@ -410,8 +438,8 @@ ax.set_title("Trajectories in burrow coord syst")
 # TODO: normalise distance to average bbox size of trajectories linked
 # to this burrow?
 fig, ax = plt.subplots()
-ax.hist(all_radii)
-ax.set_xlabel("pixels")
+ax.hist(all_radii_norm)
+ax.set_xlabel("distance to burrow (BL)")
 ax.set_ylabel("detections")  # --- can I express this as time...?
 
 
