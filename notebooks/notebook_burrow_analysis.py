@@ -3,6 +3,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import xarray as xr
 import zarr
 from scipy.ndimage import center_of_mass
@@ -31,6 +32,20 @@ trajectories_zarr = Path(
 )
 
 # %%
+def factorize_string_coord_in_da(da, coord_name): 
+    coord_da = da[coord_name]
+    coords_factorized, coords_unique = pd.factorize(coord_da.values)
+    return coord_da.copy(data=coords_factorized), coords_unique   # same dims, int data
+
+
+# TODO: review!
+# def flat_valid(input_da, ref_da, valid):
+#     # align the 1-D coord to x_da's dims, broadcast as a VIEW, then mask
+#     input_da_broadcasted = input_da.broadcast_like(ref_da)  # keeps it lazy/strided
+#     return np.broadcast_to(input_da_broadcasted.values, ref_da.shape).reshape(-1)[valid]
+
+
+# %%
 # Read trajectory data
 dt = xr.open_datatree(trajectories_zarr, engine="zarr", chunks={})
 
@@ -43,7 +58,7 @@ burrows_masks = burrows_zarr["masks"]
 burrows_scores = burrows_zarr["scores"]
 # %%
 # Get non-nan trajectory data samples
-video_str = "05.09.2023-02-Right"
+video_str = "04.09.2023-01-Right"
 ds_video = dt[video_str].to_dataset()
 n_frames = ds_video.clip_last_frame_0idx.max().values.item() + 1
 
@@ -57,31 +72,30 @@ y = y_da.values.reshape(-1)
 valid = ~np.isnan(x) & ~np.isnan(y)
 x_traj, y_traj = x[valid], y[valid]
 
+# %%
+# Free from memory
+del position_da, x, y
+
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Compute traj-clip ids
 
-# broadcast individuals/clip so the IDs match x and y element-by-element
-trajectory_ids = (
-    x_da["individuals"].broadcast_like(x_da).values.reshape(-1)[valid]
-)  # can I avoid .values?
-clip_ids = x_da["clip_id"].broadcast_like(x_da).values.reshape(-1)[valid]
+indiv_code_da, unique_indivs = factorize_string_coord_in_da(x_da, "individuals")
+clip_code_da, uniq_clip_ids = factorize_string_coord_in_da(x_da,"clip_id")
 
-# --- can this be simplified?
+# broadcast individuals/clip so the IDs match x and y element-by-element
+# (we broadcast ints rather than str)
+indiv_id_as_int = indiv_code_da.broadcast_like(x_da).values.reshape(-1)[valid]
+clip_id_as_int = clip_code_da.broadcast_like(x_da).values.reshape(-1)[valid]
+
 # NOTE: trajectory IDs are reused across clips; to make a trajectory ID unique
 # across video we combine it with clip_id. Factorizing each 1-D array (native
 # dtype) and merging the codes avoids a slow row-wise unique over strings.
-unique_traj_ids, traj_id_as_int = np.unique(
-    trajectory_ids,
-    return_inverse=True,
-)
-uniq_clip_ids, clip_id_as_int = np.unique(
-    clip_ids,
-    return_inverse=True,
-)
+
 # compute one integer per sample, representing a unique (traj_id, clip_id) pair
 combined = np.ravel_multi_index(
-    (traj_id_as_int, clip_id_as_int),
-    (unique_traj_ids.size, uniq_clip_ids.size),
+    (indiv_id_as_int, clip_id_as_int),
+    (unique_indivs.size, uniq_clip_ids.size),
 )
 
 # integers from ravel_multi_index can have gaps; here we densify them
@@ -108,8 +122,8 @@ frame_in_video_per_sample = (
 )
 # %%
 # Free from memory
-del position_da, x, y, valid, trajectory_ids, clip_ids
-del traj_id_as_int, clip_id_as_int, combined
+del valid, unique_indivs, uniq_clip_ids
+del indiv_id_as_int, clip_id_as_int, combined
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Compute subset of visited burrows
@@ -165,6 +179,7 @@ ax.hlines(
 ax.set_xlim([1, hits_per_id.shape[0] - 1])  # ok?
 ax.set_xlabel("burrow ID")
 ax.set_ylabel("trajectory samples")
+ax.set_title(f"n = {len(visited_burrow_ids)} selected burrows")
 
 # %%
 # plot burrow centroids
@@ -322,25 +337,25 @@ ax.set_title("Trajectories in burrow coord syst")
 # density (2D histogram) of points relative to the burrow centroid
 # all_vec_burrow_to_points = np.concatenate(list(vec_burrow_to_points.values()))
 
-bin_size = 5  # pixels
-half_extent = 300  # pixels, square window around the centroid
-bin_edges = np.arange(-half_extent, half_extent + bin_size, bin_size)
+# bin_size = 200  # pixels
+# half_extent = 2000  # pixels, square window around the centroid
+# bin_edges = np.arange(-half_extent, half_extent + bin_size, bin_size)
 
-fig, ax = plt.subplots(1, 1)
-_, _, _, im = ax.hist2d(
-    all_vec_burrow_to_points[:, 0],
-    all_vec_burrow_to_points[:, 1],
-    bins=[bin_edges, bin_edges],
-    cmin=1,  # leave empty bins blank
-)
-fig.colorbar(im, ax=ax, label="detections")
+# fig, ax = plt.subplots(1, 1)
+# _, _, _, im = ax.hist2d(
+#     all_vec_burrow_to_points[:, 0],
+#     all_vec_burrow_to_points[:, 1],
+#     bins=[bin_edges, bin_edges],
+#     cmin=1,  # leave empty bins blank
+# )
+# fig.colorbar(im, ax=ax, label="detections")
 
-ax.scatter(x=0, y=0, s=30, marker="x", color="r", zorder=5)
-ax.set_aspect("equal")
-ax.invert_yaxis()  # match image coordinates (y down)
-ax.set_xlabel("$x_{burrow}$ (pixels)")
-ax.set_ylabel("$y_{burrow}$ (pixels)")
-ax.set_title(f"Detection density ({bin_size} px bins)")
+# ax.scatter(x=0, y=0, s=30, marker="x", color="r", zorder=5)
+# ax.set_aspect("equal")
+# ax.invert_yaxis()  # match image coordinates (y down)
+# ax.set_xlabel("$x_{burrow}$ (pixels)")
+# ax.set_ylabel("$y_{burrow}$ (pixels)")
+# ax.set_title(f"Detection density ({bin_size} px bins)")
 
 
 # %%%%%%%%%%%%%%
@@ -394,6 +409,7 @@ for b_id in visited_burrow_to_traj_ids:
     fig, (ax, ax_traj) = plt.subplots(1, 2, figsize=(12, 5))
 
     # left: distance to burrow over time, coloured by trajectory ID
+    # TODO: mark when in burrow?
     cmap = plt.get_cmap("tab20")
     ax.scatter(
         x=frame_in_video_per_sample[slc_samples],
