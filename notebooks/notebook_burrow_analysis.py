@@ -122,18 +122,30 @@ unique_traj_clip_id_dense = np.arange(traj_clip_id_dense_per_sample.max() + 1)
 # same as np.unique(traj_clip_id_dense_per_sample)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Compute frame per sample
+# Compute frame index per sample (wrt clip and video)
 # 0-based indexing
+
+# wrt clip
 frame_in_clip_per_sample = (
     x_da["time"].broadcast_like(x_da).values.reshape(-1)[valid]
 ) 
 
+# wrt video
 frame_in_video_per_sample = (
     frame_in_clip_per_sample
     + x_da["clip_first_frame_0idx"]
     .broadcast_like(x_da)
     .values.reshape(-1)[valid]
 )
+
+# determine if frame in escape period
+frame_in_escape_period = (
+    ds_video.escape_state
+    .broadcast_like(x_da)
+    .values.reshape(-1)[valid]
+)
+
+
 # %%
 # Free from memory
 del valid, unique_indivs, uniq_clip_ids
@@ -274,12 +286,13 @@ df = pd.DataFrame(
         "y_burrow": y_traj - centroid_xy_per_sample[:, 1],
         "frame_in_clip": frame_in_clip_per_sample,
         "frame_in_video": frame_in_video_per_sample,
+        "frame_in_escape": frame_in_escape_period,
         "bbox_diag": bbox_diag,
     }
 )
 # %%
 # samples whose trajectory is linked to a visited burrow (used by most plots)
-df_linked = df.dropna(subset=["burrow_id"])
+df_linked = df.dropna(subset=["burrow_id"]).copy()
 
 
 # %%
@@ -433,10 +446,8 @@ ax.set_title("Trajectories in burrow coord syst")
 
 
 # %%%%%%%%%%%%%%
-# Compute histogram of distance to burrow centroid
+# Compute histogram of distance to burrow centroid, normalised
 
-# TODO: normalise distance to average bbox size of trajectories linked
-# to this burrow?
 fig, ax = plt.subplots()
 ax.hist(all_radii_norm)
 ax.set_xlabel("distance to burrow (BL)")
@@ -469,9 +480,19 @@ ax.set_theta_direction(-1)  # theta increases in clockwise direction
 ax.set_title("Angle of detections relative to burrow centroid")
 
 # %%%%%%%%%%%%%%%%%%%%%%%
-# Compute distance to burrow in time
+# Compute distance to each burrow in time
+
+# compute start/end frames
+escape_intervals = [
+    (start_frame, end_frame)
+    for start_frame, end_frame in zip(
+        ds_video.clip_escape_first_frame_0idx.values, 
+        ds_video.clip_last_frame_0idx.values, 
+        strict=True
+    )
+]
+
 for b_id, group in df_linked.groupby("burrow_id"):
-    # sel_burrow_id = 30
 
     d_burrow = np.hypot(group["x_burrow"], group["y_burrow"])
 
@@ -480,6 +501,18 @@ for b_id, group in df_linked.groupby("burrow_id"):
 
     # left: distance to burrow over time, coloured by trajectory ID
     # TODO: mark when in burrow?
+    # shade the escape period(s) with light blue vertical bands
+    for k, (f_start, f_end) in enumerate(escape_intervals):
+        ax.axvspan(
+            f_start,
+            f_end,
+            color="lightblue",
+            alpha=0.4,
+            zorder=0,
+            label="in escape" if k == 0 else None,
+        )
+    if escape_intervals:
+        ax.legend(loc="upper right", fontsize=8)
     cmap = plt.get_cmap("tab20")
     ax.scatter(
         x=group["frame_in_video"],
