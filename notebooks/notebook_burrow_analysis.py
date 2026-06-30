@@ -7,6 +7,7 @@ import pandas as pd
 import xarray as xr
 import zarr
 from scipy.ndimage import center_of_mass
+from scipy.signal import find_peaks
 
 # %%
 %matplotlib widget
@@ -15,6 +16,10 @@ from scipy.ndimage import center_of_mass
 # Parameters
 
 min_samples_in_burrow_frac = 0.10
+
+# minimum prominence (in body lengths) for a d_burrow excursion to count as a
+# local peak, i.e. how far the crab must move away from the burrow and back
+min_peak_prominence_bl = 1.0
 
 # %%
 # Input data
@@ -56,7 +61,7 @@ burrows_scores = burrows_zarr["scores"]
 # Read trajectory data
 dt = xr.open_datatree(trajectories_zarr, engine="zarr", chunks={})
 
-video_str = "04.09.2023-01-Right"
+video_str = "04.09.2023-02-Right"
 ds_video = dt[video_str].to_dataset()
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -332,8 +337,8 @@ for traj_id, burrow_id_frame in burrow_id_frame_per_traj.items():
 df_linked_filtered = df_linked[df_linked["traj_clip_id"].isin(traj_ids_to_keep)].copy()
 
 
-# %%
-# Express position data in body lengths (BL):
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Add position data in body lengths (BL):
 # divide each sample by the median bbox diagonal (~body length) 
 # of its traj-clip, broadcast back to every sample.
 # The factor is per-trajectory, so the *coordinates* (not just the
@@ -343,6 +348,8 @@ median_bbox_per_traj = df_linked_filtered.groupby("traj_clip_id")["bbox_diag"].t
 )
 df_linked_filtered['x_burrow_bl'] = df_linked_filtered["x_burrow"] / median_bbox_per_traj
 df_linked_filtered['y_burrow_bl'] = df_linked_filtered["y_burrow"] / median_bbox_per_traj
+
+
 
 
 # %%
@@ -491,13 +498,6 @@ ax.set_xlabel("distance to burrow (BL)")
 ax.set_ylabel("detections")  # --- can I express this as time...?
 
 
-# # single burrow
-# single = df_linked[df_linked["burrow_id"] == 30]
-# fig, ax = plt.subplots()
-# ax.hist(np.hypot(single["x_burrow"], single["y_burrow"]))
-# ax.set_xlabel("pixels")
-# ax.set_ylabel("detections")
-
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
 # Compute theta angle relative to x-axis in BCS
@@ -511,10 +511,13 @@ bin_width = bin_edges[1] - bin_edges[0]
 
 fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
 ax.bar(bin_centers, counts, width=bin_width, bottom=0.0, align="center")
+
 ax.set_theta_zero_location("E")
-# ax.set_theta_offset(0)  # set zero at the right
 ax.set_theta_direction(-1)  # theta increases in clockwise direction
 ax.set_title("Angle of detections relative to burrow centroid")
+
+# ax.set_rticks(np.arange(0, counts.max() + 10_000, 10_000))
+ax.set_rlabel_position(270)        # put count labels in an empty-ish quadrant
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Compute distance to each burrow in time
@@ -531,10 +534,75 @@ escape_intervals = [
 
 for b_id, group in df_linked_filtered.groupby("burrow_id"):
 
-    d_burrow = np.hypot(group["x_burrow"], group["y_burrow"])
+    # Compute local peaks in d_burrow (excursions away from the burrow and
+    # back). Peaks are found per trajectory-clip on time-sorted samples, so we
+    # never join across the time gaps between distinct trajectories. The
+    # prominence threshold is set per trajectory from its body length (median
+    # bbox diagonal), so it adapts to crabs imaged at different scales.
+    peak_frames = []
+    peak_dists = []
+    for _, traj in group.groupby("traj_clip_id"):
+        traj = traj.sort_values("frame_in_video")
+        d_traj = np.hypot(traj["x_burrow_bl"], traj["y_burrow_bl"]).to_numpy()
+        prominence = min_peak_prominence_bl #* traj["bbox_diag"].median()
+        peak_idx, _ = find_peaks(d_traj, prominence=prominence)
+        peak_frames.append(traj["frame_in_video"].to_numpy()[peak_idx])
+        peak_dists.append(d_traj[peak_idx])
+    peak_frames = np.concatenate(peak_frames) if peak_frames else np.array([])
+    peak_dists = np.concatenate(peak_dists) if peak_dists else np.array([])
+
+
+    # Compute lowest point between two peaks (regardless of trajectory ID).
+    # Pool all of the burrow's samples, sort the peaks by time, and in each gap
+    # between consecutive peaks pick the single sample closest to the burrow.
+    group_sorted = group.sort_values("frame_in_video")
+    group_frames = group_sorted["frame_in_video"].to_numpy()
+    group_d = np.hypot(
+        group_sorted["x_burrow_bl"], group_sorted["y_burrow_bl"]
+    ).to_numpy()
+
+    sorted_peak_frames = np.sort(peak_frames)
+    min_frames = []
+    min_dists = []
+    for f_lo, f_hi in zip(sorted_peak_frames[:-1], sorted_peak_frames[1:]):
+        between = (group_frames > f_lo) & (group_frames < f_hi)
+        if not between.any():
+            continue
+        i = np.argmin(group_d[between])
+        min_frames.append(group_frames[between][i])
+        min_dists.append(group_d[between][i])
+    min_frames = np.array(min_frames)
+    min_dists = np.array(min_dists)
+
+    # Compute rate of change of distance to burrow on inbound (peak->min) and
+    # outbound (min->peak) segments. We use the *unnormalised* distance
+    # (pixels) and look it up at each event frame. Merging peaks and mins into
+    # one time-ordered sequence makes pairing robust to gaps: a peak->peak pair
+    # (a min was skipped for lack of samples) is simply not an in/outbound leg.
+    group_d_px = np.hypot(
+        group_sorted["x_burrow"], group_sorted["y_burrow"]
+    ).to_numpy()
+    frame_to_d_px = dict(zip(group_frames, group_d_px))
+
+    events = sorted(
+        [(f, frame_to_d_px[f], "peak") for f in peak_frames]
+        + [(f, frame_to_d_px[f], "min") for f in min_frames]
+    )  # list of (frame, distance, type), sorted by frame
+    event_frames = np.array([e[0] for e in events])
+    event_dists = np.array([e[1] for e in events])
+    event_types = np.array([e[2] for e in events])
+
+    # rate of change per leg via finite differences between consecutive events
+    # (np.diff, not np.gradient: we want one value *per segment*, and a centred
+    # gradient would blend inbound and outbound across each turning point).
+    # Units are pixels/frame here; converted to pixels/s at plot time.
+    seg_rate = np.diff(event_dists) / np.diff(event_frames)  # pixels / frame
+    seg_from, seg_to = event_types[:-1], event_types[1:]
+    inbound_rates = seg_rate[(seg_from == "peak") & (seg_to == "min")]  # < 0
+    outbound_rates = seg_rate[(seg_from == "min") & (seg_to == "peak")]  # > 0
 
     # plot
-    fig, (ax, ax_traj) = plt.subplots(1, 2, figsize=(12, 5))
+    fig, (ax, ax_traj, ax_rate) = plt.subplots(1, 3, figsize=(18, 5))
 
     # left: distance to burrow over time, coloured by trajectory ID
     # TODO: mark when in burrow?
@@ -553,6 +621,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
         ax.legend(loc="upper right", fontsize=8)
 
     # plot distance vs time
+    d_burrow = np.hypot(group["x_burrow_bl"], group["y_burrow_bl"])
     cmap = plt.get_cmap("tab20")
     ax.scatter(
         x=group["frame_in_video"] / ds_video.fps / 60,
@@ -561,6 +630,31 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
         s=2.5,
         cmap=cmap,
     )
+    # mark detected local peaks (away-from-burrow excursions)
+    ax.scatter(
+        x=peak_frames / ds_video.fps / 60,
+        y=peak_dists,
+        s=40,
+        marker="v",
+        facecolors="none",
+        edgecolors="r",
+        linewidths=1,
+        zorder=6,
+        label=f"peaks (n={peak_dists.size})",
+    )
+    # mark detected local minima (closest approaches to the burrow)
+    ax.scatter(
+        x=min_frames / ds_video.fps / 60,
+        y=min_dists,
+        s=40,
+        marker="^",
+        facecolors="none",
+        edgecolors="g",
+        linewidths=1,
+        zorder=6,
+        label=f"inter-peak min (n={min_dists.size})",
+    )
+    ax.legend(loc="upper right", fontsize=8)
     ax.set_xlabel("time (min)")
     ax.set_ylabel("$d_{burrow}$ (pixels)")
     ax.set_title(
@@ -582,4 +676,41 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     ax_traj.set_xlabel("$x_{burrow}$ (pixels)")
     ax_traj.set_ylabel("$y_{burrow}$ (pixels)")
     ax_traj.set_title(f"burrow ID {b_id}")
+
+    # third: speed of change of d_burrow on inbound vs outbound legs. Strip
+    # plot of the per-leg rate magnitude (|approach| vs |departure| speed),
+    # with a horizontal bar marking the mean of each group.
+    labels = ["inbound", "outbound"]
+    colors = ["tab:green", "tab:red"]
+    fps = float(ds_video.fps)
+    # |pixels/frame| -> pixels/s
+    rates = [np.abs(inbound_rates) * fps, np.abs(outbound_rates) * fps]
+
+    rng = np.random.default_rng(0)
+    for xpos, (r, color) in enumerate(zip(rates, colors)):
+        ax_rate.scatter(
+            xpos + rng.uniform(-0.08, 0.08, size=r.size),  # jitter
+            r,
+            color=color,
+            s=15,
+            alpha=0.5,
+            zorder=3,
+        )
+        if r.size:
+            ax_rate.hlines(
+                r.mean(), xpos - 0.25, xpos + 0.25,
+                color="k", linewidth=2, zorder=4,
+            )
+
+    ax_rate.set_xticks([0, 1])
+    ax_rate.set_xticklabels(
+         [f"{lab}" for lab, r in zip(labels, rates)]
+        # [f"{lab}\n(n={r.size})" for lab, r in zip(labels, rates)]
+    )
+    ax_rate.set_xlim(-0.5, 1.5)
+    ax_rate.set_ylim(bottom=0)
+    ax_rate.set_ylabel(r"$|\Delta d_{burrow} / \Delta t|$ (pixels/s)")
+    ax_rate.set_title(f"Speed of change of distance to burrow (n = {rates[0].size})")
+
+    fig.tight_layout()
 # %%
