@@ -455,22 +455,24 @@ for _, group in df_linked_filtered.groupby("burrow_id"):
 #
 # This dataframe construction relies on frame uniqueness within a burrow.
 #
-# - rho_dot: mean per-frame change in distance to burrow (pixels/frame),
+# - rho_dot: mean per-frame change in distance to burrow (body lengths/frame),
 #   using only consecutive-frame steps; frame gaps (incl. the gaps between
 #   distinct trajectories pooled into a burrow) are never bridged. NaN if a leg
 #   has no consecutive-frame steps.
-# - tortuosity: path length / beeline over the whole leg (pixels). The beeline
-#   is the straight peak<->min distance, so the path bridges any gaps to span
-#   the same endpoints (NOTE: a large gap adds one long straight segment). NaN
-#   when < 2 samples or zero beeline.
+# - tortuosity: path length / beeline over the whole leg (dimensionless ratio).
+#   The beeline is the straight peak<->min distance, so the path bridges any
+#   gaps to span the same endpoints (NOTE: a large gap adds one long straight
+#   segment). NaN when < 2 samples or zero beeline.
+#
+# Both metrics read the body-length burrow columns.
 
 leg_records = []
 for b_id, group in df_linked_filtered.groupby("burrow_id"):
     group_sorted = group.sort_values("frame_in_video")
     frames = group_sorted["frame_in_video"].to_numpy()
-    d_px = group_sorted["d_burrow_px"].to_numpy()
-    xs_all = group_sorted["x"].to_numpy()
-    ys_all = group_sorted["y"].to_numpy()
+    d_bl = group_sorted["d_burrow_bl"].to_numpy()
+    xs_all = group_sorted["x_burrow_bl"].to_numpy()
+    ys_all = group_sorted["y_burrow_bl"].to_numpy()
 
     # time-ordered peak/min events
     event_mask = (group_sorted["is_peak"] | group_sorted["is_min"]).to_numpy()
@@ -491,7 +493,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
         f0, f1 = event_frames[s], event_frames[s + 1]
         mask_frames_in_leg = (frames >= f0) & (frames <= f1)
         frames_leg = frames[mask_frames_in_leg]
-        d_leg = d_px[mask_frames_in_leg]
+        d_leg = d_bl[mask_frames_in_leg]
         xs, ys = xs_all[mask_frames_in_leg], ys_all[mask_frames_in_leg]
 
         # compute rho_dot: mean per-frame change in distance to burrow,
@@ -520,7 +522,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
                 "kind": kind,
                 "frame_start": f0,
                 "frame_end": f1,
-                "rho_dot_px_per_frame": rho_dot,
+                "rho_dot_bl_per_frame": rho_dot,
                 "tortuosity": tort,
             }
         )
@@ -817,14 +819,14 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     ax_traj.set_ylabel("$y_{burrow}$ (pixels)")
     ax_traj.set_title(f"burrow ID {b_id}")
 
-    # third: speed of change of d_burrow on inbound vs outbound legs. 
-    # take abs value and express in pixels/s
-    rho_dot_px_per_s = [
-        np.abs(inbound["rho_dot_px_per_frame"].dropna().to_numpy()) * fps,
-        np.abs(outbound["rho_dot_px_per_frame"].dropna().to_numpy()) * fps,
+    # third: speed of change of d_burrow on inbound vs outbound legs.
+    # take abs value and express in body lengths/s
+    rho_dot_bl_per_s = [
+        np.abs(inbound["rho_dot_bl_per_frame"].dropna().to_numpy()) * fps,
+        np.abs(outbound["rho_dot_bl_per_frame"].dropna().to_numpy()) * fps,
     ]
     for xpos, (r, color) in enumerate(
-        zip(rho_dot_px_per_s, colors, strict=True)
+        zip(rho_dot_bl_per_s, colors, strict=True)
     ):
         ax_rate.scatter(
             xpos + rng.uniform(-0.08, 0.08, size=r.size),  # jitter
@@ -849,11 +851,11 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     ax_rate.set_xticklabels(labels)
     ax_rate.set_xlim(-0.5, 1.5)
     ax_rate.set_ylim(bottom=0)
-    ax_rate.set_ylabel(r"$|\dot{\rho}|$ (pixels/s)") 
-    # or r"$|d\rho/dt|$ (pixels/s)"
+    ax_rate.set_ylabel(r"$|\dot{\rho}|$ (body lengths/s)")
+    # or r"$|d\rho/dt|$ (body lengths/s)"
     ax_rate.set_title(
         "Speed of change of distance to burrow "
-        f"(n = {rho_dot_px_per_s[0].size})"
+        f"(n = {rho_dot_bl_per_s[0].size})"
     )
 
     # fourth: path tortuosity (path length / beeline) on inbound vs outbound
