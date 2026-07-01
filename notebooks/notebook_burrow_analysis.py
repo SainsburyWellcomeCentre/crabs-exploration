@@ -301,29 +301,30 @@ df = pd.DataFrame(
         "bbox_diag": bbox_diag,
     }
 )
+
+# polar rho coordinate in BCS in pixels
+df["d_burrow_px"] = np.hypot(
+    df["x_burrow"],
+    df["y_burrow"],
+)
+
+# polar theta coordinate in BCS
+df["theta_burrow"] = np.arctan2(
+    df["y_burrow"],
+    df["x_burrow"],
+)
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Define dataframe for trajectories linked to a visited burrow only
 # (used by most plots)
 df_linked = df.dropna(subset=["burrow_id"]).copy()
 
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Add position data in body lengths (BL):
-# divide each sample by the median bbox diagonal (~body length)
-# of its traj-clip, broadcast back to every sample.
-# The factor is per-trajectory, so the *coordinates* (not just the
-# radius) must be normalised for the BL rings below to match the points.
-median_bbox_per_traj = df_linked.groupby("traj_clip_id")[
-    "bbox_diag"
-].transform("median")
-df_linked["x_burrow_bl"] = df_linked["x_burrow"] / median_bbox_per_traj
-df_linked["y_burrow_bl"] = df_linked["y_burrow"] / median_bbox_per_traj
-
-
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Define filtered dataframe,
 # resolving clashes for trajectories linked to the same burrow
 # (i.e. when 2 or more trajectories are present at the same frame)
+# by keeping only the longest trajectory
 #
 # If two or more trajectory-clip IDs linked to the same burrow exist at the
 # same frame, only one can be kept. We drop the loser(s) *entirely* (all their
@@ -334,7 +335,6 @@ traj_ids_by_size = (
     df_linked.groupby("traj_clip_id").size().sort_values(ascending=False).index
 )
 
-
 # A "slot" is a single (burrow_id, frame_in_video) pair.
 # Greedy resolution: process trajectories
 # from largest to smallest and keep one only if none of its (burrow, frame)
@@ -343,7 +343,7 @@ traj_ids_by_size = (
 burrow_id_frame_per_traj = (
     df_linked.groupby("traj_clip_id")
     .apply(
-        lambda g: set(zip(g["burrow_id"], g["frame_in_video"])),
+        lambda g: set(zip(g["burrow_id"], g["frame_in_video"], strict=True)),
         include_groups=False,
     )
     .loc[traj_ids_by_size]
@@ -371,25 +371,37 @@ del burrow_id_per_traj, centroid_xy_per_traj
 del df_linked  # ok?
 
 
-# %%%%%%%%%%%%%%%%%%%%%%%
-# Compute polar coordinates in the burrow coord system per sample
-# Add the per-sample distance to the (linked) burrow to the dataframe, in body
-# lengths (BL) and in pixels, plus the angle relative to the burrow x-axis.
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Compute normalised position in burrow coord system (BCS),
+# in cartesian and polar coordinates. Normalised by body
+# lengths.
+
+# compute normalising factor collecting data per burrow_id
+# (i.e., all trajectories linked to a burrow). This derives
+# one normalising factor per burrow, and implicitly assumes
+# that all tracklets linked to a burrow belong to similarly
+# sized crabs.
+median_bbox_per_burrow_id = df_linked_filtered.groupby("burrow_id")[
+    "bbox_diag"
+].transform("median")
+
+# cartesian normalised position in BCS
+df_linked_filtered["x_burrow_bl"] = (
+    df_linked_filtered["x_burrow"] / median_bbox_per_burrow_id
+)
+df_linked_filtered["y_burrow_bl"] = (
+    df_linked_filtered["y_burrow"] / median_bbox_per_burrow_id
+)
+
+# polar normalised rho coordinate in BCS
 df_linked_filtered["d_burrow_bl"] = np.hypot(
     df_linked_filtered["x_burrow_bl"],
     df_linked_filtered["y_burrow_bl"],
 )
-df_linked_filtered["d_burrow_px"] = np.hypot(
-    df_linked_filtered["x_burrow"],
-    df_linked_filtered["y_burrow"],
-)
-df_linked_filtered["theta_burrow"] = np.arctan2(
-    df_linked_filtered["y_burrow"],
-    df_linked_filtered["x_burrow"],
-)
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%
-# Compute local peaks and inter-peak minima in d_burrow
+# Compute local peaks and inter-peak minima in d_burrow_bl
 # Mark each sample as a peak in distance to burrow or an
 # inter-peak minimum (closest approach between two peaks) with boolean columns.
 #
@@ -437,16 +449,20 @@ for _, group in df_linked_filtered.groupby("burrow_id"):
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%
-# Compute dataframe of inbound/outbound trajectories
-# Build one row per inbound (peak->min) or outbound (min->peak) leg, holding 
+# Compute dataframe of inbound/outbound trajectories and metrics
+# Build one row per inbound (peak->min) or outbound (min->peak) leg, holding
 # its rho_dot (rate of change of distance to burrow) and its path tortuosity.
 #
-# This dataframe construction relies on frame uniqueness within a burrow
+# This dataframe construction relies on frame uniqueness within a burrow.
 #
-# - rate: diff in rho between start and end of leg, in pixels/frame 
-# - tortuosity: path length / beeline over the pooled, time-sorted samples in
-# the leg's frame window (in pixels). NaN when < 2 samples or a
-# zero beeline. Segments bridge any gaps between known samples.
+# - rho_dot: mean per-frame change in distance to burrow (pixels/frame),
+#   using only consecutive-frame steps; frame gaps (incl. the gaps between
+#   distinct trajectories pooled into a burrow) are never bridged. NaN if a leg
+#   has no consecutive-frame steps.
+# - tortuosity: path length / beeline over the whole leg (pixels). The beeline
+#   is the straight peak<->min distance, so the path bridges any gaps to span
+#   the same endpoints (NOTE: a large gap adds one long straight segment). NaN
+#   when < 2 samples or zero beeline.
 
 leg_records = []
 for b_id, group in df_linked_filtered.groupby("burrow_id"):
@@ -458,13 +474,12 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
 
     # time-ordered peak/min events
     event_mask = (group_sorted["is_peak"] | group_sorted["is_min"]).to_numpy()
-    event_frames = frames[event_mask] # start and end frames
-    event_dists = d_px[event_mask] # start and end distances to burrow in px
+    event_frames = frames[event_mask]  # start and end frames
     event_is_peak = group_sorted["is_peak"].to_numpy()[event_mask]
 
     for s in range(event_frames.size - 1):
-        # compute rho_dot
-        # inbound = peak->min, outbound = min->peak; skip peak->peak/min->min
+        # determine type of leg
+        # skip peak->peak/min->min
         if event_is_peak[s] and not event_is_peak[s + 1]:
             kind = "inbound"
         elif not event_is_peak[s] and event_is_peak[s + 1]:
@@ -472,13 +487,26 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
         else:
             continue
 
+        # compute samples inside the leg's frame window, shared by both metrics
         f0, f1 = event_frames[s], event_frames[s + 1]
-        rate = (event_dists[s + 1] - event_dists[s]) / (f1 - f0)  # px / frame
-
-
-        # compute tortuosity
         mask_frames_in_leg = (frames >= f0) & (frames <= f1)
+        frames_leg = frames[mask_frames_in_leg]
+        d_leg = d_px[mask_frames_in_leg]
         xs, ys = xs_all[mask_frames_in_leg], ys_all[mask_frames_in_leg]
+
+        # compute rho_dot: mean per-frame change in distance to burrow,
+        # using only steps between consecutive frames (step == 1); frame gaps
+        # are never bridged. NaN if the leg has no consecutive-frame step.
+        consecutive = np.diff(frames_leg) == 1  # per-step mask
+        rho_dot = (
+            np.diff(d_leg)[consecutive].mean() if consecutive.any() else np.nan
+        )
+
+        # tortuosity: path length/beeline over the whole leg. The
+        # beeline is the straight path between peak and min distance point,
+        # so the path length computation must span the same endpoints.
+        # Gaps in the actual path are bridged by a line segments between
+        # known samples (a large gap adds one long straight segment).
         if xs.size >= 2:
             path_len = np.hypot(np.diff(xs), np.diff(ys)).sum()
             beeline = np.hypot(xs[-1] - xs[0], ys[-1] - ys[0])
@@ -492,7 +520,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
                 "kind": kind,
                 "frame_start": f0,
                 "frame_end": f1,
-                "rate_px_per_frame": rate,
+                "rho_dot_px_per_frame": rho_dot,
                 "tortuosity": tort,
             }
         )
@@ -605,9 +633,7 @@ ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
 # rings at radial percentiles: each circle encloses a given fraction of
 # detections, so closely-spaced rings indicate high density
 ring_percentiles = [50, 75, 95, 100]
-ring_radii = np.percentile(
-    df_linked_filtered["d_burrow_bl"], ring_percentiles
-)
+ring_radii = np.percentile(df_linked_filtered["d_burrow_bl"], ring_percentiles)
 for pct, radius in zip(ring_percentiles, ring_radii, strict=True):
     ax.add_patch(
         plt.Circle(
@@ -768,7 +794,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
         zorder=6,
         label=f"inter-peak min (n={len(mins)})",
     )
-    ax.legend(loc="upper right", fontsize=8)
+    ax.legend(loc="upper left", fontsize=8)
     ax.set_xlabel("time (min)")
     ax.set_ylabel("$d_{burrow}$ (BL)")
     ax.set_title(
@@ -791,15 +817,15 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     ax_traj.set_ylabel("$y_{burrow}$ (pixels)")
     ax_traj.set_title(f"burrow ID {b_id}")
 
-    # third: speed of change of d_burrow on inbound vs outbound legs. Strip
-    # plot of the per-leg rate magnitude (|approach| vs |departure| speed),
-    # with a horizontal bar marking the mean of each group.
-    # |pixels/frame| -> pixels/s
-    rates = [
-        np.abs(inbound["rate_px_per_frame"].to_numpy()) * fps,
-        np.abs(outbound["rate_px_per_frame"].to_numpy()) * fps,
+    # third: speed of change of d_burrow on inbound vs outbound legs. 
+    # take abs value and express in pixels/s
+    rho_dot_px_per_s = [
+        np.abs(inbound["rho_dot_px_per_frame"].dropna().to_numpy()) * fps,
+        np.abs(outbound["rho_dot_px_per_frame"].dropna().to_numpy()) * fps,
     ]
-    for xpos, (r, color) in enumerate(zip(rates, colors)):
+    for xpos, (r, color) in enumerate(
+        zip(rho_dot_px_per_s, colors, strict=True)
+    ):
         ax_rate.scatter(
             xpos + rng.uniform(-0.08, 0.08, size=r.size),  # jitter
             r,
@@ -808,6 +834,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
             alpha=0.5,
             zorder=3,
         )
+        # horizontal bar marking the mean of each group.
         if r.size:
             ax_rate.hlines(
                 r.mean(),
@@ -822,19 +849,21 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     ax_rate.set_xticklabels(labels)
     ax_rate.set_xlim(-0.5, 1.5)
     ax_rate.set_ylim(bottom=0)
-    ax_rate.set_ylabel(r"$|\Delta d_{burrow} / \Delta t|$ (pixels/s)")
+    ax_rate.set_ylabel(r"$|\dot{\rho}|$ (pixels/s)") 
+    # or r"$|d\rho/dt|$ (pixels/s)"
     ax_rate.set_title(
-        f"Speed of change of distance to burrow (n = {rates[0].size})"
+        "Speed of change of distance to burrow "
+        f"(n = {rho_dot_px_per_s[0].size})"
     )
 
     # fourth: path tortuosity (path length / beeline) on inbound vs outbound
-    # legs. Same strip-plot style as the rate panel; tortuosity is >= 1, with
+    # legs. Same strip-plot style as the rho_dot panel; tortuosity is >= 1, with
     # 1 = perfectly straight.
     torts = [
         inbound["tortuosity"].dropna().to_numpy(),
         outbound["tortuosity"].dropna().to_numpy(),
     ]
-    for xpos, (t, color) in enumerate(zip(torts, colors)):
+    for xpos, (t, color) in enumerate(zip(torts, colors, strict=True)):
         ax_tort.scatter(
             xpos + rng.uniform(-0.08, 0.08, size=t.size),  # jitter
             t,
