@@ -798,25 +798,25 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     )
     ax.legend(loc="upper left", fontsize=8)
     ax.set_xlabel("time (min)")
-    ax.set_ylabel("$d_{burrow}$ (BL)")
+    ax.set_ylabel(r"$\rho$ (BL)")
     ax.set_title(
         f"Video: {video_str} ({n_frames / fps / 60:.1f} min); burrow ID{b_id}"
     )
 
     # right: trajectories in burrow coord syst, coloured by frame number
     sc = ax_traj.scatter(
-        x=group["x_burrow"],
-        y=group["y_burrow"],
-        c=group["frame_in_video"],
+        x=group["x_burrow_bl"],
+        y=group["y_burrow_bl"],
+        c=group["frame_in_video"] / fps / 60,
         s=2.5,
         cmap="viridis",
     )
     ax_traj.scatter(x=0, y=0, s=30, marker="x", color="r", zorder=5)
-    fig.colorbar(sc, ax=ax_traj, label="frame in video")
+    fig.colorbar(sc, ax=ax_traj, label="time (min)")
     ax_traj.set_aspect("equal")
     ax_traj.invert_yaxis()  # match image coordinates (y down)
-    ax_traj.set_xlabel("$x_{burrow}$ (pixels)")
-    ax_traj.set_ylabel("$y_{burrow}$ (pixels)")
+    ax_traj.set_xlabel("$x_{burrow}$ (BL)")
+    ax_traj.set_ylabel("$y_{burrow}$ (BL)")
     ax_traj.set_title(f"burrow ID {b_id}")
 
     # third: speed of change of d_burrow on inbound vs outbound legs.
@@ -851,7 +851,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     ax_rate.set_xticklabels(labels)
     ax_rate.set_xlim(-0.5, 1.5)
     ax_rate.set_ylim(bottom=0)
-    ax_rate.set_ylabel(r"$|\dot{\rho}|$ (body lengths/s)")
+    ax_rate.set_ylabel(r"$|\dot{\rho}|$ (BL/s)")
     # or r"$|d\rho/dt|$ (body lengths/s)"
     ax_rate.set_title(
         "Speed of change of distance to burrow "
