@@ -7,11 +7,12 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import zarr
+from matplotlib.lines import Line2D
 from scipy.ndimage import center_of_mass
 from scipy.signal import find_peaks
 
 # %%
-%matplotlib qt
+# %matplotlib qt
 # qt / widget
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -75,7 +76,7 @@ burrows_scores = burrows_zarr["scores"]
 # Read trajectory data
 dt = xr.open_datatree(trajectories_zarr, engine="zarr", chunks={})
 
-video_str = "04.09.2023-02-Right"
+video_str = "04.09.2023-03-Right"
 ds_video = dt[video_str].to_dataset()
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -389,16 +390,16 @@ del df_linked  # ok?
 # one normalising factor per burrow, and implicitly assumes
 # that all tracklets linked to a burrow belong to similarly
 # sized crabs.
-median_bbox_per_burrow_id = df_linked_filtered.groupby("burrow_id")[
+median_bbox_diag_per_burrow_id = df_linked_filtered.groupby("burrow_id")[
     "bbox_diag"
 ].transform("median")
 
 # cartesian normalised position in BCS
 df_linked_filtered["x_burrow_bl"] = (
-    df_linked_filtered["x_burrow"] / median_bbox_per_burrow_id
+    df_linked_filtered["x_burrow"] / median_bbox_diag_per_burrow_id
 )
 df_linked_filtered["y_burrow_bl"] = (
-    df_linked_filtered["y_burrow"] / median_bbox_per_burrow_id
+    df_linked_filtered["y_burrow"] / median_bbox_diag_per_burrow_id
 )
 
 # polar normalised rho coordinate in BCS
@@ -657,7 +658,7 @@ fig.savefig(
 # POSTER FIGURE 2
 
 
-fig, ax = plt.subplots(1, 1,  figsize=(10, 10))
+fig, ax = plt.subplots(1, 1, figsize=(10, 10))
 cmap = plt.get_cmap("tab20")
 ax.scatter(
     x=df_linked_filtered["x_burrow_bl"],
@@ -784,40 +785,123 @@ counts, bin_edges = np.histogram(
 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 bin_width = bin_edges[1] - bin_edges[0]
 
+# -------------
+# polar histogram
 fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
 ax.bar(bin_centers, counts, width=bin_width, bottom=0.0, align="center")
 
 ax.set_theta_zero_location("E")
 ax.set_theta_direction(-1)  # theta increases in clockwise direction
+ax.set_rlabel_position(270)  # put count labels in an empty-ish quadrant
 # ax.set_title("Angle of detections relative to burrow centroid")
 
-# ax.set_rticks(np.arange(0, counts.max() + 10_000, 10_000))
-ax.set_rlabel_position(270)  # put count labels in an empty-ish quadrant
+# drop the concentric constant-r gridlines (and their labels); the radial
+# scale isn't the message of this plot
+ax.yaxis.grid(False)
+ax.set_yticklabels([])
+
+# -----------------------
+# compute circular mean direction (mean resultant vector).
+# theta is circular, so the mean direction is the angle of the resultant vector
+# z = <e^{i*theta}>, NOT np.mean(theta) (which depends on the +/-pi branch cut
+# and breaks across the wrap).
+theta = df_linked_filtered["theta_burrow"].to_numpy()
+z = np.mean(np.exp(1j * theta))
+mu = np.angle(z)
+
+# mean-direction ray on top of the fans
+ax.plot(
+    [mu, mu],
+    [0, counts.max()],
+    color="purple",
+    linewidth=2.5,
+    linestyle="--",
+    zorder=6,
+    label=rf"$\mu = {np.degrees(mu):.0f}$°",
+)
+
+# -------------------
+# symmetric angle fans centred on the mean direction, each containing an
+# increasing fraction of detections (the circular analogue of mu +/- k*sigma).
+# The half-width for a given coverage is read empirically off the absolute
+# angular deviation from mu, so it is distribution-free and rotation-invariant
+# (no branch-cut caveat). NOTE: this assumes a unimodal, roughly symmetric
+# distribution about mu; if the angles are bimodal the fans mislead.
+# absolute angular deviation from mu, wrapped into [0, pi]
+dev = np.abs((theta - mu + np.pi) % (2 * np.pi) - np.pi)
+fan_coverages = [50, 75, 95]  # % of detections inside each fan
+fan_half_widths = np.percentile(dev, fan_coverages)  # radians
+
+# draw each fan as just its two lateral (radial) edges at mu +/- hw, leaving
+# the wedge itself transparent. Each fan's arc sits at a staggered radius so the
+# nested fans don't overlap and can be told apart.
+fan_cmap = plt.get_cmap("viridis")
+# radii evenly spaced from x% to 100% of the count axis, one per fan
+fan_radii = np.linspace(0.97, 1.0, len(fan_coverages)) * counts.max()
+for k, (pct, hw, fan_len) in enumerate(
+    zip(fan_coverages, fan_half_widths, fan_radii, strict=True)
+):
+    # match the fig-2 ring colours: those normalise over [50,75,95,100], so
+    # divide by len(fan_coverages) (not len-1) to land 50/75/95 on the same
+    # viridis positions (0, 1/3, 2/3) without introducing a 100% fan
+    color = fan_cmap(k / len(fan_coverages))
+    # label only one edge so the legend has a single entry per fan
+    ax.plot(
+        [mu - hw, mu - hw],
+        [0, fan_len],
+        color=color,
+        linewidth=2.5,
+        zorder=5,
+        label=f"{pct}% (±{np.degrees(hw):.0f}°)",
+    )
+    ax.plot(
+        [mu + hw, mu + hw],
+        [0, fan_len],
+        color=color,
+        linewidth=2.5,
+        zorder=5,
+    )
+    # arc joining the two edges at this fan's (staggered) outer radius
+    arc_theta = np.linspace(mu - hw, mu + hw, 100)
+    ax.plot(
+        arc_theta,
+        np.full_like(arc_theta, fan_len),
+        color=color,
+        linewidth=2.5,
+        zorder=5,
+    )
+
+
+# legend
+ax.legend(
+    loc="upper right",
+    bbox_to_anchor=(1.15, 1.1),
+    fontsize=12,
+)
 
 
 # x-axis (red) and y-axis (green) axes of the burrow coord system.
 # On a polar axes, arrows are drawn with annotate in (theta, r) data coords:
 # theta=0 points +x (East) and theta=pi/2 points +y (down, given the clockwise
 # direction and East zero location set above).
-axis_len = 20_000  # counts
-for theta, color in [(0, [1,0,0]), (np.pi / 2, [0,1,0])]:
-    ax.annotate(
-        "",
-        xy=(theta, axis_len),
-        xytext=(0, 0),
-        arrowprops=dict(color=color, arrowstyle="->", linewidth=2),
-        zorder=6,
-    )
+# axis_len = 40_000  # counts
+# for theta, color in [(0, [1, 0, 0]), (np.pi / 2, [0, 1, 0])]:
+#     ax.annotate(
+#         "",
+#         xy=(theta, axis_len),
+#         xytext=(0, 0),
+#         arrowprops=dict(color=color, arrowstyle="->", linewidth=2),
+#         zorder=6,
+#     )
 
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_fig3.png",
+    output_figs_dir / f"{video_str}_fig3_2.png",
     dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
-
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%
