@@ -1,6 +1,7 @@
 # %%
 from pathlib import Path
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -10,7 +11,8 @@ from scipy.ndimage import center_of_mass
 from scipy.signal import find_peaks
 
 # %%
-# %matplotlib widget
+%matplotlib qt
+# qt / widget
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Parameters
@@ -55,6 +57,12 @@ trajectories_zarr = Path(
     # CrabTracks-slurm2478780-2478861-2489356.zarr"
 )
 
+raster_plots_dir = Path(
+    "/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/burrow_trajectory_rasters"
+)
+
+output_figs_dir = Path("/Users/sofia/arc/project_Zoo_crabs/ICN poster/figures")
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Read burrow data
@@ -67,7 +75,7 @@ burrows_scores = burrows_zarr["scores"]
 # Read trajectory data
 dt = xr.open_datatree(trajectories_zarr, engine="zarr", chunks={})
 
-video_str = "04.09.2023-03-Right"
+video_str = "04.09.2023-02-Right"
 ds_video = dt[video_str].to_dataset()
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -529,6 +537,8 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
 
 legs_df = pd.DataFrame(leg_records)
 
+# %%
+fps = float(ds_video.fps)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Plot selection method for visited burrows
@@ -592,6 +602,15 @@ for _, (cx, cy) in visited_burrow_centroids.iterrows():
 
 fig, ax = plt.subplots(1, 1)
 
+# background image (filename matches the video name)
+background_img = plt.imread(raster_plots_dir / f"{video_str}.png")
+# The PNG is a single flat colour (yellow-green) with a binary alpha mask —
+# no intensity encoded. Recolour by keeping the mask and painting it blue.
+alpha = background_img[..., 3]
+recolored = np.zeros_like(background_img)
+recolored[..., :3] = mpl.colors.to_rgb("0.8")  # light gray (0=black, 1=white)
+recolored[..., 3] = alpha
+ax.imshow(recolored)
 
 cmap = plt.get_cmap("tab20")
 for k, (burrow_id, group) in enumerate(
@@ -602,17 +621,35 @@ for k, (burrow_id, group) in enumerate(
         x=group["x"],
         y=group["y"],
         s=0.5,
+        marker=".",
+        edgecolors=None,
         color=color,
+        rasterized=True,
     )
-    ax.contour(
-        burrow_id_mask == burrow_id,
-        levels=[0.5],
-        colors=[color],
-        linewidths=1,
-    )
+    # burrow contour
+    # ax.contour(
+    #     burrow_id_mask == burrow_id,
+    #     levels=[0.5],
+    #     colors=[color],
+    #     linewidths=1,
+    # )
 
-ax.invert_yaxis()  # to match image coordinates
+ax.set_title(f"{video_str} ({n_frames / fps / 60:.1f} min)")
 ax.set_aspect("equal")
+ax.set_xticks([])
+ax.set_yticks([])
+ax.margins(0)  # drop the 5% data padding around the artists
+fig.subplots_adjust(left=0, right=1, bottom=0, top=1)  # kill figure padding
+
+# %%
+ax.set_title(f"Sample video ({n_frames / fps / 60:.1f} min)")
+fig.savefig(
+    output_figs_dir / f"{video_str}_fig1_3.png",
+    dpi=300,  # resolution of the rasterized scatter/image
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Plot all trajectories in burrow coordinate system
@@ -620,7 +657,7 @@ ax.set_aspect("equal")
 # POSTER FIGURE 2
 
 
-fig, ax = plt.subplots(1, 1)
+fig, ax = plt.subplots(1, 1,  figsize=(10, 10))
 cmap = plt.get_cmap("tab20")
 ax.scatter(
     x=df_linked_filtered["x_burrow_bl"],
@@ -632,38 +669,77 @@ ax.scatter(
 
 ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
 
+# x-axis (red) and y-axis (green) unit vectors of the burrow coord system
+axis_len = 2.0  # BL
+ax.quiver(
+    [0, 0],
+    [0, 0],
+    [axis_len, 0],
+    [0, axis_len],
+    color=[[1, 0, 0], [0, 1, 0]],
+    angles="xy",
+    scale_units="xy",
+    scale=1,
+    width=0.006,
+    zorder=6,
+)
+
 # rings at radial percentiles: each circle encloses a given fraction of
-# detections, so closely-spaced rings indicate high density
+# detections, so closely-spaced rings indicate high density. Each ring gets a
+# distinct colour and is identified through the legend rather than an inline
+# label.
 ring_percentiles = [50, 75, 95, 100]
 ring_radii = np.percentile(df_linked_filtered["d_burrow_bl"], ring_percentiles)
-for pct, radius in zip(ring_percentiles, ring_radii, strict=True):
+ring_cmap = plt.get_cmap("viridis")
+ring_handles = []
+for k, (pct, radius) in enumerate(
+    zip(ring_percentiles, ring_radii, strict=True)
+):
+    color = ring_cmap(k / (len(ring_percentiles) - 1))
     ax.add_patch(
         plt.Circle(
             (0, 0),
             radius,
             fill=False,
-            edgecolor="k",
-            linewidth=0.5,
-            linestyle="--",
-            alpha=0.75,
+            edgecolor=color,
+            linewidth=2.5,
             zorder=4,
         )
     )
-    ax.annotate(
-        f"{pct}% ({radius:.1f} BL)",
-        xy=(0, -radius),
-        ha="center",
-        va="bottom",
-        fontsize=10,
-        color="k",
-        zorder=6,
+    ring_handles.append(
+        mpl.lines.Line2D(
+            [],
+            [],
+            color=color,
+            linewidth=1.5,
+            label=f"{pct}% ({radius:.1f} BL)",
+        )
     )
+ax.legend(
+    handles=ring_handles,
+    loc="upper right",
+    fontsize=16,
+    # title="radial percentile",
+)
 
 ax.set_aspect("equal")
 ax.invert_yaxis()  # match image coordinates (y down)
+
+for item in [ax.xaxis.label, ax.yaxis.label]:
+    item.set_fontsize(16)
+ax.tick_params(axis="both", labelsize=14)
+
 ax.set_xlabel("$x_{burrow}$ (BL)")
 ax.set_ylabel("$y_{burrow}$ (BL)")
-ax.set_title("Trajectories in burrow coord syst")
+# ax.set_title("Trajectories in burrow coord syst")
+
+# %%
+fig.savefig(
+    output_figs_dir / f"{video_str}_fig2.png",
+    dpi=300,  # resolution of the rasterized scatter/image
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
 
 # %%
 # density (2D histogram) of points relative to the burrow centroid
@@ -713,10 +789,35 @@ ax.bar(bin_centers, counts, width=bin_width, bottom=0.0, align="center")
 
 ax.set_theta_zero_location("E")
 ax.set_theta_direction(-1)  # theta increases in clockwise direction
-ax.set_title("Angle of detections relative to burrow centroid")
+# ax.set_title("Angle of detections relative to burrow centroid")
 
 # ax.set_rticks(np.arange(0, counts.max() + 10_000, 10_000))
 ax.set_rlabel_position(270)  # put count labels in an empty-ish quadrant
+
+
+# x-axis (red) and y-axis (green) axes of the burrow coord system.
+# On a polar axes, arrows are drawn with annotate in (theta, r) data coords:
+# theta=0 points +x (East) and theta=pi/2 points +y (down, given the clockwise
+# direction and East zero location set above).
+axis_len = 20_000  # counts
+for theta, color in [(0, [1,0,0]), (np.pi / 2, [0,1,0])]:
+    ax.annotate(
+        "",
+        xy=(theta, axis_len),
+        xytext=(0, 0),
+        arrowprops=dict(color=color, arrowstyle="->", linewidth=2),
+        zorder=6,
+    )
+
+
+# %%
+fig.savefig(
+    output_figs_dir / f"{video_str}_fig3.png",
+    dpi=300,  # resolution of the rasterized scatter/image
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
+
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%
@@ -732,7 +833,6 @@ escape_intervals = [
     )
 ]
 
-fps = float(ds_video.fps)
 labels = ["inbound", "outbound"]
 colors = ["tab:green", "tab:red"]
 rng = np.random.default_rng(0)
