@@ -372,9 +372,9 @@ del df_linked  # ok?
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%
-# Compute distance to each burrow per sample
+# Compute polar coordinates in the burrow coord system per sample
 # Add the per-sample distance to the (linked) burrow to the dataframe, in body
-# lengths (BL) and in pixels.
+# lengths (BL) and in pixels, plus the angle relative to the burrow x-axis.
 df_linked_filtered["d_burrow_bl"] = np.hypot(
     df_linked_filtered["x_burrow_bl"],
     df_linked_filtered["y_burrow_bl"],
@@ -382,6 +382,10 @@ df_linked_filtered["d_burrow_bl"] = np.hypot(
 df_linked_filtered["d_burrow_px"] = np.hypot(
     df_linked_filtered["x_burrow"],
     df_linked_filtered["y_burrow"],
+)
+df_linked_filtered["theta_burrow"] = np.arctan2(
+    df_linked_filtered["y_burrow"],
+    df_linked_filtered["x_burrow"],
 )
 
 # %%%%%%%%%%%%%%%%%%%%%%%
@@ -601,11 +605,9 @@ ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
 # rings at radial percentiles: each circle encloses a given fraction of
 # detections, so closely-spaced rings indicate high density
 ring_percentiles = [50, 75, 95, 100]
-all_radii_norm = np.hypot(
-    df_linked_filtered["x_burrow_bl"], df_linked_filtered["y_burrow_bl"]
+ring_radii = np.percentile(
+    df_linked_filtered["d_burrow_bl"], ring_percentiles
 )
-
-ring_radii = np.percentile(all_radii_norm, ring_percentiles)
 for pct, radius in zip(ring_percentiles, ring_radii, strict=True):
     ax.add_patch(
         plt.Circle(
@@ -664,20 +666,17 @@ ax.set_title("Trajectories in burrow coord syst")
 # Compute histogram of distance to burrow centroid, normalised
 
 fig, ax = plt.subplots()
-ax.hist(all_radii_norm)
+ax.hist(df_linked_filtered["d_burrow_bl"])
 ax.set_xlabel("distance to burrow (BL)")
 ax.set_ylabel("detections")  # --- can I express this as time...?
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
-# Compute theta angle relative to x-axis in BCS
-theta = np.arctan2(
-    df_linked_filtered["y_burrow"], df_linked_filtered["x_burrow"]
-)
-
-# Polar histogram of angles
+# Polar histogram of angles relative to x-axis in BCS
 n_bins = 36
-counts, bin_edges = np.histogram(theta, bins=n_bins, range=(-np.pi, np.pi))
+counts, bin_edges = np.histogram(
+    df_linked_filtered["theta_burrow"], bins=n_bins, range=(-np.pi, np.pi)
+)
 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 bin_width = bin_edges[1] - bin_edges[0]
 
