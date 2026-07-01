@@ -61,7 +61,7 @@ burrows_scores = burrows_zarr["scores"]
 # Read trajectory data
 dt = xr.open_datatree(trajectories_zarr, engine="zarr", chunks={})
 
-video_str = "04.09.2023-02-Right"
+video_str = "04.09.2023-03-Right"
 ds_video = dt[video_str].to_dataset()
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -601,8 +601,39 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     inbound_rates = seg_rate[(seg_from == "peak") & (seg_to == "min")]  # < 0
     outbound_rates = seg_rate[(seg_from == "min") & (seg_to == "peak")]  # > 0
 
-    # plot
-    fig, (ax, ax_traj, ax_rate) = plt.subplots(1, 3, figsize=(18, 5))
+
+    # Compute tortuosity for inbound (peak->min) and outbound (min->peak) legs
+    # as path length / beeline (straight-line distance between leg endpoints).
+    # The path length sums step distances over the pooled, time-sorted samples
+    # inside the leg's frame window; both lengths use unnormalised pixels.
+    # NOTE: segments are computed between known datapoints and their lengths
+    # are added; if there is a gap, a segment will be drawn between known points
+    group_x = group_sorted["x"].to_numpy()
+    group_y = group_sorted["y"].to_numpy()
+
+    inbound_tort = []
+    outbound_tort = []
+    for s, (k0, k1) in enumerate(zip(seg_from, seg_to)):
+        if (k0, k1) not in (("peak", "min"), ("min", "peak")):
+            continue
+        f0, f1 = event_frames[s], event_frames[s + 1]
+        leg = (group_frames >= f0) & (group_frames <= f1)
+        xs, ys = group_x[leg], group_y[leg]
+        if xs.size < 2:
+            continue
+        path_len = np.hypot(np.diff(xs), np.diff(ys)).sum()
+        beeline = np.hypot(xs[-1] - xs[0], ys[-1] - ys[0])
+        if beeline == 0:
+            continue
+        tort = path_len / beeline
+        (inbound_tort if k0 == "peak" else outbound_tort).append(tort)
+    inbound_tort = np.array(inbound_tort)
+    outbound_tort = np.array(outbound_tort)
+
+    # plot ---------------------------------------------------------------
+    fig, (ax, ax_traj, ax_rate, ax_tort) = plt.subplots(
+        1, 4, figsize=(24, 5)
+    )
 
     # left: distance to burrow over time, coloured by trajectory ID
     # TODO: mark when in burrow?
@@ -711,6 +742,37 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     ax_rate.set_ylim(bottom=0)
     ax_rate.set_ylabel(r"$|\Delta d_{burrow} / \Delta t|$ (pixels/s)")
     ax_rate.set_title(f"Speed of change of distance to burrow (n = {rates[0].size})")
+
+    # fourth: path tortuosity (path length / beeline) on inbound vs outbound
+    # legs. Same strip-plot style as the rate panel; tortuosity is >= 1, with
+    # 1 = perfectly straight.
+    torts = [inbound_tort, outbound_tort]
+    for xpos, (t, color) in enumerate(zip(torts, colors)):
+        ax_tort.scatter(
+            xpos + rng.uniform(-0.08, 0.08, size=t.size),  # jitter
+            t,
+            color=color,
+            s=15,
+            alpha=0.5,
+            zorder=3,
+        )
+        if t.size:
+            ax_tort.hlines(
+                t.mean(), xpos - 0.25, xpos + 0.25,
+                color="k", linewidth=2, zorder=4,
+            )
+
+    # dashed line at 1 = perfectly straight path
+    ax_tort.axhline(1, color="k", linewidth=0.5, linestyle="--")
+    ax_tort.set_xticks([0, 1])
+    ax_tort.set_xticklabels(labels)
+    ax_tort.set_xlim(-0.5, 1.5)
+    ax_tort.set_ylim(bottom=1) # perfectly straight path
+    ax_tort.set_ylabel("tortuosity (path / beeline)")
+    ax_tort.set_title(
+        f"Path tortuosity "
+        f"(in: n={inbound_tort.size}, out: n={outbound_tort.size})"
+    )
 
     fig.tight_layout()
 # %%
