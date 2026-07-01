@@ -76,7 +76,7 @@ burrows_scores = burrows_zarr["scores"]
 # Read trajectory data
 dt = xr.open_datatree(trajectories_zarr, engine="zarr", chunks={})
 
-video_str = "04.09.2023-03-Right"
+video_str = "04.09.2023-02-Right"
 ds_video = dt[video_str].to_dataset()
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -742,38 +742,14 @@ fig.savefig(
     pad_inches=0,  # no border around the tight bbox
 )
 
-# %%
-# density (2D histogram) of points relative to the burrow centroid
-# all_vec_burrow_to_points = np.concatenate(list(vec_burrow_to_points.values()))
-
-# bin_size = 200  # pixels
-# half_extent = 2000  # pixels, square window around the centroid
-# bin_edges = np.arange(-half_extent, half_extent + bin_size, bin_size)
-
-# fig, ax = plt.subplots(1, 1)
-# _, _, _, im = ax.hist2d(
-#     all_vec_burrow_to_points[:, 0],
-#     all_vec_burrow_to_points[:, 1],
-#     bins=[bin_edges, bin_edges],
-#     cmin=1,  # leave empty bins blank
-# )
-# fig.colorbar(im, ax=ax, label="detections")
-
-# ax.scatter(x=0, y=0, s=30, marker="x", color="r", zorder=5)
-# ax.set_aspect("equal")
-# ax.invert_yaxis()  # match image coordinates (y down)
-# ax.set_xlabel("$x_{burrow}$ (pixels)")
-# ax.set_ylabel("$y_{burrow}$ (pixels)")
-# ax.set_title(f"Detection density ({bin_size} px bins)")
-
 
 # %%%%%%%%%%%%%%
 # Compute histogram of distance to burrow centroid, normalised
 
-fig, ax = plt.subplots()
-ax.hist(df_linked_filtered["d_burrow_bl"])
-ax.set_xlabel("distance to burrow (BL)")
-ax.set_ylabel("detections")  # --- can I express this as time...?
+# fig, ax = plt.subplots()
+# ax.hist(df_linked_filtered["d_burrow_bl"])
+# ax.set_xlabel("distance to burrow (BL)")
+# ax.set_ylabel("detections")  # --- can I express this as time...?
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1129,4 +1105,279 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     )
 
     fig.tight_layout()
+# %%
+# %%%%%%%%%%%%%%%%%%%%%%%
+# Plot single burrow metrics poster
+
+
+# selected burrow
+b_id = 53 # 21
+
+group = df_linked_filtered[df_linked_filtered["burrow_id"] == b_id]
+peaks = group[group["is_peak"]]
+mins = group[group["is_min"]]
+
+legs = legs_df[legs_df["burrow_id"] == b_id]
+inbound = legs[legs["kind"] == "inbound"]
+outbound = legs[legs["kind"] == "outbound"]
+
+# %%%%%%%%%%%
+# plot trajectories in burrow coord syst, coloured by frame number
+fig, ax_traj = plt.subplots(figsize=(10, 10))
+sc = ax_traj.scatter(
+    x=group["x_burrow_bl"],
+    y=group["y_burrow_bl"],
+    c=group["frame_in_video"] / fps / 60,
+    s=2.5,
+    cmap="viridis",
+)
+ax_traj.scatter(x=0, y=0, s=30, marker="x", color="r", zorder=5)
+cbar = fig.colorbar(sc, ax=ax_traj, location="left")
+cbar.set_label("time (min)", fontsize=18)
+cbar.ax.tick_params(labelsize=16)
+
+ax_traj.set_aspect("equal")
+ax_traj.invert_yaxis()  # match image coordinates (y down)
+# ax_traj.set_xlabel("$x_{burrow}$ (BL)")
+# ax_traj.set_ylabel("$y_{burrow}$ (BL)")
+# ax_traj.set_title(f"burrow ID {b_id}")
+ax_traj.axis("off")
+
+# %%
+fig.savefig(
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig5.png",
+    dpi=300,  # resolution of the rasterized scatter/image
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
+
+
+# %%%%%%%%%%%%%%%
+# plot distance vs time
+fig, ax = plt.subplots(figsize=(10, 10))
+cmap = plt.get_cmap("tab20")
+ax.scatter(
+    x=group["frame_in_video"] / fps / 60,
+    y=group["d_burrow_bl"],
+    color=cmap(0),
+    # c=cmap(0), #group["traj_clip_id"],
+    s=2.5,
+    # cmap=cmap,
+)
+# mark detected local peaks
+ax.scatter(
+    x=peaks["frame_in_video"] / fps / 60,
+    y=peaks["d_burrow_bl"],
+    s=50,
+    marker="v",
+    facecolors="none",
+    edgecolors="r",
+    linewidths=2.5,
+    zorder=6,
+    label=f"peaks (n={len(peaks)})",
+)
+# mark detected local minima
+ax.scatter(
+    x=mins["frame_in_video"] / fps / 60,
+    y=mins["d_burrow_bl"],
+    s=50,
+    marker="^",
+    facecolors="none",
+    edgecolors="g",
+    linewidths=2.5,
+    zorder=6,
+    label=f"inter-peak min (n={len(mins)})",
+)
+for item in [ax.xaxis.label, ax.yaxis.label]:
+    item.set_fontsize(20)
+ax.tick_params(axis="both", labelsize=18)
+
+
+ax.legend(loc="upper right", fontsize=18)
+ax.set_xlabel("time (min)")
+ax.set_ylabel(r"$\rho$ (BL)")
+# ax.set_title(
+#     f"Video: {video_str} ({n_frames / fps / 60:.1f} min); burrow ID{b_id}"
+# )
+fig.tight_layout()
+
+ax.spines[["top", "right"]].set_visible(False)
+
+# %%
+fig.savefig(
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig4_2.png",
+    dpi=300,  # resolution of the rasterized scatter/image
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
+
+
+# %%%%%%%%%%%%%%%
+# plot angle to burrow (theta) at each peak, over time.
+# theta is wrapped to [-45, 315) deg so the branch cut (the "switching"
+# border) sits at -pi/4 rather than at +/-pi, keeping angular clusters
+# from being split across the wrap.
+peak_theta_deg = np.degrees(
+    np.mod(peaks["theta_burrow"] + np.pi / 4, 2 * np.pi) - np.pi / 4
+)
+
+fig, ax_theta = plt.subplots(figsize=(8, 4.25))
+ax_theta.plot(
+    peaks["frame_in_video"] / fps / 60,
+    peak_theta_deg,
+    linestyle="--",
+    color="r",
+    alpha=0.4,
+    linewidth=2,
+)
+
+ax_theta.scatter(
+    x=peaks["frame_in_video"] / fps / 60,
+    y=peak_theta_deg,
+    s=40,
+    marker="v",
+    facecolors="none",
+    edgecolors="r",
+    linewidths=2,
+    zorder=6,
+    label=f"peaks (n={len(peaks)})",
+)
+ax_theta.set_yticks(np.arange(0, 316, 45))
+ax_theta.set_ylim(-45, 180)  # (0, 315)
+ax_theta.set_xlabel("time (min)")
+ax_theta.set_ylabel(r"$\theta$ ($\degree$)")
+ax_theta.spines[["top", "right"]].set_visible(False)
+
+# ax_theta.set_title(f"Angle to burrow at peaks; burrow ID{b_id}")
+
+for item in [ax_theta.xaxis.label, ax_theta.yaxis.label]:
+    item.set_fontsize(18)
+ax_theta.tick_params(axis="both", labelsize=16)
+# %%
+fig.savefig(
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig6_2.png",
+    dpi=300,  # resolution of the rasterized scatter/image
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
+
+# %%
+# plot speed of change of d_burrow on inbound vs outbound legs.
+# take abs value and express in body lengths/s
+
+labels = ["inbound\n(peak → min)", "outbound\n(min → peak)"]
+colors = ["tab:green", "tab:red"]
+rng = np.random.default_rng(0)
+
+
+fig, ax_rate = plt.subplots(figsize=(6, 4.25))
+rho_dot_bl_per_s = [
+    np.abs(inbound["rho_dot_bl_per_frame"].dropna().to_numpy()) * fps,
+    np.abs(outbound["rho_dot_bl_per_frame"].dropna().to_numpy()) * fps,
+]
+for xpos, (r, color) in enumerate(zip(rho_dot_bl_per_s, colors, strict=True)):
+    ax_rate.scatter(
+        xpos + rng.uniform(-0.08, 0.08, size=r.size),  # jitter
+        r,
+        color=color,
+        s=25,
+        alpha=0.5,
+        zorder=3,
+    )
+    # horizontal bar marking the mean of each group.
+    if r.size:
+        ax_rate.hlines(
+            r.mean(),
+            xpos - 0.25,
+            xpos + 0.25,
+            color="k",
+            linewidth=2,
+            zorder=4,
+        )
+
+ax_rate.set_xticks([0, 1])
+ax_rate.set_xticklabels(labels)
+ax_rate.set_xlim(-0.5, 1.5)
+ax_rate.set_ylim(bottom=0)
+ax_rate.set_ylabel(r"$|d\rho/dt|$ (BL/s)")
+
+fig.tight_layout()
+
+for item in [ax_rate.xaxis.label, ax_rate.yaxis.label]:
+    item.set_fontsize(18)
+ax_rate.tick_params(axis="both", labelsize=16)
+
+ax_rate.spines[["top", "right"]].set_visible(False)
+
+
+# %%
+fig.savefig(
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig7.png",
+    dpi=300,  # resolution of the rasterized scatter/image
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
+
+# %%
+# fourth: path tortuosity (path length / beeline) on inbound vs outbound
+# legs. Same strip-plot style as the rho_dot panel; tortuosity is >= 1, with
+# 1 = perfectly straight.
+fig, ax_tort = plt.subplots(figsize=(6, 4.25))
+torts = [
+    inbound["tortuosity"].dropna().to_numpy(),
+    outbound["tortuosity"].dropna().to_numpy(),
+]
+for xpos, (t, color) in enumerate(zip(torts, colors, strict=True)):
+    ax_tort.scatter(
+        xpos + rng.uniform(-0.08, 0.08, size=t.size),  # jitter
+        t,
+        color=color,
+        s=25,
+        alpha=0.5,
+        zorder=3,
+    )
+    if t.size:
+        ax_tort.hlines(
+            t.mean(),
+            xpos - 0.25,
+            xpos + 0.25,
+            color="k",
+            linewidth=2,
+            zorder=4,
+        )
+
+# dashed line at 1 = perfectly straight path
+ax_tort.axhline(1, color="k", linewidth=0.5, linestyle="--")
+ax_tort.set_xticks([0, 1])
+ax_tort.set_xticklabels(labels)
+ax_tort.set_xlim(-0.5, 1.5)
+ax_tort.set_ylim(bottom=1)  # perfectly straight path
+ax_tort.set_ylabel("tortuosity ratio")
+
+fig.tight_layout()
+
+for item in [ax_tort.xaxis.label, ax_tort.yaxis.label]:
+    item.set_fontsize(18)
+ax_tort.tick_params(axis="both", labelsize=16)
+ax_tort.spines[["top", "right"]].set_visible(False)
+
+
+mean_handle = Line2D([], [], color="k", linewidth=2, label="mean value")
+n_handle = Line2D([], [], linestyle="none", label=f"n = {torts[0].size} legs")
+
+ax_tort.legend(
+    handles=[mean_handle, n_handle],
+    loc="upper left",  # legend corner that gets anchored
+    bbox_to_anchor=(1.02, 1.0),  # anchor point in axes fraction (>1 = outside)
+    fontsize=14,
+    borderaxespad=0,
+)
+
+# %%
+fig.savefig(
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig8.png",
+    dpi=300,  # resolution of the rasterized scatter/image
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
 # %%
