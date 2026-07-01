@@ -10,18 +10,37 @@ from scipy.ndimage import center_of_mass
 from scipy.signal import find_peaks
 
 # %%
-%matplotlib widget
+# %matplotlib widget
 
-# %%
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Parameters
 
+# definition of visited burrows
 min_samples_in_burrow_frac = 0.10
 
 # minimum prominence (in body lengths) for a d_burrow excursion to count as a
 # local peak, i.e. how far the crab must move away from the burrow and back
 min_peak_prominence_bl = 1.0
 
-# %%
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Helper functions
+def factorize_string_coord_in_da(da, coord_name):
+    coord_da = da[coord_name]
+    coords_factorized, coords_unique = pd.factorize(coord_da.values)
+    return coord_da.copy(
+        data=coords_factorized
+    ), coords_unique  # same dims, int data
+
+
+# TODO: review!
+# def flat_valid(input_da, ref_da, valid):
+#     # align the 1-D coord to x_da's dims, broadcast as a VIEW, then mask
+#     input_da_broadcasted = input_da.broadcast_like(ref_da)  # keeps it lazy/strided
+#     return np.broadcast_to(input_da_broadcasted.values, ref_da.shape).reshape(-1)[valid]
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Input data
 
 # burrow masks
@@ -32,22 +51,9 @@ burrow_zarr = Path(
 
 # trajectory data
 trajectories_zarr = Path(
-    "/Users/sofia/swc/CrabTracks/CrabTracks-slurm3012633.zarr" 
-    #CrabTracks-slurm2478780-2478861-2489356.zarr"
+    "/Users/sofia/swc/CrabTracks/CrabTracks-slurm3012633.zarr"
+    # CrabTracks-slurm2478780-2478861-2489356.zarr"
 )
-
-# %%
-def factorize_string_coord_in_da(da, coord_name): 
-    coord_da = da[coord_name]
-    coords_factorized, coords_unique = pd.factorize(coord_da.values)
-    return coord_da.copy(data=coords_factorized), coords_unique   # same dims, int data
-
-
-# TODO: review!
-# def flat_valid(input_da, ref_da, valid):
-#     # align the 1-D coord to x_da's dims, broadcast as a VIEW, then mask
-#     input_da_broadcasted = input_da.broadcast_like(ref_da)  # keeps it lazy/strided
-#     return np.broadcast_to(input_da_broadcasted.values, ref_da.shape).reshape(-1)[valid]
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -98,8 +104,10 @@ del shape_da, bbox_w, bbox_h
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Compute traj-clip ids
 
-indiv_code_da, unique_indivs = factorize_string_coord_in_da(x_da, "individuals")
-clip_code_da, uniq_clip_ids = factorize_string_coord_in_da(x_da,"clip_id")
+indiv_code_da, unique_indivs = factorize_string_coord_in_da(
+    x_da, "individuals"
+)
+clip_code_da, uniq_clip_ids = factorize_string_coord_in_da(x_da, "clip_id")
 
 # broadcast individuals/clip so the IDs match x and y element-by-element
 # (we broadcast ints rather than str)
@@ -133,7 +141,7 @@ unique_traj_clip_id_dense = np.arange(traj_clip_id_dense_per_sample.max() + 1)
 # wrt clip
 frame_in_clip_per_sample = (
     x_da["time"].broadcast_like(x_da).values.reshape(-1)[valid]
-) 
+)
 
 # wrt video
 frame_in_video_per_sample = (
@@ -144,11 +152,9 @@ frame_in_video_per_sample = (
 )
 
 # determine if frame in escape period
-frame_in_escape_period = (
-    ds_video.escape_state
-    .broadcast_like(x_da)
-    .values.reshape(-1)[valid]
-)
+frame_in_escape_period = ds_video.escape_state.broadcast_like(
+    x_da
+).values.reshape(-1)[valid]
 
 
 # %%
@@ -160,10 +166,10 @@ del indiv_id_as_int, clip_id_as_int, combined
 # Compute subset of visited burrows
 # TODO: to be changed when I move to zarr with video-first indexing
 list_videos = [lv.name for lv in dt.leaves]
-video_idx_zarr = np.argwhere(video_str==np.asarray(list_videos)).item()
+video_idx_zarr = np.argwhere(video_str == np.asarray(list_videos)).item()
 # ------------------
 
-burrow_id_mask = burrows_masks[video_idx_zarr, :] 
+burrow_id_mask = burrows_masks[video_idx_zarr, :]
 burrow_ids = np.unique(burrow_id_mask)
 
 img_h, img_w = burrow_id_mask.shape
@@ -203,7 +209,8 @@ visited_burrow_to_xy = {
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Assign trajectory-clip IDs to a single visited burrow
-# IMPORTANT: each trajectory is only fixed to one burrow
+# IMPORTANT:
+# - each trajectory is linked to only one burrow
 # (the one it "sees" the most)
 
 # get burrow ID and trajectory ID for every in-frame sample
@@ -223,7 +230,6 @@ for b_id, burrow_id in enumerate(visited_burrow_ids):
     )
     count_matrix[dense_traj_ids, b_id] = counts
 
-# %%
 # Reduce count matrix to consider visited traj IDs only
 # (this is because argmax of row all 0s will return 0)
 slc_rows = count_matrix.sum(axis=1) > 0
@@ -301,22 +307,39 @@ df = pd.DataFrame(
 df_linked = df.dropna(subset=["burrow_id"]).copy()
 
 
-# %%
-# Resolve trajectories that overlap in time on the same burrow
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Add position data in body lengths (BL):
+# divide each sample by the median bbox diagonal (~body length)
+# of its traj-clip, broadcast back to every sample.
+# The factor is per-trajectory, so the *coordinates* (not just the
+# radius) must be normalised for the BL rings below to match the points.
+median_bbox_per_traj = df_linked.groupby("traj_clip_id")[
+    "bbox_diag"
+].transform("median")
+df_linked["x_burrow_bl"] = df_linked["x_burrow"] / median_bbox_per_traj
+df_linked["y_burrow_bl"] = df_linked["y_burrow"] / median_bbox_per_traj
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Define filtered dataframe,
+# resolving clashes for trajectories linked to the same burrow
+# (i.e. when 2 or more trajectories are present at the same frame)
 #
 # If two or more trajectory-clip IDs linked to the same burrow exist at the
 # same frame, only one can be kept. We drop the loser(s) *entirely* (all their
-# samples), not just the clashing rows. Greedy resolution: process trajectories
-# from largest to smallest and keep one only if none of its (burrow, frame)
-# slots are already taken by an already-kept trajectory. This guarantees the
-# kept set is conflict-free for any number of overlapping trajectories.
+# samples), not just the clashing rows.
 
-# (burrow, frame) slots per traj, ordered largest traj first
+# compute traj IDs sorted by number of sampels
 traj_ids_by_size = (
     df_linked.groupby("traj_clip_id").size().sort_values(ascending=False).index
 )
 
-# A "slot" is a single (burrow_id, frame_in_video) pair 
+
+# A "slot" is a single (burrow_id, frame_in_video) pair.
+# Greedy resolution: process trajectories
+# from largest to smallest and keep one only if none of its (burrow, frame)
+# slots are already taken by an already-kept trajectory. This guarantees the
+# kept set is conflict-free for any number of overlapping trajectories.
 burrow_id_frame_per_traj = (
     df_linked.groupby("traj_clip_id")
     .apply(
@@ -334,22 +357,9 @@ for traj_id, burrow_id_frame in burrow_id_frame_per_traj.items():
         # apply union update to the set
         occupied |= burrow_id_frame
 
-df_linked_filtered = df_linked[df_linked["traj_clip_id"].isin(traj_ids_to_keep)].copy()
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Add position data in body lengths (BL):
-# divide each sample by the median bbox diagonal (~body length) 
-# of its traj-clip, broadcast back to every sample.
-# The factor is per-trajectory, so the *coordinates* (not just the
-# radius) must be normalised for the BL rings below to match the points.
-median_bbox_per_traj = df_linked_filtered.groupby("traj_clip_id")["bbox_diag"].transform(
-    "median"
-)
-df_linked_filtered['x_burrow_bl'] = df_linked_filtered["x_burrow"] / median_bbox_per_traj
-df_linked_filtered['y_burrow_bl'] = df_linked_filtered["y_burrow"] / median_bbox_per_traj
-
-
+df_linked_filtered = df_linked[
+    df_linked["traj_clip_id"].isin(traj_ids_to_keep)
+].copy()
 
 
 # %%
@@ -359,44 +369,75 @@ del x_traj, y_traj, traj_clip_id_dense_per_sample
 del frame_in_clip_per_sample, frame_in_video_per_sample, bbox_diag
 del burrow_id_per_sample, centroid_xy_per_sample
 del burrow_id_per_traj, centroid_xy_per_traj
+del df_linked  # ok?
 
-# %%
-# plot visited burrows
-# (excluding zero)
-# NOTE: hits_per_id counts every in-frame sample falling on each burrow mask
-# (before trajectories are assigned to a single burrow), so it can't be derived
-# from the dataframe; we only read the selected-burrow count from df_linked
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Plot selection method for visited burrows
+
 fig, ax = plt.subplots(1, 1)
-ax.bar(np.arange(hits_per_id.shape[0])[1:], hits_per_id[1:])
+
+# plot hits per burrow id
+ax.bar(
+    np.arange(hits_per_id.shape[0])[1:],
+    hits_per_id[1:],
+)
+
+# plot hline for min hits per burrow
 ax.hlines(
-    y=min_hits_per_burrow, xmin=0, xmax=hits_per_id.shape[0] + 1, colors="r"
+    y=min_hits_per_burrow,
+    xmin=0,
+    xmax=hits_per_id.shape[0] + 1,
+    colors="r",
 )
 ax.set_xlim([1, hits_per_id.shape[0] - 1])  # ok?
 ax.set_xlabel("burrow ID")
 ax.set_ylabel("trajectory samples")
-ax.set_title(f"n = {df_linked_filtered['burrow_id'].nunique()} selected burrows")
+ax.set_title(
+    f"n = {sum(hits_per_id[1:] >= min_hits_per_burrow)} selected burrows"
+)
 
-# %%
-# plot burrow centroids
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Plot visited burrow centroids on image plane
 # (one centroid per visited burrow, read from the dataframe)
-burrow_centroids = df_linked_filtered.groupby("burrow_id")[
+
+# dataframe of centroids indexed by burrow_id
+visited_burrow_centroids = df_linked_filtered.groupby("burrow_id")[
     ["burrow_centroid_x", "burrow_centroid_y"]
 ].first()
 
 fig, ax = plt.subplots(1, 1)
-ax.imshow(np.isin(burrow_id_mask, burrow_centroids.index.to_numpy("int64")))
 
-for _, (cx, cy) in burrow_centroids.iterrows():
-    ax.scatter(x=cx, y=cy, s=15, marker="x")
+# plot masks of selected burrows
+ax.imshow(
+    np.isin(
+        burrow_id_mask,
+        visited_burrow_centroids.index.to_numpy("int64"),
+    ),
+)
+
+# plot centroids
+for _, (cx, cy) in visited_burrow_centroids.iterrows():
+    ax.scatter(
+        x=cx,
+        y=cy,
+        s=15,
+        marker="x",
+    )
 
 
-# %%
-# plot burrows and their linked trajectories
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Plot burrows and their linked trajectories
+# POSTER FIGURE 1
+
+# TODO: add corresponding rasterised plot?
+
 fig, ax = plt.subplots(1, 1)
-ax.imshow(np.zeros_like(burrow_id_mask))  # , cmap="gray")
+
 
 cmap = plt.get_cmap("tab20")
-for k, (burrow_id, group) in enumerate(df_linked_filtered.groupby("burrow_id")):
+for k, (burrow_id, group) in enumerate(
+    df_linked_filtered.groupby("burrow_id")
+):
     color = cmap(k % cmap.N)
     ax.scatter(
         x=group["x"],
@@ -411,10 +452,13 @@ for k, (burrow_id, group) in enumerate(df_linked_filtered.groupby("burrow_id")):
         linewidths=1,
     )
 
+ax.invert_yaxis() # to match image coordinates
+ax.set_aspect("equal")
 
-# %%
-# plot trajectories with burrow centroid at the origin
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Plot all trajectories in burrow coordinate system
 # and in units of bodylengths (BL)
+# POSTER FIGURE 2
 
 
 fig, ax = plt.subplots(1, 1)
@@ -432,7 +476,9 @@ ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
 # rings at radial percentiles: each circle encloses a given fraction of
 # detections, so closely-spaced rings indicate high density
 ring_percentiles = [50, 75, 95, 100]
-all_radii_norm = np.hypot(df_linked_filtered["x_burrow_bl"], df_linked_filtered["y_burrow_bl"])
+all_radii_norm = np.hypot(
+    df_linked_filtered["x_burrow_bl"], df_linked_filtered["y_burrow_bl"]
+)
 
 ring_radii = np.percentile(all_radii_norm, ring_percentiles)
 for pct, radius in zip(ring_percentiles, ring_radii, strict=True):
@@ -444,7 +490,7 @@ for pct, radius in zip(ring_percentiles, ring_radii, strict=True):
             edgecolor="k",
             linewidth=0.5,
             linestyle="--",
-            alpha=0.5,
+            alpha=0.75,
             zorder=4,
         )
     )
@@ -453,7 +499,7 @@ for pct, radius in zip(ring_percentiles, ring_radii, strict=True):
         xy=(0, -radius),
         ha="center",
         va="bottom",
-        fontsize=7,
+        fontsize=10,
         color="k",
         zorder=6,
     )
@@ -498,10 +544,11 @@ ax.set_xlabel("distance to burrow (BL)")
 ax.set_ylabel("detections")  # --- can I express this as time...?
 
 
-
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
 # Compute theta angle relative to x-axis in BCS
-theta = np.arctan2(df_linked_filtered["y_burrow"], df_linked_filtered["x_burrow"])
+theta = np.arctan2(
+    df_linked_filtered["y_burrow"], df_linked_filtered["x_burrow"]
+)
 
 # Polar histogram of angles
 n_bins = 36
@@ -517,7 +564,7 @@ ax.set_theta_direction(-1)  # theta increases in clockwise direction
 ax.set_title("Angle of detections relative to burrow centroid")
 
 # ax.set_rticks(np.arange(0, counts.max() + 10_000, 10_000))
-ax.set_rlabel_position(270)        # put count labels in an empty-ish quadrant
+ax.set_rlabel_position(270)  # put count labels in an empty-ish quadrant
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Compute distance to each burrow in time
@@ -526,14 +573,13 @@ ax.set_rlabel_position(270)        # put count labels in an empty-ish quadrant
 escape_intervals = [
     (start_frame, end_frame)
     for start_frame, end_frame in zip(
-        ds_video.clip_escape_first_frame_0idx.values, 
-        ds_video.clip_last_frame_0idx.values, 
-        strict=True
+        ds_video.clip_escape_first_frame_0idx.values,
+        ds_video.clip_last_frame_0idx.values,
+        strict=True,
     )
 ]
 
 for b_id, group in df_linked_filtered.groupby("burrow_id"):
-
     # Compute local peaks in d_burrow (excursions away from the burrow and
     # back). Peaks are found per trajectory-clip on time-sorted samples, so we
     # never join across the time gaps between distinct trajectories. The
@@ -544,13 +590,12 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     for _, traj in group.groupby("traj_clip_id"):
         traj = traj.sort_values("frame_in_video")
         d_traj = np.hypot(traj["x_burrow_bl"], traj["y_burrow_bl"]).to_numpy()
-        prominence = min_peak_prominence_bl #* traj["bbox_diag"].median()
+        prominence = min_peak_prominence_bl  # * traj["bbox_diag"].median()
         peak_idx, _ = find_peaks(d_traj, prominence=prominence)
         peak_frames.append(traj["frame_in_video"].to_numpy()[peak_idx])
         peak_dists.append(d_traj[peak_idx])
     peak_frames = np.concatenate(peak_frames) if peak_frames else np.array([])
     peak_dists = np.concatenate(peak_dists) if peak_dists else np.array([])
-
 
     # Compute lowest point between two peaks (regardless of trajectory ID).
     # Pool all of the burrow's samples, sort the peaks by time, and in each gap
@@ -601,7 +646,6 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     inbound_rates = seg_rate[(seg_from == "peak") & (seg_to == "min")]  # < 0
     outbound_rates = seg_rate[(seg_from == "min") & (seg_to == "peak")]  # > 0
 
-
     # Compute tortuosity for inbound (peak->min) and outbound (min->peak) legs
     # as path length / beeline (straight-line distance between leg endpoints).
     # The path length sums step distances over the pooled, time-sorted samples
@@ -631,9 +675,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     outbound_tort = np.array(outbound_tort)
 
     # plot ---------------------------------------------------------------
-    fig, (ax, ax_traj, ax_rate, ax_tort) = plt.subplots(
-        1, 4, figsize=(24, 5)
-    )
+    fig, (ax, ax_traj, ax_rate, ax_tort) = plt.subplots(1, 4, figsize=(24, 5))
 
     # left: distance to burrow over time, coloured by trajectory ID
     # TODO: mark when in burrow?
@@ -729,19 +771,25 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
         )
         if r.size:
             ax_rate.hlines(
-                r.mean(), xpos - 0.25, xpos + 0.25,
-                color="k", linewidth=2, zorder=4,
+                r.mean(),
+                xpos - 0.25,
+                xpos + 0.25,
+                color="k",
+                linewidth=2,
+                zorder=4,
             )
 
     ax_rate.set_xticks([0, 1])
     ax_rate.set_xticklabels(
-         [f"{lab}" for lab, r in zip(labels, rates)]
+        [f"{lab}" for lab, r in zip(labels, rates)]
         # [f"{lab}\n(n={r.size})" for lab, r in zip(labels, rates)]
     )
     ax_rate.set_xlim(-0.5, 1.5)
     ax_rate.set_ylim(bottom=0)
     ax_rate.set_ylabel(r"$|\Delta d_{burrow} / \Delta t|$ (pixels/s)")
-    ax_rate.set_title(f"Speed of change of distance to burrow (n = {rates[0].size})")
+    ax_rate.set_title(
+        f"Speed of change of distance to burrow (n = {rates[0].size})"
+    )
 
     # fourth: path tortuosity (path length / beeline) on inbound vs outbound
     # legs. Same strip-plot style as the rate panel; tortuosity is >= 1, with
@@ -758,8 +806,12 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
         )
         if t.size:
             ax_tort.hlines(
-                t.mean(), xpos - 0.25, xpos + 0.25,
-                color="k", linewidth=2, zorder=4,
+                t.mean(),
+                xpos - 0.25,
+                xpos + 0.25,
+                color="k",
+                linewidth=2,
+                zorder=4,
             )
 
     # dashed line at 1 = perfectly straight path
@@ -767,7 +819,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     ax_tort.set_xticks([0, 1])
     ax_tort.set_xticklabels(labels)
     ax_tort.set_xlim(-0.5, 1.5)
-    ax_tort.set_ylim(bottom=1) # perfectly straight path
+    ax_tort.set_ylim(bottom=1)  # perfectly straight path
     ax_tort.set_ylabel("tortuosity (path / beeline)")
     ax_tort.set_title(
         f"Path tortuosity "
