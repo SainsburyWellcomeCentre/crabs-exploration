@@ -745,7 +745,9 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     inbound = legs[legs["kind"] == "inbound"]
     outbound = legs[legs["kind"] == "outbound"]
 
-    fig, (ax, ax_traj, ax_rate, ax_tort) = plt.subplots(1, 4, figsize=(24, 5))
+    fig, (ax, ax_theta, ax_traj, ax_rate, ax_tort) = plt.subplots(
+        1, 5, figsize=(30, 5)
+    )
 
     # left: distance to burrow over time, coloured by trajectory ID
     # TODO: mark when in burrow?
@@ -802,6 +804,53 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     ax.set_title(
         f"Video: {video_str} ({n_frames / fps / 60:.1f} min); burrow ID{b_id}"
     )
+
+    # second: angle to burrow (theta) at each peak, over time.
+    # theta is wrapped to [-45, 315) deg so the branch cut (the "switching"
+    # border) sits at -pi/4 rather than at +/-pi, keeping angular clusters
+    # from being split across the wrap.
+    peak_theta_deg = np.degrees(
+        np.mod(peaks["theta_burrow"] + np.pi / 4, 2 * np.pi) - np.pi / 4
+    )
+
+    # shade the escape period(s) with light blue vertical bands
+    # for k, (f_start, f_end) in enumerate(escape_intervals):
+    #     ax_theta.axvspan(
+    #         f_start / fps / 60,
+    #         f_end / fps / 60,
+    #         color="lightblue",
+    #         alpha=0.4,
+    #         zorder=0,
+    #         label="in escape" if k == 0 else None,
+    #     )
+    # if escape_intervals:
+    #     ax_theta.legend(loc="upper right", fontsize=8)
+
+    ax_theta.plot(
+        peaks["frame_in_video"] / fps / 60,
+        peak_theta_deg,
+        linestyle="--",
+        color="r",
+        alpha=0.4,
+    )
+
+    ax_theta.scatter(
+        x=peaks["frame_in_video"] / fps / 60,
+        y=peak_theta_deg,
+        s=40,
+        marker="v",
+        facecolors="none",
+        edgecolors="r",
+        linewidths=1,
+        zorder=6,
+        label=f"peaks (n={len(peaks)})",
+    )
+    ax_theta.axhline(-45, color="k", linewidth=0.5, linestyle="--")
+    ax_theta.set_ylim(-45, 315)
+    ax_theta.set_yticks(np.arange(-45, 316, 45))
+    ax_theta.set_xlabel("time (min)")
+    ax_theta.set_ylabel(r"$\theta$ (deg)")
+    ax_theta.set_title(f"Angle to burrow at peaks; burrow ID{b_id}")
 
     # right: trajectories in burrow coord syst, coloured by frame number
     sc = ax_traj.scatter(
