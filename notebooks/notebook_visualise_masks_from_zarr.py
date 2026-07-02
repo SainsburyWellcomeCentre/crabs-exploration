@@ -13,16 +13,18 @@ import xarray as xr
 import zarr
 from ethology.io.annotations import load_bboxes
 from PIL import Image
-from skimage.measure import regionprops
+from skimage.measure import regionprops, label
+from pathlib import Path
 
 # %%
-# %matplotlib widget
+%matplotlib widget
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # September groundtruth data
 DATA_DIR = Path("/Users/sofia/swc/CrabLabels/sep2023-full")
 IMAGES_DIR = DATA_DIR / "frames"
-ANNOTATIONS_FILE = DATA_DIR / "annotations" / "VIA_JSON_combined_coco_gen.json"
+ANNOTATIONS_DIR = DATA_DIR / "annotations"
+ANNOTATIONS_FILE = ANNOTATIONS_DIR / "VIA_JSON_combined_coco_gen.json"
 
 LABEL_NAME = "crab"
 
@@ -127,11 +129,11 @@ ds_bboxes.attrs["image_array"] = image_array
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Load masks
 zarr_root = zarr.open(
-    DATA_DIR / f"{LABEL_NAME} masks.zarr",
+    ANNOTATIONS_DIR / "masks_20260324_192631.zarr",
     mode="r",
 )
 
-mask_da_array = da.from_zarr(zarr_root["masks"])
+mask_da_array = da.from_zarr(zarr_root) 
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -227,7 +229,7 @@ all_major_axes = []
 all_minor_axes = []
 for frame_idx in range(mask_array.shape[0]):
     ellipse_corners, major_axes, minor_axes = ellipses_from_labels(
-        np.asarray(mask_array[frame_idx])
+        label(np.asarray(mask_array[frame_idx]))
     )
     for corners in ellipse_corners:
         # Prepend frame index as first column for nD shapes
@@ -268,3 +270,5 @@ viewer.add_shapes(
     edge_width=4,
     name="major axes",
 )
+
+# %%
