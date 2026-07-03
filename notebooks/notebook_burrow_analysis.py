@@ -1418,6 +1418,7 @@ ax_tort.axhline(1, color="k", linewidth=0.5, linestyle="--")
 ax_tort.set_xticks([0, 1])
 ax_tort.set_xticklabels(labels)
 ax_tort.set_xlim(-0.5, 1.5)
+ax_tort.set_yscale("log")
 ax_tort.set_ylim(bottom=1)  # perfectly straight path
 ax_tort.set_ylabel("tortuosity ratio")
 
