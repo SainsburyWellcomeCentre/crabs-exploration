@@ -9,7 +9,8 @@ import xarray as xr
 import zarr
 from matplotlib.lines import Line2D
 from scipy.ndimage import center_of_mass
-from scipy.signal import find_peaks
+
+# from scipy.signal import find_peaks
 
 # %%
 # %matplotlib qt
@@ -23,7 +24,16 @@ min_samples_in_burrow_frac = 0.10
 
 # minimum prominence (in body lengths) for a d_burrow excursion to count as a
 # local peak, i.e. how far the crab must move away from the burrow and back
-min_peak_prominence_bl = 1.0
+# min_peak_prominence_bl = 1.0
+
+# localising peaks
+# min drop in d_burrow_bl between consecutive frames
+min_peak_drop_bl = 0.05
+min_seconds_to_prev_peak = 2
+
+# localising inter-peak minima: after a peak, the first sample where the
+# distance to burrow does not decrease AND is already below this value (BL)
+max_d_burrow_at_min_bl = 0.25
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -58,6 +68,7 @@ trajectories_zarr = Path(
     # CrabTracks-slurm2478780-2478861-2489356.zarr"
 )
 
+# for poster plots
 raster_plots_dir = Path(
     "/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/burrow_trajectory_rasters"
 )
@@ -407,6 +418,8 @@ df_linked_filtered["d_burrow_bl"] = np.hypot(
     df_linked_filtered["x_burrow_bl"],
     df_linked_filtered["y_burrow_bl"],
 )
+# %%
+fps = float(ds_video.fps)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%
@@ -427,33 +440,65 @@ df_linked_filtered["d_burrow_bl"] = np.hypot(
 df_linked_filtered["is_peak"] = False
 df_linked_filtered["is_min"] = False
 
+n_frames_diff_wrt_prev_peak = fps * min_seconds_to_prev_peak
+
 for _, group in df_linked_filtered.groupby("burrow_id"):
-    # peaks per trajectory-clip; prominence threshold in body lengths
+    # peaks per trajectory-clip: a peak is the first frame of a sharp,
+    # consecutive-frame drop in distance to burrow (>= min_peak_drop_bl in a
+    # single frame step). Frame gaps (missing detections) are never bridged,
+    # and a multi-frame steep descent (several qualifying steps in a row)
+    # only yields one peak, at its first frame.
     peak_index = []
     for _, traj in group.groupby("traj_clip_id"):
         traj = traj.sort_values("frame_in_video")
-        peak_idx, _ = find_peaks(
-            traj["d_burrow_bl"].to_numpy(),
-            prominence=min_peak_prominence_bl,
+        frames_arr = traj["frame_in_video"].to_numpy()
+        d_arr = traj["d_burrow_bl"].to_numpy()
+
+        is_consec = np.diff(frames_arr) == 1
+        is_drop = np.diff(d_arr) <= -min_peak_drop_bl
+        candidate_peak = is_consec & is_drop
+
+        # frame number for each candidate_peak
+        frame_at_i = frames_arr[1:]
+        last_peak_frame = np.maximum.accumulate(
+            np.where(candidate_peak, frame_at_i, -1)
         )
+        prev_last_peak_frame = np.r_[-1, last_peak_frame[:-1]]
+        first_of_run = candidate_peak & (
+            frame_at_i - prev_last_peak_frame > n_frames_diff_wrt_prev_peak
+        )
+
+        peak_idx = np.argwhere(first_of_run).reshape(-1)
         peak_index.extend(traj.index[peak_idx])
     df_linked_filtered.loc[peak_index, "is_peak"] = True
 
-    # inter-peak minima: lowest sample between consecutive peaks (pooled)
+    # inter-peak minima: for each peak, the first sample afterwards where the
+    # distance to burrow does not decrease (diff >= 0 across a
+    # consecutive-frame step) AND is below max_d_burrow_at_min_bl. Pooled
+    # across trajectories in the burrow; frame gaps are never bridged.
     group_sorted = group.sort_values("frame_in_video")
-    frames = group_sorted["frame_in_video"].to_numpy()
-    d_burrow_bl_array = group_sorted["d_burrow_bl"].to_numpy()
+    frames_all = group_sorted["frame_in_video"].to_numpy()
+    d_arr_all = group_sorted["d_burrow_bl"].to_numpy()
     index_arr = group_sorted.index.to_numpy()
+
+    is_consec = np.diff(frames_all) == 1
+    not_decreasing = np.diff(d_arr_all) >= 0  # [j] -> step j -> j+1
+    # distance at the candidate min sample (sample j of step j -> j+1)
+    # TODO: condition could also be: inside burrow?
+    close_to_burrow = d_arr_all[:-1] < max_d_burrow_at_min_bl
+    candidate_min = is_consec & not_decreasing & close_to_burrow
+
     peak_frames = np.sort(
         df_linked_filtered.loc[peak_index, "frame_in_video"].to_numpy()
     )
     min_index = []
-    for f_lo, f_hi in zip(peak_frames[:-1], peak_frames[1:], strict=True):
-        between = (frames > f_lo) & (frames < f_hi)
-        if not between.any():
-            continue
-        i = np.argmin(d_burrow_bl_array[between])
-        min_index.append(index_arr[between][i])
+    for f_peak in peak_frames:
+        peak_pos = np.searchsorted(frames_all, f_peak)
+        idcs_after_peak = np.argwhere(candidate_min[peak_pos:])
+        if idcs_after_peak.size:
+            # we take one sample before because at j+1 the distance has
+            # started to grow
+            min_index.append(index_arr[peak_pos + idcs_after_peak[0].item()])
     df_linked_filtered.loc[min_index, "is_min"] = True
 
 
@@ -541,7 +586,9 @@ legs_df = pd.DataFrame(leg_records)
 
 
 # %%
-fps = float(ds_video.fps)
+# Plot inbound/outbound trajectories
+# distance and speed?
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Plot selection method for visited burrows
@@ -588,20 +635,19 @@ ax.imshow(
 )
 
 # plot centroids
-for _, (cx, cy) in visited_burrow_centroids.iterrows():
+for burrow_id, (cx, cy) in visited_burrow_centroids.iterrows():
     ax.scatter(
         x=cx,
         y=cy,
         s=15,
         marker="x",
     )
+    ax.text(x=cx, y=cy, s=str(burrow_id), color="w")
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Plot burrows and their linked trajectories
 # POSTER FIGURE 1
-
-# TODO: add corresponding rasterised plot?
 
 fig, ax = plt.subplots(1, 1)
 
@@ -1128,7 +1174,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
 
 
 # selected burrow
-b_id = 53 # 21
+b_id = 53  # 21
 
 group = df_linked_filtered[df_linked_filtered["burrow_id"] == b_id]
 peaks = group[group["is_peak"]]
@@ -1158,7 +1204,7 @@ ax_traj.invert_yaxis()  # match image coordinates (y down)
 # ax_traj.set_xlabel("$x_{burrow}$ (BL)")
 # ax_traj.set_ylabel("$y_{burrow}$ (BL)")
 # ax_traj.set_title(f"burrow ID {b_id}")
-ax_traj.axis("off")
+# ax_traj.axis("off")
 
 # %%
 fig.savefig(
