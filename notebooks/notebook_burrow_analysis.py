@@ -392,7 +392,7 @@ del df_linked  # ok?
 # sized crabs.
 median_bbox_diag_per_burrow_id = df_linked_filtered.groupby("burrow_id")[
     "bbox_diag"
-].transform("median")
+].transform("median")  # median per BURROW ID
 
 # cartesian normalised position in BCS
 df_linked_filtered["x_burrow_bl"] = (
@@ -657,12 +657,16 @@ fig.savefig(
 # and in units of bodylengths (BL)
 # POSTER FIGURE 2
 
+# Here, normalise by median BL of all trajectories in the plot
+# rather than one factor per burrw
+
+median_BL_all_visited_burrows = df_linked_filtered["bbox_diag"].median()
 
 fig, ax = plt.subplots(1, 1, figsize=(10, 10))
 cmap = plt.get_cmap("tab20")
 ax.scatter(
-    x=df_linked_filtered["x_burrow_bl"],
-    y=df_linked_filtered["y_burrow_bl"],
+    x=df_linked_filtered["x_burrow"] / median_BL_all_visited_burrows,
+    y=df_linked_filtered["y_burrow"] / median_BL_all_visited_burrows,
     s=0.5,
     color=cmap(0),
     alpha=0.05,
@@ -690,7 +694,10 @@ ax.quiver(
 # distinct colour and is identified through the legend rather than an inline
 # label.
 ring_percentiles = [50, 75, 95, 100]
-ring_radii = np.percentile(df_linked_filtered["d_burrow_bl"], ring_percentiles)
+ring_radii = np.percentile(
+    df_linked_filtered["d_burrow_px"] / median_BL_all_visited_burrows,
+    ring_percentiles,
+)
 ring_cmap = plt.get_cmap("viridis")
 ring_handles = []
 for k, (pct, radius) in enumerate(
@@ -716,8 +723,16 @@ for k, (pct, radius) in enumerate(
             label=f"{pct}% ({radius:.1f} BL)",
         )
     )
+
+# empty handle showing the BL-to-pixel conversion
+bl_handle = mpl.lines.Line2D(
+    [],
+    [],
+    linestyle="none",
+    label=f"(1 BL = {median_BL_all_visited_burrows:.0f} px)",
+)
 ax.legend(
-    handles=ring_handles,
+    handles=ring_handles + [bl_handle],
     loc="upper right",
     fontsize=16,
     # title="radial percentile",
