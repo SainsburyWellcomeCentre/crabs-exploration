@@ -1177,12 +1177,16 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
 b_id = 53  # 21
 
 group = df_linked_filtered[df_linked_filtered["burrow_id"] == b_id]
-peaks = group[group["is_peak"]]
-mins = group[group["is_min"]]
 
 legs = legs_df[legs_df["burrow_id"] == b_id]
 inbound = legs[legs["kind"] == "inbound"]
 outbound = legs[legs["kind"] == "outbound"]
+
+# only the peaks/mins that define an inbound leg (peak followed by a min):
+# frame_start is the peak, frame_end is the min. Frames are unique within a
+# burrow, so we can select those samples by frame.
+peaks = group[group["frame_in_video"].isin(inbound["frame_start"])]
+mins = group[group["frame_in_video"].isin(inbound["frame_end"])]
 
 # %%%%%%%%%%%
 # plot trajectories in burrow coord syst, coloured by frame number
