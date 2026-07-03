@@ -505,9 +505,10 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
         d_leg = d_bl[mask_frames_in_leg]
         xs, ys = xs_all[mask_frames_in_leg], ys_all[mask_frames_in_leg]
 
-        # compute rho_dot: mean per-frame change in distance to burrow,
-        # using only steps between consecutive frames (step == 1); frame gaps
-        # are never bridged. NaN if the leg has no consecutive-frame step.
+        # compute rho_dot_mean per leg: mean per-frame change in distance to
+        # burrow, using only steps between consecutive frames (step == 1);
+        # frame gaps are never bridged. NaN if the leg has no
+        # consecutive-frame step.
         consecutive = np.diff(frames_leg) == 1  # per-step mask
         rho_dot = (
             np.diff(d_leg)[consecutive].mean() if consecutive.any() else np.nan
@@ -531,12 +532,13 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
                 "kind": kind,
                 "frame_start": f0,
                 "frame_end": f1,
-                "rho_dot_bl_per_frame": rho_dot,
+                "rho_dot_bl_mean": rho_dot,
                 "tortuosity": tort,
             }
         )
 
 legs_df = pd.DataFrame(leg_records)
+
 
 # %%
 fps = float(ds_video.fps)
@@ -1046,8 +1048,8 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     # third: speed of change of d_burrow on inbound vs outbound legs.
     # take abs value and express in body lengths/s
     rho_dot_bl_per_s = [
-        np.abs(inbound["rho_dot_bl_per_frame"].dropna().to_numpy()) * fps,
-        np.abs(outbound["rho_dot_bl_per_frame"].dropna().to_numpy()) * fps,
+        np.abs(inbound["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
+        np.abs(outbound["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
     ]
     for xpos, (r, color) in enumerate(
         zip(rho_dot_bl_per_s, colors, strict=True)
@@ -1287,8 +1289,8 @@ rng = np.random.default_rng(0)
 
 fig, ax_rate = plt.subplots(figsize=(6, 4.25))
 rho_dot_bl_per_s = [
-    np.abs(inbound["rho_dot_bl_per_frame"].dropna().to_numpy()) * fps,
-    np.abs(outbound["rho_dot_bl_per_frame"].dropna().to_numpy()) * fps,
+    np.abs(inbound["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
+    np.abs(outbound["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
 ]
 for xpos, (r, color) in enumerate(zip(rho_dot_bl_per_s, colors, strict=True)):
     ax_rate.scatter(
