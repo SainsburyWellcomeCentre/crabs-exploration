@@ -1310,7 +1310,7 @@ ax_theta.scatter(
     label=f"peaks (n={len(peaks)})",
 )
 ax_theta.set_yticks(np.arange(0, 316, 45))
-ax_theta.set_ylim(-45, 180)  # (0, 315)
+ax_theta.set_ylim(-45, 315)  # (0, 315)
 ax_theta.set_xlabel("time (min)")
 ax_theta.set_ylabel(r"$\theta$ ($\degree$)")
 ax_theta.spines[["top", "right"]].set_visible(False)
