@@ -10,10 +10,8 @@ import zarr
 from matplotlib.lines import Line2D
 from scipy.ndimage import center_of_mass
 
-# from scipy.signal import find_peaks
-
 # %%
-# %matplotlib qt
+%matplotlib qt
 # qt / widget
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -443,37 +441,62 @@ df_linked_filtered["is_min"] = False
 n_frames_diff_wrt_prev_peak = fps * min_seconds_to_prev_peak
 
 for _, group in df_linked_filtered.groupby("burrow_id"):
-    # peaks per trajectory-clip: a peak is the first frame of a sharp,
-    # consecutive-frame drop in distance to burrow (>= min_peak_drop_bl in a
-    # single frame step). Frame gaps (missing detections) are never bridged,
+    # Compute *speed peaks* per trajectory-clip: a speed peak is the first frame 
+    # of a sharp, consecutive-frame drop in distance to burrow 
+    # (>= min_peak_drop_bl in a single frame step). Frame gaps 
+    # (missing detections) are never bridged,
     # and a multi-frame steep descent (several qualifying steps in a row)
     # only yields one peak, at its first frame.
-    peak_index = []
+    speed_peak_index = []
     for _, traj in group.groupby("traj_clip_id"):
+        # Extract trajectory data without nans
         traj = traj.sort_values("frame_in_video")
         frames_arr = traj["frame_in_video"].to_numpy()
         d_arr = traj["d_burrow_bl"].to_numpy()
 
+        # Compute samples with drop in rho above threshold
         is_consec = np.diff(frames_arr) == 1
         is_drop = np.diff(d_arr) <= -min_peak_drop_bl
         candidate_peak = is_consec & is_drop
 
-        # frame number for each candidate_peak
+        # Compute most recent drop ("speed peak") seen so far per frame
+        # (last_peak_frame[i] answers "when did I last see 
+        # a candidate peak, as of step i?")
         frame_at_i = frames_arr[1:]
         last_peak_frame = np.maximum.accumulate(
             np.where(candidate_peak, frame_at_i, -1)
         )
+
+        # Compute first speed peak whose distance to previous
+        # is above threshold
         prev_last_peak_frame = np.r_[-1, last_peak_frame[:-1]]
-        first_of_run = candidate_peak & (
+        first_peak_of_run = candidate_peak & (
             frame_at_i - prev_last_peak_frame > n_frames_diff_wrt_prev_peak
         )
 
-        peak_idx = np.argwhere(first_of_run).reshape(-1)
-        peak_index.extend(traj.index[peak_idx])
-    df_linked_filtered.loc[peak_index, "is_peak"] = True
+        peak_idx = np.argwhere(first_peak_of_run).reshape(-1)
+        speed_peak_index.extend(traj.index[peak_idx])
 
-    # inter-peak minima: for each peak, the first sample afterwards where the
-    # distance to burrow does not decrease (diff >= 0 across a
+        # -------------------
+        # Compute "last_rise" to the left of the speed peak
+        d_arr_idx = np.arange(len(d_arr)-1) # -1 to match is_consec
+        is_consec_desc = is_consec & (np.diff(d_arr) <= 0) # stops for missing data
+        # is_consec_asc = is_consec & (np.diff(d_arr) > 0)
+        last_rise = np.maximum.accumulate(
+            np.where(~is_consec_desc, d_arr_idx, -1)
+            # False for gaps
+            # np.where(is_consec_asc, d_arr_idx, -1)
+            
+        )
+        local_max_d_arr_idcs = last_rise[peak_idx] + 1
+       
+
+        df_linked_filtered.loc[traj.index[local_max_d_arr_idcs], "is_peak"] = True
+
+
+    # ----------------------------
+    # inter-peak minima: for each speed peak, the first sample afterwards 
+    # where the distance to burrow does not decrease (diff >= 0 across a
     # consecutive-frame step) AND is below max_d_burrow_at_min_bl. Pooled
     # across trajectories in the burrow; frame gaps are never bridged.
     group_sorted = group.sort_values("frame_in_video")
@@ -489,7 +512,7 @@ for _, group in df_linked_filtered.groupby("burrow_id"):
     candidate_min = is_consec & not_decreasing & close_to_burrow
 
     peak_frames = np.sort(
-        df_linked_filtered.loc[peak_index, "frame_in_video"].to_numpy()
+        df_linked_filtered.loc[speed_peak_index, "frame_in_video"].to_numpy()
     )
     min_index = []
     for f_peak in peak_frames:
@@ -584,6 +607,9 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
 
 legs_df = pd.DataFrame(leg_records)
 
+
+
+# %%%%%%%%%%%%%%%% PLOTS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 # %%
 # Plot inbound/outbound trajectories
@@ -796,10 +822,11 @@ ax.tick_params(axis="both", labelsize=14)
 ax.set_xlabel("$x_{burrow}$ (BL)")
 ax.set_ylabel("$y_{burrow}$ (BL)")
 # ax.set_title("Trajectories in burrow coord syst")
+ax.set_axis_off()
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_fig2.png",
+    output_figs_dir / f"{video_str}_fig2_2.png",
     dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
@@ -1174,7 +1201,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
 
 
 # selected burrow
-b_id = 53  # 21
+b_id = 53 # 21
 
 group = df_linked_filtered[df_linked_filtered["burrow_id"] == b_id]
 
@@ -1310,7 +1337,7 @@ ax_theta.scatter(
     label=f"peaks (n={len(peaks)})",
 )
 ax_theta.set_yticks(np.arange(0, 316, 45))
-ax_theta.set_ylim(-45, 315)  # (0, 315)
+ax_theta.set_ylim(0, 315)  # (0, 315)
 ax_theta.set_xlabel("time (min)")
 ax_theta.set_ylabel(r"$\theta$ ($\degree$)")
 ax_theta.spines[["top", "right"]].set_visible(False)
@@ -1322,7 +1349,7 @@ for item in [ax_theta.xaxis.label, ax_theta.yaxis.label]:
 ax_theta.tick_params(axis="both", labelsize=16)
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig6_2.png",
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig6.png",
     dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
@@ -1420,7 +1447,7 @@ ax_tort.set_xticklabels(labels)
 ax_tort.set_xlim(-0.5, 1.5)
 ax_tort.set_yscale("log")
 ax_tort.set_ylim(bottom=1)  # perfectly straight path
-ax_tort.set_ylabel("tortuosity ratio")
+ax_tort.set_ylabel("tortuosity")
 
 fig.tight_layout()
 
@@ -1443,7 +1470,7 @@ ax_tort.legend(
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig8.png",
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig8_2.png",
     dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
