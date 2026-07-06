@@ -9,6 +9,7 @@ import xarray as xr
 import zarr
 from matplotlib.lines import Line2D
 from scipy.ndimage import center_of_mass
+from scipy.signal import find_peaks
 
 # %%
 %matplotlib qt
@@ -22,7 +23,7 @@ min_samples_in_burrow_frac = 0.10
 
 # minimum prominence (in body lengths) for a d_burrow excursion to count as a
 # local peak, i.e. how far the crab must move away from the burrow and back
-# min_peak_prominence_bl = 1.0
+min_peak_prominence_bl = 0.25 # 0.5?
 
 # localising peaks
 # min drop in d_burrow_bl between consecutive frames
@@ -437,6 +438,7 @@ fps = float(ds_video.fps)
 # peak/min can be marked unambiguously on its own sample row.
 df_linked_filtered["is_peak"] = False
 df_linked_filtered["is_min"] = False
+df_linked_filtered["is_speed_peak"] = False
 
 n_frames_diff_wrt_prev_peak = fps * min_seconds_to_prev_peak
 
@@ -474,25 +476,26 @@ for _, group in df_linked_filtered.groupby("burrow_id"):
             frame_at_i - prev_last_peak_frame > n_frames_diff_wrt_prev_peak
         )
 
-        peak_idx = np.argwhere(first_peak_of_run).reshape(-1)
-        speed_peak_index.extend(traj.index[peak_idx])
+        speed_peak_idx = np.argwhere(first_peak_of_run).reshape(-1)
+        speed_peak_index.extend(traj.index[speed_peak_idx])
 
         # -------------------
-        # Compute "last_rise" to the left of the speed peak
-        d_arr_idx = np.arange(len(d_arr)-1) # -1 to match is_consec
-        is_consec_desc = is_consec & (np.diff(d_arr) <= 0) # stops for missing data
-        # is_consec_asc = is_consec & (np.diff(d_arr) > 0)
-        last_rise = np.maximum.accumulate(
-            np.where(~is_consec_desc, d_arr_idx, -1)
-            # False for gaps
-            # np.where(is_consec_asc, d_arr_idx, -1)
-            
-        )
-        local_max_d_arr_idcs = last_rise[peak_idx] + 1
-       
+        # Local max in distance: the nearest distance peak at or before each
+        # speed peak. find_peaks returns all local maxima of d_arr with
+        # prominence >= min_peak_prominence_bl (body lengths); searchsorted
+        # picks the closest one at or to the left of the speed peak.
+        # it ignores frame gaps
+        idcs_peaks, _ = find_peaks(d_arr, prominence=min_peak_prominence_bl)
+        # searchsorted returns a count / insertion point, how many d_peaks
+        # are smaller than the given value, -1 turns it into the index of the
+        # nearest peak
+        nearest_left = np.searchsorted(idcs_peaks, speed_peak_idx, side="right") - 1
+        local_max_d_arr_idcs = idcs_peaks[nearest_left[nearest_left >= 0]]
 
         df_linked_filtered.loc[traj.index[local_max_d_arr_idcs], "is_peak"] = True
 
+    # mark speed peaks (pooled across the burrow's trajectories)
+    df_linked_filtered.loc[speed_peak_index, "is_speed_peak"] = True
 
     # ----------------------------
     # inter-peak minima: for each speed peak, the first sample afterwards 
@@ -607,6 +610,74 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
 
 legs_df = pd.DataFrame(leg_records)
 
+
+
+# %%
+# Plot distance vs time and show peaks, speed_peaks and mins
+
+# selected burrow
+b_id = 53
+
+group = df_linked_filtered[df_linked_filtered["burrow_id"] == b_id]
+
+peaks = group[group["is_peak"]]
+speed_peaks = group[group["is_speed_peak"]]
+mins = group[group["is_min"]]
+
+fig, ax = plt.subplots(figsize=(10, 10))
+cmap = plt.get_cmap("tab20")
+ax.scatter(
+    x=group["frame_in_video"] / fps / 60,
+    y=group["d_burrow_bl"],
+    color=cmap(0),
+    s=2.5,
+)
+# mark detected local peaks (distance maxima)
+ax.scatter(
+    x=peaks["frame_in_video"] / fps / 60,
+    y=peaks["d_burrow_bl"],
+    s=50,
+    marker="v",
+    facecolors="none",
+    edgecolors="r",
+    linewidths=2.5,
+    zorder=6,
+    label=f"peaks (n={len(peaks)})",
+)
+# mark detected speed peaks (onset of a sharp drop towards the burrow)
+ax.scatter(
+    x=speed_peaks["frame_in_video"] / fps / 60,
+    y=speed_peaks["d_burrow_bl"],
+    s=50,
+    marker="D",
+    facecolors="none",
+    edgecolors="tab:orange",
+    linewidths=2.5,
+    zorder=6,
+    label=f"speed peaks (n={len(speed_peaks)})",
+)
+# mark detected inter-peak minima (closest approach to the burrow)
+ax.scatter(
+    x=mins["frame_in_video"] / fps / 60,
+    y=mins["d_burrow_bl"],
+    s=50,
+    marker="^",
+    facecolors="none",
+    edgecolors="g",
+    linewidths=2.5,
+    zorder=6,
+    label=f"inter-peak min (n={len(mins)})",
+)
+for item in [ax.xaxis.label, ax.yaxis.label]:
+    item.set_fontsize(20)
+ax.tick_params(axis="both", labelsize=18)
+
+ax.legend(loc="upper right", fontsize=18)
+ax.set_xlabel("time (min)")
+ax.set_ylabel(r"$\rho$ (BL)")
+ax.set_title(f"burrow ID {b_id}")
+fig.tight_layout()
+ax.spines[["top", "right"]].set_visible(False)
 
 
 # %%%%%%%%%%%%%%%% PLOTS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1212,8 +1283,14 @@ outbound = legs[legs["kind"] == "outbound"]
 # only the peaks/mins that define an inbound leg (peak followed by a min):
 # frame_start is the peak, frame_end is the min. Frames are unique within a
 # burrow, so we can select those samples by frame.
+# show peaks paired with mins
 peaks = group[group["frame_in_video"].isin(inbound["frame_start"])]
 mins = group[group["frame_in_video"].isin(inbound["frame_end"])]
+
+# show all peaks
+# peaks = group[group["is_peak"]]
+# mins = group[group["is_min"]]
+
 
 # %%%%%%%%%%%
 # plot trajectories in burrow coord syst, coloured by frame number
