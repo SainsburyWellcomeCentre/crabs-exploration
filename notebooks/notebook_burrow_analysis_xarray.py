@@ -350,6 +350,9 @@ fps = float(ds_video.fps)
 speed_stacked_da = ds_video.speed.stack(
     traj_clip_id=("clip_id", "individuals")
 )
+# normalise speed by the same per-burrow body length as rho (norm_per_traj),
+# giving BL/frame (NaN on unlinked/dropped tracklets, as in norm_per_traj).
+speed_bl_da = speed_stacked_da / norm_per_traj
 for b_id in visited_burrow_ids:
 
     # tracklets linked to this burrow
@@ -359,7 +362,7 @@ for b_id in visited_burrow_ids:
     # so their ravel order matches element-for-element
     frame_arr = frame_in_video_da.isel(traj_clip_id=sel_traj).values.ravel()
     d_arr = d_burrow_bl_da.isel(traj_clip_id=sel_traj).values.ravel()
-    speed_arr = speed_stacked_da.isel(traj_clip_id=sel_traj).values.ravel()
+    speed_arr = speed_bl_da.isel(traj_clip_id=sel_traj).values.ravel()
 
     # frame == -1 marks absent;
     mask = frame_arr != -1
@@ -368,13 +371,13 @@ for b_id in visited_burrow_ids:
     sc = ax.scatter(
         x=frame_arr[mask] / fps / 60,
         y=d_arr[mask],
-        c=speed_arr[mask] * fps,  # px/frame -> px/s (time coord is in frames)
+        c=speed_arr[mask] * fps,  # BL/frame -> BL/s (time coord is in frames)
         s=2.5,
         cmap="viridis",
-        norm=mpl.colors.LogNorm(vmin=10),  # log colour scale (auto range from >0 data)
+        norm=mpl.colors.LogNorm(),  # log colour scale (auto range, >0 only)
     )
     cbar = fig.colorbar(sc, ax=ax)
-    cbar.set_label("speed (px/s)", fontsize=18)
+    cbar.set_label("speed (BL/s)", fontsize=18)
     cbar.ax.tick_params(labelsize=16)
 
 
