@@ -11,8 +11,6 @@ from matplotlib.lines import Line2D
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 from scipy.ndimage import center_of_mass
 
-# from scipy.signal import find_peaks
-
 # %%
 %matplotlib qt
 # qt / widget
@@ -613,12 +611,9 @@ for b_id, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
 
 legs_df = pd.DataFrame(leg_records)
 
-
-# %%
-# Plot inbound/outbound trajectories
-# distance and speed?
-
-
+# %%%%%%%%%%%%%%%%%%%%%%%
+# PLOTS
+###%%%%%%%%%%%%%%%%%%%%%
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Plot selection method for visited burrows
 
@@ -1044,7 +1039,7 @@ ax_traj.axis("off")
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}.svg",
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_colbytime.svg",
     dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
@@ -1113,7 +1108,8 @@ fig.savefig(
 )
 
 # %%%%%%%%%%%%%%%
-# plot distance vs time, coloured by PHASE (inbound/outbound/unassigned)
+# plot distance vs time, coloured by PHASE -- sanity check plot
+# (inbound/outbound/unassigned)
 
 # assign each sample the phase of the leg it falls in (colours from the
 # parameters block): inbound / outbound, and samples outside every leg (before
@@ -1234,6 +1230,12 @@ ax_traj.set_title(f"burrow ID {b_id}")
 ax_traj.axis("off")
 
 # %%
+fig.savefig(
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_colbyphase.svg",
+    dpi=300,  # resolution of the rasterized scatter layer only
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
 
 # %%%%%%%%%%%%%%%
 # plot angle to burrow (theta) at each peak, over time.
@@ -1335,7 +1337,7 @@ ax_rate.spines[["top", "right"]].set_visible(False)
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_abs_rho_dot_vs_time.svg",
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_abs_rho_dot_vs_time_colbyphase.svg",
     # dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
@@ -1399,7 +1401,7 @@ ax_tort.legend(
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_tortuosity_vs_time.svg",
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_tortuosity_vs_time_colbyphase.svg",
     # dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
