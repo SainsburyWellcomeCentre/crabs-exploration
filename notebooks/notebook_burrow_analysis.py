@@ -13,7 +13,7 @@ from scipy.ndimage import center_of_mass
 # from scipy.signal import find_peaks
 
 # %%
-# %matplotlib qt
+%matplotlib qt
 # qt / widget
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -718,6 +718,7 @@ ax.scatter(
     s=0.5,
     color=cmap(0),
     alpha=0.05,
+    rasterized=True,
 )
 
 ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
@@ -799,8 +800,8 @@ ax.set_ylabel("$y_{burrow}$ (BL)")
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_fig2.png",
-    dpi=300,  # resolution of the rasterized scatter/image
+    output_figs_dir /"Fig-case-study-1"/ f"{video_str}_polar_coords.svg",
+    dpi=300,  # resolution of the rasterized scatter layer only
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
