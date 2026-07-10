@@ -1070,7 +1070,11 @@ def _write_html_plots(  # noqa: C901
         )
 
         output_html = output_dir_plots / f"masks_{frame_stem}.html"
-        fig.write_html(str(output_html), include_plotlyjs=True)
+        fig.write_html(
+            str(output_html),
+            include_plotlyjs=True,
+            config={"toImageButtonOptions": {"format": "svg"}},
+        )
 
     print(f"Saved {len(image_array)} HTML plots to {output_dir_plots}")
 

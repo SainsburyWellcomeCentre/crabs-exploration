@@ -345,7 +345,10 @@ def plot_n_detections_html(
         zeroline=False,
     )
 
-    fig.write_html(str(output_html_path))
+    fig.write_html(
+        str(output_html_path),
+        config={"toImageButtonOptions": {"format": "svg"}},
+    )
 
 
 def main(args: argparse.Namespace) -> None:
