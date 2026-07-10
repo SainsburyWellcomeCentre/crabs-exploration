@@ -31,6 +31,7 @@ min_samples_in_burrow_frac = 0.10
 # min drop in d_burrow_bl between consecutive frames
 min_peak_drop_bl = 0.05
 min_seconds_to_prev_peak = 2
+min_d_burrow_at_peak_bl = 1.0
 
 # localising inter-peak minima: after a peak, the first sample where the
 # distance to burrow does not decrease AND is already below this value (BL)
@@ -459,7 +460,8 @@ for _, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
 
         is_consec = np.diff(frames_arr) == 1
         is_drop = np.diff(d_arr) <= -min_peak_drop_bl
-        candidate_peak = is_consec & is_drop
+        is_far = d_arr[:-1] >= min_d_burrow_at_peak_bl # height at start of drop
+        candidate_peak = is_consec & is_drop & is_far
 
         # frame number for each candidate_peak
         frame_at_i = frames_arr[1:]
