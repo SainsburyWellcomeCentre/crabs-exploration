@@ -46,6 +46,7 @@ Usage (dependencies are auto-installed via uv):
 #   "scikit-image",
 #   "plotly",
 #   "datashader",
+#   "numba>=0.61",
 #   "Pillow",
 #   "pyarrow",
 # ]
@@ -426,7 +427,10 @@ def plot_prompts_html(
         )
 
     # Export as html
-    fig.write_html(str(output_html_path))
+    fig.write_html(
+        str(output_html_path),
+        config={"toImageButtonOptions": {"format": "svg"}},
+    )
 
 
 def main(args: argparse.Namespace) -> None:
