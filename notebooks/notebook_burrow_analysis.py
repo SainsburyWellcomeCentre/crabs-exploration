@@ -8,6 +8,7 @@ import pandas as pd
 import xarray as xr
 import zarr
 from matplotlib.lines import Line2D
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 from scipy.ndimage import center_of_mass
 
 # from scipy.signal import find_peaks
@@ -773,19 +774,31 @@ for k, (pct, radius) in enumerate(
         )
     )
 
-# empty handle showing the BL-to-pixel conversion
-bl_handle = mpl.lines.Line2D(
-    [],
-    [],
-    linestyle="none",
-    label=f"(1 BL = {median_BL_all_visited_burrows:.0f} px)",
-)
 ax.legend(
-    handles=ring_handles + [bl_handle],
+    handles=ring_handles,
     loc="upper right",
     fontsize=16,
     # title="radial percentile",
 )
+
+# scale bar spanning one body length. The axes are already in BL, so the bar
+# has length 1 in data units. The caption gives the exact px conversion (a
+# measured value) and the approximate physical size (~ / range, since the crab
+# body length is only estimated to 5-7 cm).
+scalebar = AnchoredSizeBar(
+    ax.transData,
+    1,  # bar length in data units (= 1 BL)
+    f"1 BL = {median_BL_all_visited_burrows:.1f} px ≈ 5-7 cm",
+    loc="lower left",
+    pad=0.5,
+    color="k",
+    frameon=False,
+    size_vertical=0.15,
+    sep=4, # # gap (in points) between bar and caption
+    fontproperties=mpl.font_manager.FontProperties(size=16),
+)
+scalebar._box.align = "left"   # or "right"; default "center"
+ax.add_artist(scalebar)
 
 ax.set_aspect("equal")
 ax.invert_yaxis()  # match image coordinates (y down)
