@@ -1219,17 +1219,36 @@ cbar = fig.colorbar(sc, ax=ax_traj, location="left")
 cbar.set_label("time (min)", fontsize=18)
 cbar.ax.tick_params(labelsize=16)
 
+# scale bar spanning one body length. The axes are already in BL, so the bar
+# has length 1 in data units. The caption gives the exact px conversion (a
+# measured value) and the approximate physical size (~ / range, since the crab
+# body length is only estimated to 5-7 cm).
+scalebar = AnchoredSizeBar(
+    ax_traj.transData,
+    1,  # bar length in data units (= 1 BL)
+    f"1 BL = {group['bbox_diag'].median():.1f} px ≈ 5-7 cm", # BL for this plot
+    loc="lower left",
+    pad=0.5,
+    color="k",
+    frameon=False,
+    size_vertical=0.15,
+    sep=4, # # gap (in points) between bar and caption
+    fontproperties=mpl.font_manager.FontProperties(size=16),
+)
+scalebar._box.align = "left"   # default "center"
+ax_traj.add_artist(scalebar)
+
 ax_traj.set_aspect("equal")
 ax_traj.invert_yaxis()  # match image coordinates (y down)
-# ax_traj.set_xlabel("$x_{burrow}$ (BL)")
-# ax_traj.set_ylabel("$y_{burrow}$ (BL)")
-# ax_traj.set_title(f"burrow ID {b_id}")
-# ax_traj.axis("off")
+ax_traj.set_xlabel("$x_{burrow}$ (BL)")
+ax_traj.set_ylabel("$y_{burrow}$ (BL)")
+ax_traj.set_title(f"burrow ID {b_id}")
+ax_traj.axis("off")
 
 # %%
 fig.savefig(
     output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig5.png",
-    dpi=300,  # resolution of the rasterized scatter/image
+    # dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
