@@ -700,6 +700,9 @@ fig.savefig(
     pad_inches=0,  # no border around the tight bbox
 )
 
+# %%%%%%%%%%%%%%%%%%%%%%%%%%
+# Set text in axes as editable
+plt.rcParams["svg.fonttype"] = "none" 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Plot all trajectories in burrow coordinate system
@@ -813,7 +816,7 @@ ax.set_ylabel("$y_{burrow}$ (BL)")
 
 # %%
 fig.savefig(
-    output_figs_dir /"Fig-case-study-1"/ f"{video_str}_polar_coords.svg",
+    output_figs_dir /"Fig-case-study-1"/ f"{video_str}_polar_coords_editable_txt.svg",
     dpi=300,  # resolution of the rasterized scatter layer only
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
@@ -950,8 +953,7 @@ ax.legend(
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_fig3_2.png",
-    dpi=300,  # resolution of the rasterized scatter/image
+    output_figs_dir /"Fig-case-study-1" / f"{video_str}_theta_histogram_editable_txt.svg",
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
