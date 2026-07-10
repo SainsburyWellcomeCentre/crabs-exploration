@@ -39,7 +39,8 @@ max_d_burrow_at_min_bl = 0.25
 # samples that fall in no leg drawn in a distinct cool tone. The peak / min
 # markers reuse the inbound / outbound colours.
 color_inbound = "tab:red"
-color_outbound = "#aaa4a8"  # taupe gray
+color_outbound = "#b6e2c8ff" 
+color_outbound_traj_plot = "#c1ddcd"  
 color_unassigned = "#7FA0B8"  # soft slate blue
 
 
@@ -1066,7 +1067,7 @@ ax.scatter(
     y=peaks_df["d_burrow_bl"],
     s=50,
     marker="v",
-    facecolors="none",
+    facecolors=color_inbound,
     edgecolors=color_inbound,
     linewidths=2.5,
     zorder=6,
@@ -1078,7 +1079,7 @@ ax.scatter(
     y=mins_df["d_burrow_bl"],
     s=50,
     marker="^",
-    facecolors="none",
+    facecolors=color_outbound,
     edgecolors=color_outbound,  # matches outbound phase
     linewidths=2.5,
     zorder=6,
@@ -1108,7 +1109,7 @@ fig.savefig(
 )
 
 # %%%%%%%%%%%%%%%
-# plot distance vs time, coloured by PHASE -- sanity check plot
+# plot distance vs time, coloured by PHASE 
 # (inbound/outbound/unassigned)
 
 # assign each sample the phase of the leg it falls in (colours from the
@@ -1125,11 +1126,19 @@ for _, leg in legs_one_burrow.iterrows():
     )
     sample_color[in_leg] = phase_to_color[leg["kind"]]
 
+# for this plot only: highlight the inbound legs in red and draw every other
+# sample in the same base colour as the distance-vs-time plot above.
+# (sample_color keeps the full phase colouring for the plots below)
+color_base = mpl.colors.to_hex(plt.get_cmap("tab20")(0))
+sample_color_inbound = sample_color.where(
+    sample_color == color_inbound, color_base
+)
+
 fig, ax = plt.subplots(figsize=(10, 10))
 ax.scatter(
     x=df_trajs_b_id["frame_in_video"] / fps / 60,
     y=df_trajs_b_id["d_burrow_bl"],
-    c=sample_color,
+    c=sample_color_inbound, # sample_color
     s=2.5,
     rasterized=True,
 )
@@ -1139,7 +1148,7 @@ ax.scatter(
     y=peaks_df["d_burrow_bl"],
     s=50,
     marker="v",
-    facecolors="none",
+    facecolors=color_inbound,
     edgecolors=color_inbound,
     linewidths=2.5,
     zorder=6,
@@ -1151,7 +1160,7 @@ ax.scatter(
     y=mins_df["d_burrow_bl"],
     s=50,
     marker="^",
-    facecolors="none",
+    facecolors=color_outbound,
     edgecolors=color_outbound,  # matches outbound phase
     linewidths=2.5,
     zorder=6,
@@ -1162,16 +1171,16 @@ for item in [ax.xaxis.label, ax.yaxis.label]:
 ax.tick_params(axis="both", labelsize=18)
 
 
-# legend: phase colours (categorical) followed by the peak/min markers
+# legend: the inbound phase colour followed by the peak/min markers
+# (phase_to_color_legend is kept for the trajectory-by-phase plot below)
 phase_to_color_legend = phase_to_color.copy()
 phase_to_color_legend.update({"unassigned" : color_unassigned})
-phase_handles = [
-    Line2D([], [], marker="o", linestyle="none", color=color, label=kind)
-    for kind, color in phase_to_color_legend.items()
-]
+inbound_handle = Line2D(
+    [], [], marker="o", linestyle="none", color=color_inbound, label="inbound"
+)
 peak_min_handles, _ = ax.get_legend_handles_labels()
 ax.legend(
-    handles=phase_handles + peak_min_handles, loc="upper right", fontsize=18
+    handles=[inbound_handle] + peak_min_handles, loc="upper right", fontsize=18
 )
 ax.set_xlabel("time (min)")
 ax.set_ylabel(r"$\rho$ (BL)")
@@ -1182,15 +1191,29 @@ fig.tight_layout()
 
 ax.spines[["top", "right"]].set_visible(False)
 
+# %%
+fig.savefig(
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_rho_vs_time_outbound_red.svg",
+    dpi=300,  # resolution of the rasterized scatter/image
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
+
+
 # %%%%%%%%%%%
 # plot trajectories in burrow coord syst, coloured by PHASE
 # (inbound / outbound / unassigned colours from the parameters block). Reuses
 # sample_color and phase_to_color from the distance-vs-time phase cell above.
+
+# for this plot only: use a softer outbound tone
+sample_color_plot = sample_color.replace(color_outbound, color_outbound_traj_plot)
+
+
 fig, ax_traj = plt.subplots(figsize=(10, 10))
 ax_traj.scatter(
     x=df_trajs_b_id["x_burrow_bl"],
     y=df_trajs_b_id["y_burrow_bl"],
-    c=sample_color,
+    c=sample_color_plot,
     s=2.5,
     rasterized=True,
 )
@@ -1306,7 +1329,7 @@ for xpos, (r, color) in enumerate(zip(rho_dot_bl_per_s, colors, strict=True)):
         r,
         color=color,
         s=25,
-        alpha=0.5,
+        alpha=0.75,
         zorder=3,
     )
     # horizontal bar marking the mean of each group.
@@ -1337,7 +1360,7 @@ ax_rate.spines[["top", "right"]].set_visible(False)
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_abs_rho_dot_vs_time_colbyphase.svg",
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_abs_rho_dot_vs_time.svg",
     # dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
@@ -1358,7 +1381,7 @@ for xpos, (t, color) in enumerate(zip(torts, colors, strict=True)):
         t,
         color=color,
         s=25,
-        alpha=0.5,
+        alpha=0.75,
         zorder=3,
     )
     if t.size:
@@ -1401,7 +1424,7 @@ ax_tort.legend(
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_tortuosity_vs_time_colbyphase.svg",
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_tortuosity_vs_time.svg",
     # dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
