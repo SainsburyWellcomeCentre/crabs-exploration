@@ -440,19 +440,19 @@ fps = float(ds_video.fps)
 # NOTE: within a burrow, frame_in_video is unique (the clash-resolution filter
 # guarantees no two kept trajectories share a (burrow, frame) slot), so each
 # peak/min can be marked unambiguously on its own sample row.
-df_linked_filtered["is_peak"] = False
+df_linked_filtered["is_peak"] = False # all peaks, also those not followed by min
 df_linked_filtered["is_min"] = False
 
 n_frames_diff_wrt_prev_peak = fps * min_seconds_to_prev_peak
 
-for _, group in df_linked_filtered.groupby("burrow_id"):
+for _, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
     # peaks per trajectory-clip: a peak is the first frame of a sharp,
     # consecutive-frame drop in distance to burrow (>= min_peak_drop_bl in a
     # single frame step). Frame gaps (missing detections) are never bridged,
     # and a multi-frame steep descent (several qualifying steps in a row)
     # only yields one peak, at its first frame.
     peak_index = []
-    for _, traj in group.groupby("traj_clip_id"):
+    for _, traj in df_trajs_b_id.groupby("traj_clip_id"):
         traj = traj.sort_values("frame_in_video")
         frames_arr = traj["frame_in_video"].to_numpy()
         d_arr = traj["d_burrow_bl"].to_numpy()
@@ -479,7 +479,7 @@ for _, group in df_linked_filtered.groupby("burrow_id"):
     # distance to burrow does not decrease (diff >= 0 across a
     # consecutive-frame step) AND is below max_d_burrow_at_min_bl. Pooled
     # across trajectories in the burrow; frame gaps are never bridged.
-    group_sorted = group.sort_values("frame_in_video")
+    group_sorted = df_trajs_b_id.sort_values("frame_in_video")
     frames_all = group_sorted["frame_in_video"].to_numpy()
     d_arr_all = group_sorted["d_burrow_bl"].to_numpy()
     index_arr = group_sorted.index.to_numpy()
@@ -514,7 +514,6 @@ for _, group in df_linked_filtered.groupby("burrow_id"):
 #
 # - rho_dot: mean per-frame change in distance to burrow (body lengths/frame),
 #   using only consecutive-frame steps; frame gaps (incl. the gaps between
-#   distinct trajectories pooled into a burrow) are never bridged. NaN if a leg
 #   has no consecutive-frame steps.
 # - tortuosity: path length / beeline over the whole leg (dimensionless ratio).
 #   The beeline is the straight peak<->min distance, so the path bridges any
@@ -524,8 +523,8 @@ for _, group in df_linked_filtered.groupby("burrow_id"):
 # Both metrics read the body-length burrow columns.
 
 leg_records = []
-for b_id, group in df_linked_filtered.groupby("burrow_id"):
-    group_sorted = group.sort_values("frame_in_video")
+for b_id, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
+    group_sorted = df_trajs_b_id.sort_values("frame_in_video")
     frames = group_sorted["frame_in_video"].to_numpy()
     d_bl = group_sorted["d_burrow_bl"].to_numpy()
     xs_all = group_sorted["x_burrow_bl"].to_numpy()
@@ -538,13 +537,15 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
 
     for s in range(event_frames.size - 1):
         # determine type of leg
-        # skip peak->peak/min->min
+        # if peak->min: inbound
         if event_is_peak[s] and not event_is_peak[s + 1]:
             kind = "inbound"
-        elif not event_is_peak[s] and event_is_peak[s + 1]:
-            kind = "outbound"
+        # everything else: outbound
+        # (not that first frame to first peak, and 
+        # last min to last frame are "unassigned" because the loop
+        # starts with first peak/min)
         else:
-            continue
+             kind = "outbound"
 
         # compute samples inside the leg's frame window, shared by both metrics
         f0, f1 = event_frames[s], event_frames[s + 1]
@@ -665,13 +666,13 @@ recolored[..., 3] = alpha
 ax.imshow(recolored)
 
 cmap = plt.get_cmap("tab20")
-for k, (burrow_id, group) in enumerate(
+for k, (burrow_id, df_trajs_b_id) in enumerate(
     df_linked_filtered.groupby("burrow_id")
 ):
     color = cmap(k % cmap.N)
     ax.scatter(
-        x=group["x"],
-        y=group["y"],
+        x=df_trajs_b_id["x"],
+        y=df_trajs_b_id["y"],
         s=0.5,
         marker=".",
         edgecolors=None,
@@ -968,13 +969,13 @@ labels = ["inbound", "outbound"]
 colors = ["tab:green", "tab:red"]
 rng = np.random.default_rng(0)
 
-for b_id, group in df_linked_filtered.groupby("burrow_id"):
-    peaks = group[group["is_peak"]]
-    mins = group[group["is_min"]]
+for b_id, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
+    peaks_df = df_trajs_b_id[df_trajs_b_id["is_peak"]]
+    mins_df = df_trajs_b_id[df_trajs_b_id["is_min"]]
 
-    legs = legs_df[legs_df["burrow_id"] == b_id]
-    inbound = legs[legs["kind"] == "inbound"]
-    outbound = legs[legs["kind"] == "outbound"]
+    legs_one_burrow = legs_df[legs_df["burrow_id"] == b_id]
+    inbound_legs_df = legs_one_burrow[legs_one_burrow["kind"] == "inbound"]
+    outbound_legs_df = legs_one_burrow[legs_one_burrow["kind"] == "outbound"]
 
     fig, (ax, ax_theta, ax_traj, ax_rate, ax_tort) = plt.subplots(
         1, 5, figsize=(30, 5)
@@ -999,35 +1000,35 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     # plot distance vs time
     cmap = plt.get_cmap("tab20")
     ax.scatter(
-        x=group["frame_in_video"] / fps / 60,
-        y=group["d_burrow_bl"],
-        c=group["traj_clip_id"],
+        x=df_trajs_b_id["frame_in_video"] / fps / 60,
+        y=df_trajs_b_id["d_burrow_bl"],
+        c=df_trajs_b_id["traj_clip_id"],
         s=2.5,
         cmap=cmap,
     )
     # mark detected local peaks (away-from-burrow excursions)
     ax.scatter(
-        x=peaks["frame_in_video"] / fps / 60,
-        y=peaks["d_burrow_bl"],
+        x=peaks_df["frame_in_video"] / fps / 60,
+        y=peaks_df["d_burrow_bl"],
         s=40,
         marker="v",
         facecolors="none",
         edgecolors="r",
         linewidths=1,
         zorder=6,
-        label=f"peaks (n={len(peaks)})",
+        label=f"peaks (n={len(peaks_df)})",
     )
     # mark detected local minima (closest approaches to the burrow)
     ax.scatter(
-        x=mins["frame_in_video"] / fps / 60,
-        y=mins["d_burrow_bl"],
+        x=mins_df["frame_in_video"] / fps / 60,
+        y=mins_df["d_burrow_bl"],
         s=40,
         marker="^",
         facecolors="none",
         edgecolors="g",
         linewidths=1,
         zorder=6,
-        label=f"inter-peak min (n={len(mins)})",
+        label=f"inter-peak min (n={len(mins_df)})",
     )
     ax.legend(loc="upper left", fontsize=8)
     ax.set_xlabel("time (min)")
@@ -1041,7 +1042,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     # border) sits at -pi/4 rather than at +/-pi, keeping angular clusters
     # from being split across the wrap.
     peak_theta_deg = np.degrees(
-        np.mod(peaks["theta_burrow"] + np.pi / 4, 2 * np.pi) - np.pi / 4
+        np.mod(peaks_df["theta_burrow"] + np.pi / 4, 2 * np.pi) - np.pi / 4
     )
 
     # shade the escape period(s) with light blue vertical bands
@@ -1058,7 +1059,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     #     ax_theta.legend(loc="upper right", fontsize=8)
 
     ax_theta.plot(
-        peaks["frame_in_video"] / fps / 60,
+        peaks_df["frame_in_video"] / fps / 60,
         peak_theta_deg,
         linestyle="--",
         color="r",
@@ -1066,7 +1067,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     )
 
     ax_theta.scatter(
-        x=peaks["frame_in_video"] / fps / 60,
+        x=peaks_df["frame_in_video"] / fps / 60,
         y=peak_theta_deg,
         s=40,
         marker="v",
@@ -1074,7 +1075,7 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
         edgecolors="r",
         linewidths=1,
         zorder=6,
-        label=f"peaks (n={len(peaks)})",
+        label=f"peaks (n={len(peaks_df)})",
     )
     ax_theta.axhline(-45, color="k", linewidth=0.5, linestyle="--")
     ax_theta.set_ylim(-45, 315)
@@ -1085,9 +1086,9 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
 
     # right: trajectories in burrow coord syst, coloured by frame number
     sc = ax_traj.scatter(
-        x=group["x_burrow_bl"],
-        y=group["y_burrow_bl"],
-        c=group["frame_in_video"] / fps / 60,
+        x=df_trajs_b_id["x_burrow_bl"],
+        y=df_trajs_b_id["y_burrow_bl"],
+        c=df_trajs_b_id["frame_in_video"] / fps / 60,
         s=2.5,
         cmap="viridis",
     )
@@ -1102,8 +1103,8 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     # third: speed of change of d_burrow on inbound vs outbound legs.
     # take abs value and express in body lengths/s
     rho_dot_bl_per_s = [
-        np.abs(inbound["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
-        np.abs(outbound["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
+        np.abs(inbound_legs_df["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
+        np.abs(outbound_legs_df["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
     ]
     for xpos, (r, color) in enumerate(
         zip(rho_dot_bl_per_s, colors, strict=True)
@@ -1142,8 +1143,8 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
     # legs. Same strip-plot style as the rho_dot panel; tortuosity is >= 1, with
     # 1 = perfectly straight.
     torts = [
-        inbound["tortuosity"].dropna().to_numpy(),
-        outbound["tortuosity"].dropna().to_numpy(),
+        inbound_legs_df["tortuosity"].dropna().to_numpy(),
+        outbound_legs_df["tortuosity"].dropna().to_numpy(),
     ]
     for xpos, (t, color) in enumerate(zip(torts, colors, strict=True)):
         ax_tort.scatter(
@@ -1184,25 +1185,29 @@ for b_id, group in df_linked_filtered.groupby("burrow_id"):
 # selected burrow
 b_id = 53  # 21
 
-group = df_linked_filtered[df_linked_filtered["burrow_id"] == b_id]
+# get trajectories for one burrow
+df_trajs_b_id = df_linked_filtered[df_linked_filtered["burrow_id"] == b_id]
 
-legs = legs_df[legs_df["burrow_id"] == b_id]
-inbound = legs[legs["kind"] == "inbound"]
-outbound = legs[legs["kind"] == "outbound"]
+legs_one_burrow = legs_df[legs_df["burrow_id"] == b_id]
+inbound_legs_df = legs_one_burrow[legs_one_burrow["kind"] == "inbound"]
+outbound_legs_df = legs_one_burrow[legs_one_burrow["kind"] == "outbound"]
 
-# only the peaks/mins that define an inbound leg (peak followed by a min):
-# frame_start is the peak, frame_end is the min. Frames are unique within a
-# burrow, so we can select those samples by frame.
-peaks = group[group["frame_in_video"].isin(inbound["frame_start"])]
-mins = group[group["frame_in_video"].isin(inbound["frame_end"])]
+# get
+# (Frames are unique within a burrow, so we can select those samples by frame)
+peaks_df = df_trajs_b_id[
+    df_trajs_b_id["frame_in_video"].isin(inbound_legs_df["frame_start"])
+]
+mins_df = df_trajs_b_id[
+    df_trajs_b_id["frame_in_video"].isin(inbound_legs_df["frame_end"])
+]
 
 # %%%%%%%%%%%
 # plot trajectories in burrow coord syst, coloured by frame number
 fig, ax_traj = plt.subplots(figsize=(10, 10))
 sc = ax_traj.scatter(
-    x=group["x_burrow_bl"],
-    y=group["y_burrow_bl"],
-    c=group["frame_in_video"] / fps / 60,
+    x=df_trajs_b_id["x_burrow_bl"],
+    y=df_trajs_b_id["y_burrow_bl"],
+    c=df_trajs_b_id["frame_in_video"] / fps / 60,
     s=2.5,
     cmap="viridis",
     rasterized=True,
@@ -1219,7 +1224,7 @@ cbar.ax.tick_params(labelsize=16)
 scalebar = AnchoredSizeBar(
     ax_traj.transData,
     1,  # bar length in data units (= 1 BL)
-    f"1 BL = {group['bbox_diag'].median():.1f} px ≈ 5-7 cm", # BL for this plot
+    f"1 BL = {df_trajs_b_id['bbox_diag'].median():.1f} px ≈ 5-7 cm",  # BL for this plot
     loc="lower left",
     pad=0.5,
     color="k",
@@ -1252,8 +1257,8 @@ fig.savefig(
 fig, ax = plt.subplots(figsize=(10, 10))
 cmap = plt.get_cmap("tab20")
 ax.scatter(
-    x=group["frame_in_video"] / fps / 60,
-    y=group["d_burrow_bl"],
+    x=df_trajs_b_id["frame_in_video"] / fps / 60,
+    y=df_trajs_b_id["d_burrow_bl"],
     color=cmap(0),
     # c=cmap(0), #group["traj_clip_id"],
     s=2.5,
@@ -1262,27 +1267,27 @@ ax.scatter(
 )
 # mark detected local peaks
 ax.scatter(
-    x=peaks["frame_in_video"] / fps / 60,
-    y=peaks["d_burrow_bl"],
+    x=peaks_df["frame_in_video"] / fps / 60,
+    y=peaks_df["d_burrow_bl"],
     s=50,
     marker="v",
     facecolors="none",
     edgecolors="r",
     linewidths=2.5,
     zorder=6,
-    label=f"peaks (n={len(peaks)})",
+    label=f"peaks (n={len(peaks_df)})",
 )
 # mark detected local minima
 ax.scatter(
-    x=mins["frame_in_video"] / fps / 60,
-    y=mins["d_burrow_bl"],
+    x=mins_df["frame_in_video"] / fps / 60,
+    y=mins_df["d_burrow_bl"],
     s=50,
     marker="^",
     facecolors="none",
     edgecolors="g",
     linewidths=2.5,
     zorder=6,
-    label=f"inter-peak min (n={len(mins)})",
+    label=f"inter-peak min (n={len(mins_df)})",
 )
 for item in [ax.xaxis.label, ax.yaxis.label]:
     item.set_fontsize(20)
@@ -1314,12 +1319,12 @@ fig.savefig(
 # border) sits at -pi/4 rather than at +/-pi, keeping angular clusters
 # from being split across the wrap.
 peak_theta_deg = np.degrees(
-    np.mod(peaks["theta_burrow"] + np.pi / 4, 2 * np.pi) - np.pi / 4
+    np.mod(peaks_df["theta_burrow"] + np.pi / 4, 2 * np.pi) - np.pi / 4
 )
 
 fig, ax_theta = plt.subplots(figsize=(8, 4.25))
 ax_theta.plot(
-    peaks["frame_in_video"] / fps / 60,
+    peaks_df["frame_in_video"] / fps / 60,
     peak_theta_deg,
     linestyle="--",
     color="r",
@@ -1328,7 +1333,7 @@ ax_theta.plot(
 )
 
 ax_theta.scatter(
-    x=peaks["frame_in_video"] / fps / 60,
+    x=peaks_df["frame_in_video"] / fps / 60,
     y=peak_theta_deg,
     s=40,
     marker="v",
@@ -1336,7 +1341,7 @@ ax_theta.scatter(
     edgecolors="r",
     linewidths=2,
     zorder=6,
-    label=f"peaks (n={len(peaks)})",
+    label=f"peaks (n={len(peaks_df)})",
 )
 ax_theta.set_yticks(np.arange(0, 316, 45))
 # ax_theta.set_ylim(0, 315)  # (0, 315)
@@ -1368,8 +1373,8 @@ rng = np.random.default_rng(0)
 
 fig, ax_rate = plt.subplots(figsize=(6, 4.25))
 rho_dot_bl_per_s = [
-    np.abs(inbound["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
-    np.abs(outbound["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
+    np.abs(inbound_legs_df["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
+    np.abs(outbound_legs_df["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
 ]
 for xpos, (r, color) in enumerate(zip(rho_dot_bl_per_s, colors, strict=True)):
     ax_rate.scatter(
@@ -1420,8 +1425,8 @@ fig.savefig(
 # 1 = perfectly straight.
 fig, ax_tort = plt.subplots(figsize=(6, 4.25))
 torts = [
-    inbound["tortuosity"].dropna().to_numpy(),
-    outbound["tortuosity"].dropna().to_numpy(),
+    inbound_legs_df["tortuosity"].dropna().to_numpy(),
+    outbound_legs_df["tortuosity"].dropna().to_numpy(),
 ]
 for xpos, (t, color) in enumerate(zip(torts, colors, strict=True)):
     ax_tort.scatter(
