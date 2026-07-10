@@ -381,8 +381,9 @@ def plot_prompts_html(
     bbox_colors = pc.sample_colorscale(colorscale, norm_values)
 
     # Overlay point prompts as 'x' markers coloured by relative peak intensity
+    # (SVG traces, not Scattergl, so they export as vector elements)
     fig.add_trace(
-        go.Scattergl(
+        go.Scatter(
             x=peaks_xy[:, 0],
             y=peaks_xy[:, 1],
             mode="markers",
@@ -414,7 +415,7 @@ def plot_prompts_html(
     # (one trace per bbox, but grouped under a single legend entry)
     for i, (xmin, ymin, xmax, ymax) in enumerate(bboxes_clipped_x1y1x2y2):
         fig.add_trace(
-            go.Scattergl(
+            go.Scatter(
                 x=[xmin, xmax, xmax, xmin, xmin],
                 y=[ymin, ymin, ymax, ymax, ymin],
                 mode="lines",
