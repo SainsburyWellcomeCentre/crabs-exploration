@@ -11,8 +11,6 @@ from matplotlib.lines import Line2D
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 from scipy.ndimage import center_of_mass
 
-# from scipy.signal import find_peaks
-
 # %%
 %matplotlib qt
 # qt / widget
@@ -23,19 +21,16 @@ from scipy.ndimage import center_of_mass
 # definition of visited burrows
 min_samples_in_burrow_frac = 0.10
 
-# minimum prominence (in body lengths) for a d_burrow excursion to count as a
-# local peak, i.e. how far the crab must move away from the burrow and back
-# min_peak_prominence_bl = 1.0
-
 # localising peaks
 # min drop in d_burrow_bl between consecutive frames
 min_peak_drop_bl = 0.05
 min_seconds_to_prev_peak = 2
-min_d_burrow_at_peak_bl = 1.0
 
-# localising inter-peak minima: after a peak, the first sample where the
-# distance to burrow does not decrease AND is already below this value (BL)
-max_d_burrow_at_min_bl = 0.25
+# localising the inter-peak min (the bend): over the segment from the end of
+# the steep drop to the next dash, take the floor (lowest distance) and mark
+# the first sample within `min_floor_tol_bl` of it (i.e. the start of the low
+# plateau).
+min_floor_tol_bl = min_peak_drop_bl
 
 # phase colours: inbound red, outbound taupe gray, and (in the phase plots) the
 # samples that fall in no leg drawn in a distinct cool tone. The peak / min
@@ -83,7 +78,7 @@ raster_plots_dir = Path(
 )
 
 output_figs_dir = Path(
-    "/Users/sofia/arc/project_Zoo_crabs/ICN poster/figures/Fig-case-study-1"
+    "/Users/sofia/arc/project_Zoo_crabs/ICN poster/figures/Fig-case-study-1-scratch"
 )
 
 
@@ -435,83 +430,111 @@ fps = float(ds_video.fps)
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Compute local peaks and inter-peak minima in d_burrow_bl
-# Mark each sample as a peak in distance to burrow or an
-# inter-peak minimum (closest approach between two peaks) with boolean columns.
+# Mark each sample as a peak in distance to burrow (top of a dash towards the
+# burrow) or an inter-peak minimum (closest approach, bottom of the dash) with
+# boolean columns.
 #
-# - Peaks are found per trajectory-clip on time-sorted samples, so we never
-#   join across the time gaps between distinct trajectories. The prominence
-#   threshold is in body lengths, so it adapts to crabs imaged at different
-#   scales.
-# - Minima are pooled per burrow: in each gap between consecutive peaks we pick
-#   the single sample closest to the burrow, regardless of trajectory ID.
+# The dash towards the burrow shows up as a steep "ramp" down in distance. We
+# find its onset (speed peak) as the first frame of a sharp consecutive-frame
+# drop, then bracket that same descent to place the peak and the min right on
+# the ramp edges (rather than letting them drift onto the flat plateau above /
+# flat floor below):
+# - peak (ramp top): climb left from the onset over the plateau to the local
+#   max
+# - min (ramp bottom): from the end of the last steep drop, walk right over the
+#   low plateau to its local min
 #
-# NOTE: within a burrow, frame_in_video is unique (the clash-resolution filter
-# guarantees no two kept trajectories share a (burrow, frame) slot), so each
-# peak/min can be marked unambiguously on its own sample row.
-df_linked_filtered["is_peak"] = False # all peaks, also those not followed by min
+# All of a burrow's tracklets are pooled into one frame-sorted sequence: within
+# a burrow frame_in_video is unique (the clash-resolution filter guarantees no
+# two kept trajectories share a (burrow, frame) slot), and the
+# consecutive-frame test (diff == 1) never bridges the gaps between distinct
+# tracklets, so pooling is safe and each peak/min is marked unambiguously on
+# its own sample row.
+df_linked_filtered["is_peak"] = False
 df_linked_filtered["is_min"] = False
+df_linked_filtered["is_speed_peak"] = False
+df_linked_filtered["is_speed_peak_last"] = False
 
 n_frames_diff_wrt_prev_peak = fps * min_seconds_to_prev_peak
 
-for _, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
-    # peaks per trajectory-clip: a peak is the first frame of a sharp,
-    # consecutive-frame drop in distance to burrow (>= min_peak_drop_bl in a
-    # single frame step). Frame gaps (missing detections) are never bridged,
-    # and a multi-frame steep descent (several qualifying steps in a row)
-    # only yields one peak, at its first frame.
-    peak_index = []
-    for _, traj in df_trajs_b_id.groupby("traj_clip_id"):
-        traj = traj.sort_values("frame_in_video")
-        frames_arr = traj["frame_in_video"].to_numpy()
-        d_arr = traj["d_burrow_bl"].to_numpy()
-
-        is_consec = np.diff(frames_arr) == 1
-        is_drop = np.diff(d_arr) <= -min_peak_drop_bl
-        is_far = d_arr[:-1] >= min_d_burrow_at_peak_bl # height at start of drop
-        candidate_peak = is_consec & is_drop & is_far
-
-        # frame number for each candidate_peak
-        frame_at_i = frames_arr[1:]
-        last_peak_frame = np.maximum.accumulate(
-            np.where(candidate_peak, frame_at_i, -1)
-        )
-        prev_last_peak_frame = np.r_[-1, last_peak_frame[:-1]]
-        first_of_run = candidate_peak & (
-            frame_at_i - prev_last_peak_frame > n_frames_diff_wrt_prev_peak
-        )
-
-        peak_idx = np.argwhere(first_of_run).reshape(-1)
-        peak_index.extend(traj.index[peak_idx])
-    df_linked_filtered.loc[peak_index, "is_peak"] = True
-
-    # inter-peak minima: for each peak, the first sample afterwards where the
-    # distance to burrow does not decrease (diff >= 0 across a
-    # consecutive-frame step) AND is below max_d_burrow_at_min_bl. Pooled
-    # across trajectories in the burrow; frame gaps are never bridged.
-    group_sorted = df_trajs_b_id.sort_values("frame_in_video")
-    frames_all = group_sorted["frame_in_video"].to_numpy()
-    d_arr_all = group_sorted["d_burrow_bl"].to_numpy()
+for _, group in df_linked_filtered.groupby("burrow_id"):
+    # Pool all of the burrow's tracklets into one frame-sorted sequence. The
+    # consecutive-frame test (diff == 1) below never bridges the gaps between
+    # distinct tracklets, so this is equivalent to working per-tracklet but
+    # lets a peak/min/speed-peak be located regardless of which tracklet it
+    # falls in.
+    group_sorted = group.sort_values("frame_in_video")
+    frames_arr = group_sorted["frame_in_video"].to_numpy()
+    d_arr = group_sorted["d_burrow_bl"].to_numpy()
     index_arr = group_sorted.index.to_numpy()
+    n_d_samples = d_arr.size
 
-    is_consec = np.diff(frames_all) == 1
-    not_decreasing = np.diff(d_arr_all) >= 0  # [j] -> step j -> j+1
-    # distance at the candidate min sample (sample j of step j -> j+1)
-    # TODO: condition could also be: inside burrow?
-    close_to_burrow = d_arr_all[:-1] < max_d_burrow_at_min_bl
-    candidate_min = is_consec & not_decreasing & close_to_burrow
-
-    peak_frames = np.sort(
-        df_linked_filtered.loc[peak_index, "frame_in_video"].to_numpy()
+    # Steep drops: consecutive-frame steps where rho drops past threshold
+    # (>= min_peak_drop_bl in a single step), indexed by the step (i.e. the
+    # frame before the drop). Frame gaps (missing detections / tracklet
+    # boundaries) are never bridged.
+    speed_drops = (np.diff(frames_arr) == 1) & (
+        np.diff(d_arr) <= -min_peak_drop_bl
     )
-    min_index = []
-    for f_peak in peak_frames:
-        peak_pos = np.searchsorted(frames_all, f_peak)
-        idcs_after_peak = np.argwhere(candidate_min[peak_pos:])
-        if idcs_after_peak.size:
-            # we take one sample before because at j+1 the distance has
-            # started to grow
-            min_index.append(index_arr[peak_pos + idcs_after_peak[0].item()])
-    df_linked_filtered.loc[min_index, "is_min"] = True
+    speed_drop_idcs = np.flatnonzero(speed_drops)
+    if speed_drop_idcs.size == 0:
+        continue
+
+    # Collapse a dash's run of steep drops into a single event: keep a
+    # candidate only if the previous candidate is more than
+    # n_frames_diff_wrt_prev_peak frames away (this also enforces minimum
+    # spacing between dashes). Candidate frames are strictly increasing, so the
+    # gap to the previous candidate is a diff over their frames
+    # (first candidate compared to -1). The kept candidates are the run onsets.
+    cand_frames = frames_arr[1:][speed_drop_idcs]
+    prev_cand_frames = np.r_[-1, cand_frames[:-1]]
+    onset_positions = np.flatnonzero(
+        cand_frames - prev_cand_frames > n_frames_diff_wrt_prev_peak
+    )
+
+    # each run is headed by an onset (its first steep drop) and spans up to the
+    # next onset, so its last steep drop is the candidate just before the next
+    # onset (or the final candidate for the last run).
+    last_positions = np.r_[onset_positions[1:], speed_drop_idcs.size] - 1
+    speed_drop_idcs_first = speed_drop_idcs[onset_positions]
+    speed_drop_idcs_last = speed_drop_idcs[last_positions]
+
+    df_linked_filtered.loc[
+        index_arr[speed_drop_idcs_first], "is_speed_peak"
+    ] = True
+
+    df_linked_filtered.loc[
+        index_arr[speed_drop_idcs_last], "is_speed_peak_last"
+    ] = True
+
+    # Bracket each dash's steep descent to place the peak and the min on the
+    # ramp edges. Each dash's min search stops at the next dash's onset (with n
+    # as the sentinel for the last dash).
+    next_onset = np.r_[speed_drop_idcs_first[1:], n_d_samples]
+    for first, last, stop in zip(
+        speed_drop_idcs_first, speed_drop_idcs_last, next_onset, strict=True
+    ):
+        # peak (ramp top): climb left over the plateau while the distance keeps
+        # rising (consecutive frames), landing on the local max. On a flat,
+        # noisy plateau the first downward step to the left stops the climb.
+        p = first
+        while (
+            p > 0
+            and frames_arr[p] - frames_arr[p - 1] == 1
+            and  d_arr[p] - d_arr[p - 1] <= 0
+        ):
+            p -= 1
+        df_linked_filtered.loc[index_arr[p], "is_peak"] = True
+
+        # min (the bend): over the segment from the end of the steep drop up to
+        # the next dash, take the floor (lowest distance) and mark the FIRST
+        # sample that reaches it (within `min_floor_tol_bl`). No
+        # consecutive-frame guard here: the descent is often sparse, so
+        # requiring consecutive frames made the min stop high on the ramp.
+        seg = d_arr[last + 1 : stop]
+        floor = seg.min()
+        e = last + 1 + int(np.argmax(seg <= floor + min_floor_tol_bl))
+        df_linked_filtered.loc[index_arr[e], "is_min"] = True
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%
@@ -613,6 +636,93 @@ for b_id, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
 
 legs_df = pd.DataFrame(leg_records)
 
+
+
+# %%
+# Plot distance vs time and show peaks, speed_peaks and mins
+
+# selected burrow
+b_id = 5
+
+group = df_linked_filtered[df_linked_filtered["burrow_id"] == b_id]
+
+peaks = group[group["is_peak"]]
+speed_peaks = group[group["is_speed_peak"]]
+speed_peaks_last = group[group["is_speed_peak_last"]]
+mins = group[group["is_min"]]
+
+fig, ax = plt.subplots(figsize=(10, 10))
+cmap = plt.get_cmap("tab20")
+ax.scatter(
+    x=group["frame_in_video"] / fps / 60,
+    y=group["d_burrow_bl"],
+    color=cmap(0),
+    s=2.5,
+)
+# mark detected local peaks (distance maxima)
+ax.scatter(
+    x=peaks["frame_in_video"] / fps / 60,
+    y=peaks["d_burrow_bl"],
+    s=50,
+    marker="v",
+    facecolors="none",
+    edgecolors="r",
+    linewidths=2.5,
+    zorder=6,
+    label=f"peaks (n={len(peaks)})",
+)
+# mark detected speed peaks (onset of a sharp drop towards the burrow)
+ax.scatter(
+    x=speed_peaks["frame_in_video"] / fps / 60,
+    y=speed_peaks["d_burrow_bl"],
+    s=50,
+    marker="D",
+    facecolors="none",
+    edgecolors="tab:orange",
+    linewidths=2.5,
+    zorder=6,
+    label=f"speed peaks (n={len(speed_peaks)})",
+)
+# mark detected speed peaks (onset of a sharp drop towards the burrow)
+ax.scatter(
+    x=speed_peaks_last["frame_in_video"] / fps / 60,
+    y=speed_peaks_last["d_burrow_bl"],
+    s=50,
+    marker="D",
+    facecolors="tab:orange",
+    edgecolors="tab:orange",
+    linewidths=2.5,
+    zorder=6,
+    label=f"speed peaks last (n={len(speed_peaks_last)})",
+)
+# mark detected inter-peak minima (closest approach to the burrow)
+ax.scatter(
+    x=mins["frame_in_video"] / fps / 60,
+    y=mins["d_burrow_bl"],
+    s=50,
+    marker="^",
+    facecolors="none",
+    edgecolors="g",
+    linewidths=2.5,
+    zorder=6,
+    label=f"inter-peak min (n={len(mins)})",
+)
+for item in [ax.xaxis.label, ax.yaxis.label]:
+    item.set_fontsize(20)
+ax.tick_params(axis="both", labelsize=18)
+
+ax.legend(loc="upper right", fontsize=18)
+ax.set_xlabel("time (min)")
+ax.set_ylabel(r"$\rho$ (BL)")
+ax.set_title(f"burrow ID {b_id}")
+fig.tight_layout()
+ax.spines[["top", "right"]].set_visible(False)
+
+
+# %%
+
+
+# %%%%%%%%%%%%%%%% PLOTS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 # %%
 # Plot inbound/outbound trajectories
