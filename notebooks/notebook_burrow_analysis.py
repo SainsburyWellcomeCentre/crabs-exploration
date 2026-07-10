@@ -507,8 +507,11 @@ for _, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Compute dataframe of inbound/outbound trajectories and metrics
-# Build one row per inbound (peak->min) or outbound (min->peak) leg, holding
-# its rho_dot (rate of change of distance to burrow) and its path tortuosity.
+# Build one row per inbound or outbound leg, holding its rho_dot (rate of
+# change of distance to burrow) and its path tortuosity. Inbound legs are
+# peak->min pairs; outbound legs are the gaps between consecutive inbound legs
+# (min->peak), so together they tile the time between the first and last
+# inbound event, with unpaired peaks/mins absorbed into the outbound legs.
 #
 # This dataframe construction relies on frame uniqueness within a burrow.
 #
@@ -535,56 +538,69 @@ for b_id, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
     event_frames = frames[event_mask]  # start and end frames
     event_is_peak = group_sorted["is_peak"].to_numpy()[event_mask]
 
-    for s in range(event_frames.size - 1):
-        # determine type of leg
-        # if peak->min: inbound
-        if event_is_peak[s] and not event_is_peak[s + 1]:
-            kind = "inbound"
-        # everything else: outbound
-        # (not that first frame to first peak, and 
-        # last min to last frame are "unassigned" because the loop
-        # starts with first peak/min)
-        else:
-             kind = "outbound"
+    # inbound legs: each adjacent peak->min in the event stream. A peak not
+    # followed by a min never starts an inbound leg (it is skipped).
+    inbound_spans = [
+        (event_frames[s], event_frames[s + 1])
+        for s in range(event_frames.size - 1)
+        if event_is_peak[s] and not event_is_peak[s + 1]
+    ]
 
-        # compute samples inside the leg's frame window, shared by both metrics
-        f0, f1 = event_frames[s], event_frames[s + 1]
-        mask_frames_in_leg = (frames >= f0) & (frames <= f1)
-        frames_leg = frames[mask_frames_in_leg]
-        d_leg = d_bl[mask_frames_in_leg]
-        xs, ys = xs_all[mask_frames_in_leg], ys_all[mask_frames_in_leg]
+    # outbound legs: the time between consecutive inbound legs, from the min
+    # ending one inbound leg to the peak starting the next. Any skipped
+    # peaks/mins in between are absorbed into a single outbound leg; the spans
+    # before the first / after the last inbound leg (bounded by the recording
+    # edge, not an event) are excluded.
+    outbound_spans = [
+        (inbound_spans[i][1], inbound_spans[i + 1][0])
+        for i in range(len(inbound_spans) - 1)
+    ]
 
-        # compute rho_dot_mean per leg: mean per-frame change in distance to
-        # burrow, using only steps between consecutive frames (step == 1);
-        # frame gaps are never bridged. NaN if the leg has no
-        # consecutive-frame step.
-        consecutive = np.diff(frames_leg) == 1  # per-step mask
-        rho_dot = (
-            np.diff(d_leg)[consecutive].mean() if consecutive.any() else np.nan
-        )
+    for kind, spans in [
+        ("inbound", inbound_spans),
+        ("outbound", outbound_spans),
+    ]:
+        for f0, f1 in spans:
+            # compute samples inside the leg's frame window, shared by both
+            # metrics
+            mask_frames_in_leg = (frames >= f0) & (frames <= f1)
+            frames_leg = frames[mask_frames_in_leg]
+            d_leg = d_bl[mask_frames_in_leg]
+            xs, ys = xs_all[mask_frames_in_leg], ys_all[mask_frames_in_leg]
 
-        # tortuosity: path length/beeline over the whole leg. The
-        # beeline is the straight path between peak and min distance point,
-        # so the path length computation must span the same endpoints.
-        # Gaps in the actual path are bridged by a line segments between
-        # known samples (a large gap adds one long straight segment).
-        if xs.size >= 2:
-            path_len = np.hypot(np.diff(xs), np.diff(ys)).sum()
-            beeline = np.hypot(xs[-1] - xs[0], ys[-1] - ys[0])
-            tort = path_len / beeline if beeline != 0 else np.nan
-        else:
-            tort = np.nan
+            # compute rho_dot_mean per leg: mean per-frame change in distance
+            # to burrow, using only steps between consecutive frames
+            # (step == 1); frame gaps are never bridged. NaN if the leg has no
+            # consecutive-frame step.
+            consecutive = np.diff(frames_leg) == 1  # per-step mask
+            rho_dot = (
+                np.diff(d_leg)[consecutive].mean()
+                if consecutive.any()
+                else np.nan
+            )
 
-        leg_records.append(
-            {
-                "burrow_id": b_id,
-                "kind": kind,
-                "frame_start": f0,
-                "frame_end": f1,
-                "rho_dot_bl_mean": rho_dot,
-                "tortuosity": tort,
-            }
-        )
+            # tortuosity: path length/beeline over the whole leg. The beeline
+            # is the straight path between the leg's endpoints, so the path
+            # length computation must span the same endpoints. Gaps in the
+            # actual path are bridged by line segments between known samples
+            # (a large gap adds one long straight segment).
+            if xs.size >= 2:
+                path_len = np.hypot(np.diff(xs), np.diff(ys)).sum()
+                beeline = np.hypot(xs[-1] - xs[0], ys[-1] - ys[0])
+                tort = path_len / beeline if beeline != 0 else np.nan
+            else:
+                tort = np.nan
+
+            leg_records.append(
+                {
+                    "burrow_id": b_id,
+                    "kind": kind,
+                    "frame_start": f0,
+                    "frame_end": f1,
+                    "rho_dot_bl_mean": rho_dot,
+                    "tortuosity": tort,
+                }
+            )
 
 legs_df = pd.DataFrame(leg_records)
 
@@ -1141,7 +1157,7 @@ fig.savefig(
 # take abs value and express in body lengths/s
 
 labels = ["inbound\n(peak → min)", "outbound\n(min → peak)"]
-colors = ["tab:green", "tab:red"]
+colors = ["tab:red", "tab:green"]
 rng = np.random.default_rng(0)
 
 
@@ -1256,4 +1272,122 @@ fig.savefig(
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
+# %%
+# %%%%%%%%%%%%%%%
+# plot distance vs time, coloured by PHASE (inbound/outbound/unassigned)
+
+# assign each sample the phase of the leg it falls in: inbound red, outbound
+# green, and samples outside every leg (before the first / after the last
+# inbound event) light gray. Frames are unique within a burrow, so a sample
+# maps to at most one leg.
+phase_to_color = {"inbound": "tab:red", "outbound": "tab:green"}
+sample_color = pd.Series("0.8", index=df_trajs_b_id.index)  # gray = unassigned
+for _, leg in legs_one_burrow.iterrows():
+    in_leg = df_trajs_b_id["frame_in_video"].between(
+        leg["frame_start"], leg["frame_end"]
+    )
+    sample_color[in_leg] = phase_to_color[leg["kind"]]
+
+fig, ax = plt.subplots(figsize=(10, 10))
+ax.scatter(
+    x=df_trajs_b_id["frame_in_video"] / fps / 60,
+    y=df_trajs_b_id["d_burrow_bl"],
+    c=sample_color,
+    s=2.5,
+    rasterized=True,
+)
+# mark detected local peaks
+ax.scatter(
+    x=peaks_df["frame_in_video"] / fps / 60,
+    y=peaks_df["d_burrow_bl"],
+    s=50,
+    marker="v",
+    facecolors="none",
+    edgecolors="r",
+    linewidths=2.5,
+    zorder=6,
+    label=f"peaks (n={len(peaks_df)})",
+)
+# mark detected local minima
+ax.scatter(
+    x=mins_df["frame_in_video"] / fps / 60,
+    y=mins_df["d_burrow_bl"],
+    s=50,
+    marker="^",
+    facecolors="none",
+    edgecolors="g",
+    linewidths=2.5,
+    zorder=6,
+    label=f"inter-peak min (n={len(mins_df)})",
+)
+for item in [ax.xaxis.label, ax.yaxis.label]:
+    item.set_fontsize(20)
+ax.tick_params(axis="both", labelsize=18)
+
+
+# legend: phase colours (categorical) followed by the peak/min markers
+phase_handles = [
+    Line2D([], [], marker="o", linestyle="none", color=color, label=kind)
+    for kind, color in phase_to_color.items()
+]
+peak_min_handles, _ = ax.get_legend_handles_labels()
+ax.legend(
+    handles=phase_handles + peak_min_handles, loc="upper right", fontsize=18
+)
+ax.set_xlabel("time (min)")
+ax.set_ylabel(r"$\rho$ (BL)")
+# ax.set_title(
+#     f"Video: {video_str} ({n_frames / fps / 60:.1f} min); burrow ID{b_id}"
+# )
+fig.tight_layout()
+
+ax.spines[["top", "right"]].set_visible(False)
+# %%
+# %%%%%%%%%%%
+# plot trajectories in burrow coord syst, coloured by PHASE
+# (inbound red, outbound green, unassigned gray). Reuses sample_color and
+# phase_to_color from the distance-vs-time phase cell above.
+fig, ax_traj = plt.subplots(figsize=(10, 10))
+ax_traj.scatter(
+    x=df_trajs_b_id["x_burrow_bl"],
+    y=df_trajs_b_id["y_burrow_bl"],
+    c=sample_color,
+    s=2.5,
+    rasterized=True,
+)
+ax_traj.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
+
+# phase legend (categorical, so no colorbar)
+phase_handles = [
+    Line2D([], [], marker="o", linestyle="none", color=color, label=kind)
+    for kind, color in phase_to_color.items()
+]
+ax_traj.legend(handles=phase_handles, loc="upper right", fontsize=16)
+
+# scale bar spanning one body length. The axes are already in BL, so the bar
+# has length 1 in data units. The caption gives the exact px conversion (a
+# measured value) and the approximate physical size (~ / range, since the crab
+# body length is only estimated to 5-7 cm).
+scalebar = AnchoredSizeBar(
+    ax_traj.transData,
+    1,  # bar length in data units (= 1 BL)
+    f"1 BL = {df_trajs_b_id['bbox_diag'].median():.1f} px ≈ 5-7 cm",  # BL for this plot
+    loc="lower left",
+    pad=0.5,
+    color="k",
+    frameon=False,
+    size_vertical=0.15,
+    sep=4, # # gap (in points) between bar and caption
+    fontproperties=mpl.font_manager.FontProperties(size=16),
+)
+scalebar._box.align = "left"   # default "center"
+ax_traj.add_artist(scalebar)
+
+ax_traj.set_aspect("equal")
+ax_traj.invert_yaxis()  # match image coordinates (y down)
+ax_traj.set_xlabel("$x_{burrow}$ (BL)")
+ax_traj.set_ylabel("$y_{burrow}$ (BL)")
+ax_traj.set_title(f"burrow ID {b_id}")
+ax_traj.axis("off")
+
 # %%
