@@ -37,6 +37,13 @@ min_d_burrow_at_peak_bl = 1.0
 # distance to burrow does not decrease AND is already below this value (BL)
 max_d_burrow_at_min_bl = 0.25
 
+# phase colours: inbound red, outbound taupe gray, and (in the phase plots) the
+# samples that fall in no leg drawn in a distinct cool tone. The peak / min
+# markers reuse the inbound / outbound colours.
+color_inbound = "tab:red"
+color_outbound = "#aaa4a8"  # taupe gray
+color_unassigned = "#7FA0B8"  # soft slate blue
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Helper functions
@@ -1044,6 +1051,7 @@ fig.savefig(
 )
 
 
+
 # %%%%%%%%%%%%%%%
 # plot distance vs time
 fig, ax = plt.subplots(figsize=(10, 10))
@@ -1064,7 +1072,7 @@ ax.scatter(
     s=50,
     marker="v",
     facecolors="none",
-    edgecolors="r",
+    edgecolors=color_inbound,
     linewidths=2.5,
     zorder=6,
     label=f"peaks (n={len(peaks_df)})",
@@ -1076,7 +1084,7 @@ ax.scatter(
     s=50,
     marker="^",
     facecolors="none",
-    edgecolors="g",
+    edgecolors=color_outbound,  # matches outbound phase
     linewidths=2.5,
     zorder=6,
     label=f"inter-peak min (n={len(mins_df)})",
@@ -1104,6 +1112,128 @@ fig.savefig(
     pad_inches=0,  # no border around the tight bbox
 )
 
+# %%%%%%%%%%%%%%%
+# plot distance vs time, coloured by PHASE (inbound/outbound/unassigned)
+
+# assign each sample the phase of the leg it falls in (colours from the
+# parameters block): inbound / outbound, and samples outside every leg (before
+# the first / after the last inbound event) in the unassigned colour. Frames
+# are unique within a burrow, so a sample maps to at most one leg.
+phase_to_color = {"inbound": color_inbound, "outbound": color_outbound}
+sample_color = pd.Series(
+    color_unassigned, index=df_trajs_b_id.index
+)  # samples in no leg
+for _, leg in legs_one_burrow.iterrows():
+    in_leg = df_trajs_b_id["frame_in_video"].between(
+        leg["frame_start"], leg["frame_end"]
+    )
+    sample_color[in_leg] = phase_to_color[leg["kind"]]
+
+fig, ax = plt.subplots(figsize=(10, 10))
+ax.scatter(
+    x=df_trajs_b_id["frame_in_video"] / fps / 60,
+    y=df_trajs_b_id["d_burrow_bl"],
+    c=sample_color,
+    s=2.5,
+    rasterized=True,
+)
+# mark detected local peaks
+ax.scatter(
+    x=peaks_df["frame_in_video"] / fps / 60,
+    y=peaks_df["d_burrow_bl"],
+    s=50,
+    marker="v",
+    facecolors="none",
+    edgecolors=color_inbound,
+    linewidths=2.5,
+    zorder=6,
+    label=f"peaks (n={len(peaks_df)})",
+)
+# mark detected local minima
+ax.scatter(
+    x=mins_df["frame_in_video"] / fps / 60,
+    y=mins_df["d_burrow_bl"],
+    s=50,
+    marker="^",
+    facecolors="none",
+    edgecolors=color_outbound,  # matches outbound phase
+    linewidths=2.5,
+    zorder=6,
+    label=f"inter-peak min (n={len(mins_df)})",
+)
+for item in [ax.xaxis.label, ax.yaxis.label]:
+    item.set_fontsize(20)
+ax.tick_params(axis="both", labelsize=18)
+
+
+# legend: phase colours (categorical) followed by the peak/min markers
+phase_to_color_legend = phase_to_color.copy()
+phase_to_color_legend.update({"unassigned" : color_unassigned})
+phase_handles = [
+    Line2D([], [], marker="o", linestyle="none", color=color, label=kind)
+    for kind, color in phase_to_color_legend.items()
+]
+peak_min_handles, _ = ax.get_legend_handles_labels()
+ax.legend(
+    handles=phase_handles + peak_min_handles, loc="upper right", fontsize=18
+)
+ax.set_xlabel("time (min)")
+ax.set_ylabel(r"$\rho$ (BL)")
+# ax.set_title(
+#     f"Video: {video_str} ({n_frames / fps / 60:.1f} min); burrow ID{b_id}"
+# )
+fig.tight_layout()
+
+ax.spines[["top", "right"]].set_visible(False)
+
+# %%%%%%%%%%%
+# plot trajectories in burrow coord syst, coloured by PHASE
+# (inbound / outbound / unassigned colours from the parameters block). Reuses
+# sample_color and phase_to_color from the distance-vs-time phase cell above.
+fig, ax_traj = plt.subplots(figsize=(10, 10))
+ax_traj.scatter(
+    x=df_trajs_b_id["x_burrow_bl"],
+    y=df_trajs_b_id["y_burrow_bl"],
+    c=sample_color,
+    s=2.5,
+    rasterized=True,
+)
+ax_traj.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
+
+# phase legend (categorical, so no colorbar)
+phase_handles = [
+    Line2D([], [], marker="o", linestyle="none", color=color, label=kind)
+    for kind, color in phase_to_color_legend.items()
+]
+ax_traj.legend(handles=phase_handles, loc="upper right", fontsize=16)
+
+# scale bar spanning one body length. The axes are already in BL, so the bar
+# has length 1 in data units. The caption gives the exact px conversion (a
+# measured value) and the approximate physical size (~ / range, since the crab
+# body length is only estimated to 5-7 cm).
+scalebar = AnchoredSizeBar(
+    ax_traj.transData,
+    1,  # bar length in data units (= 1 BL)
+    f"1 BL = {df_trajs_b_id['bbox_diag'].median():.1f} px ≈ 5-7 cm",  # BL for this plot
+    loc="lower left",
+    pad=0.5,
+    color="k",
+    frameon=False,
+    size_vertical=0.15,
+    sep=4, # # gap (in points) between bar and caption
+    fontproperties=mpl.font_manager.FontProperties(size=16),
+)
+scalebar._box.align = "left"   # default "center"
+ax_traj.add_artist(scalebar)
+
+ax_traj.set_aspect("equal")
+ax_traj.invert_yaxis()  # match image coordinates (y down)
+ax_traj.set_xlabel("$x_{burrow}$ (BL)")
+ax_traj.set_ylabel("$y_{burrow}$ (BL)")
+ax_traj.set_title(f"burrow ID {b_id}")
+ax_traj.axis("off")
+
+# %%
 
 # %%%%%%%%%%%%%%%
 # plot angle to burrow (theta) at each peak, over time.
@@ -1130,7 +1260,7 @@ ax_theta.scatter(
     s=40,
     marker="v",
     facecolors="none",
-    edgecolors="r",
+    edgecolors=color_inbound,
     linewidths=2,
     zorder=6,
     label=f"peaks (n={len(peaks_df)})",
@@ -1159,7 +1289,7 @@ fig.savefig(
 # take abs value and express in body lengths/s
 
 labels = ["inbound\n(peak → min)", "outbound\n(min → peak)"]
-colors = ["tab:red", "tab:green"]
+colors = [color_inbound, color_outbound]
 rng = np.random.default_rng(0)
 
 
@@ -1275,121 +1405,5 @@ fig.savefig(
     pad_inches=0,  # no border around the tight bbox
 )
 # %%
-# %%%%%%%%%%%%%%%
-# plot distance vs time, coloured by PHASE (inbound/outbound/unassigned)
-
-# assign each sample the phase of the leg it falls in: inbound red, outbound
-# green, and samples outside every leg (before the first / after the last
-# inbound event) light gray. Frames are unique within a burrow, so a sample
-# maps to at most one leg.
-phase_to_color = {"inbound": "tab:red", "outbound": "tab:green"}
-sample_color = pd.Series("0.8", index=df_trajs_b_id.index)  # gray = unassigned
-for _, leg in legs_one_burrow.iterrows():
-    in_leg = df_trajs_b_id["frame_in_video"].between(
-        leg["frame_start"], leg["frame_end"]
-    )
-    sample_color[in_leg] = phase_to_color[leg["kind"]]
-
-fig, ax = plt.subplots(figsize=(10, 10))
-ax.scatter(
-    x=df_trajs_b_id["frame_in_video"] / fps / 60,
-    y=df_trajs_b_id["d_burrow_bl"],
-    c=sample_color,
-    s=2.5,
-    rasterized=True,
-)
-# mark detected local peaks
-ax.scatter(
-    x=peaks_df["frame_in_video"] / fps / 60,
-    y=peaks_df["d_burrow_bl"],
-    s=50,
-    marker="v",
-    facecolors="none",
-    edgecolors="r",
-    linewidths=2.5,
-    zorder=6,
-    label=f"peaks (n={len(peaks_df)})",
-)
-# mark detected local minima
-ax.scatter(
-    x=mins_df["frame_in_video"] / fps / 60,
-    y=mins_df["d_burrow_bl"],
-    s=50,
-    marker="^",
-    facecolors="none",
-    edgecolors="g",
-    linewidths=2.5,
-    zorder=6,
-    label=f"inter-peak min (n={len(mins_df)})",
-)
-for item in [ax.xaxis.label, ax.yaxis.label]:
-    item.set_fontsize(20)
-ax.tick_params(axis="both", labelsize=18)
-
-
-# legend: phase colours (categorical) followed by the peak/min markers
-phase_handles = [
-    Line2D([], [], marker="o", linestyle="none", color=color, label=kind)
-    for kind, color in phase_to_color.items()
-]
-peak_min_handles, _ = ax.get_legend_handles_labels()
-ax.legend(
-    handles=phase_handles + peak_min_handles, loc="upper right", fontsize=18
-)
-ax.set_xlabel("time (min)")
-ax.set_ylabel(r"$\rho$ (BL)")
-# ax.set_title(
-#     f"Video: {video_str} ({n_frames / fps / 60:.1f} min); burrow ID{b_id}"
-# )
-fig.tight_layout()
-
-ax.spines[["top", "right"]].set_visible(False)
-# %%
-# %%%%%%%%%%%
-# plot trajectories in burrow coord syst, coloured by PHASE
-# (inbound red, outbound green, unassigned gray). Reuses sample_color and
-# phase_to_color from the distance-vs-time phase cell above.
-fig, ax_traj = plt.subplots(figsize=(10, 10))
-ax_traj.scatter(
-    x=df_trajs_b_id["x_burrow_bl"],
-    y=df_trajs_b_id["y_burrow_bl"],
-    c=sample_color,
-    s=2.5,
-    rasterized=True,
-)
-ax_traj.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
-
-# phase legend (categorical, so no colorbar)
-phase_handles = [
-    Line2D([], [], marker="o", linestyle="none", color=color, label=kind)
-    for kind, color in phase_to_color.items()
-]
-ax_traj.legend(handles=phase_handles, loc="upper right", fontsize=16)
-
-# scale bar spanning one body length. The axes are already in BL, so the bar
-# has length 1 in data units. The caption gives the exact px conversion (a
-# measured value) and the approximate physical size (~ / range, since the crab
-# body length is only estimated to 5-7 cm).
-scalebar = AnchoredSizeBar(
-    ax_traj.transData,
-    1,  # bar length in data units (= 1 BL)
-    f"1 BL = {df_trajs_b_id['bbox_diag'].median():.1f} px ≈ 5-7 cm",  # BL for this plot
-    loc="lower left",
-    pad=0.5,
-    color="k",
-    frameon=False,
-    size_vertical=0.15,
-    sep=4, # # gap (in points) between bar and caption
-    fontproperties=mpl.font_manager.FontProperties(size=16),
-)
-scalebar._box.align = "left"   # default "center"
-ax_traj.add_artist(scalebar)
-
-ax_traj.set_aspect("equal")
-ax_traj.invert_yaxis()  # match image coordinates (y down)
-ax_traj.set_xlabel("$x_{burrow}$ (BL)")
-ax_traj.set_ylabel("$y_{burrow}$ (BL)")
-ax_traj.set_title(f"burrow ID {b_id}")
-ax_traj.axis("off")
 
 # %%
