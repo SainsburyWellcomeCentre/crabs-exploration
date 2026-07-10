@@ -21,7 +21,7 @@ xr.set_options(
 # %% %%%%%%%%%%%%%%
 # Input data
 data_dir = Path().home() / "swc" / "project_crabs" / "data" / "CrabTracks"
-crabs_zarr_dataset = data_dir / "CrabTracks-slurm2478780-2478861-2489356.zarr"
+crabs_zarr_dataset = data_dir / "CrabTracks-slurm3012633.zarr"
 data_vars_order = [
     "position",
     "shape",
