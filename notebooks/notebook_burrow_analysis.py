@@ -74,7 +74,9 @@ raster_plots_dir = Path(
     "/Users/sofia/arc/project_Zoo_crabs/crabs-exploration/burrow_trajectory_rasters"
 )
 
-output_figs_dir = Path("/Users/sofia/arc/project_Zoo_crabs/ICN poster/figures")
+output_figs_dir = Path(
+    "/Users/sofia/arc/project_Zoo_crabs/ICN poster/figures/Fig-case-study-1"
+)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -816,21 +818,11 @@ ax.set_ylabel("$y_{burrow}$ (BL)")
 
 # %%
 fig.savefig(
-    output_figs_dir /"Fig-case-study-1"/ f"{video_str}_polar_coords_editable_txt.svg",
+    output_figs_dir / f"{video_str}_polar_coords.svg",
     dpi=300,  # resolution of the rasterized scatter layer only
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
-
-
-# %%%%%%%%%%%%%%
-# Compute histogram of distance to burrow centroid, normalised
-
-# fig, ax = plt.subplots()
-# ax.hist(df_linked_filtered["d_burrow_bl"])
-# ax.set_xlabel("distance to burrow (BL)")
-# ax.set_ylabel("detections")  # --- can I express this as time...?
-
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
 # Polar histogram of angles relative to x-axis in BCS
@@ -953,7 +945,7 @@ ax.legend(
 
 # %%
 fig.savefig(
-    output_figs_dir /"Fig-case-study-1" / f"{video_str}_theta_histogram_editable_txt.svg",
+    output_figs_dir / f"{video_str}_theta_histogram.svg",
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
@@ -1213,6 +1205,7 @@ sc = ax_traj.scatter(
     c=group["frame_in_video"] / fps / 60,
     s=2.5,
     cmap="viridis",
+    rasterized=True,
 )
 ax_traj.scatter(x=0, y=0, s=30, marker="x", color="r", zorder=5)
 cbar = fig.colorbar(sc, ax=ax_traj, location="left")
@@ -1247,8 +1240,8 @@ ax_traj.axis("off")
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig5.png",
-    # dpi=300,  # resolution of the rasterized scatter/image
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}.svg",
+    dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
@@ -1265,6 +1258,7 @@ ax.scatter(
     # c=cmap(0), #group["traj_clip_id"],
     s=2.5,
     # cmap=cmap,
+    rasterized=True,
 )
 # mark detected local peaks
 ax.scatter(
@@ -1307,7 +1301,7 @@ ax.spines[["top", "right"]].set_visible(False)
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig4_2.png",
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_rho_vs_time.svg",
     dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
@@ -1345,7 +1339,7 @@ ax_theta.scatter(
     label=f"peaks (n={len(peaks)})",
 )
 ax_theta.set_yticks(np.arange(0, 316, 45))
-ax_theta.set_ylim(-45, 315)  # (0, 315)
+# ax_theta.set_ylim(0, 315)  # (0, 315)
 ax_theta.set_xlabel("time (min)")
 ax_theta.set_ylabel(r"$\theta$ ($\degree$)")
 ax_theta.spines[["top", "right"]].set_visible(False)
@@ -1357,8 +1351,8 @@ for item in [ax_theta.xaxis.label, ax_theta.yaxis.label]:
 ax_theta.tick_params(axis="both", labelsize=16)
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig6_2.png",
-    dpi=300,  # resolution of the rasterized scatter/image
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_theta_peak_vs_time.svg",
+    # dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
@@ -1401,7 +1395,7 @@ ax_rate.set_xticks([0, 1])
 ax_rate.set_xticklabels(labels)
 ax_rate.set_xlim(-0.5, 1.5)
 ax_rate.set_ylim(bottom=0)
-ax_rate.set_ylabel(r"$|d\rho/dt|$ (BL/s)")
+ax_rate.set_ylabel(r"$|\overset{\bullet}{\rho}|$ (BL/s)")
 
 fig.tight_layout()
 
@@ -1414,8 +1408,8 @@ ax_rate.spines[["top", "right"]].set_visible(False)
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig7.png",
-    dpi=300,  # resolution of the rasterized scatter/image
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_abs_rho_dot_vs_time.svg",
+    # dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
@@ -1478,8 +1472,8 @@ ax_tort.legend(
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_fig8.png",
-    dpi=300,  # resolution of the rasterized scatter/image
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_tortuosity_vs_time.svg",
+    # dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
