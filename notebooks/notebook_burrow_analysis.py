@@ -1172,7 +1172,8 @@ sample_color = pd.Series(
 )  # samples in no leg
 for _, leg in legs_one_burrow.iterrows():
     in_leg = df_trajs_b_id["frame_in_video"].between(
-        leg["frame_start"], leg["frame_end"]  # inclusive on both ends
+        leg["frame_start"],
+        leg["frame_end"],  # inclusive on both ends
     )
     sample_color[in_leg] = phase_to_color[leg["kind"]]
 
@@ -1496,57 +1497,105 @@ fig.savefig(
 
 # Plot a pair of consecutive outbound/inbound
 
+plot_inbound_to_outbound = False
 
-leg_idx = 13
-plot_inbound_to_outbound = True
+# prepare burrow contour
+# The mask lives in image (pixel) space, but these axes are in the burrow
+# coordinate system and in body lengths, so transform the pixel grid the same
+# way the trajectory samples were: subtract the burrow centroid and divide by
+# the burrow's body length. Crop to the burrow's bounding box first so we don't
+# build a full-image meshgrid.
+burrow_cx = df_trajs_b_id["burrow_centroid_x"].iloc[0]
+burrow_cy = df_trajs_b_id["burrow_centroid_y"].iloc[0]
+burrow_bl = df_trajs_b_id["bbox_diag"].median()
+
+mask_b_id = burrow_id_mask == b_id
+mask_rows, mask_cols = np.where(mask_b_id)
+r0, r1 = mask_rows.min(), mask_rows.max()
+c0, c1 = mask_cols.min(), mask_cols.max()
+mask_b_id_crop = mask_b_id[r0 : r1 + 1, c0 : c1 + 1]
+
+# pad the crop with a background border: contour cannot close a level line that
+# runs into the edge of its data domain, and a tight bounding box has the mask
+# touching all four edges (which leaves the contour open at the burrow's
+# extremes). The padding surrounds the mask with zeros so the 0.5 level closes.
+pad = 1
+mask_b_id_crop = np.pad(mask_b_id_crop, pad)
+
+contour_x_bl = (np.arange(c0 - pad, c1 + 1 + pad) - burrow_cx) / burrow_bl
+contour_y_bl = (np.arange(r0 - pad, r1 + 1 + pad) - burrow_cy) / burrow_bl
 
 
-if plot_inbound_to_outbound:
-    inbound_start = inbound_legs_df.iloc[leg_idx].frame_start
-    # inbound_end = inbound_legs_df.iloc[leg_idx].frame_end
-    # outbound_start = outbound_legs_df.iloc[leg_idx].frame_start
-    outbound_end = outbound_legs_df.iloc[leg_idx].frame_end
+for bound_idx in np.arange(inbound_legs_df.shape[0]):
+
+    # plot an inbound+outbound pair
+    if plot_inbound_to_outbound:
+        # start = inbound_start
+        start = inbound_legs_df.iloc[bound_idx].frame_start
+        # end = outbound end
+        end = outbound_legs_df.iloc[bound_idx].frame_end
+
+        title_str = "inbound -> outbound"
+
+    # plot an outbound+inbound pair
+    # (outbound leg i is followed by inbound leg i+1)
+    else:
+        # start = outbound_start
+        start = outbound_legs_df.iloc[bound_idx].frame_start
+
+        # end = inbound_end. The last outbound leg has no inbound leg after it
+        # (it runs to the recording edge), so there we stop at its own frame_end,
+        # which is the last recorded frame for this burrow.
+        if bound_idx + 1 < len(inbound_legs_df):
+            end = inbound_legs_df.iloc[bound_idx + 1].frame_end
+        else:
+            end = outbound_legs_df.iloc[bound_idx].frame_end
+
+        title_str = "outbound -> inbound"
 
     # legs are closed windows [frame_start, frame_end], so + 1 to include the
-    # last frame of the outbound leg
-    slc_traj = df_trajs_b_id.frame_in_video.isin(
-        np.arange(inbound_start, outbound_end + 1)
+    # last frame of the second leg of the pair
+    slc_traj = df_trajs_b_id.frame_in_video.isin(np.arange(start, end + 1))
+
+    fig, axs = plt.subplots(1, 2, figsize=(10, 10))
+    axs[0].scatter(
+        x=df_trajs_b_id["x_burrow_bl"][slc_traj],
+        y=df_trajs_b_id["y_burrow_bl"][slc_traj],
+        c=sample_color_plot[slc_traj],
+        s=2.5,
+        rasterized=True,
     )
-    # slc_inbound_traj = df_trajs_b_id.frame_in_video.isin(np.arange(inbound_start, inbound_end + 1))
-    # slc_outbound_traj = df_trajs_b_id.frame_in_video.isin(np.arange(outbound_start, outbound_end + 1))
-else:
-    
 
-fig, axs = plt.subplots(1, 2, figsize=(10, 10))
-axs[0].scatter(
-    x=df_trajs_b_id["x_burrow_bl"][slc_traj],
-    y=df_trajs_b_id["y_burrow_bl"][slc_traj],
-    c=sample_color_plot[slc_traj],
-    s=2.5,
-    rasterized=True,
-)
-
-sc = axs[1].scatter(
-    x=df_trajs_b_id["x_burrow_bl"][slc_traj],
-    y=df_trajs_b_id["y_burrow_bl"][slc_traj],
-    c=df_trajs_b_id["frame_in_video"][slc_traj],
-    s=2.5,
-    rasterized=True,
-)
+    sc = axs[1].scatter(
+        x=df_trajs_b_id["x_burrow_bl"][slc_traj],
+        y=df_trajs_b_id["y_burrow_bl"][slc_traj],
+        c=df_trajs_b_id["frame_in_video"][slc_traj],
+        s=2.5,
+        rasterized=True,
+    )
 
 
-for ax in axs:
-    ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
-    ax.set_aspect("equal")
-    ax.invert_yaxis()  # match image coordinates (y down)
-    ax.set_xlabel("$x_{burrow}$ (BL)")
-    ax.set_ylabel("$y_{burrow}$ (BL)")
-    ax.set_title(f"burrow ID {b_id}")
-    # ax.axis("off")
-    ax.set_title(f"Leg idx {leg_idx}")
 
-cbar = fig.colorbar(sc, ax=axs[1], location="right")
-# cbar.set_label("time (min)", fontsize=18)
-# cbar.ax.tick_params(labelsize=16)
+    for ax in axs:
+        ax.contour(
+            contour_x_bl,
+            contour_y_bl,
+            mask_b_id_crop,
+            levels=[0.5],
+            colors="k",
+            linewidths=1,
+        )
+        ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
+        ax.set_aspect("equal")
+        ax.invert_yaxis()  # match image coordinates (y down)
+        ax.set_xlabel("$x_{burrow}$ (BL)")
+        ax.set_ylabel("$y_{burrow}$ (BL)")
+        ax.set_title(f"burrow ID {b_id}")
+        # ax.axis("off")
+        ax.set_title(f"Leg idx {bound_idx} - {title_str}")
+
+    cbar = fig.colorbar(sc, ax=axs[1], location="right")
+    # cbar.set_label("time (min)", fontsize=18)
+    # cbar.ax.tick_params(labelsize=16)
 
 # %%
