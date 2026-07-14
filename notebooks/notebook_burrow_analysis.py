@@ -12,7 +12,7 @@ from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 from scipy.ndimage import center_of_mass
 
 # %%
-%matplotlib qt
+# %matplotlib qt
 # qt / widget
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -39,8 +39,8 @@ max_d_burrow_at_min_bl = 0.25
 # samples that fall in no leg drawn in a distinct cool tone. The peak / min
 # markers reuse the inbound / outbound colours.
 color_inbound = "tab:red"
-color_outbound = "#b6e2c8ff" 
-color_outbound_traj_plot = "#c1ddcd"  
+color_outbound = "#b6e2c8ff"
+color_outbound_traj_plot = "#c1ddcd"
 color_unassigned = "#7FA0B8"  # soft slate blue
 
 
@@ -447,7 +447,9 @@ fps = float(ds_video.fps)
 # NOTE: within a burrow, frame_in_video is unique (the clash-resolution filter
 # guarantees no two kept trajectories share a (burrow, frame) slot), so each
 # peak/min can be marked unambiguously on its own sample row.
-df_linked_filtered["is_peak"] = False # all peaks, also those not followed by min
+df_linked_filtered["is_peak"] = (
+    False  # all peaks, also those not followed by min
+)
 df_linked_filtered["is_min"] = False
 
 n_frames_diff_wrt_prev_peak = fps * min_seconds_to_prev_peak
@@ -466,7 +468,9 @@ for _, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
 
         is_consec = np.diff(frames_arr) == 1
         is_drop = np.diff(d_arr) <= -min_peak_drop_bl
-        is_far = d_arr[:-1] >= min_d_burrow_at_peak_bl # height at start of drop
+        is_far = (
+            d_arr[:-1] >= min_d_burrow_at_peak_bl
+        )  # height at start of drop
         candidate_peak = is_consec & is_drop & is_far
 
         # frame number for each candidate_peak
@@ -517,9 +521,12 @@ for _, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
 # Compute dataframe of inbound/outbound trajectories and metrics
 # Build one row per inbound or outbound leg, holding its rho_dot (rate of
 # change of distance to burrow) and its path tortuosity. Inbound legs are
-# peak->min pairs; outbound legs are the gaps between consecutive inbound legs
-# (min->peak), so together they tile the time between the first and last
-# inbound event, with unpaired peaks/mins absorbed into the outbound legs.
+# peak->min pairs; each one is followed by exactly one outbound leg, running
+# from its min either to the next inbound leg's peak or (for the last one) to
+# the recording edge. So there are always as many outbound legs as inbound
+# legs, they tile the time from the first peak to the end of the recording, and
+# unpaired peaks/mins are absorbed into the outbound legs. Only the span before
+# the first peak is left unassigned.
 #
 # This dataframe construction relies on frame uniqueness within a burrow.
 #
@@ -556,13 +563,19 @@ for b_id, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
 
     # outbound legs: the time between consecutive inbound legs, from the min
     # ending one inbound leg to the peak starting the next. Any skipped
-    # peaks/mins in between are absorbed into a single outbound leg; the spans
-    # before the first / after the last inbound leg (bounded by the recording
-    # edge, not an event) are excluded.
+    # peaks/mins in between are absorbed into a single outbound leg. The span
+    # after the last inbound leg is also outbound, bounded
+    # by the recording edge rather than by an event. A burrow with no inbound
+    # leg gets no legs at all (rather than one whole-recording outbound leg).
     outbound_spans = [
         (inbound_spans[i][1], inbound_spans[i + 1][0])
         for i in range(len(inbound_spans) - 1)
     ]
+    if inbound_spans:
+        outbound_spans = (
+            outbound_spans
+            + [(inbound_spans[-1][1], frames[-1])]  # post last inbound
+        )
 
     for kind, spans in [
         ("inbound", inbound_spans),
@@ -726,7 +739,7 @@ fig.subplots_adjust(left=0, right=1, bottom=0, top=1)  # kill figure padding
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
 # Set text in axes as editable
-plt.rcParams["svg.fonttype"] = "none" 
+plt.rcParams["svg.fonttype"] = "none"
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Plot all trajectories in burrow coordinate system
@@ -821,10 +834,10 @@ scalebar = AnchoredSizeBar(
     color="k",
     frameon=False,
     size_vertical=0.15,
-    sep=4, # # gap (in points) between bar and caption
+    sep=4,  # # gap (in points) between bar and caption
     fontproperties=mpl.font_manager.FontProperties(size=16),
 )
-scalebar._box.align = "left"   # or "right"; default "center"
+scalebar._box.align = "left"  # or "right"; default "center"
 ax.add_artist(scalebar)
 
 ax.set_aspect("equal")
@@ -1025,10 +1038,10 @@ scalebar = AnchoredSizeBar(
     color="k",
     frameon=False,
     size_vertical=0.15,
-    sep=4, # # gap (in points) between bar and caption
+    sep=4,  # # gap (in points) between bar and caption
     fontproperties=mpl.font_manager.FontProperties(size=16),
 )
-scalebar._box.align = "left"   # default "center"
+scalebar._box.align = "left"  # default "center"
 ax_traj.add_artist(scalebar)
 
 ax_traj.set_aspect("equal")
@@ -1045,7 +1058,6 @@ fig.savefig(
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
-
 
 
 # %%%%%%%%%%%%%%%
@@ -1109,13 +1121,13 @@ fig.savefig(
 )
 
 # %%%%%%%%%%%%%%%
-# plot distance vs time, coloured by PHASE 
+# plot distance vs time, coloured by PHASE
 # (inbound/outbound/unassigned)
 
 # assign each sample the phase of the leg it falls in (colours from the
-# parameters block): inbound / outbound, and samples outside every leg (before
-# the first / after the last inbound event) in the unassigned colour. Frames
-# are unique within a burrow, so a sample maps to at most one leg.
+# parameters block): inbound / outbound, and samples outside every leg (i.e.
+# before the first peak, the only unassigned span) in the unassigned colour.
+# Frames are unique within a burrow, so a sample maps to at most one leg.
 phase_to_color = {"inbound": color_inbound, "outbound": color_outbound}
 sample_color = pd.Series(
     color_unassigned, index=df_trajs_b_id.index
@@ -1138,7 +1150,7 @@ fig, ax = plt.subplots(figsize=(10, 10))
 ax.scatter(
     x=df_trajs_b_id["frame_in_video"] / fps / 60,
     y=df_trajs_b_id["d_burrow_bl"],
-    c=sample_color_inbound, # sample_color
+    c=sample_color_inbound,  # sample_color
     s=2.5,
     rasterized=True,
 )
@@ -1174,7 +1186,7 @@ ax.tick_params(axis="both", labelsize=18)
 # legend: the inbound phase colour followed by the peak/min markers
 # (phase_to_color_legend is kept for the trajectory-by-phase plot below)
 phase_to_color_legend = phase_to_color.copy()
-phase_to_color_legend.update({"unassigned" : color_unassigned})
+phase_to_color_legend.update({"unassigned": color_unassigned})
 inbound_handle = Line2D(
     [], [], marker="o", linestyle="none", color=color_inbound, label="inbound"
 )
@@ -1193,7 +1205,8 @@ ax.spines[["top", "right"]].set_visible(False)
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_rho_vs_time_outbound_red.svg",
+    output_figs_dir
+    / f"{video_str}_burrow_ID{b_id}_rho_vs_time_outbound_red.svg",
     dpi=300,  # resolution of the rasterized scatter/image
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
@@ -1205,8 +1218,16 @@ fig.savefig(
 # (inbound / outbound / unassigned colours from the parameters block). Reuses
 # sample_color and phase_to_color from the distance-vs-time phase cell above.
 
-# for this plot only: use a softer outbound tone
-sample_color_plot = sample_color.replace(color_outbound, color_outbound_traj_plot)
+# for this plot only: 
+# - use a softer outbound tone and 
+# - hide unassigned samples
+# (8-digit hex is RGBA; alpha 00 makes them fully transparent)
+sample_color_plot = sample_color.replace(
+    {
+        color_outbound: color_outbound_traj_plot,
+        color_unassigned: "#00000000",
+    }
+)
 
 
 fig, ax_traj = plt.subplots(figsize=(10, 10))
@@ -1219,10 +1240,13 @@ ax_traj.scatter(
 )
 ax_traj.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
 
-# phase legend (categorical, so no colorbar)
+# phase legend (categorical, so no colorbar); 
+# NOTE: unassigned samples are
+# transparent in this plot, so they get no legend entry
 phase_handles = [
     Line2D([], [], marker="o", linestyle="none", color=color, label=kind)
     for kind, color in phase_to_color_legend.items()
+    if kind != "unassigned"
 ]
 ax_traj.legend(handles=phase_handles, loc="upper right", fontsize=16)
 
@@ -1239,10 +1263,10 @@ scalebar = AnchoredSizeBar(
     color="k",
     frameon=False,
     size_vertical=0.15,
-    sep=4, # # gap (in points) between bar and caption
+    sep=4,  # # gap (in points) between bar and caption
     fontproperties=mpl.font_manager.FontProperties(size=16),
 )
-scalebar._box.align = "left"   # default "center"
+scalebar._box.align = "left"  # default "center"
 ax_traj.add_artist(scalebar)
 
 ax_traj.set_aspect("equal")
@@ -1254,7 +1278,7 @@ ax_traj.axis("off")
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_colbyphase.svg",
+    output_figs_dir / f"{video_str}_burrow_ID{b_id}_colbyphase_no_unassigned.svg",
     dpi=300,  # resolution of the rasterized scatter layer only
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
@@ -1313,15 +1337,15 @@ fig.savefig(
 # plot speed of change of d_burrow on inbound vs outbound legs.
 # take abs value and express in body lengths/s
 
-labels = ["inbound\n(peak → min)", "outbound\n(min → peak)"]
-colors = [color_inbound, color_outbound]
+labels = ["outbound\n(min → peak)", "inbound\n(peak → min)"]
+colors = [color_outbound, color_inbound]
 rng = np.random.default_rng(0)
 
 
 fig, ax_rate = plt.subplots(figsize=(6, 4.25))
 rho_dot_bl_per_s = [
-    np.abs(inbound_legs_df["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
     np.abs(outbound_legs_df["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
+    np.abs(inbound_legs_df["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
 ]
 for xpos, (r, color) in enumerate(zip(rho_dot_bl_per_s, colors, strict=True)):
     ax_rate.scatter(
@@ -1372,8 +1396,8 @@ fig.savefig(
 # 1 = perfectly straight.
 fig, ax_tort = plt.subplots(figsize=(6, 4.25))
 torts = [
-    inbound_legs_df["tortuosity"].dropna().to_numpy(),
     outbound_legs_df["tortuosity"].dropna().to_numpy(),
+    inbound_legs_df["tortuosity"].dropna().to_numpy(),
 ]
 for xpos, (t, color) in enumerate(zip(torts, colors, strict=True)):
     ax_tort.scatter(
@@ -1430,5 +1454,51 @@ fig.savefig(
     pad_inches=0,  # no border around the tight bbox
 )
 # %%
+
+# Plot a pair of consecutive outbound/inbound
+
+
+leg_idx = 14
+inbound_start = inbound_legs_df.iloc[leg_idx].frame_start
+inbound_end = inbound_legs_df.iloc[leg_idx].frame_end
+
+outbound_start = outbound_legs_df.iloc[leg_idx].frame_start
+outbound_end = outbound_legs_df.iloc[leg_idx].frame_end
+
+slc_traj = df_trajs_b_id.frame_in_video.isin(np.arange(inbound_start, outbound_end +1))
+# slc_inbound_traj = df_trajs_b_id.frame_in_video.isin(np.arange(inbound_start, inbound_end))
+# slc_outbound_traj = df_trajs_b_id.frame_in_video.isin(np.arange(outbound_start, outbound_end))
+
+fig, axs = plt.subplots(1, 2, figsize=(10, 10))
+axs[0].scatter(
+    x=df_trajs_b_id["x_burrow_bl"][slc_traj],
+    y=df_trajs_b_id["y_burrow_bl"][slc_traj],
+    c=sample_color_plot[slc_traj],
+    s=2.5,
+    rasterized=True,
+)
+
+sc = axs[1].scatter(
+    x=df_trajs_b_id["x_burrow_bl"][slc_traj],
+    y=df_trajs_b_id["y_burrow_bl"][slc_traj],
+    c=df_trajs_b_id["frame_in_video"][slc_traj],
+    s=2.5,
+    rasterized=True,
+)
+
+
+for ax in axs:
+    ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
+    ax.set_aspect("equal")
+    ax.invert_yaxis()  # match image coordinates (y down)
+    ax.set_xlabel("$x_{burrow}$ (BL)")
+    ax.set_ylabel("$y_{burrow}$ (BL)")
+    ax.set_title(f"burrow ID {b_id}")
+    # ax.axis("off")
+    ax.set_title(f"Leg idx {leg_idx}")
+
+cbar = fig.colorbar(sc, ax=axs[1], location="right")
+# cbar.set_label("time (min)", fontsize=18)
+# cbar.ax.tick_params(labelsize=16)
 
 # %%
