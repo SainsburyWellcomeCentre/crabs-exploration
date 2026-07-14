@@ -528,6 +528,29 @@ for _, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
 # unpaired peaks/mins are absorbed into the outbound legs. Only the span before
 # the first peak is left unassigned.
 #
+# CONVENTION: legs OWN a non-overlapping, closed window of frames
+# [frame_start, frame_end] (both ends included). frame_start is the event that
+# starts the leg (peak for inbound, min for outbound). frame_end is the frame
+# just before the next leg starts: min - 1 for inbound, next peak - 1 for
+# outbound, and the last recorded frame for the final outbound leg (which has
+# no next leg). So inbound runs from its peak to just before its min, outbound
+# from its min to just before the next peak, and every sample belongs to at
+# most one leg. Anything that assigns samples to legs (the phase colouring and
+# the leg plots below) must use these bounds.
+#
+# The METRICS below deliberately use a wider window than the leg owns: they
+# also read the closing event sample (the next leg's frame_start), i.e. the
+# closed window [frame_start, frame_end + 1]. This is because both metrics are
+# defined over *steps between samples*, not over samples:
+# - rho_dot needs the step into the closing event (for inbound, the final
+#   approach step into the min). Note the steps still tile exactly and are
+#   never double counted: the inbound leg's last step is (min - 1 -> min) and
+#   the following outbound leg's first step is (min -> min + 1).
+# - tortuosity needs the closing event as its endpoint, so that the inbound
+#   beeline is the true peak <-> min displacement.
+# The final outbound leg has no closing event, so its metric window just ends
+# at the last recorded frame.
+#
 # This dataframe construction relies on frame uniqueness within a burrow.
 #
 # - rho_dot: mean per-frame change in distance to burrow (body lengths/frame),
@@ -574,17 +597,28 @@ for b_id, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
     if inbound_spans:
         outbound_spans = (
             outbound_spans
-            + [(inbound_spans[-1][1], frames[-1])]  # post last inbound
+            # post last inbound: no next leg, so stand in one past the last
+            # recorded frame; this makes the leg own up to the last recorded
+            # frame and its metric window stop there too
+            + [(inbound_spans[-1][1], frames[-1] + 1)]
         )
 
     for kind, spans in [
         ("inbound", inbound_spans),
         ("outbound", outbound_spans),
     ]:
-        for f0, f1 in spans:
-            # compute samples inside the leg's frame window, shared by both
-            # metrics
-            mask_frames_in_leg = (frames >= f0) & (frames <= f1)
+        for f0, next_leg_start in spans:
+            # spans hold (own start event, next leg's start event); the leg
+            # OWNS the closed frame window [f0, f1], ending just before the
+            # next leg starts (zero overlap between legs)
+            f1 = next_leg_start - 1
+
+            # the METRICS window extends one event further, up to and
+            # including the closing event, so that step-based metrics keep the
+            # step into it (see the convention note above). For the final
+            # outbound leg next_leg_start is one past the last recorded frame,
+            # so this adds nothing.
+            mask_frames_in_leg = (frames >= f0) & (frames <= next_leg_start)
             frames_leg = frames[mask_frames_in_leg]
             d_leg = d_bl[mask_frames_in_leg]
             xs, ys = xs_all[mask_frames_in_leg], ys_all[mask_frames_in_leg]
@@ -600,11 +634,12 @@ for b_id, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
                 else np.nan
             )
 
-            # tortuosity: path length/beeline over the whole leg. The beeline
-            # is the straight path between the leg's endpoints, so the path
-            # length computation must span the same endpoints. Gaps in the
-            # actual path are bridged by line segments between known samples
-            # (a large gap adds one long straight segment).
+            # tortuosity: path length/beeline over the whole leg, endpoints
+            # included (for inbound: peak <-> min). The beeline is the straight
+            # path between those endpoints, so the path length computation must
+            # span the same endpoints. Gaps in the actual path are bridged by
+            # line segments between known samples (a large gap adds one long
+            # straight segment).
             if xs.size >= 2:
                 path_len = np.hypot(np.diff(xs), np.diff(ys)).sum()
                 beeline = np.hypot(xs[-1] - xs[0], ys[-1] - ys[0])
@@ -1000,13 +1035,15 @@ legs_one_burrow = legs_df[legs_df["burrow_id"] == b_id]
 inbound_legs_df = legs_one_burrow[legs_one_burrow["kind"] == "inbound"]
 outbound_legs_df = legs_one_burrow[legs_one_burrow["kind"] == "outbound"]
 
-# get
+# get the peak/min event samples: each leg's frame_start is its starting
+# event (peak for inbound, min for outbound); an inbound leg's frame_end is
+# the min - 1, NOT the min itself (closed-window convention).
 # (Frames are unique within a burrow, so we can select those samples by frame)
 peaks_df = df_trajs_b_id[
     df_trajs_b_id["frame_in_video"].isin(inbound_legs_df["frame_start"])
 ]
 mins_df = df_trajs_b_id[
-    df_trajs_b_id["frame_in_video"].isin(inbound_legs_df["frame_end"])
+    df_trajs_b_id["frame_in_video"].isin(outbound_legs_df["frame_start"])
 ]
 
 # %%%%%%%%%%%
@@ -1127,14 +1164,15 @@ fig.savefig(
 # assign each sample the phase of the leg it falls in (colours from the
 # parameters block): inbound / outbound, and samples outside every leg (i.e.
 # before the first peak, the only unassigned span) in the unassigned colour.
-# Frames are unique within a burrow, so a sample maps to at most one leg.
+# Legs are non-overlapping closed windows [frame_start, frame_end] (see the
+# legs_df construction cell), so each sample gets exactly one phase.
 phase_to_color = {"inbound": color_inbound, "outbound": color_outbound}
 sample_color = pd.Series(
     color_unassigned, index=df_trajs_b_id.index
 )  # samples in no leg
 for _, leg in legs_one_burrow.iterrows():
     in_leg = df_trajs_b_id["frame_in_video"].between(
-        leg["frame_start"], leg["frame_end"]
+        leg["frame_start"], leg["frame_end"]  # inclusive on both ends
     )
     sample_color[in_leg] = phase_to_color[leg["kind"]]
 
@@ -1218,8 +1256,8 @@ fig.savefig(
 # (inbound / outbound / unassigned colours from the parameters block). Reuses
 # sample_color and phase_to_color from the distance-vs-time phase cell above.
 
-# for this plot only: 
-# - use a softer outbound tone and 
+# for this plot only:
+# - use a softer outbound tone and
 # - hide unassigned samples
 # (8-digit hex is RGBA; alpha 00 makes them fully transparent)
 sample_color_plot = sample_color.replace(
@@ -1240,7 +1278,7 @@ ax_traj.scatter(
 )
 ax_traj.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
 
-# phase legend (categorical, so no colorbar); 
+# phase legend (categorical, so no colorbar);
 # NOTE: unassigned samples are
 # transparent in this plot, so they get no legend entry
 phase_handles = [
@@ -1278,7 +1316,8 @@ ax_traj.axis("off")
 
 # %%
 fig.savefig(
-    output_figs_dir / f"{video_str}_burrow_ID{b_id}_colbyphase_no_unassigned.svg",
+    output_figs_dir
+    / f"{video_str}_burrow_ID{b_id}_colbyphase_no_unassigned.svg",
     dpi=300,  # resolution of the rasterized scatter layer only
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
@@ -1458,16 +1497,25 @@ fig.savefig(
 # Plot a pair of consecutive outbound/inbound
 
 
-leg_idx = 14
-inbound_start = inbound_legs_df.iloc[leg_idx].frame_start
-inbound_end = inbound_legs_df.iloc[leg_idx].frame_end
+leg_idx = 13
+plot_inbound_to_outbound = True
 
-outbound_start = outbound_legs_df.iloc[leg_idx].frame_start
-outbound_end = outbound_legs_df.iloc[leg_idx].frame_end
 
-slc_traj = df_trajs_b_id.frame_in_video.isin(np.arange(inbound_start, outbound_end +1))
-# slc_inbound_traj = df_trajs_b_id.frame_in_video.isin(np.arange(inbound_start, inbound_end))
-# slc_outbound_traj = df_trajs_b_id.frame_in_video.isin(np.arange(outbound_start, outbound_end))
+if plot_inbound_to_outbound:
+    inbound_start = inbound_legs_df.iloc[leg_idx].frame_start
+    # inbound_end = inbound_legs_df.iloc[leg_idx].frame_end
+    # outbound_start = outbound_legs_df.iloc[leg_idx].frame_start
+    outbound_end = outbound_legs_df.iloc[leg_idx].frame_end
+
+    # legs are closed windows [frame_start, frame_end], so + 1 to include the
+    # last frame of the outbound leg
+    slc_traj = df_trajs_b_id.frame_in_video.isin(
+        np.arange(inbound_start, outbound_end + 1)
+    )
+    # slc_inbound_traj = df_trajs_b_id.frame_in_video.isin(np.arange(inbound_start, inbound_end + 1))
+    # slc_outbound_traj = df_trajs_b_id.frame_in_video.isin(np.arange(outbound_start, outbound_end + 1))
+else:
+    
 
 fig, axs = plt.subplots(1, 2, figsize=(10, 10))
 axs[0].scatter(
