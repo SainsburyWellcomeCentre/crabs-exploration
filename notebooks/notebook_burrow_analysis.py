@@ -1395,7 +1395,7 @@ colors = [color_outbound, color_inbound]
 rng = np.random.default_rng(0)
 
 
-fig, ax_rate = plt.subplots(figsize=(6, 4.25))
+fig, ax_rate = plt.subplots(figsize=(4, 4))
 rho_dot_bl_per_s = [
     np.abs(outbound_legs_df["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
     np.abs(inbound_legs_df["rho_dot_bl_mean"].dropna().to_numpy()) * fps,
@@ -1447,7 +1447,7 @@ fig.savefig(
 # fourth: path tortuosity (path length / beeline) on inbound vs outbound
 # legs. Same strip-plot style as the rho_dot panel; tortuosity is >= 1, with
 # 1 = perfectly straight.
-fig, ax_tort = plt.subplots(figsize=(6, 4.25))
+fig, ax_tort = plt.subplots(figsize=(4, 4))
 torts = [
     outbound_legs_df["tortuosity"].dropna().to_numpy(),
     inbound_legs_df["tortuosity"].dropna().to_numpy(),
