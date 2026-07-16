@@ -1489,7 +1489,7 @@ ax_tort.spines[["top", "right"]].set_visible(False)
 
 
 mean_handle = Line2D([], [], color="k", linewidth=2, label="mean value")
-n_handle = Line2D([], [], linestyle="none", label=f"n = {torts[0].size} legs")
+n_handle = Line2D([], [], linestyle="none", label=f"n = {torts[0].size} excursions")
 
 ax_tort.legend(
     handles=[mean_handle, n_handle],
@@ -1511,6 +1511,7 @@ fig.savefig(
 # Plot a pair of consecutive outbound/inbound
 
 plot_inbound_to_outbound = False
+title_str = "outbound -> inbound"
 
 # prepare burrow contour
 # The mask lives in image (pixel) space, but these axes are in the burrow
@@ -1541,84 +1542,96 @@ contour_y_bl = (np.arange(r0 - pad, r1 + 1 + pad) - burrow_cy) / burrow_bl
 
 for bound_idx in np.arange(inbound_legs_df.shape[0]):
 
-    # plot an inbound+outbound pair
-    if plot_inbound_to_outbound:
-        # inbound leg i is followed by outbound leg i
-        pair_legs = [
-            inbound_legs_df.iloc[bound_idx],
-            outbound_legs_df.iloc[bound_idx],
-        ]
-        title_str = "inbound -> outbound"
-
     # plot an outbound+inbound pair
     # (outbound leg i is followed by inbound leg i+1)
-    else:
-        pair_legs = [outbound_legs_df.iloc[bound_idx]]
+    pair_legs = [outbound_legs_df.iloc[bound_idx]]
 
-        # the last outbound leg has no inbound leg after it (it runs to the
-        # recording edge), so there the pair is that outbound leg alone
-        if bound_idx + 1 < len(inbound_legs_df):
-            pair_legs.append(inbound_legs_df.iloc[bound_idx + 1])
-
-        title_str = "outbound -> inbound"
+    # the last outbound leg has no inbound leg after it (it runs to the
+    # recording edge), so there the pair is that outbound leg alone
+    if bound_idx + 1 < len(inbound_legs_df):
+        pair_legs.append(inbound_legs_df.iloc[bound_idx + 1])
 
     # start = first leg's start event, end = last leg's frame_end
-    start = pair_legs[0].frame_start
-    end = pair_legs[-1].frame_end
+    start_outbound = pair_legs[0].frame_start
+    end_outbound = pair_legs[0].frame_end
+    start_inbound = pair_legs[-1].frame_start
+    end_inbound = pair_legs[-1].frame_end
 
     # legs are closed windows [frame_start, frame_end], so + 1 to include the
     # last frame of the second leg of the pair
-    slc_traj = df_trajs_b_id.frame_in_video.isin(np.arange(start, end + 1))
+    # slc_traj = df_trajs_b_id.frame_in_video.isin(np.arange(start, end + 1))
+    slc_outbound =  df_trajs_b_id.frame_in_video.isin(np.arange(start_outbound, end_outbound + 1))
+    slc_inbound =  df_trajs_b_id.frame_in_video.isin(np.arange(start_inbound, end_inbound + 1))
 
     fig, axs = plt.subplots(1, 2, figsize=(10, 10))
+
+    # plot outbound
     axs[0].scatter(
-        x=df_trajs_b_id["x_burrow_bl"][slc_traj],
-        y=df_trajs_b_id["y_burrow_bl"][slc_traj],
-        c=sample_color_plot[slc_traj],
+        x=df_trajs_b_id["x_burrow_bl"][slc_outbound],
+        y=df_trajs_b_id["y_burrow_bl"][slc_outbound],
+        c=sample_color_plot[slc_outbound],
         s=10,
         rasterized=True,
     )
-
-    # this one is just for reference so we rasterise
-    sc = axs[1].scatter(
-        x=df_trajs_b_id["x_burrow_bl"][slc_traj],
-        y=df_trajs_b_id["y_burrow_bl"][slc_traj],
-        c=df_trajs_b_id["frame_in_video"][slc_traj],
-        s=2.5,
-        rasterized=True,
+    leg = pair_legs[0] # outbound
+    axs[0].plot(
+        [leg.beeline_x_start, leg.beeline_x_end],
+        [leg.beeline_y_start, leg.beeline_y_end],
+        color="#575757ff", #phase_to_color[leg.kind],
+        linewidth=2.5,
+        linestyle="-",
+        marker="o",
+        markersize=4,
+        zorder=0.5,  # below the scatter (its default zorder is 1)
+        label=f"{leg.kind} beeline (tortuosity {leg.tortuosity:.2f})",
     )
 
+    # plot inbound
+     # plot inbound (only if this outbound leg has a following inbound leg)
+    if len(pair_legs) > 1:
+        axs[1].scatter(
+            x=df_trajs_b_id["x_burrow_bl"][slc_inbound],
+            y=df_trajs_b_id["y_burrow_bl"][slc_inbound],
+            c=sample_color_plot[slc_inbound],
+            s=10,
+            rasterized=True,
+        )
+
+        leg = pair_legs[1] # inbound
+        axs[1].plot(
+            [leg.beeline_x_start, leg.beeline_x_end],
+            [leg.beeline_y_start, leg.beeline_y_end],
+            color="#575757ff", #phase_to_color[leg.kind],
+            linewidth=2.5,
+            linestyle="-",
+            marker="o",
+            markersize=4,
+            zorder=0.5,  # below the scatter (its default zorder is 1)
+            label=f"{leg.kind} beeline (tortuosity {leg.tortuosity:.2f})",
+        )
+
+
     for ax in axs:
+        # plot burrow
+        ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
         ax.contour(
             contour_x_bl,
             contour_y_bl,
             mask_b_id_crop,
             levels=[0.5],
-            colors="k",
+            colors="#979797ff",
             linewidths=2.5,
         )
-
-        # beelines: the straight segments tortuosity divides the path length
-        # by, one per leg of the pair. They are drawn from the endpoints stored
-        # when legs_df was built, so they are exactly the denominators of the
-        # tortuosity values quoted in the legend. NOTE their closing endpoint
-        # is the next leg's starting event (peak or min), which the leg does
-        # not own, so a beeline can end one frame past the last sample plotted
-        # here (visible for the inbound leg closing on its min).
-        for leg in pair_legs:
-            ax.plot(
-                [leg.beeline_x_start, leg.beeline_x_end],
-                [leg.beeline_y_start, leg.beeline_y_end],
-                color=phase_to_color[leg.kind],
-                linewidth=2.5,
-                linestyle="--",
-                marker="o",
-                markersize=4,
-                zorder=4,
-                label=f"{leg.kind} beeline (tortuosity {leg.tortuosity:.2f})",
-            )
-
-        ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
+        ax.contourf(
+            contour_x_bl,
+            contour_y_bl,
+            mask_b_id_crop,
+            levels=[0.5, 1.5],
+            colors="#9a9a9a47",
+            zorder=0,  # background fill, below scatter and beeline
+        )
+        
+        # axes parameters
         ax.set_aspect("equal")
         ax.invert_yaxis()  # match image coordinates (y down)
         ax.set_xlabel("$x_{burrow}$ (BL)")
@@ -1627,21 +1640,24 @@ for bound_idx in np.arange(inbound_legs_df.shape[0]):
         # ax.axis("off")
         ax.set_title(f"Bound idx {bound_idx} - {title_str}")
 
+    # use the outbound subplot's axes limits in the inbound subplot
+     # plot inbound (only if this outbound leg has a following inbound leg)
+    if len(pair_legs) > 1:
+        axs[1].set_xlim(axs[0].get_xlim())
+        axs[1].set_ylim(axs[0].get_ylim())
+        axs[1].legend(loc="best", fontsize=9)
+
     axs[0].legend(loc="best", fontsize=9)
+    
+    fig.show()
 
-    cbar = fig.colorbar(sc, ax=axs[1], location="right")
-
-    # cbar.set_label("time (min)", fontsize=18)
-    # cbar.ax.tick_params(labelsize=16)
-
-
-    # # save figure
-    # fig.savefig( 
-    #     output_figs_dir /"Fig-single-outbound-inbound" / "rasterised" /f"{video_str}_burrow_ID{b_id}_{title_str}_idx{bound_idx}.svg",
-    #     dpi=300,  # resolution of the rasterized scatter/image
-    #     bbox_inches="tight",
-    #     pad_inches=0,  # no border around the tight bbox
-    # )
+    # save figure
+    fig.savefig( 
+        output_figs_dir /"Fig-single-outbound-inbound" /f"{video_str}_burrow_ID{b_id}_{title_str}_idx{bound_idx}.svg",
+        dpi=300,  # resolution of the rasterized scatter/image
+        bbox_inches="tight",
+        pad_inches=0,  # no border around the tight bbox
+    )
         
 
 # %%
