@@ -642,9 +642,14 @@ for b_id, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
             # straight segment).
             if xs.size >= 2:
                 path_len = np.hypot(np.diff(xs), np.diff(ys)).sum()
-                beeline = np.hypot(xs[-1] - xs[0], ys[-1] - ys[0])
+                beeline_xy = ((xs[0], ys[0]), (xs[-1], ys[-1]))
+                beeline = np.hypot(
+                    beeline_xy[1][0] - beeline_xy[0][0],
+                    beeline_xy[1][1] - beeline_xy[0][1],
+                )
                 tort = path_len / beeline if beeline != 0 else np.nan
             else:
+                beeline_xy = ((np.nan, np.nan), (np.nan, np.nan))
                 tort = np.nan
 
             leg_records.append(
@@ -655,6 +660,14 @@ for b_id, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
                     "frame_end": f1,
                     "rho_dot_bl_mean": rho_dot,
                     "tortuosity": tort,
+                    # the beeline endpoints that tortuosity divides by, kept so
+                    # plots can draw the very same segment instead of
+                    # re-deriving it (they are samples of the metric window, so
+                    # the closing one can sit one frame past frame_end)
+                    "beeline_x_start": beeline_xy[0][0],
+                    "beeline_y_start": beeline_xy[0][1],
+                    "beeline_x_end": beeline_xy[1][0],
+                    "beeline_y_end": beeline_xy[1][1],
                 }
             )
 
@@ -1530,28 +1543,28 @@ for bound_idx in np.arange(inbound_legs_df.shape[0]):
 
     # plot an inbound+outbound pair
     if plot_inbound_to_outbound:
-        # start = inbound_start
-        start = inbound_legs_df.iloc[bound_idx].frame_start
-        # end = outbound end
-        end = outbound_legs_df.iloc[bound_idx].frame_end
-
+        # inbound leg i is followed by outbound leg i
+        pair_legs = [
+            inbound_legs_df.iloc[bound_idx],
+            outbound_legs_df.iloc[bound_idx],
+        ]
         title_str = "inbound -> outbound"
 
     # plot an outbound+inbound pair
     # (outbound leg i is followed by inbound leg i+1)
     else:
-        # start = outbound_start
-        start = outbound_legs_df.iloc[bound_idx].frame_start
+        pair_legs = [outbound_legs_df.iloc[bound_idx]]
 
-        # end = inbound_end. The last outbound leg has no inbound leg after it
-        # (it runs to the recording edge), so there we stop at its own frame_end,
-        # which is the last recorded frame for this burrow.
+        # the last outbound leg has no inbound leg after it (it runs to the
+        # recording edge), so there the pair is that outbound leg alone
         if bound_idx + 1 < len(inbound_legs_df):
-            end = inbound_legs_df.iloc[bound_idx + 1].frame_end
-        else:
-            end = outbound_legs_df.iloc[bound_idx].frame_end
+            pair_legs.append(inbound_legs_df.iloc[bound_idx + 1])
 
         title_str = "outbound -> inbound"
+
+    # start = first leg's start event, end = last leg's frame_end
+    start = pair_legs[0].frame_start
+    end = pair_legs[-1].frame_end
 
     # legs are closed windows [frame_start, frame_end], so + 1 to include the
     # last frame of the second leg of the pair
@@ -1562,10 +1575,11 @@ for bound_idx in np.arange(inbound_legs_df.shape[0]):
         x=df_trajs_b_id["x_burrow_bl"][slc_traj],
         y=df_trajs_b_id["y_burrow_bl"][slc_traj],
         c=sample_color_plot[slc_traj],
-        s=2.5,
+        s=10,
         rasterized=True,
     )
 
+    # this one is just for reference so we rasterise
     sc = axs[1].scatter(
         x=df_trajs_b_id["x_burrow_bl"][slc_traj],
         y=df_trajs_b_id["y_burrow_bl"][slc_traj],
@@ -1574,8 +1588,6 @@ for bound_idx in np.arange(inbound_legs_df.shape[0]):
         rasterized=True,
     )
 
-
-
     for ax in axs:
         ax.contour(
             contour_x_bl,
@@ -1583,8 +1595,29 @@ for bound_idx in np.arange(inbound_legs_df.shape[0]):
             mask_b_id_crop,
             levels=[0.5],
             colors="k",
-            linewidths=1,
+            linewidths=2.5,
         )
+
+        # beelines: the straight segments tortuosity divides the path length
+        # by, one per leg of the pair. They are drawn from the endpoints stored
+        # when legs_df was built, so they are exactly the denominators of the
+        # tortuosity values quoted in the legend. NOTE their closing endpoint
+        # is the next leg's starting event (peak or min), which the leg does
+        # not own, so a beeline can end one frame past the last sample plotted
+        # here (visible for the inbound leg closing on its min).
+        for leg in pair_legs:
+            ax.plot(
+                [leg.beeline_x_start, leg.beeline_x_end],
+                [leg.beeline_y_start, leg.beeline_y_end],
+                color=phase_to_color[leg.kind],
+                linewidth=2.5,
+                linestyle="--",
+                marker="o",
+                markersize=4,
+                zorder=4,
+                label=f"{leg.kind} beeline (tortuosity {leg.tortuosity:.2f})",
+            )
+
         ax.scatter(x=0, y=0, s=30, marker="x", color="k", zorder=5)
         ax.set_aspect("equal")
         ax.invert_yaxis()  # match image coordinates (y down)
@@ -1592,10 +1625,23 @@ for bound_idx in np.arange(inbound_legs_df.shape[0]):
         ax.set_ylabel("$y_{burrow}$ (BL)")
         ax.set_title(f"burrow ID {b_id}")
         # ax.axis("off")
-        ax.set_title(f"Leg idx {bound_idx} - {title_str}")
+        ax.set_title(f"Bound idx {bound_idx} - {title_str}")
+
+    axs[0].legend(loc="best", fontsize=9)
 
     cbar = fig.colorbar(sc, ax=axs[1], location="right")
+
     # cbar.set_label("time (min)", fontsize=18)
     # cbar.ax.tick_params(labelsize=16)
+
+
+    # # save figure
+    # fig.savefig( 
+    #     output_figs_dir /"Fig-single-outbound-inbound" / "rasterised" /f"{video_str}_burrow_ID{b_id}_{title_str}_idx{bound_idx}.svg",
+    #     dpi=300,  # resolution of the rasterized scatter/image
+    #     bbox_inches="tight",
+    #     pad_inches=0,  # no border around the tight bbox
+    # )
+        
 
 # %%
