@@ -58,12 +58,13 @@ def expected_data_augm_transforms():
             transforms.GaussianBlur(kernel_size=[5, 9], sigma=[0.1, 5.0]),
             transforms.ColorJitter(brightness=(0.5, 1.5), hue=(-0.3, 0.3)),
             transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomRotation(
-                degrees=[-10.0, 10.0],
-                interpolation=transforms.InterpolationMode.NEAREST,
-                expand=False,
-                fill=0,
-            ),
+            # we only pass the parameters defined in the config file, and
+            # rely on torchvision's defaults for the rest. Note that the
+            # default `interpolation` is not consistently an
+            # `InterpolationMode` member across torchvision versions (in some
+            # it is the equivalent string), so passing it explicitly would
+            # make the comparison below version-dependent.
+            transforms.RandomRotation(degrees=[-10.0, 10.0]),
             transforms.RandomAdjustSharpness(p=0.5, sharpness_factor=0.5),
             transforms.RandomAutocontrast(p=0.5),
             transforms.RandomEqualize(p=0.5),
