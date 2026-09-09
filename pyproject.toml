@@ -74,7 +74,7 @@ combine-annotations = "crabs.bboxes_labelling.combine_and_format_annotations:app
 train-detector = "crabs.detector.train_model:app_wrapper"
 evaluate-detector = "crabs.detector.evaluate_model:app_wrapper"
 detect-and-track-video = "crabs.tracker.track_video:app_wrapper"
-# support utils
+# support scripts
 create-zarr-dataset = "crabs.zarr.create_dataset:app_wrapper"
 
 [build-system]
@@ -90,7 +90,16 @@ exclude = ["tests"]
 
 [tool.pytest.ini_options]
 addopts = "--cov=crabs"
+# repo root on sys.path so tests can import the standalone scripts/ modules
+pythonpath = ["."]
 markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
+
+[tool.mypy]
+# scripts/ holds standalone (PEP 723) modules that tests import as
+# scripts.* (mirrors the pytest pythonpath above). Treat the repo root as
+# the package base so mypy derives the same module name from the file and
+# from the import, instead of seeing one source file under two names.
+explicit_package_bases = true
 
 [tool.setuptools_scm]
 

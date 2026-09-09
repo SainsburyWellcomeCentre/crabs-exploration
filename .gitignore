@@ -115,3 +115,5 @@ uv.lock
 # zarr stores
 *.zarr
 *.zarr.*
+
+*.html
