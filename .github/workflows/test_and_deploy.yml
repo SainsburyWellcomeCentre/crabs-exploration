@@ -13,13 +13,13 @@ jobs:
     name: Run pre-commit linters
     runs-on: ubuntu-latest
     steps:
-      - uses: neuroinformatics-unit/actions/lint@v2
+      - uses: neuroinformatics-unit/actions/lint@v3
 
   manifest:
     name: Check Manifest
     runs-on: ubuntu-latest
     steps:
-      - uses: neuroinformatics-unit/actions/check_manifest@v2
+      - uses: neuroinformatics-unit/actions/check_manifest@v3
 
   test:
     name: Run tests on ${{ matrix.os }} py${{ matrix.python-version }}
@@ -51,7 +51,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install libglapi-mesa libegl-mesa0 libegl1 libopengl0 libgl1
       - name: Run all tests
-        uses: neuroinformatics-unit/actions/test@v2
+        uses: neuroinformatics-unit/actions/test@v3
         with:
           python-version: ${{ matrix.python-version }}
           secret-codecov-token: ${{ secrets.CODECOV_TOKEN }}
@@ -62,4 +62,4 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref_type == 'tag'
     steps:
-      - uses: neuroinformatics-unit/actions/build_sdist_wheels@v2
+      - uses: neuroinformatics-unit/actions/build_sdist_wheels@v3
