@@ -101,8 +101,8 @@ def load_extended_ds(
             f"{clip_filename}: {n_frames_wout_boxes} of {n_clip_frames} "
             "frames have no tracked boxes; padding them with NaNs."
         )
-	# Reindex time coordinates to fill in empy frames with NaN
-	# (out-of-range frames are silently dropped, hence the range check above)
+    # Reindex time coordinates to fill in empy frames with NaN
+    # (out-of-range frames are silently dropped, hence the range check above)
     ds = ds.reindex(time=np.arange(n_clip_frames))
 
     # Add escape_state as data variable
