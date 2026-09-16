@@ -36,33 +36,24 @@ def get_distinct_colors():
 
 
 def reindex_to_video_frames(ds, video_path):
-    """Pad the dataset's time coordinate to span every frame of the video.
-
-    `movement` pads with NaNs the individuals that are missing from a frame,
-    but a frame that no individual appears in is absent from the time
-    coordinate altogether. We reindex to add those frames back, so that row
-    `i` of the dataset is frame `i` of the video and the arrays can be
-    indexed positionally by frame number.
-
-    The dataset is expected to hold the frame numbers as written in the VIA
-    tracks file (i.e. loaded with `use_frame_numbers_from_file=True` and
-    `fps=None`), which the tracker numbers from 0 over the video it is given.
+    """Pad the dataset's time coordinate to span every frame of the clip.
+    
+    The dataset is expected to hold the frame numbers 0-based indices over
+    the clip, as written in the VIA tracks file (i.e. loaded with `use_frame_numbers_from_file=True` and `fps=None`).
     """
-    # Get n frames in video
+    # Get n frames in video clip
     cap = cv2.VideoCapture(str(video_path))
     n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     cap.release()
 
-    # Check the frame numbers belong to this video. `reindex` discards
-    # out-of-range labels silently, so without this an unrelated tracks file
-    # would give an all-NaN dataset rather than an error.
+    # Check the frame indices in the file are within the video range
     frames_0idx = ds.time.values
     if frames_0idx.min() < 0 or frames_0idx.max() >= n_frames:
         raise ValueError(
             f"{Path(video_path).name}: the frame numbers in the tracks file "
             f"({frames_0idx.min()}-{frames_0idx.max()}) fall outside the "
             f"video's frame range 0-{n_frames - 1}. Are the tracks from this "
-            "video?"
+            "clip?"
         )
 
     # Print number of frames with no detections
@@ -226,8 +217,8 @@ if __name__ == "__main__":
             use_frame_numbers_from_file=True,
         )
 
-        # Pad the time coordinate to span the full video, so that row i of
-        # the dataset is frame i of the video
+        # Pad the time coordinate to span the full video, so that 
+        # time coordinate i of the dataset is frame index (0-based) i of the clip
         ds_pred = reindex_to_video_frames(ds_pred, input_video)
 
         list_individuals_idcs = list(range(len(ds_pred.individuals)))

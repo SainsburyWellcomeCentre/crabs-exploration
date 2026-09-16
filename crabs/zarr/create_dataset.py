@@ -67,12 +67,8 @@ def load_extended_ds(
 
     """
     # Load VIA tracks file as movement dataset.
-    # We request the frame numbers as defined in the file. With the
-    # default (use_frame_numbers_from_file=False), `movement` maps them to
-    # a 0-based sequence of *consecutive* integers. Since the tracker
-    # writes no rows for frames with no tracked boxes, that would shift
-    # every subsequent frame earlier, and `time` would no longer be the
-    # clip's frame index.
+    # We request the frame numbers as defined in the file. Note that
+    # the tracker only writes frames with tracked boxes.
     ds = load_bboxes.from_via_tracks_file(
         via_tracks_file_path, use_frame_numbers_from_file=True
     )
@@ -89,7 +85,8 @@ def load_extended_ds(
         global_clip_end_frame_0idx - global_clip_start_frame_0idx + 1
     )
 
-    # Check the frames in the VIA tracks file belong to this clip
+    # Check the frames in the VIA tracks file are all
+    # within range
     _validate_frames_in_clip_range(
         ds.time.values,
         n_clip_frames,
@@ -98,15 +95,14 @@ def load_extended_ds(
     )
 
     # Pad the time coordinate to span the full clip.
-    # `movement` pads with NaNs the individuals that are missing from a
-    # frame, but a frame that no individual appears in is absent from the
-    # time coordinate altogether, so we reindex to add it back.
     n_frames_wout_boxes = n_clip_frames - ds.sizes["time"]
     if n_frames_wout_boxes:
         print(
             f"{clip_filename}: {n_frames_wout_boxes} of {n_clip_frames} "
             "frames have no tracked boxes; padding them with NaNs."
         )
+	# Reindex time coordinates to fill in empy frames with NaN
+	# (out-of-range frames are silently dropped, hence the range check above)
     ds = ds.reindex(time=np.arange(n_clip_frames))
 
     # Add escape_state as data variable
@@ -115,9 +111,9 @@ def load_extended_ds(
     )
     if not 0 <= local_escape_start_frame_0idx < n_clip_frames:
         raise ValueError(
-            f"{clip_filename}: the escape start frame "
+            f"{clip_filename}: the escape start frame index "
             f"({local_escape_start_frame_0idx} as a clip frame index) is "
-            f"outside the clip's frame range 0-{n_clip_frames - 1}."
+            f"outside the clip's range 0-{n_clip_frames - 1}."
         )
     # we use float16 (not int/bool) to allow for NaN padding after
     # concatenating along clip_id
@@ -161,24 +157,21 @@ def _validate_frames_in_clip_range(
     clip_first_frame_0idx: int,
     clip_filename: str,
 ) -> None:
-    """Check the frame numbers in a VIA tracks file belong to the clip.
+    """Check the frame numbers in a VIA tracks file are within the clip frame range.
 
-    The frame numbers are expected to be 0-based indices into the clip,
-    which is how `detect-and-track-video` numbers the frames of the clip
-    it is given.
+    The frame indices are 0-based indices into the clip.
     """
     if frames_0idx.min() >= 0 and frames_0idx.max() < n_clip_frames:
         return
 
     raise ValueError(
-        f"{clip_filename}: the VIA tracks file holds frame numbers "
+        f"{clip_filename}: the VIA tracks file holds frame indices "
         f"{frames_0idx.min()}-{frames_0idx.max()}, outside the clip's "
-        f"frame range 0-{n_clip_frames - 1}. Frame numbers are expected "
+        f"range 0-{n_clip_frames - 1}. Frame indices are expected "
         f"to be 0-based indices into the clip, which starts at video "
-        f"frame {clip_first_frame_0idx}. Either the file was tracked on "
-        f"the full video or paired with the wrong metadata row, or the "
-        f"cut clip does not have the frame count the metadata csv states "
-        f"(re-run extract-loop-clips --verify_frames)."
+        f"frame {clip_first_frame_0idx}. Either the frames in the file refer to "
+        f"the full video, the file is paired with the wrong metadata row, or the "
+        f"clip does not have the frame count the metadata csv states. "
     )
 
 

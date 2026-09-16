@@ -80,20 +80,20 @@
 
     If the array job runs successfully, a zarr dataset named `CrabTracks-slurm<SLURM_ARRAY_JOB_ID>.zarr` will be generated in the location specified by `ZARR_STORE_OUTPUT`. Each group in the zarr dataset will correspond to a `movement` [bounding box dataset](https://movement.neuroinformatics.dev/latest/user_guide/movement_dataset.html) containing all tracks for one video.
 
-    The `time` coordinate is the clip's 0-based frame index, and it always spans the whole clip: frames that hold no tracked crabs are stored as NaNs rather than dropped. So within a clip, row `i` is frame `i`.
+    The `time` coordinate is the clip's 0-based frame index, and it always spans the whole clip. Frames that hold no tracked crabs are stored as NaNs. So within a clip, index `i` is frame `i`.
 
-    To get a single clip's full frame range, without the NaN padding that the concatenation along `clip_id` adds beyond the end of shorter clips:
+    To get a single clip's full frame range, without the trailing NaN padding that the concatenation along `clip_id` adds:
 
     ```python
-    d = ds_video.isel(clip_id=0)
-    n_clip_frames = int(d.clip_last_frame_0idx - d.clip_first_frame_0idx) + 1
-    d_clip = d.isel(time=slice(0, n_clip_frames))
+    ds = ds_video.isel(clip_id=0)
+    n_clip_frames = int(ds.clip_last_frame_0idx - ds.clip_first_frame_0idx) + 1
+    ds_clip = ds.isel(time=slice(0, n_clip_frames)) # or equivalently: ds.sel(time=slice(0, n_clip_frames - 1)). Note that .sel is end-inclusive.
     ```
 
-    Prefer this to `dropna(dim="time", how="all")`, which cannot tell "beyond this clip's end" from "no crabs in this frame": it silently drops crab-free frames from the middle of the clip and returns a gapped time axis. The slice keeps every frame of the clip and nothing else.
+    Notice that when we drop all NaN frames with `dropna(dim="time", how="all")`, we cannot tell which NaN frames are padding and which NaN frames are "no detections in this frame": it silently returns a potentially gapped time axis. Instead the slice keeps every frame of the clip.
 
     > [!WARNING]
-    > Zarr stores built before the `time` coordinate was anchored to the clip have a `time` coordinate that does not mean this. There, `time` was a 0-based count of the frames *with detections*, so frames with no tracked crabs shifted every later frame earlier, and `escape_state` switched on at the wrong frame. Those stores may need rebuilding.
+    > Zarr stores built before the `time` coordinate was made dense have a `time` coordinate that does not mean this. There, `time` was a 0-based count of the frames *with detections*, so frames with no tracked crabs shifted every later frame earlier, and `escape_state` switched on at the wrong frame. Those stores may need rebuilding if there were frames with no detections in them.
 
     To inspect this dataset, please refer to the example notebooks in the 🦀 repository.
 
