@@ -3,8 +3,19 @@
 ## Description
 
 The `time` coordinate of the tracks zarr dataset is not the clip's frame index, so `escape_state`
-marks the escape on the wrong frame. This proposal anchors `time` to the clip, in
+marks the escape on the wrong frame. This proposal makes the `time` axis dense, in
 [`load_extended_ds`](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/crabs/zarr/create_dataset.py#L49).
+
+Two things change, and they are worth keeping apart.
+* `time` becomes the clip's **frame index**, and
+* `time` becomes **dense**.
+
+As a result, the axis is uniformly sampled and a frame
+with no detections is a NaN row rather than an absent time coordinate.
+
+Only the first is needed to fix the bug in `escape_state` (although it could also be fixed differently). The second is the larger claim, and it is argued in [§5](#5-why-time-should-be-dense) — it is the
+reason the *Rejected alternative* under [Detailed implementation](#detailed-implementation) is
+rejected.
 
 ```mermaid
 flowchart TD
@@ -49,7 +60,6 @@ Node → code:
 4. Reindex the dataset onto the clip's full frame range.
 5. Build `escape_state` over that frame range, and raise if the escape frame falls outside it.
 6. Strengthen `test_load_extended_ds` to assert the values of `escape_state`, not just its presence.
-7. Audit the VIA tracks files on the cluster to decide whether existing stores must be rebuilt.
 
 ## Key aspects of suggested implementation
 
@@ -92,7 +102,11 @@ escape_state = np.zeros(ds.time.shape[0], dtype=np.float16)   # however many row
 escape_state[local_escape_start_frame_0idx:] = 1.0            # slices frames indices in the clip --- this is the issue
 ```
 
-The second line is the issue. The two lines only agree when row *i* is clip frame *i*.
+The second line is the issue. The two lines only agree when row *i* is clip frame *i*. It could be fixed as:
+```python
+ds["escape_state"] = (ds.time >= local_escape_start_frame_0idx).astype(np.float16)
+```
+but that requires remembering that we need to use time coordinates for lookup, rather than time indices.
 
 There is a second failure mode. When `local_escape_start_frame_0idx` exceeds the number in `ds.time.shape[0]`,
 the slice assigns nothing and the escape never switches on.
@@ -101,15 +115,21 @@ The repository's own test fixture does
 this: it annotates a 101-frame clip that only has 7 frames of data with an escape starting at clip frame 51. So `escape_state`
 is length 7 and `escape_state[51:] = 1.0` is a silent no-op.
 
-### 3. The two changes are jointly necessary, and neither works alone
+### 3. To make `time` dense, the two changes are jointly necessary
 
 - **`use_frame_numbers_from_file=True` alone changes nothing.** It relabels the rows; it does not add the missing ones.
 - **The reindex alone is worse than doing nothing.** The current default renumbers the
-  surviving frames `0, 1, 2, …`, so the onset that relies on actual clip frames is wrong. Reindexing onto the clip's range sees those labels as genuine,
-  leaves the shifted data where it is, and appends NaN rows at the end.
+  surviving frames `0, 1, 2, …`,. Reindexing onto the clip's range sees those labels as genuine,
+  leaves the shifted escape data where it is, and appends NaN rows at the end.
 - **Together they work.**
   * `use_frame_numbers_from_file=True` makes the labels true frame numbers;
   * reindexing aligns the rows to those labels and fills the holes.
+
+> [!NOTE]
+> This is about making the axis **dense**, not about the bug. The `escape_state` onset is fixed by
+> `use_frame_numbers_from_file=True` plus writing `escape_state` by label, with no reindex at all
+> (see *Rejected alternative* under [Detailed implementation](#detailed-implementation)). Whether to
+> also pad is a separate decision, argued in [§5](#5-why-time-should-be-dense).
 
 ### 4. The clip's frame count comes from the metadata csv
 
@@ -132,6 +152,35 @@ uses to check the clips it cuts.
 > ([`extract_loop_clips.py:388-394`](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/scripts/extract_loop_clips.py#L388-L394)),
 > so nothing guarantees a cut clip has exactly the frame count its metadata row states. The guard in
 > step 3 is what makes a disagreement visible.
+
+### 5. Why should `time` be dense?
+
+This is the case for padding (note that the `escape_state` bug is fixable without
+any reindex).
+
+1. **A gapped `time` is not uniformly sampled, and no user convention repairs that.** Telling people to
+slice with `.sel` rather than `.isel` fixes *lookup*; it does nothing for anything that walks the
+axis, e.g. `movement`'s own kinematics:
+
+    * `compute_forward_displacement` uses positional `.diff`, so a two-frame gap counts as one step,
+    * `compute_velocity` uses coordinate-aware `.differentiate`.
+    * Rolling windows,
+    * `n_frames / fps`
+    durations, and any speed trace around the escape onset are then silently wrong.
+
+    On a dense axis the
+    same query returns NaN for a frame with no crabs, which is the honest answer. The user does not need to keep in mind the fact that there are "missing" frames and assess whether they may have an impact or not.
+
+2. **It makes "missing" mean one thing.** `movement` already NaN-pads an individual that is absent from
+a frame (§1). A frame that *every* individual is absent from is the same fact, and dropping its label
+rather than NaN-filling it records that fact differently depending only on how many crabs happened to
+be visible. Reindexing makes the rule uniform: missing is always a NaN row, never an absent label. Less cognitive load for the user.
+
+3. The storage cost is nil.
+[`create_final_zarr_store`](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/crabs/zarr/create_dataset.py#L321-L327)
+already concatenates with `join="outer"`, so the stored array is dense to the *union* of the clips'
+time labels. Padding only changes that length from "frames some clip in this video had a crab" to
+"the longest clip in this video" — a handful of rows.
 
 ## Detailed implementation
 
@@ -162,7 +211,7 @@ Node → code: every node is inside
 `L1` replaces [line 70](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/crabs/zarr/create_dataset.py#L70)
 and `L7` replaces [lines 87-89](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/crabs/zarr/create_dataset.py#L87-L89).
 
-Note that the "frame numbers within range" check is required because reindex doesn't only fill in gaps — it also drops out-of-range labels. Labels not in the new index are discarded, silently:
+Note that the "frame numbers within range" check is required because **reindex doesn't only fill in gaps — it also drops out-of-range labels**. Labels not in the new index are discarded, silently:
 ```
 frames 99…199, reindex(time=arange(101))
   → only labels 99 and 100 match; the other 99 rows are thrown away
@@ -172,13 +221,13 @@ frames 0…101, reindex(time=arange(101))
   → frame 101's row is dropped, no warning
 ```
 
-### The changes
+### Main changes
 
 | # | Change | Diff or signature |
 |---|---|---|
 | 1 | Ask `movement` for the frame numbers as written in the file | `from_via_tracks_file(path, use_frame_numbers_from_file=True)` |
 | 2 | Derive the clip's frame count from the metadata row | `n_clip_frames = global_clip_end_frame_0idx - global_clip_start_frame_0idx + 1` |
-| 3 | **new** guard on the frame numbers in the file | `_validate_frames_in_clip_range(...) -> None` |
+| 3 | **New** guard on the frame numbers in the file | `_validate_frames_in_clip_range(...) -> None` |
 | 4 | Reindex onto the clip's frame range | `ds = ds.reindex(time=np.arange(n_clip_frames))` |
 | 5 | Size `escape_state` by the clip, and guard the escape frame | `np.zeros(n_clip_frames, dtype=np.float16)` |
 | 6 | Assert the values of `escape_state` in the unit tests | see [Tests](#tests) |
@@ -317,22 +366,34 @@ Writing `escape_state` by label rather than by position fixes the onset without 
 ds["escape_state"] = (ds.time >= local_escape_start_frame_0idx).astype(np.float16)
 ```
 
-It is three lines rather than twenty, and it is rejected for three reasons:
+**It does fix the reported bug.** The onset lands on the right frame. It is rejected only because it leaves `time` non-uniformly
+sampled — [§5](#5-why-time-should-be-dense) is the whole of the case against it.
 
-1. **It makes the stored time axis depend on which clips are in the job.**
+It is also a smaller diff, though less so than it looks: the substantive difference is
+one line (`ds.reindex(...)`) against one line (the label comparison). Most of the rest is
+`_validate_frames_in_clip_range`, which is worth having either way — a file tracked on the full
+video, or paired with the wrong metadata row, should be an error rather than a dataset that quietly
+looks fine.
+
+Three further differences, none decisive on its own:
+
+1. **The stored time axis becomes emergent rather than stated.**
 [`create_final_zarr_store`](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/crabs/zarr/create_dataset.py#L321-L327)
 concatenates the clips of a video with `join="outer"`, which takes the union of their time labels. A clip missing frame 4 keeps that hole only if no sibling clip fills it:
 
     ```
-    job = {Loop01}         -> time = [0 1 2 3 5]      hole at 4
-    job = {Loop01, Loop03} -> time = [0 1 2 3 4 5]    Loop03 filled it
+    Loop01 alone        -> time = [0 1 2 3 5]      hole at 4
+    Loop01 with Loop03  -> time = [0 1 2 3 4 5]    Loop03 filled it
     ```
 
-    The current code cannot produce a hole, because it renumbers every clip to `arange(n_present)` and a
-    union of nested ranges is a range. Leaving the holes in would therefore introduce a new problem
-    rather than only failing to fix one.
+    Each array job processes one whole video, so this is deterministic for a given input directory —
+    not run-to-run flakiness. But `ds_video.time` then means "frames where some clip in this video
+    had a crab", which is a property of the detections rather than of the clips. Reindexing makes it
+    `arange(max n_clip_frames)`, which is a property of the clips. The current code cannot produce a
+    hole at all, because it renumbers every clip to `arange(n_present)` and a union of nested ranges
+    is a range.
 
-2. **It leaves `escape_state` undefined at frames where it is perfectly well defined.** The outer join
+2. **It leaves `escape_state` NaN at frames where it is perfectly well defined.** The outer join
 NaN-fills every `time`-dimensioned variable, `escape_state` included:
 
     ```
@@ -344,13 +405,25 @@ NaN-fills every `time`-dimensioned variable, `escape_state` included:
     [lines 85-87](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/crabs/zarr/create_dataset.py#L85-L87)
     says `float16` is chosen so that clips shorter than the longest clip can be NaN-padded. A mid-clip
     hole would make "past the end of this clip" and "no crabs were detected here" the same value.
+    Recoverable rather than lost, though: `clip_first_frame_0idx` and `clip_last_frame_0idx` are
+    stored per `clip_id`, so the two cases can always be told apart, and `escape_state` is derivable
+    from those coordinates in the first place. An annoyance, not a reason.
 
-3. **It leaves `len(time)` smaller than the clip.**
+3. **Positional indexing stops agreeing with frame numbers.** On a dense axis `isel(time=i)` and
+`sel(time=i)` are the same row, so existing code, and third-party code that indexes positionally,
+stay correct without anyone learning a convention. On a gapped axis `.isel` still runs and returns a
+plausible wrong row, and nothing detects the violation. The recipe under
+[Documentation updates](#documentation-updates) is an example: `isel(time=slice(0, n_clip_frames))`
+needs row *i* to be frame *i*; the gapped equivalent `sel(time=slice(0, n_clip_frames - 1))` runs
+fine but hands back fewer rows than the clip has frames.
 
-    [`00_notebook_data_structure.py:262`](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/notebooks/crabs_dataset/00_notebook_data_structure.py#L262)
-    reads `len(position_clip.time)` directly, and
-    [`clip_last_frame_0idx - clip_first_frame_0idx + 1`](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/crabs/zarr/create_dataset.py#L99-L116)
-    would keep disagreeing with it.
+    This is convenience, not a checked guarantee, and it is **not** an argument that
+    `dropna(dim="time", how="all")` behaves better under padding — it does not. `dropna` cannot tell
+    "beyond this clip's end" from "no crabs in this frame", so under *both* designs it returns the
+    clip's frames *with detections*, and the assertion at
+    [`00_notebook_data_structure.py:261-266`](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/notebooks/crabs_dataset/00_notebook_data_structure.py#L261-L266)
+    fails as soon as one frame is crab-free. That idiom needs replacing with the slice recipe either
+    way.
 
 </details>
 
@@ -439,8 +512,12 @@ gains two lines under *Expected output*:
   d_clip = d.isel(time=slice(0, n_clip_frames))   # no dropna, no NaN archaeology
   ```
 
-- stores built before this change have a `time` coordinate that does not mean this, and should be
-  rebuilt if the audit below finds affected clips.
+  and say why not `dropna(dim="time", how="all")`: it cannot tell "beyond this clip's end" from "no
+  crabs in this frame", so it silently drops crab-free frames from the middle of the clip and
+  returns a gapped axis. The slice keeps every frame of the clip and nothing else.
+
+- stores built before this change have a `time` coordinate that does not mean this, and may need
+  rebuilding.
 
 ## Verifications for agent to run
 
@@ -475,8 +552,7 @@ for c in ds.clip_id.values:
 
 | # | To discuss | Conclusion |
 |---|---|---|
-| 1 | **Pad the time axis, or only fix `escape_state`?** Writing `escape_state` by label is a three-line fix that corrects the onset but leaves holes in `time`. Padding is larger and also makes the axis a stated property of the clip. **I recommend padding**, for the three reasons in *Rejected alternative*. | We do padding |
-| 2 | **Are existing stores affected?** Unknown until the audit runs — `/ceph` was not reachable while writing this. With ~100 crabs per frame, `min_hits: 1` and `max_age: 10`, a crab-free frame should be rare; but the source directory is named `…above_10th_percentile…`, which suggests sparse loops are deliberately included. **Run the audit before merging**, so the guide can say whether a rebuild is needed. | I will run the audit separately and regenerate the zarr store in any case after this is merged. The guide does not need to signal where a rebuilt is needed, just that it may be if generated prior to this change. |
-| 3 | **Should `movement` change too?** `from_via_tracks_file` can return a non-uniformly sampled `time` axis, and movement's own kinematics handle that inconsistently — `compute_forward_displacement` uses positional `.diff`, `compute_velocity` uses coordinate-aware `.differentiate`, so on a gapped axis they disagree about what one time step is. **I recommend filing an upstream issue** proposing that `use_frame_numbers_from_file=True` reindex to `arange(min, max+1)`. It would not remove the reindex here, because only the metadata csv knows the clip's length. Not a blocker. | I opened a PR in movement that does not fill gaps in time (in line with their current treatment of pose data), but it retains any gaps in the original VIA tracks file frame numbers if `use_frame_numbers_from_file=True`. See PR [1103](https://github.com/neuroinformatics-unit/movement/pull/1103)  |
-| 4 | **`output_video.py:176` has the same hazard.** It reads a `_tracks.csv` with `use_frame_numbers_from_file=False` and draws the boxes onto video frames, so a crab-free frame would shift the overlay. Out of scope here; worth its own issue. | Fix implemented as part of this PR |
-| 5 | **`_renumber_individuals` discards the original track IDs** ([lines 193-200](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/crabs/zarr/create_dataset.py#L193-L200)), resetting each clip's individuals to `id_0 … id_{N-1}`. That makes the store unusable as a source of tracker track IDs. Deliberate for the escape analysis, but worth recording. Out of scope. | We don't care about retaining the exact ID returned by the tracker. We just care about them being "distinct" as the tracker defined them (regardless of their exact name). We force them to be consecutive and monotonically increasing to keep the `individual` axis compact in the zarr store. So that can be left as is.|
+| 1 | **Pad the time axis, or only fix `escape_state`?** Writing `escape_state` by label corrects the onset on its own, and leaves the holes in `time`. **I recommend padding**, for the two reasons in [§5](#5-why-time-should-be-dense): a gapped axis is not uniformly sampled, so kinematics over it are silently wrong, and it records a missing frame differently from a missing individual. The three points under *Rejected alternative* are supporting, not decisive. This is worth deciding on its own terms — it is not needed to fix the bug. | We do padding |
+| 2 | **Should `movement` change too?** `from_via_tracks_file` can return a non-uniformly sampled `time` axis, and movement's own kinematics handle that inconsistently — `compute_forward_displacement` uses positional `.diff`, `compute_velocity` uses coordinate-aware `.differentiate`, so on a gapped axis they disagree about what one time step is. **I recommend filing an upstream issue** proposing that `use_frame_numbers_from_file=True` reindex to `arange(min, max+1)`. It would not remove the reindex here, because only the metadata csv knows the clip's length. Not a blocker. | I opened a PR in movement that does not fill gaps in time (in line with their current treatment of pose data), but it retains any gaps in the original VIA tracks file frame numbers if `use_frame_numbers_from_file=True`. See PR [1103](https://github.com/neuroinformatics-unit/movement/pull/1103)  |
+| 3 | **`output_video.py:176` has the same hazard.** It reads a `_tracks.csv` with `use_frame_numbers_from_file=False` and draws the boxes onto video frames, so a crab-free frame would shift the overlay. Out of scope here; worth its own issue. | Fix implemented as part of this PR |
+| 4 | **`_renumber_individuals` discards the original track IDs** ([lines 193-200](https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/crabs/zarr/create_dataset.py#L193-L200)), resetting each clip's individuals to `id_0 … id_{N-1}`. That makes the store unusable as a source of tracker track IDs. Deliberate for the escape analysis, but worth recording. Out of scope. | We don't care about retaining the exact ID returned by the tracker. We just care about them being "distinct" as the tracker defined them (regardless of their exact name). We force them to be consecutive and monotonically increasing to keep the `individual` axis compact in the zarr store. So that can be left as is.|
