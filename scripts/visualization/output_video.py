@@ -35,7 +35,7 @@ def get_distinct_colors():
     return colors
 
 
-def reindex_to_video_frames(ds, video_path):
+def reindex_to_video_clip_frames(ds, video_path):
     """Pad the dataset's time coordinate to span every frame of the clip.
 
     The dataset is expected to hold the frame numbers 0-based indices over
@@ -206,7 +206,7 @@ if __name__ == "__main__":
         ]
     )
     for escape_clip_name in list_escape_clips[-1:]:
-        input_video = Path(input_data_dir) / f"{escape_clip_name}.mp4"
+        input_clip = Path(input_data_dir) / f"{escape_clip_name}.mp4"
         pred_csv = Path(input_data_dir) / f"{escape_clip_name}_tracks.csv"
 
         # Read predictions as a movement dataset.
@@ -220,7 +220,7 @@ if __name__ == "__main__":
 
         # Pad the time coordinate to span the full video, so that time
         # coordinate i of the dataset is frame index (0-based) i of the clip
-        ds_pred = reindex_to_video_frames(ds_pred, input_video)
+        ds_pred = reindex_to_video_clip_frames(ds_pred, input_clip)
 
         list_individuals_idcs = list(range(len(ds_pred.individuals)))
 
@@ -230,7 +230,7 @@ if __name__ == "__main__":
         )
         create_opencv_video(
             ds=ds_pred,
-            input_video=input_video,
+            input_video=input_clip,
             output_video_path=output_video_path,
             list_individuals_idcs=list_individuals_idcs,
         )

@@ -82,7 +82,7 @@
 
     The `time` coordinate is the clip's 0-based frame index, and it always spans the whole clip. Frames that hold no tracked crabs are stored as NaNs. So within a clip, index `i` is frame `i`.
 
-    To get a single clip's full frame range, without the trailing NaN padding that the concatenation along `clip_id` adds:
+    To get a single clip's full frame range from a video dataset, without the trailing NaN padding that the concatenation along `clip_id` adds:
 
     ```python
     ds = ds_video.isel(clip_id=0)
