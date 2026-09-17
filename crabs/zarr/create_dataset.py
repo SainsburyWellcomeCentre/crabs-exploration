@@ -157,7 +157,7 @@ def _validate_frames_in_clip_range(
     clip_first_frame_0idx: int,
     clip_filename: str,
 ) -> None:
-    """Check the frame numbers in a VIA tracks file are within the clip frame range.
+    """Check the frame numbers in a VIA tracks file are within the clip.
 
     The frame indices are 0-based indices into the clip.
     """
@@ -169,9 +169,10 @@ def _validate_frames_in_clip_range(
         f"{frames_0idx.min()}-{frames_0idx.max()}, outside the clip's "
         f"range 0-{n_clip_frames - 1}. Frame indices are expected "
         f"to be 0-based indices into the clip, which starts at video "
-        f"frame {clip_first_frame_0idx}. Either the frames in the file refer to "
-        f"the full video, the file is paired with the wrong metadata row, or the "
-        f"clip does not have the frame count the metadata csv states. "
+        f"frame {clip_first_frame_0idx}. Either the frames in the file "
+        f"refer to the full video, the file is paired with the wrong "
+        f"metadata row, or the clip does not have the frame count the "
+        f"metadata csv states. "
     )
 
 

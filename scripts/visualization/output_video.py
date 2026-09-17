@@ -39,7 +39,8 @@ def reindex_to_video_frames(ds, video_path):
     """Pad the dataset's time coordinate to span every frame of the clip.
 
     The dataset is expected to hold the frame numbers 0-based indices over
-    the clip, as written in the VIA tracks file (i.e. loaded with `use_frame_numbers_from_file=True` and `fps=None`).
+    the clip, as written in the VIA tracks file (i.e. loaded with
+    `use_frame_numbers_from_file=True` and `fps=None`).
     """
     # Get n frames in video clip
     cap = cv2.VideoCapture(str(video_path))
@@ -217,8 +218,8 @@ if __name__ == "__main__":
             use_frame_numbers_from_file=True,
         )
 
-        # Pad the time coordinate to span the full video, so that
-        # time coordinate i of the dataset is frame index (0-based) i of the clip
+        # Pad the time coordinate to span the full video, so that time
+        # coordinate i of the dataset is frame index (0-based) i of the clip
         ds_pred = reindex_to_video_frames(ds_pred, input_video)
 
         list_individuals_idcs = list(range(len(ds_pred.individuals)))
