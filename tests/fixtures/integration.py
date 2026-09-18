@@ -5,7 +5,9 @@ from pathlib import Path
 import pooch
 import pytest
 
-GIN_TEST_DATA_REPO = "https://gin.g-node.org/SainsburyWellcomeCentre/crabs-exploration-test-data"
+GIN_TEST_DATA_REPO = (
+    "http://gin.g-node.org/SainsburyWellcomeCentre/crabs-exploration-test-data"
+)
 
 
 @pytest.fixture(scope="session")
