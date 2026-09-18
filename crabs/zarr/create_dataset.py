@@ -66,8 +66,12 @@ def load_extended_ds(
         added metadata as coordinates and data variables.
 
     """
-    # Load VIA tracks file as movement dataset
-    ds = load_bboxes.from_via_tracks_file(via_tracks_file_path)
+    # Load VIA tracks file as movement dataset.
+    # We request the frame numbers as defined in the file. Note that
+    # the tracker only writes frames with tracked boxes.
+    ds = load_bboxes.from_via_tracks_file(
+        via_tracks_file_path, use_frame_numbers_from_file=True
+    )
 
     # Extract metadata for this row
     clip_filename = _via_tracks_to_clip_filename(ds.attrs["source_file"])
@@ -77,14 +81,43 @@ def load_extended_ds(
     global_clip_start_frame_0idx = row["loop_START_frame_ffmpeg"] - 1
     global_clip_end_frame_0idx = row["loop_END_frame_ffmpeg"] - 1
     global_escape_start_frame_0idx = row["escape_START_frame_0_based_idx"]
+    n_clip_frames = (
+        global_clip_end_frame_0idx - global_clip_start_frame_0idx + 1
+    )
+
+    # Check the frames in the VIA tracks file are all
+    # within range
+    _validate_frames_in_clip_range(
+        ds.time.values,
+        n_clip_frames,
+        global_clip_start_frame_0idx,
+        clip_filename,
+    )
+
+    # Pad the time coordinate to span the full clip.
+    n_frames_wout_boxes = n_clip_frames - ds.sizes["time"]
+    if n_frames_wout_boxes:
+        print(
+            f"{clip_filename}: {n_frames_wout_boxes} of {n_clip_frames} "
+            "frames have no tracked boxes; padding them with NaNs."
+        )
+    # Reindex time coordinates to fill in empy frames with NaN
+    # (out-of-range frames are silently dropped, hence the range check above)
+    ds = ds.reindex(time=np.arange(n_clip_frames))
 
     # Add escape_state as data variable
     local_escape_start_frame_0idx = (
         global_escape_start_frame_0idx - global_clip_start_frame_0idx
     )
+    if not 0 <= local_escape_start_frame_0idx < n_clip_frames:
+        raise ValueError(
+            f"{clip_filename}: the escape start frame index "
+            f"({local_escape_start_frame_0idx} as a clip frame index) is "
+            f"outside the clip's range 0-{n_clip_frames - 1}."
+        )
     # we use float16 (not int/bool) to allow for NaN padding after
     # concatenating along clip_id
-    escape_state = np.zeros(ds.time.shape[0], dtype=np.float16)
+    escape_state = np.zeros(n_clip_frames, dtype=np.float16)
     escape_state[local_escape_start_frame_0idx:] = 1.0
     ds["escape_state"] = ("time", escape_state)
 
@@ -116,6 +149,31 @@ def load_extended_ds(
     )
 
     return ds
+
+
+def _validate_frames_in_clip_range(
+    frames_0idx: np.ndarray,
+    n_clip_frames: int,
+    clip_first_frame_0idx: int,
+    clip_filename: str,
+) -> None:
+    """Check the frame numbers in a VIA tracks file are within the clip.
+
+    The frame indices are 0-based indices into the clip.
+    """
+    if frames_0idx.min() >= 0 and frames_0idx.max() < n_clip_frames:
+        return
+
+    raise ValueError(
+        f"{clip_filename}: the VIA tracks file holds frame indices "
+        f"{frames_0idx.min()}-{frames_0idx.max()}, outside the clip's "
+        f"range 0-{n_clip_frames - 1}. Frame indices are expected "
+        f"to be 0-based indices into the clip, which starts at video "
+        f"frame {clip_first_frame_0idx}. Either the frames in the file "
+        f"refer to the full video, the file is paired with the wrong "
+        f"metadata row, or the clip does not have the frame count the "
+        f"metadata csv states. "
+    )
 
 
 def _group_files_per_video(

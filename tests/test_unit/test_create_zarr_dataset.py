@@ -2,6 +2,7 @@ import re
 from contextlib import nullcontext as does_not_raise
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
@@ -19,16 +20,25 @@ from crabs.zarr.create_dataset import (
     load_extended_ds,
 )
 
+# Frames the sample VIA tracks file holds boxes for by default
+DEFAULT_FRAMES_WITH_BOXES = [0, 10, 20, 50, 60, 80, 100]
+
 
 @pytest.fixture
 def sample_via_tracks_file_factory(tmp_path):
     """Return factory of VIA tracks files with custom filenames."""
 
-    def _sample_via_tracks_file(filename):
-        """Create a mock VIA tracks file."""
+    def _sample_via_tracks_file(filename, frame_indices=None):
+        """Create a mock VIA tracks file.
+
+        By default the file holds boxes for a few frames in a 101-frame
+        clip ("sparse" case). Pass `frame_indices` to write boxes
+        for a different set of frames, e.g. `range(101)` for the "dense"
+        case of one row per frame of the clip.
+        """
         # Add a few frames with bounding box annotations
         via_data = []
-        for frame_idx in [0, 10, 20, 50, 60, 80, 100]:
+        for frame_idx in frame_indices or DEFAULT_FRAMES_WITH_BOXES:
             via_data.append(
                 {
                     "filename": f"frame_{frame_idx:08d}.png",
@@ -122,21 +132,41 @@ def test_group_files_per_video(tmp_path):
     assert len(map_videos_to_files["04.09.2023-02-Right"]) == 1
 
 
+@pytest.mark.parametrize(
+    "via_frame_indices, expected_frames_in_ds",
+    [
+        (
+            None,  # use default sparse frames from fixture
+            DEFAULT_FRAMES_WITH_BOXES,
+        ),
+        (
+            list(range(101)),
+            list(range(101)),
+        ),
+    ],
+    ids=[
+        "sparse_file",
+        "dense_file",
+    ],
+)
 def test_load_extended_ds(
-    sample_via_tracks_file_factory, sample_metadata_df_factory
+    via_frame_indices,
+    expected_frames_in_ds,
+    sample_via_tracks_file_factory,
+    sample_metadata_df_factory,
 ):
-    """Test loading VIA tracks with metadata as a `movement` dataset."""
-    # Sample VIA tracks file
+    """Test loading VIA tracks with metadata as an extended dataset."""
+    # Get sample VIA tracks file
     via_tracks_filename = "04.09.2023-01-Right-Loop05_tracks.csv"
-    via_tracks_path = sample_via_tracks_file_factory(via_tracks_filename)
+    via_tracks_path = sample_via_tracks_file_factory(
+        via_tracks_filename,
+        frame_indices=via_frame_indices,
+    )
 
-    # Define metadata df that contains the clip for the VIA tracks file
-    # list_clip_filepath = [
-    #     Path(str(via_tracks_path).replace("_tracks.csv", ".mp4"))
-    # ]
+    # Define metadata df for the VIA tracks file
     df_metadata = sample_metadata_df_factory([via_tracks_path])
 
-    # Load dataset for this clip chunked
+    # Load extended dataset for this clip
     ds = load_extended_ds(via_tracks_path, df_metadata)
 
     # Check escape_state is a data var
@@ -150,6 +180,91 @@ def test_load_extended_ds(
     assert "clip_last_frame_0idx" in ds.coords
     assert "clip_escape_first_frame_0idx" in ds.coords
     assert "clip_escape_type" in ds.coords
+
+    # Check time spans the full clip, as the clip's 0-based frame index
+    assert ds.sizes["time"] == 101
+    assert np.array_equal(ds.time.values, np.arange(101))
+
+    # Check the escape starts at clip frame 51
+    # the escape is at global frame 150 (0-based) and
+    # the clip starts at global frame 99
+    # (loop_START_frame_ffmpeg=100, 1-indexed),
+    # so 150 - 99 = 51
+    escape_state = ds.escape_state.values.ravel()
+    assert int(np.argmax(escape_state)) == 51
+    assert escape_state.sum() == 101 - 51
+
+    # Check frames with no boxes in VIA file are all-NaN in the
+    # extended dataset
+    frames_not_nan = (
+        ds.position.notnull()
+        .all(dim=["clip_id", "space", "individual"])
+        .values
+    )
+    assert np.array_equal(
+        np.flatnonzero(frames_not_nan),
+        expected_frames_in_ds,
+    )
+
+
+def test_frames_in_via_out_of_clip_range(
+    sample_via_tracks_file_factory,
+    sample_metadata_df_factory,
+):
+    """Test the guard on VIA frame numbers outside the clip's frame range.
+
+    Frame numbers in the VIA file are expected to be 0-based indices into
+    the clip.
+    """
+    # Get VIA tracks file with one frame more than the clip
+    # (the clip frame indices range 0 to 100)
+    via_frame_indices = list(range(102))  # clip-based indices
+    via_tracks_path = sample_via_tracks_file_factory(
+        "04.09.2023-01-Right-Loop05_tracks.csv",
+        frame_indices=via_frame_indices,
+    )
+    # Get clip metadata; it assumes the clip spans global frames 99-199,
+    # (i.e. clip frames 0-100)
+    df_metadata = sample_metadata_df_factory([via_tracks_path])
+
+    # Check ValueError is thrown
+    with pytest.raises(ValueError) as exc_info:
+        load_extended_ds(via_tracks_path, df_metadata)
+
+    # Check message reports the file's own range and the clip's range
+    message = str(exc_info.value)
+    assert f"{via_frame_indices[0]}-{via_frame_indices[-1]}" in message
+    assert "0-100" in message
+
+
+def test_escape_frame_out_of_clip_range(
+    sample_via_tracks_file_factory, sample_metadata_df_factory
+):
+    """Test the guard on an escape frame outside the clip's frame range.
+
+    It should be checked in load_extended_ds
+    """
+    # Get VIA tracks file and metadata
+    via_tracks_path = sample_via_tracks_file_factory(
+        "04.09.2023-01-Right-Loop05_tracks.csv"
+    )
+    df_metadata = sample_metadata_df_factory([via_tracks_path])
+
+    # Place escape past the clip end.
+    # escape_START_frame_0_based_idx is in global (whole-video) numbering,
+    # and the clip spans global frames 99-199, so we place it at
+    # global frame 250
+    df_metadata.loc[0, "escape_START_frame_0_based_idx"] = 250
+
+    # Check ValueError is thrown
+    with pytest.raises(ValueError) as exc_info:
+        load_extended_ds(via_tracks_path, df_metadata)
+
+    # Check error message reports the clip-local index and range.
+    message = str(exc_info.value)
+    assert "escape start frame" in message
+    assert "151 as a clip frame index" in message
+    assert "0-100" in message
 
 
 @pytest.mark.parametrize(

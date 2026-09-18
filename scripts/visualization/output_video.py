@@ -5,6 +5,7 @@ from pathlib import Path
 
 import cv2
 import matplotlib.pyplot as plt
+import numpy as np
 from movement.io import load_bboxes
 from tqdm import tqdm
 
@@ -32,6 +33,42 @@ def get_distinct_colors():
             bgr = (int(rgba[2] * 255), int(rgba[1] * 255), int(rgba[0] * 255))
             colors.append(bgr)
     return colors
+
+
+def reindex_to_video_clip_frames(ds, video_path):
+    """Pad the dataset's time coordinate to span every frame of the clip.
+
+    The dataset is expected to hold the frame numbers 0-based indices over
+    the clip, as written in the VIA tracks file (i.e. loaded with
+    `use_frame_numbers_from_file=True` and `fps=None`).
+    """
+    # Get n frames in video clip
+    cap = cv2.VideoCapture(str(video_path))
+    n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    cap.release()
+
+    # Check the frame indices in the file are within the video range
+    frames_0idx = ds.time.values
+    if frames_0idx.min() < 0 or frames_0idx.max() >= n_frames:
+        raise ValueError(
+            f"{Path(video_path).name}: the frame numbers in the tracks file "
+            f"({frames_0idx.min()}-{frames_0idx.max()}) fall outside the "
+            f"video's frame range 0-{n_frames - 1}. Are the tracks from this "
+            "clip?"
+        )
+
+    # Print number of frames with no detections
+    n_frames_wo_boxes = n_frames - ds.sizes["time"]
+    if n_frames_wo_boxes:
+        print(
+            f"{Path(video_path).name}: {n_frames_wo_boxes} of {n_frames} "
+            "frames have no tracked boxes; padding them with NaNs."
+        )
+
+    # Reindex dataset to number of frames in video
+    # (reindexing fills in any gaps with nans, but silently drops
+    # frames out of the specificied range; hence the range check earlier)
+    return ds.reindex(time=np.arange(n_frames))
 
 
 def create_opencv_video(
@@ -169,13 +206,22 @@ if __name__ == "__main__":
         ]
     )
     for escape_clip_name in list_escape_clips[-1:]:
-        input_video = Path(input_data_dir) / f"{escape_clip_name}.mp4"
+        input_clip = Path(input_data_dir) / f"{escape_clip_name}.mp4"
         pred_csv = Path(input_data_dir) / f"{escape_clip_name}_tracks.csv"
 
-        # Read predictions as a movement dataset
+        # Read predictions as a movement dataset.
+        # We request the frame numbers as defined in the file
+        # (only frames with detections are included in the file)
         ds_pred = load_bboxes.from_via_tracks_file(
-            pred_csv, fps=None, use_frame_numbers_from_file=False
+            pred_csv,
+            fps=None,
+            use_frame_numbers_from_file=True,
         )
+
+        # Pad the time coordinate to span the full video, so that time
+        # coordinate i of the dataset is frame index (0-based) i of the clip
+        ds_pred = reindex_to_video_clip_frames(ds_pred, input_clip)
+
         list_individuals_idcs = list(range(len(ds_pred.individuals)))
 
         # Create prediction video
@@ -184,7 +230,7 @@ if __name__ == "__main__":
         )
         create_opencv_video(
             ds=ds_pred,
-            input_video=input_video,
+            input_video=input_clip,
             output_video_path=output_video_path,
             list_individuals_idcs=list_individuals_idcs,
         )
