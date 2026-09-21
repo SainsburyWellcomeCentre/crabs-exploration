@@ -1,7 +1,8 @@
 # Proposal for the `mask-tracked-crabs` entry point
 
-Part of [`plan-masking-crabs.md`](plan-masking-crabs.md). This document covers **PR 1 and PR 2**;
-[`proposal-detect-and-track-mask.md`](proposal-detect-and-track-mask.md) covers PR 3.
+Part of [`plan-masking-crabs.md`](plan-masking-crabs.md). This document covers **PR 1**, the first of
+the three; [`proposal-mask-tracked-crabs-from-csv.md`](proposal-mask-tracked-crabs-from-csv.md)
+covers PR 2 and [`proposal-detect-and-track-mask.md`](proposal-detect-and-track-mask.md) covers PR 3.
 
 ## Description
 
@@ -13,10 +14,10 @@ It needs no trained detector model and no detector pass.
 ```mermaid
 flowchart TD
     CLI["✨ mask-tracked-crabs<br/>--boxes --videos --output_dir"] --> DISP["✨ dispatch on the suffix of --boxes"]
-    DISP -->|".zarr — PR 1"| RZ["✨ read_tracked_bboxes_from_zarr<br/>one call per clip"]
-    DISP -->|".csv — PR 2"| RC["✨ read_tracked_bboxes_from_csv"]
+    DISP -->|".zarr"| RZ["✨ read_tracked_bboxes_from_zarr<br/>one call per clip"]
+    DISP -->|".csv — rejected here, PR 2"| RC["read_tracked_bboxes_from_csv"]
     RZ --> D["tracked_bboxes_dict<br/>frame_idx -> boxes, ids"]
-    RC --> D
+    RC -.-> D
     D --> CS["✨ create_mask_store<br/>one per video group"]
     D --> MC["✨ mask_clip_into<br/>one video pass per clip"]
     V["clip .mp4<br/>pixels, from --videos"] --> MC
@@ -32,8 +33,10 @@ flowchart TD
 ```
 
 * Arrows point from an input to the step that consumes it.
-* Dashed arrows are read-side, not part of the run.
-* ✨ marks what is new here. The grey node is **PR 2**; everything else is **PR 1**.
+* Dashed arrows are read-side, or land in a later PR — not part of this run.
+* ✨ marks what is new here. The grey node is
+  [**PR 2**](proposal-mask-tracked-crabs-from-csv.md), which widens the dispatch; everything else is
+  this PR.
 
 **The store mirrors the trajectories datatree** that
 [`create-zarr-dataset`](../crabs/zarr/create_dataset.py) writes — one zarr group per video, holding
@@ -60,22 +63,24 @@ reindexing. See [§5](#5-output-format-an-xarray-store-mirroring-the-trajectorie
 
 - [`plan-masking-crabs.md`](plan-masking-crabs.md) — the umbrella plan, and where the three PRs and
   the decisions common to them are listed.
+- [`proposal-mask-tracked-crabs-from-csv.md`](proposal-mask-tracked-crabs-from-csv.md) — **PR 2**,
+  which widens this entry point's `--boxes` to a `<clip>_tracks.csv` and adds the one-clip
+  `generate_masks` wrapper over the pass this PR ships. Everything here is written so that PR is ~60
+  lines, and the places it will touch are marked.
 - [`proposal-detect-and-track-mask.md`](proposal-detect-and-track-mask.md) — **PR 3**, which adds a
   second entry point running detection, tracking and masking in one command. Built entirely on the
-  masking pass PR 1 ships.
+  masking pass this PR ships, through PR 2's wrapper.
 - [`crabs/zarr/create_dataset.py`](../crabs/zarr/create_dataset.py) — the trajectories store this
   reads from and whose shape the output mirrors.
 - [PR #291](https://github.com/SainsburyWellcomeCentre/crabs-exploration/pull/291) — made the
   trajectories `time` axis dense and clip-anchored. It is the reason PR 1 is implementable now; see
-  [§3](#3-reading-boxes-from-a-trajectories-store-pr-1).
+  [§3](#3-reading-boxes-from-a-trajectories-store).
 - [`scripts/generate_masks_from_bboxes.py`](../scripts/generate_masks_from_bboxes.py) — the existing
   standalone SAM2 script this entry point supersedes for tracked boxes.
 
 ---
 
 ## Overview of steps
-
-**PR 1**
 
 1. Add `crabs/tracker/mask_video.py`: `create_mask_store`, `mask_clip_into`, `predict_masks_into`,
    `load_sam2_predictor`, `load_mask_config`, `accelerator_to_device`, the parser and the entry
@@ -89,15 +94,6 @@ reindexing. See [§5](#5-output-format-an-xarray-store-mirroring-the-trajectorie
 7. Add unit tests that run without SAM2 installed, and one opt-in integration test.
 8. Document the entry point, the install, and the store layout.
 
-**PR 2**
-
-9. Add `read_tracked_bboxes_from_csv` to [`crabs/tracker/utils/tracking.py`](../crabs/tracker/utils/tracking.py),
-   built on the `extract_bounding_box_info` already in the file.
-10. Move `create_dataset.py`'s two clip-filename helpers into the same module as
-    `video_and_clip_id_from_stem`, and import them back into `create_dataset.py`.
-11. Widen `--boxes` to accept `.csv`, and add the one-clip path through the same pass.
-12. Add its unit tests and one integration test.
-
 ---
 
 ## Key aspects of suggested implementation
@@ -109,9 +105,12 @@ SAM2 with boxes someone already computed, write the same store. They differ only
 they are one command, and the source is one argument whose **suffix** selects the reader:
 
 ```bash
-mask-tracked-crabs --boxes CrabTracks-slurm3012633.zarr --videos /path/to/clips/   # PR 1
+mask-tracked-crabs --boxes CrabTracks-slurm3012633.zarr --videos /path/to/clips/   # this PR
 mask-tracked-crabs --boxes tracking_output/<clip>_tracks.csv --videos <clip>.mp4   # PR 2
 ```
+
+The second line is [PR 2](proposal-mask-tracked-crabs-from-csv.md). It is here because the argument
+has to be designed for both from the start, not because this PR implements it.
 
 **Why not two commands.** The two would share every argument but one, produce the same store, and
 need a cross-referencing `epilog` in each `--help` so that someone holding one kind of input
@@ -128,9 +127,10 @@ with a `.csv` is an error with a message saying so, not a silent no-op. Against 
 alternative the sibling proposal rejected for `detect-and-track-mask` had **seven** inert arguments
 — the difference in degree is the whole argument.
 
-**PR 1 does not accept `.csv` at all** — not a stub, not a "not yet supported" branch. It accepts
-`.zarr` and rejects anything else by suffix; PR 2 widens the accepted set and adds the reader. No
-dead code at any point, and `--help` never advertises something that does not work.
+**This PR does not accept `.csv` at all** — not a stub, not a "not yet supported" branch. It accepts
+`.zarr` and rejects anything else by suffix; [PR 2](proposal-mask-tracked-crabs-from-csv.md) widens
+the accepted set and adds the reader. No dead code at any point, and `--help` never advertises
+something that does not work.
 
 **Naming.** `mask-tracked-crabs` follows the repo's verb-first convention
 (`detect-and-track-video`, `extract-frames`, `train-detector`, `create-zarr-dataset`). It is not
@@ -157,14 +157,14 @@ def mask_clip_into(video_path, tracked_bboxes_dict, mask_array, clip_index,
 
 This shape is the whole reason there is no class here.
 
-- **PR 1 calls `create_mask_store` once per video group and `mask_clip_into` once per clip**, with a
-  single SAM2 predictor loaded once for the whole run. The predictor is the expensive object; it is
+- **This PR calls `create_mask_store` once per video group and `mask_clip_into` once per clip**, with
+  a single SAM2 predictor loaded once for the whole run. The predictor is the expensive object; it is
   the caller's, not the pass's.
-- **PR 2 calls both with a single clip** — one `clip_id`, one `mask_clip_into`. It adds a thin
-  `generate_masks` wrapper over the two, for the one-clip case.
+- **[PR 2](proposal-mask-tracked-crabs-from-csv.md) calls both with a single clip** — one `clip_id`,
+  one `mask_clip_into`. It adds a thin `generate_masks` wrapper over the two, for the one-clip case.
 - **PR 3 calls that same wrapper**, with the dict built from a `Tracking` run in memory.
 
-**The split is load-bearing from the first commit.** PR 1's own loop is the multi-clip caller, so
+**The split is load-bearing from the first commit.** This PR's own loop is the multi-clip caller, so
 there is no speculative generality here: if the store held one clip, the pass would be one function.
 
 **A `TrackingAndMasking(Tracking)` subclass could not work.** `Tracking.__init__` loads a checkpoint
@@ -173,7 +173,7 @@ a new timestamped output directory ([track_video.py:93-132](../crabs/tracker/tra
 This entry point has no checkpoint, so the subclass could only be constructed by bypassing its own
 parent's `__init__`.
 
-### 3. Reading boxes from a trajectories store (PR 1)
+### 3. Reading boxes from a trajectories store
 
 The reader turns one clip of one video group into the `tracked_bboxes_dict` contract
 ([§4](#4-the-tracked_bboxes_dict-contract)):
@@ -295,8 +295,8 @@ is *identical* to the trajectories store's, which is what makes the two align.
 `movement` stores `position` (the centroid) and `shape`, so corners are `position ± shape / 2` —
 three lines. The values are **float32** (`load_bboxes` allocates `position_array` as float32,
 checked on movement 0.17.0), so this path has no float64 round-trip guarantee. Irrelevant for a SAM2
-prompt, but it means [§4a](#4a-what-the-csv-does-and-does-not-preserve-pr-2)'s bit-exactness
-argument is about the csv path only.
+prompt, but it means the bit-exactness argument in
+[PR 2 §3](proposal-mask-tracked-crabs-from-csv.md) is about the csv path only.
 
 ### 4. The `tracked_bboxes_dict` contract
 
@@ -326,44 +326,20 @@ FOR EACH frame_idx IN 0 .. total_n_frames - 1:
 - **An empty dict must not raise** inside the pass. The entry point skips a clip with no boxes at
   all, naming it, rather than creating a zero-length `individual` axis.
 
-#### 4a. What the CSV does and does not preserve (PR 2)
+#### 4a. The csv producer is designed for, not implemented here
 
-`read_tracked_bboxes_from_csv` is ~15 lines, built on `extract_bounding_box_info`
-([tracking.py:47-86](../crabs/tracker/utils/tracking.py#L47-L86)), which already parses one VIA row
-and recovers the frame index from the `frame_{:08d}.png` filename.
+[PR 2](proposal-mask-tracked-crabs-from-csv.md) adds `read_tracked_bboxes_from_csv`, the third
+producer of this contract. Two of its properties are worth knowing while reading the contract above,
+because they are what the `.get`-and-length-check shape exists for:
 
-> [!NOTE]
-> `write_tracked_detections_to_csv` stores `x`, `y`, `width`, `height`
-> ([io.py:45-101](../crabs/tracker/utils/io.py#L45-L101)), and the reader rebuilds
-> `[x, y, x + width, y + height]`.
->
-> `x` and `y` are written through an f-string on a numpy float64, whose `str` is the round-tripping
-> repr, so they come back **bit-identical** — but only in float64. Narrowing to float32, as
-> `TrackerEvaluate` does for ground truth, would quietly lose that.
->
-> `width` and `height` are written through `int(...)` — **truncated, not rounded** — so `xmax` and
-> `ymax` come back up to 1 px small, and never large. Track IDs round-trip exactly.
->
-> Checked numerically over 10,000 synthetic boxes through the real format string: `x`/`y` bit-exact
-> in 10,000 of 10,000, `xmax`/`ymax` error in `(-1, 0]` px, float32 narrowing bit-exact in **0**.
+- **its dict is sparse and carries no `"scores"` key**, where the tracker's is dense and does — the
+  two extremes the pass has to tolerate;
+- **its `ids` are bare SORT numbers as strings** — `"1"`, `"7"`, `"12"` — sorted numerically, which
+  is the coordinate shape that makes `np.searchsorted` wrong
+  ([§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)).
 
-**The `confidence` column is dropped rather than parsed back**: it is written misaligned with the
-boxes beside it — see [`proposal-tracking-score-alignment.md`](proposal-tracking-score-alignment.md).
-
-**Where `video_id` and `clip_id` come from in PR 2.** The store is grouped by video and indexed by
-clip, so the csv path has to name both. It derives them from `Path(--videos).stem` with the same
-helpers `create_dataset.py` uses, so a clip masked this way lands in the group the trajectories store
-would give it:
-
-| stem | `video_id` | `clip_id` |
-|---|---|---|
-| `04.09.2023-01-Right-Loop05` | `04.09.2023-01-Right` | `Loop05` |
-| `my_clip` | `my_clip` | `my_clip` |
-
-The helpers ([create_dataset.py:212-234](../crabs/zarr/create_dataset.py#L212-L234)) **move to
-`crabs/tracker/utils/tracking.py` and are imported back**, rather than duplicated. Ten lines of pure
-string handling, one rule rather than two, and it makes the "lands in the same group" claim
-checkable. The fallback row is a judgement call — *Points to discuss* [#5](#points-to-discuss).
+What the CSV round trip preserves and loses, and where that path's `video_id` / `clip_id` come from,
+are in [PR 2 §3 and §4](proposal-mask-tracked-crabs-from-csv.md).
 
 ### 5. Output format: an xarray store mirroring the trajectories datatree
 
@@ -387,8 +363,8 @@ one entry point fills the shape from either input.
 
     | boxes from | `individual` values | `id_source` |
     |---|---|---|
-    | a trajectories store (PR 1) | `"id_0000"`, `"id_0001"`, … — copied from `ds_video.individual` | `trajectories_store_individual` |
-    | a `<clip>_tracks.csv` (PR 2) | `"1"`, `"7"`, `"12"` — the SORT IDs actually emitted, as strings | `sort_track_id` |
+    | a trajectories store (this PR) | `"id_0000"`, `"id_0001"`, … — copied from `ds_video.individual` | `trajectories_store_individual` |
+    | a `<clip>_tracks.csv` ([PR 2](proposal-mask-tracked-crabs-from-csv.md)) | `"1"`, `"7"`, `"12"` — the SORT IDs actually emitted, as strings | `sort_track_id` |
     | a `Tracking` run (PR 3) | the same | `sort_track_id` |
 
     ```python
@@ -423,8 +399,9 @@ one entry point fills the shape from either input.
   writing `int16` IDs into it — **cannot be expressed**. See
   [`proposal-mask-zarr-dtype.md`](proposal-mask-zarr-dtype.md).
 
-- **`M` is the number of IDs actually present, not `max(id)`.** For PR 1 it is the video group's own
-  `individual` size, copied straight across; for PR 2 it is the sorted set of IDs the csv emits.
+- **`M` is the number of IDs actually present, not `max(id)`.** Here it is the video group's own
+  `individual` size, copied straight across; for [PR 2](proposal-mask-tracked-crabs-from-csv.md) it
+  is the sorted set of IDs the csv emits.
   Counter values SORT burned on tracks suppressed below `min_hits`
   ([sort.py:39](../crabs/tracker/sort.py#L39), [:76](../crabs/tracker/sort.py#L76)) never inflate
   the axis, because there is no offset convention needing gaps left in it.
@@ -450,6 +427,7 @@ one entry point fills the shape from either input.
     "source_video": [...],                       # one clip .mp4 per clip_id entry, in order
     "boxes_file": str(boxes_path),               # the store or csv these IDs refer to
     "boxes_source": "trajectories_zarr",         # or "tracks_csv" (PR 2), "tracker" (PR 3)
+    # ^ the other two values are written by the later PRs; the key ships here
     "id_source": "trajectories_store_individual",# or "sort_track_id"
     "image_shape": [H, W],
     "mask_encoding": "instance_planes",
@@ -537,8 +515,9 @@ holds with the `clip_id` axis in front**: `mask_array[c, t]` names a whole shard
 
 > [!IMPORTANT]
 > **Not `np.searchsorted`**, the tempting one-liner, which is wrong twice over. It compares strings
-> **lexically**, so a `sorted(..., key=int)` coordinate — `["1", "2", "10"]`, which is what PR 2
-> wants for readability — resolves `"10"` to position 1. And on a label missing altogether it
+> **lexically**, so a `sorted(..., key=int)` coordinate — `["1", "2", "10"]`, which is what
+> [PR 2](proposal-mask-tracked-crabs-from-csv.md) wants for readability — resolves `"10"` to
+> position 1. And on a label missing altogether it
 > returns an insertion point rather than raising, turning a bug into a silently mis-assigned mask. A
 > dict raises `KeyError` on the second and has no ordering assumption for the first.
 
@@ -601,8 +580,8 @@ explicit coordinate costs something:
 
 | store's `individual` | pass as `labels` | result |
 |---|---|---|
-| `"id_0000"`, `"id_0001"`, … (PR 1) | nothing — take the `1..M` default | labels are positions; carry the coordinate alongside to name them |
-| `"1"`, `"7"`, `"12"` (PR 2) | `[int(s) for s in individual]` | `regionprops` labels **are** the SORT track IDs |
+| `"id_0000"`, `"id_0001"`, … (this PR) | nothing — take the `1..M` default | labels are positions; carry the coordinate alongside to name them |
+| `"1"`, `"7"`, `"12"` ([PR 2](proposal-mask-tracked-crabs-from-csv.md)) | `[int(s) for s in individual]` | `regionprops` labels **are** the SORT track IDs |
 
 **The overlap policy is positional, not ID-based.** `"id_0010"` versus `"id_0009"` has no meaningful
 ordering to break a tie on. `last_wins` — later position along `individual` takes the contested pixel
@@ -671,8 +650,8 @@ def mask_parse_args(args):
         "--boxes", type=str, required=True,
         help=(
             "Location of the tracked boxes to prompt SAM2 with: a trajectories "
-            "zarr store written by create-zarr-dataset. "        # PR 2 adds: "or a "
-            "The suffix selects how it is read."                 # "<clip>_tracks.csv."
+            "zarr store written by create-zarr-dataset. "        # PR 2 widens this
+            "The suffix selects how it is read."                 # string; see its §7
         ),
     )
     parser.add_argument(
@@ -713,7 +692,7 @@ hyphens in the command name, rendering it as `detect-and-` / `track-mask` across
 un-copy-pasteable. The raw formatter leaves the epilog exactly as written and still wraps ordinary
 argument help normally.
 
-**PR 1 also takes `--zarr_mode_store` and `--zarr_mode_group`**, matching `create-zarr-dataset`'s own
+**This PR also takes `--zarr_mode_store` and `--zarr_mode_group`**, matching `create-zarr-dataset`'s own
 ([create_dataset.py:442-533](../crabs/zarr/create_dataset.py#L442-L533)), so a SLURM array with one
 job per video can append groups to a shared store. That is the same array shape
 `create-zarr-dataset` already documents, and one video per job is the natural unit here too.
@@ -745,17 +724,17 @@ flowchart TD
     style FUT fill:#f5f5f5,stroke:#999,color:#333,stroke-dasharray: 4 4
 ```
 
-Arrows point from a caller to what it calls. Solid nodes are PR 1; dashed are PR 2 and PR 3.
+Arrows point from a caller to what it calls. Solid nodes are this PR; dashed are
+[PR 2](proposal-mask-tracked-crabs-from-csv.md) and
+[PR 3](proposal-detect-and-track-mask.md), shown so the seams they attach to are visible.
 
 ### The changes
-
-**PR 1**
 
 | # | Change | Signature / notes |
 |---|---|---|
 | 1 | **new** `crabs/tracker/mask_video.py` — the pass and the entry point, ~250 lines | see below |
 | 2 | **new** `crabs/tracker/utils/masks.py` — the read-side helper, ~25 lines | `to_label_image` ([§7](#7-where-the-flattening-happens-planes-on-disk-label-image-on-read)) |
-| 3 | **new** `crabs/tracker/utils/boxes_from_zarr.py` — the reader, ~40 lines | `read_tracked_bboxes_from_zarr` ([§3](#3-reading-boxes-from-a-trajectories-store-pr-1)) |
+| 3 | **new** `crabs/tracker/utils/boxes_from_zarr.py` — the reader, ~40 lines | `read_tracked_bboxes_from_zarr` ([§3](#3-reading-boxes-from-a-trajectories-store)) |
 | 4 | **new** `crabs/tracker/config/mask_config.yaml` | the three knobs ([§8](#8-configuration-a-separate-mask-config-file)) |
 | 5 | [`pyproject.toml`](../pyproject.toml) | `mask-tracked-crabs` script; `zarr>=3`, `xarray`; `[dependency-groups] masks` + `[tool.uv] no-build-isolation-package` |
 | 6 | **new** `tests/test_unit/test_mask_video.py` | no `sam2` needed |
@@ -764,17 +743,10 @@ Arrows point from a caller to what it calls. Solid nodes are PR 1; dashed are PR
 
 **Nothing existing is touched.** `create_dataset.py`, `track_video.py`, `sort.py`, `utils/io.py`,
 `utils/tracking.py`, the trajectories store format, the CSV format and the detector are all
-untouched — PR 1 only *formats* clip filenames, never parses them
+untouched — this PR only *formats* clip filenames, never parses them
 ([§3b](#3b-clip-local-frames-are-not-a-problem-because-clips-have-their-own-videos)).
-
-**PR 2**
-
-| # | Change | Signature / notes |
-|---|---|---|
-| 9 | [`crabs/tracker/utils/tracking.py`](../crabs/tracker/utils/tracking.py) | `read_tracked_bboxes_from_csv`, reusing `extract_bounding_box_info`; plus the two filename helpers moved in as `video_and_clip_id_from_stem` ([§4a](#4a-what-the-csv-does-and-does-not-preserve-pr-2)) |
-| 10 | [`crabs/zarr/create_dataset.py`](../crabs/zarr/create_dataset.py) | import the moved helpers instead of defining them — no behaviour change |
-| 11 | `crabs/tracker/mask_video.py` | widen `--boxes` to `.csv`; add `generate_masks`, the one-clip wrapper |
-| 12 | tests | the csv reader, the widened dispatch, one integration test |
+[PR 2](proposal-mask-tracked-crabs-from-csv.md) is the first to touch existing Python, and only to
+move two filename helpers.
 
 <details>
 <summary><b>1. The new module in full outline</b></summary>
@@ -884,7 +856,7 @@ def mask_clip_into(video_path, tracked_bboxes_dict, mask_array, clip_index,
 
 def main(args):                            # mask-tracked-crabs
     boxes_path = Path(args.boxes)
-    IF boxes_path.suffix != ".zarr":       # PR 2 widens this to accept ".csv"
+    IF boxes_path.suffix != ".zarr":       # PR 2 widens this to accept ".csv"  [§1]
         raise ValueError(...)              # names the suffixes it accepts  [§1]
     IF args.match != "*" and boxes_path.suffix != ".zarr":
         raise ValueError("--match only applies to a trajectories zarr store")
@@ -1032,8 +1004,10 @@ Extrapolated to 3000 frames, one crab's trajectory costs **1.1 s** chunked-and-s
 
 ## Tests
 
-The unit tests are the substance here, because the format contract is what PR 2, PR 3 and every
-downstream consumer depend on.
+The unit tests are the substance here, because the format contract is what
+[PR 2](proposal-mask-tracked-crabs-from-csv.md), [PR 3](proposal-detect-and-track-mask.md) and every
+downstream consumer depend on. Several of them are written against **PR 2's** coordinate shape rather
+than this PR's, deliberately — noted where that is so.
 
 **Pure unit — must pass with no `sam2` installed (this is the CI shape).** New file
 `tests/test_unit/test_mask_video.py`.
@@ -1048,9 +1022,12 @@ downstream consumer depend on.
     silently mis-assigned mask.
 
     **1b. Numerically-sorted string labels resolve correctly.** With `individual` built by
-    `sorted(..., key=int)` — `["2", "9", "10"]`, PR 2's shape — masks for IDs `10` and `2` land on
-    planes 2 and 0. `np.searchsorted` would put `"10"` on plane 1
-    ([§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)).
+    `sorted(..., key=int)` — `["2", "9", "10"]`, **[PR 2](proposal-mask-tracked-crabs-from-csv.md)'s
+    shape, written here on purpose** — masks for IDs `10` and `2` land on planes 2 and 0.
+    `np.searchsorted` would put `"10"` on plane 1
+    ([§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)). The dict lookup this pins is
+    shipped by this PR, so the test that guards it ships here too rather than waiting for the PR that
+    makes it a live case.
 2. **Overlap is preserved.** Two masks sharing a block of pixels: both planes contain the shared
    pixels in full, and each plane's `sum()` equals its input's. The test that would fail under the
    label-image format.
@@ -1108,40 +1085,18 @@ downstream consumer depend on.
     contains the unbroken string `detect-and-track-mask`, so the epilog cannot be dropped silently and
     dropping `RawDescriptionHelpFormatter` fails the test rather than quietly hyphenating the command
     name across two lines ([§9](#9-the-argument-parser)).
-12. **Dispatch by suffix.** In PR 1, `--boxes foo.csv` exits with a message naming the accepted
-    suffixes; `--match` with a non-`.zarr` `--boxes` is an error. In PR 2, `--boxes foo.csv` is
-    accepted and `--boxes foo.txt` still is not.
+12. **Dispatch by suffix.** `--boxes foo.csv` exits with a message naming the accepted suffixes, and
+    `--match` with a non-`.zarr` `--boxes` is an error.
+    [PR 2](proposal-mask-tracked-crabs-from-csv.md) edits the first half of this test rather than
+    adding beside it — the diff is where a reviewer sees the widening.
 13. **A missing clip video fails loudly**, naming the path it looked for, **before** SAM2 is loaded —
     so a mis-pointed `--videos` costs a second rather than a model download.
 
-**PR 2 adds**
+**[PR 2](proposal-mask-tracked-crabs-from-csv.md) adds four more** — the csv reader, the moved
+filename helpers, a frame index out of range, and a forward-compatibility test that calls
+`generate_masks` with both a sparse and a dense dict. They are listed in its own *Tests* section.
 
-14. **`read_tracked_bboxes_from_csv`, against a CSV written by the real writer.** Build a small dict,
-    write it with `write_tracked_detections_to_csv`, read it back, and assert: the frame indices
-    recovered are exactly those that had at least one box; `ids` exactly equal; `xmin`/`ymin` exactly
-    equal; `xmax`/`ymax` within `[original - 1, original]` — **asserting the truncation as a property
-    rather than pretending the round trip is exact**
-    ([§4a](#4a-what-the-csv-does-and-does-not-preserve-pr-2)).
-    [`test_tracking_io.py`](../tests/test_unit/test_tracking_io.py) already has a fixture of this
-    shape. Also: a frame whose boxes are all absent yields no key, a header-only CSV yields `{}`, and
-    the arrays are `float64`.
-15. **`video_and_clip_id_from_stem` agrees with `create_dataset.py`'s own naming.** For a
-    `<video>-Loop05` stem it returns what `_via_tracks_to_video_filename` /
-    `_clip_filename_to_clip_id` return for the matching `_tracks.csv` — which makes "lands in the
-    group the trajectories store would give it" a checked claim. Plus the fallback: a stem with no
-    `-Loop` gives `(stem, stem)`.
-16. **A CSV from a different clip fails loudly.** A frame index outside `0..T-1` raises rather than
-    writing masks past the end of the store.
-17. **Forward compatibility with PR 3.** Call `generate_masks` (with the SAM2 call monkeypatched)
-    twice on the same boxes: once with a **sparse** dict with no `"scores"` key, as the csv reader
-    returns; once with a **dense** dict carrying a `"scores"` key of a *different length*, as
-    `core_detection_and_tracking` returns
-    ([track_video.py:264-269](../crabs/tracker/track_video.py#L264-L269)). Assert both produce the
-    same populated `(frame, individual)` set, the same `individual` coordinate and the same store
-    shape. This exists so PR 3's `main` stays ten lines.
-
-**Existing tests that must stay green, unmodified.** `pytest tests/test_unit`, and for PR 2 the zarr
-tests, which must not notice that `create_dataset.py`'s filename helpers moved. Extend
+**Existing tests that must stay green, unmodified.** `pytest tests/test_unit`. Extend
 [`test_entry_points.py`](../tests/test_unit/test_entry_points.py) with `mask-tracked-crabs`.
 
 **Integration (slow, opt-in)**, `@pytest.mark.skipif` on `sam2` being importable.
@@ -1171,10 +1126,10 @@ naming rule rather than the real one.
 20. **Two runs into one output directory do not collide** — different `sam2_model_id`, two stores side
     by side. The timestamped-name property, and the one that would regress if the name were ever made
     deterministic.
-21. **PR 2: masking a `detect-and-track-video` output.** Run `detect-and-track-video` as
-    [`test_detect_and_track_video`](../tests/test_integration/test_inference.py) does, then
-    `mask-tracked-crabs --boxes <that dir>/<video>_tracks.csv --videos <clip>` — **with no checkpoint
-    on the second command line**, which is what proves the entry point needs no trained detector.
+
+[PR 2](proposal-mask-tracked-crabs-from-csv.md) adds one more, masking a `detect-and-track-video`
+output, and needs **no new fixture** to do it — the registry already has what that run needs, and the
+csv comes out of the run itself.
 
 ---
 
@@ -1253,7 +1208,7 @@ from the installed `dist-info`), and the Hugging Face model cards for `facebook/
 | `cv2.VideoCapture.read()` returns **BGR**; `set_image` documents **RGB** | Silently worse masks — no error, no warning. The existing script never hit this because it reads RGB PNGs via PIL | `cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)` |
 | `predict()` ends with `masks.squeeze(0)`: returns `(N, 1, H, W)` for N>1 but `(1, H, W)` for N==1 | Crash or wrong axis on any frame with exactly one tracked crab. The same latent bug is in [generate_masks_from_bboxes.py:171](../scripts/generate_masks_from_bboxes.py#L171) | `masks.reshape(len(boxes), *masks.shape[-2:])` |
 | Every prompt gets a **full-frame** mask: `_predict` upsamples to `self._orig_hw`, then `predict()` does `.float().cpu().numpy()` | At 1920×1080 that is 8.29 MB per prompt in float32 — **829 MB on CPU for a 100-crab frame** | Chunk the prompts (`max_prompts_per_batch`, default 32 → 265 MB peak) and scatter each chunk into the dense `bool` buffer, releasing the float masks before the next chunk |
-| The dense `(M, H, W)` bool buffer the sharded store requires ([§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)) | `M × H × W` bytes — **207 MB at M=100, 1920×1080** — scaling with the video group's `individual` count — i.e. **exactly the input store's `individual` size** for PR 1. Not yet looked up (*Points to discuss* [#6](#points-to-discuss)) | Allocate **once per run**, outside both loops, and `dense[:] = False` per frame. Live at the same time as the 265 MB above, so budget ~0.5 GB |
+| The dense `(M, H, W)` bool buffer the sharded store requires ([§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)) | `M × H × W` bytes — **207 MB at M=100, 1920×1080** — scaling with the video group's `individual` count — i.e. **exactly the input store's `individual` size** here. Not yet looked up (*Points to discuss* [#5](#points-to-discuss)) | Allocate **once per run**, outside both loops, and `dense[:] = False` per frame. Live at the same time as the 265 MB above, so budget ~0.5 GB |
 | One SAM2 predictor for a whole run, many clips | Loading it per clip would dominate a many-clip run | `load_sam2_predictor` is called once in `main` and passed down. It is also why `mask_clip_into` takes a predictor rather than a model id |
 | Clips of one video group may differ in frame size | `create_mask_store` fixes one `(H, W)` per group | Read all the group's video headers up front and fail naming the offending clip, rather than writing a truncated mask |
 
@@ -1290,11 +1245,8 @@ mask-tracked-crabs \
 Failure paths worth confirming by hand, since they are the ones a user will hit:
 
 ```bash
-# exits non-zero naming the accepted suffixes (PR 1)
+# exits non-zero naming the accepted suffixes — a csv is not one of them yet
 mask-tracked-crabs --boxes tracking_output/clip_tracks.csv --videos clip.mp4
-
-# exits non-zero: --match does not apply to a csv (PR 2)
-mask-tracked-crabs --boxes clip_tracks.csv --videos clip.mp4 --match "04.09*"
 
 # FileNotFoundError naming <video_id>-<clip_id>.mp4, before SAM2 is loaded
 mask-tracked-crabs --boxes <store>.zarr --videos /wrong/dir/
@@ -1348,12 +1300,11 @@ means the whole-frame write has regressed to a per-plane one.
 | # | To discuss | Conclusion |
 |---|---|---|
 | 1 | **Chunk count was this format's one weak spot; sharding answers it, but dictates the write.** Measured numbers in [*Formats considered and rejected*](#detailed-implementation). `shard_n_planes` stays a config value so it can be tuned without a format change. Still unmeasured: the cluster's network filesystem specifically — these numbers are local APFS. | |
-| 2 | **Module layout: one module or three.** PR 1 puts the pass and the entry point in `crabs/tracker/mask_video.py`, and PR 3 adds its entry point to the same file. The alternative is `masking.py` plus one thin module per entry point. Recommend one module now, and the split if it grows past ~300 lines. | |
+| 2 | **Module layout: one module or three.** This PR puts the pass and the entry point in `crabs/tracker/mask_video.py`; PR 2 adds `generate_masks` and PR 3 its entry point to the same file. The alternative is `masking.py` plus one thin module per entry point. Recommend one module now, and the split if it grows past ~300 lines. | |
 | 3 | **A convenience view that makes the store droppable into napari.** A lazy `(time, img_h, img_w)` label image — `to_label_image` under a dask `map_blocks` — would be droppable, and is ~10 lines reusing the helper this PR adds. The catch is that it bakes in one overlap policy as a default, which is the decision [§7](#7-where-the-flattening-happens-planes-on-disk-label-image-on-read) deliberately moved to the caller. Recommend adding it **after** the first real clip has been looked at, so the default is chosen from what overlap actually looks like. | |
 | 4 | **Selecting clips, not just videos.** `--match` is video-level, because that is what `dt.match()` matches. Filtering clips by metadata — `--escape_type triggered`, say, using the `clip_escape_type` coordinate — is a natural next argument, but it interacts with the store layout: a group whose `clip_id` axis is a *subset* of the trajectories store's no longer aligns 1:1 by position, only by label. Recommend deferring until there is a reason to mask a subset of a video's clips. | |
-| 5 | **The `video_id` / `clip_id` fallback for a video with no `-Loop` in its name** (PR 2 only). [§4a](#4a-what-the-csv-does-and-does-not-preserve-pr-2) gives `(stem, stem)` — the video is its own single clip. The alternatives are a literal placeholder, or two optional `--video_id` / `--clip_id` arguments. The last is most explicit and is rejected for now because they would be inert for every loop clip. If arbitrary non-clip videos turn out to be common, they are the right answer. | |
-| 6 | **`M` has not been looked up — but for PR 1 it is not an unknown, it is a coordinate.** Every memory figure — the 207 MB dense buffer, the ~0.5 GB budget — uses M=100, and that 100 is the *detector's* `box_detections_per_img` cap ([#7](#points-to-discuss)), which bounds crabs **per frame**. PR 1's `M` is something else: `create_mask_store` is given `ds_video.individual` verbatim ([§5](#5-output-format-an-xarray-store-mirroring-the-trajectories-datatree)), so **`M` is exactly the input store's `individual` axis size** for that video group — which, after the outer join, is the largest clip's individual count. It is readable off any existing store today, without running anything: `max(len(node.ds.individual) for node in dt.leaves)`. PR 2's `M` is a genuinely different quantity (distinct SORT IDs in one clip's csv) and needs its own look. Reads are immune either way — sharding holds the chunk at 2.07 MB whatever `M` does — so this is a write-buffer question only. | |
-| 7 | **⚠️ The detector is running at its detection cap.** `fasterrcnn_resnet50_fpn_v2` is constructed with no kwargs ([models.py:82](../crabs/detector/models.py#L82)), so torchvision's default `box_detections_per_img=100` applies — and this scene has ~100 crabs per frame. Dense frames are plausibly truncated to the top 100 by score, silently, before tracking. Nothing here changes it, but it caps what the masks can ever cover. Worth its own issue and a quick check: log `max(len(boxes))` over a real clip. | |
-| 8 | **`sam2_model_id` default.** Matched to the existing script's `-base-plus` so the two agree. `-tiny` / `-small` are considerably faster and may well be enough at this object size — comparing them is exactly what the timestamped store name is for. | |
-| 9 | **The dependency group only helps a uv checkout, and this repo is not one yet.** `uv.lock` is gitignored and untracked, and the install docs are conda + pip throughout. Committing `uv.lock` and making uv the documented path would also pin the SAM2 commit rather than tracking whatever `main` is on the day someone installs — a bigger, separate decision. | |
-| 10 | **Two things found while reading, both out of scope.** (a) `--max_frames_to_read` is parsed at [track_video.py:440](../crabs/tracker/track_video.py#L440) and never used — see PR [#245](https://github.com/SainsburyWellcomeCentre/crabs-exploration/pull/245); it would make iterating on masking much cheaper. (b) `write_tracked_detections_to_csv` writes box `width`/`height` through `int(...)`, which **truncates** rather than rounds, so every box in every `_tracks.csv` is up to 1 px narrower and shorter than the tracker produced. `int(round(...))` would make the error unbiased and halve it, but it alters a CSV the VIA workflow and [test_tracking_io.py](../tests/test_unit/test_tracking_io.py) both pin. Both deserve separate PRs. | |
+| 5 | **`M` has not been looked up — but here it is not an unknown, it is a coordinate.** Every memory figure — the 207 MB dense buffer, the ~0.5 GB budget — uses M=100, and that 100 is the *detector's* `box_detections_per_img` cap ([#6](#points-to-discuss)), which bounds crabs **per frame**. This PR's `M` is something else: `create_mask_store` is given `ds_video.individual` verbatim ([§5](#5-output-format-an-xarray-store-mirroring-the-trajectories-datatree)), so **`M` is exactly the input store's `individual` axis size** for that video group — which, after the outer join, is the largest clip's individual count. It is readable off any existing store today, without running anything: `max(len(node.ds.individual) for node in dt.leaves)`. [PR 2](proposal-mask-tracked-crabs-from-csv.md)'s `M` is a genuinely different quantity (distinct SORT IDs in one clip's csv) and needs its own look. Reads are immune either way — sharding holds the chunk at 2.07 MB whatever `M` does — so this is a write-buffer question only. | |
+| 6 | **⚠️ The detector is running at its detection cap.** `fasterrcnn_resnet50_fpn_v2` is constructed with no kwargs ([models.py:82](../crabs/detector/models.py#L82)), so torchvision's default `box_detections_per_img=100` applies — and this scene has ~100 crabs per frame. Dense frames are plausibly truncated to the top 100 by score, silently, before tracking. Nothing here changes it, but it caps what the masks can ever cover. Worth its own issue and a quick check: log `max(len(boxes))` over a real clip. | |
+| 7 | **`sam2_model_id` default.** Matched to the existing script's `-base-plus` so the two agree. `-tiny` / `-small` are considerably faster and may well be enough at this object size — comparing them is exactly what the timestamped store name is for. | |
+| 8 | **The dependency group only helps a uv checkout, and this repo is not one yet.** `uv.lock` is gitignored and untracked, and the install docs are conda + pip throughout. Committing `uv.lock` and making uv the documented path would also pin the SAM2 commit rather than tracking whatever `main` is on the day someone installs — a bigger, separate decision. | |
+| 9 | **Found while reading, out of scope.** `--max_frames_to_read` is parsed at [track_video.py:440](../crabs/tracker/track_video.py#L440) and never used — see PR [#245](https://github.com/SainsburyWellcomeCentre/crabs-exploration/pull/245); it would make iterating on masking much cheaper. Deserves its own PR. (The other thing found this way — `write_tracked_detections_to_csv` truncating box `width`/`height` — only bites the csv path, and is [PR 2 *Points to discuss* #4](proposal-mask-tracked-crabs-from-csv.md).) | |

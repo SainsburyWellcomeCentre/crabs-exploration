@@ -1,7 +1,8 @@
 # Proposal for the `detect-and-track-mask` entry point
 
 Part of [`plan-masking-crabs.md`](plan-masking-crabs.md). This document covers **PR 3**, the last of
-the three; [`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md) covers PRs 1 and 2.
+the three; [`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md) covers PR 1 and
+[`proposal-mask-tracked-crabs-from-csv.md`](proposal-mask-tracked-crabs-from-csv.md) covers PR 2.
 
 ## Description
 
@@ -30,7 +31,7 @@ Node → code legend:
 
 - `Tracking` / `detect_and_track_video` → [`crabs/tracker/track_video.py:38`](../crabs/tracker/track_video.py#L38)
 - `generate_masks` → `crabs/tracker/mask_video.py`, landed by
-  [`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md) PR 2
+  [`proposal-mask-tracked-crabs-from-csv.md`](proposal-mask-tracked-crabs-from-csv.md) (PR 2)
 - `tracking_output_dir` / `csv_file_path` → [`prep_outputs`](../crabs/tracker/track_video.py#L93-L132)
 
 > [!NOTE]
@@ -44,10 +45,12 @@ Node → code legend:
 ## References
 
 - [`plan-masking-crabs.md`](plan-masking-crabs.md) — the umbrella plan and the PR ordering.
-- **[`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md) — the prerequisite.** Its
-  PR 1 ships the masking pass, the store format, `mask_config.yaml`, the `masks` dependency group
-  and the read-side helper; its PR 2 ships `generate_masks`, the one-clip wrapper this PR calls.
-  This PR is not implementable before **both** land, and is ~60 lines once they have.
+- **[`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md) (PR 1) and
+  [`proposal-mask-tracked-crabs-from-csv.md`](proposal-mask-tracked-crabs-from-csv.md) (PR 2) — the
+  prerequisites.** PR 1 ships the masking pass, the store format, `mask_config.yaml`, the `masks`
+  dependency group and the read-side helper; PR 2 ships `generate_masks`, the one-clip wrapper this
+  PR calls, and `video_and_clip_id_from_stem`. This PR is not implementable before **both** land,
+  and is ~60 lines once they have.
 - Issue [#249](https://github.com/SainsburyWellcomeCentre/crabs-exploration/issues/249)
   ("Uncouple pipeline steps") — PRs 1 and 2 are the uncoupling; this PR is the recoupled convenience
   command on top.
@@ -112,12 +115,12 @@ See [`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md) §2.
 
 | What this PR calls | Where it landed |
 |---|---|
-| `generate_masks(video_path, tracked_bboxes_dict, output_dir, boxes_file, device, mask_config, boxes_source, id_source, video_id, clip_id)` | `crabs/tracker/mask_video.py`, PR 2 |
+| `generate_masks(video_path, tracked_bboxes_dict, output_dir, boxes_file, device, mask_config, boxes_source, id_source, video_id, clip_id)` | `crabs/tracker/mask_video.py`, [PR 2](proposal-mask-tracked-crabs-from-csv.md) |
 | `create_mask_store`, `mask_clip_into` — under `generate_masks`, not called directly here | `crabs/tracker/mask_video.py`, PR 1 |
 | `accelerator_to_device(accelerator)` | `crabs/tracker/mask_video.py`, PR 1 |
 | `load_mask_config(path)` — there is no `MASK_DEFAULTS`; each knob is defaulted at its use site | `crabs/tracker/mask_video.py`, PR 1 |
 | `DEFAULT_MASK_CONFIG`, `MASK_CONFIG_HELP` | inline literals in PR 1's parser — **this PR promotes them** to module constants, since it is the second caller ([§5](#5-the-new-parser-the-tracking-arguments-plus-one-flag)) |
-| `video_and_clip_id_from_stem(stem)` | `crabs/tracker/utils/tracking.py`, PR 2 — this PR calls it for the same reason the csv path does ([§3](#3-one-added-line-in-track_videopy-so-main-can-see-the-boxes)) |
+| `video_and_clip_id_from_stem(stem)` | `crabs/tracker/utils/tracking.py`, [PR 2](proposal-mask-tracked-crabs-from-csv.md) — this PR calls it for the same reason the csv path does ([§3](#3-one-added-line-in-track_videopy-so-main-can-see-the-boxes)) |
 | `boxes_source="tracker"` as an `.attrs` value | the key is already written, with `"trajectories_zarr"` and `"tracks_csv"` as its other values. `id_source` is `"sort_track_id"`, the same value the csv path writes |
 | The `(clip_id, time, individual, img_h, img_w)` bool store, its chunking and sharding | `create_mask_store` |
 | The `masks` dependency group, `zarr>=3` and `xarray` | [`pyproject.toml`](../pyproject.toml) |
@@ -432,7 +435,7 @@ commands is the detector pass, not the masking.
 or to the detector.
 
 > [!NOTE]
-> **The store format was settled in PR 1, not here.** It mirrors the trajectories datatree so that
+> **The store format was settled in [PR 1](proposal-mask-tracked-crabs.md), not here.** It mirrors the trajectories datatree so that
 > masking from a [`create-zarr-dataset`](../crabs/zarr/create_dataset.py) store and masking from a
 > single clip fill the same array rather than two incompatible ones. This PR writes a single-clip
 > store into it and is otherwise unaffected; the shape is visible here only in `generate_masks`'
@@ -599,7 +602,7 @@ print(np.array_equal(pa, pb))                                   # True
 
 | # | To discuss | Conclusion |
 |---|---|---|
-| 1 | **This PR must land after both PRs of [`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md).** It is ~60 lines on top of them and cannot be built first without moving the whole masking pass into this PR instead. It needs PR 2 specifically, for `generate_masks` and `video_and_clip_id_from_stem`. | |
+| 1 | **This PR must land after PR 1 and PR 2.** It is ~60 lines on top of them and cannot be built first without moving the whole masking pass into this PR instead. It needs [PR 2](proposal-mask-tracked-crabs-from-csv.md) specifically, for `generate_masks` and `video_and_clip_id_from_stem`. | |
 | 2 | **The two epilogs point at each other.** Symmetric, unlike an earlier draft where only the expensive command carried the pointer. The cost is two strings to keep in sync with two command names; tests [3](#tests) here and 11 in the prerequisite pin both. | |
 | 3 | **`accelerator_to_device` duplicates three lines from `Tracking.__init__`** ([track_video.py:79-82](../crabs/tracker/track_video.py#L79-L82)). It was duplicated in PR 1 so that `track_video.py` was not touched at all there. Now that this PR touches `track_video.py` anyway, the duplication could be removed — but it would add a third change to a file this PR otherwise edits twice, for three lines. Recommend leaving it. | |
 | 4 | **Should `detect-and-track-mask` always write masks, or gate them behind a flag?** As proposed it always does, matching the command's name; `--save_video` and `--save_frames` are the flags for the other two artefacts. A `--no_masks` flag would make the command a strict superset of `detect-and-track-video`, which is arguably worse, not better. Recommend always. | |

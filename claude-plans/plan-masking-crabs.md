@@ -1,12 +1,12 @@
 # Plan: masking tracked crabs with SAM2
 
-The umbrella document for three PRs across two proposals. It says **what is being built, in what
+The umbrella document for three PRs across three proposals. It says **what is being built, in what
 order, and why** — the proposals carry the design detail and the argument for each decision.
 
 > [!NOTE]
 > **Scope reading.** "Two PRs, and `detect-and-track-mask` last" is taken to mean the two-PR staging
 > of `mask-tracked-crabs` (zarr first, csv second), *plus* `detect-and-track-mask` after them —
-> **three PRs, two proposals**. If that is a misreading, PR 1 and PR 2 merge into one and nothing
+> **three PRs, one proposal each**. If that is a misreading, PR 1 and PR 2 merge into one and nothing
 > else changes.
 
 ---
@@ -53,7 +53,7 @@ the dict. That is what makes PR 2 and PR 3 small.
 | | PR | entry point | boxes from | proposal | size |
 |---|---|---|---|---|---|
 | **1** | mask from a trajectories store | ✨ `mask-tracked-crabs` | `--boxes <store>.zarr` | [`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md) | ~330 lines |
-| **2** | widen it to a tracks csv | same command | `--boxes <clip>_tracks.csv` | same proposal, [§4](proposal-mask-tracked-crabs.md) | ~60 lines |
+| **2** | widen it to a tracks csv | same command | `--boxes <clip>_tracks.csv` | [`proposal-mask-tracked-crabs-from-csv.md`](proposal-mask-tracked-crabs-from-csv.md) | ~60 lines |
 | **3** | mask in the same run as tracking | ✨ `detect-and-track-mask` | a `Tracking` run, in memory | [`proposal-detect-and-track-mask.md`](proposal-detect-and-track-mask.md) | ~60 lines |
 
 ### PR 1 — `mask-tracked-crabs`, reading a trajectories store
@@ -74,8 +74,8 @@ a single-clip caller would have been speculative generality.
 
 ### PR 2 — the same command, widened to a tracks csv
 
-`--boxes` stops rejecting `.csv`. Adds `read_tracked_bboxes_from_csv` and the one-clip path through
-the same pass. Useful for masking a fresh tracking run's output — iterating on SAM2 settings without
+`--boxes` stops rejecting `.csv`. Adds `read_tracked_bboxes_from_csv` and `generate_masks`, the
+one-clip path through the same pass — the wrapper PR 3 then calls. Useful for masking a fresh tracking run's output — iterating on SAM2 settings without
 re-running the detector — and for clips that are in no trajectories store.
 
 ### PR 3 — `detect-and-track-mask`
@@ -118,8 +118,9 @@ and is still worth running over any store built before 291 that is still in use.
   `M × H × W` bool — 207 MB at M=100 and 1920×1080. For PR 1, `M` is **exactly the input store's
   `individual` axis size** for a video group, because the mask store copies that coordinate
   verbatim. So it can be read off any existing store right now, without running anything:
-  `max(len(node.ds.individual) for node in dt.leaves)`. Only PR 2 has an `M` that is a different
-  quantity — the distinct SORT IDs in one clip's csv — and that one is bounded by the same scene.
+  `max(len(node.ds.individual) for node in dt.leaves)`. Only [PR 2](proposal-mask-tracked-crabs-from-csv.md) has an `M` that is a
+  different quantity — the distinct SORT IDs in one clip's csv — and that one is bounded by the same
+  scene.
 - **⚠️ The detector may be running at its detection cap.** `fasterrcnn_resnet50_fpn_v2` is built with
   no kwargs ([models.py:82](../crabs/detector/models.py#L82)), so torchvision's default
   `box_detections_per_img=100` applies to a scene with ~100 crabs per frame. That caps what any mask
@@ -136,7 +137,7 @@ and is still worth running over any store built before 291 that is still in use.
 | Document | Relationship |
 |---|---|
 | [`proposal-mask-zarr-dtype.md`](proposal-mask-zarr-dtype.md) | Fixes the existing [`generate_masks_from_bboxes.py`](../scripts/generate_masks_from_bboxes.py) store, which declares `bool` and writes `int16` IDs into it. Independent; nothing here depends on it |
-| [`proposal-tracking-score-alignment.md`](proposal-tracking-score-alignment.md) | The `confidence` column in `<clip>_tracks.csv` is misaligned with the boxes beside it. Why PR 2's reader drops it rather than parsing it back |
+| [`proposal-tracking-score-alignment.md`](proposal-tracking-score-alignment.md) | The `confidence` column in `<clip>_tracks.csv` is misaligned with the boxes beside it. Why [PR 2](proposal-mask-tracked-crabs-from-csv.md)'s reader drops it rather than parsing it back |
 | [`audit-zarr-time-coordinate.md`](audit-zarr-time-coordinate.md) | Measures which pre-291 stores are affected. Not a blocker; see above |
 | [`this-repo-collects-tools-pure-kernighan.md`](this-repo-collects-tools-pure-kernighan.md) | All three PRs together are a scoped-down first slice of its Phase 3 |
 | Issue [#249](https://github.com/SainsburyWellcomeCentre/crabs-exploration/issues/249) | "Uncouple pipeline steps". PRs 1 and 2 are an instance of it; PR 3 is the recoupled convenience command on top |
