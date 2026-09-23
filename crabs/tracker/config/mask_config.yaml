@@ -1,0 +1,10 @@
+sam2_model_id: facebook/sam2.1-hiera-base-plus
+# Number of box prompts passed to SAM2 at once. It bounds peak memory:
+# every prompt gets a full-frame float32 mask back.
+max_prompts_per_batch: 32
+# Number of frames per shard file. It sets both the write buffer
+# (shard_n_frames x H x W x 2 bytes) and the file count. null disables
+# sharding.
+shard_n_frames: 32
+# Which crab keeps a pixel where two masks overlap.
+occlusion_policy: smallest_wins
