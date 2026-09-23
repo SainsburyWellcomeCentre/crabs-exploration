@@ -37,6 +37,8 @@ dependencies = [
     "movement>=0.17.0", # dimensions renamed to singular (individual, keypoint)
     "dask",
     "numba>=0.60.0",
+    "zarr>=3",  # sharding
+    "xarray",
     # to avoid conflict between movement and sleap-nn;
     # numba is installed via xarray[accel] from movement
 ]
@@ -74,8 +76,23 @@ combine-annotations = "crabs.bboxes_labelling.combine_and_format_annotations:app
 train-detector = "crabs.detector.train_model:app_wrapper"
 evaluate-detector = "crabs.detector.evaluate_model:app_wrapper"
 detect-and-track-video = "crabs.tracker.track_video:app_wrapper"
+mask-tracked-crabs = "crabs.tracker.mask_video:app_wrapper"
 # support scripts
 create-zarr-dataset = "crabs.zarr.create_dataset:app_wrapper"
+
+# SAM2 is opt-in: it is not on PyPI, and dependency groups are never
+# written into distribution metadata, so the sdist stays publishable.
+[dependency-groups]
+# cluster: builds against the env's torch
+masks = ["sam-2 @ git+https://github.com/facebookresearch/sam2.git"]
+# CI: a prebuilt pure-Python wheel, with no build step and no torch
+# build dependency
+masks-ci = [
+    "sam-2 @ https://github.com/horsto/sam2/releases/download/v0.0.2/sam_2-1.0-py3-none-any.whl",
+]
+
+[tool.uv]
+no-build-isolation-package = ["sam-2"]
 
 [build-system]
 requires = ["setuptools>=77", "wheel", "setuptools_scm[toml]>=8"]
