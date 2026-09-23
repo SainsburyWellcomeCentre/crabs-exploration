@@ -121,7 +121,7 @@ See [`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md) §2.
 | `load_mask_config(path)` — there is no `MASK_DEFAULTS`; each knob is defaulted at its use site | `crabs/tracker/mask_video.py`, PR 1 |
 | `DEFAULT_MASK_CONFIG`, `MASK_CONFIG_HELP` | inline literals in PR 1's parser — **this PR promotes them** to module constants, since it is the second caller ([§5](#5-the-new-parser-the-tracking-arguments-plus-one-flag)) |
 | `video_and_clip_id_from_stem(stem)` | `crabs/tracker/utils/tracking.py`, [PR 2](proposal-mask-tracked-crabs-from-csv.md) — this PR calls it for the same reason the csv path does ([§3](#3-one-added-line-in-track_videopy-so-main-can-see-the-boxes)) |
-| `boxes_source="tracker"` as an `.attrs` value | the key is already written, with `"trajectories_zarr"` and `"tracks_csv"` as its other values. `id_source` is `"sort_track_id"`, the same value the csv path writes |
+| `"tracker"` as the `.attrs["boxes"]["source"]` value | the nested `boxes` dict is already written, with `"trajectories_zarr"` and `"tracks_csv"` as `source`'s other values ([PR 1 §5](proposal-mask-tracked-crabs.md)). Its `ids` is `"sort_track_id"`, the same value the csv path writes |
 | The `labels (clip_id, time, img_h, img_w)` uint16 store, `label_of`, the chunking, sharding and occlusion policy | `create_mask_store` + `write_clip_masks_to_store` |
 | The `masks` dependency group, `zarr>=3` and `xarray` | [`pyproject.toml`](../pyproject.toml) |
 
@@ -139,8 +139,8 @@ them with a test:
 
 One thing that is *not* a difference: **`ids`**. The tracker emits floats
 ([track_video.py:266](../crabs/tracker/track_video.py#L266)), and so does the csv reader, and both
-are stringified to build the `individual` coordinate. So this PR writes the same `id_source` and the
-same label style as PR 2 — which is what makes [test 5](#tests) able to compare the two stores by
+are stringified to build the `individual` coordinate. So this PR writes the same `boxes["ids"]` and
+the same label style as PR 2 — which is what makes [test 5](#tests) able to compare the two stores by
 label.
 
 > [!IMPORTANT]
@@ -479,8 +479,8 @@ importable.
    clip, then run `mask-tracked-crabs --boxes <that dir>/<video>_tracks.csv --videos <clip>` — with no
    checkpoint on the second command line. Assert:
     - both exit `0`, and the directory holds **two** `<video>_masks_*.zarr` stores, the first intact;
-    - the first run's `.attrs["boxes_source"] == "tracker"`, the second's is `"tracks_csv"`, and both
-      have `id_source == "sort_track_id"`;
+    - the first run's `.attrs["boxes"]["source"] == "tracker"`, the second's is `"tracks_csv"`, and
+      both have `boxes["ids"] == "sort_track_id"`;
     - both stores have the **same shape**, the **same `individual` coordinate in the same order**, and
       the same set of populated `(frame, individual)` pairs — the contract that the CSV round trip
       loses no crab and no identity. The coordinate equality is the sharper half: it would catch a
@@ -584,7 +584,7 @@ from pathlib import Path
 
 stores = sorted(Path("tracking_output").glob("<clip>_masks_*.zarr"))
 a, b = (xr.open_datatree(s, engine="zarr", chunks={})["<video_id>"] for s in stores[-2:])
-print(a.attrs["boxes_source"], b.attrs["boxes_source"])         # "tracker", "tracks_csv"
+print(a.attrs["boxes"]["source"], b.attrs["boxes"]["source"])   # "tracker", "tracks_csv"
 print(a.labels.shape == b.labels.shape, a.labels.dtype)         # True, uint16
 print(list(a.individual.values) == list(b.individual.values))   # True — same crabs, same order
 print((a.label_of.values == b.label_of.values).all())           # True — same pixel values too

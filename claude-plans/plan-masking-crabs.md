@@ -60,8 +60,8 @@ the dict. That is what makes PR 2 and PR 3 small.
 
 Carries everything the other two build on:
 
-- **the masking pass** — `create_mask_store`, `write_clip_masks_to_store`, `predict_masks_into`,
-  `load_sam2_predictor`
+- **the masking pass** — `create_mask_store`, `write_clip_masks_to_store`,
+  `predict_and_flatten_masks_into`, `load_sam2_predictor`
 - **the store format** — `labels (clip_id, time, img_h, img_w)` uint16, one label image per frame,
   one group per video, with the trajectories store's own `clip_id` and `individual` coordinates so
   masks and tracks align 1:1

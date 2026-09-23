@@ -54,10 +54,10 @@ depends on, for `generate_masks` and `video_and_clip_id_from_stem`.
 
 - [`plan-masking-crabs.md`](plan-masking-crabs.md) — the umbrella plan and the PR ordering.
 - **[`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md) — the prerequisite.** Its PR 1
-  ships `create_mask_store`, `write_clip_masks_to_store`, `predict_masks_into`, `load_sam2_predictor`,
-  `load_mask_config`, `accelerator_to_device`, the store format, `mask_config.yaml`, the `masks`
-  dependency group and the `label_of` mapping. This PR is not implementable before it lands, and is ~60
-  lines once it has.
+  ships `create_mask_store`, `write_clip_masks_to_store`, `predict_and_flatten_masks_into`,
+  `load_sam2_predictor`, `load_mask_config`, `accelerator_to_device`, the store format,
+  `mask_config.yaml`, the `masks` dependency group and the `label_of` mapping. This PR is not
+  implementable before it lands, and is ~60 lines once it has.
 - [`proposal-detect-and-track-mask.md`](proposal-detect-and-track-mask.md) — **PR 3**, which calls the
   `generate_masks` wrapper this PR adds, with the dict built from a `Tracking` run in memory.
 - [`write_tracked_detections_to_csv`](../crabs/tracker/utils/io.py#L45-L101) — the writer whose output
@@ -138,8 +138,9 @@ def generate_masks(video_path, tracked_bboxes_dict, output_dir, boxes_file, devi
 **The wrapper exists because there are two callers, not one.** PR 3 calls exactly this function with
 a dict built from a `Tracking` run in memory — same clip, same store shape, different producer — so
 writing it here is not speculative. Its arguments are the union of what the two one-clip callers can
-supply and the store's `.attrs` need: `boxes_source` is `"tracks_csv"` here and `"tracker"` there,
-`id_source` is `"sort_track_id"` in both.
+supply and the store's `.attrs` need: they become the `boxes` dict
+([prerequisite §5](proposal-mask-tracked-crabs.md)), whose `source` is `"tracks_csv"` here and
+`"tracker"` there, and whose `ids` is `"sort_track_id"` in both.
 
 **It loads its own predictor.** `mask-tracked-crabs`'s multi-clip loop loads one predictor for the
 whole run and passes it down, because the predictor is the expensive object and there are many clips.
@@ -210,14 +211,14 @@ The fallback row is a judgement call — *Points to discuss* [#1](#points-to-dis
 ### 5. Identity: the `individual` axis is the SORT IDs, sorted numerically
 
 The store's identity model is PR 1's and does not change here: plane `i` belongs to `individual[i]`,
-whatever string that is, and `.attrs["id_source"]` says where the strings came from
+whatever string that is, and `.attrs["boxes"]["ids"]` says where the strings came from
 ([prerequisite §5](proposal-mask-tracked-crabs.md)).
 
-| boxes from | `individual` values | `id_source` |
-|---|---|---|
-| a trajectories store (PR 1) | `"id_0000"`, `"id_0001"`, … — copied from `ds_video.individual` | `trajectories_store_individual` |
-| ✨ a `<clip>_tracks.csv` (this PR) | `"1"`, `"7"`, `"12"` — the SORT IDs actually emitted, as strings | `sort_track_id` |
-| a `Tracking` run (PR 3) | the same | `sort_track_id` |
+| boxes from | `individual` values | `boxes["source"]` | `boxes["ids"]` |
+|---|---|---|---|
+| a trajectories store (PR 1) | `"id_0000"`, `"id_0001"`, … — copied from `ds_video.individual` | `trajectories_zarr` | `trajectories_store_individual` |
+| ✨ a `<clip>_tracks.csv` (this PR) | `"1"`, `"7"`, `"12"` — the SORT IDs actually emitted, as strings | `tracks_csv` | `sort_track_id` |
+| a `Tracking` run (PR 3) | the same | `tracker` | `sort_track_id` |
 
 **`M` is the number of IDs actually present, not `max(id)`** — here, the distinct SORT IDs in one
 clip's csv. Counter values SORT burned on tracks suppressed below `min_hits`
@@ -538,7 +539,7 @@ from skimage.measure import regionprops
 store = sorted(Path("mask_output").glob("*_masks_*.zarr"))[-1]   # the name is timestamped
 ds = xr.open_datatree(store, engine="zarr", chunks={})["<video_id>"]
 print(ds.labels.shape, ds.labels.dtype)   # (1, T, 2160, 4096) uint16
-print(ds.attrs["boxes_source"], ds.attrs["id_source"])   # "tracks_csv", "sort_track_id"
+print(ds.attrs["boxes"])   # {"file": ..., "source": "tracks_csv", "ids": "sort_track_id"}
 
 # the contract: the individual axis is exactly the track IDs the csv emitted
 with open("tracking_output_<timestamp>/<clip>_tracks.csv") as f:
@@ -561,3 +562,4 @@ print(sorted(p.label for p in props))     # SORT track IDs, straight out of regi
 | 2 | **The SORT track IDs must fit `uint16`.** This path writes them into `label_of` verbatim ([§6](#6-the-read-side-here-the-pixel-values-are-the-sort-track-ids)), so a clip whose tracker burned more than 65,535 counter values would overflow. The largest video group in the trajectories store has 8,082 individuals, so there is an order of magnitude of headroom — but `M` here counts distinct SORT IDs in one clip's csv, which nothing has written down, and the writer asserts the bound rather than assuming it. Cheapest check: `max(track_id)` over a real `_tracks.csv`. | |
 | 3 | **Whether the multi-clip path should also route through `generate_masks`.** It does not, for the predictor-and-store reasons in [Detailed implementation](#detailed-implementation). The alternative is two optional arguments on the wrapper to thread an existing predictor and array through, which would make one function serve all three callers at the cost of two arguments that are `None` in two of the three. Recommend leaving the ten-line duplication. | |
 | 4 | **`write_tracked_detections_to_csv` truncates box `width`/`height` through `int(...)`**, so every box in every `_tracks.csv` is up to 1 px narrower and shorter than the tracker produced — which is why [§3](#3-what-the-csv-does-and-does-not-preserve) can only promise a one-sided bound. `int(round(...))` would make the error unbiased and halve it, but it alters a CSV the VIA workflow and [test_tracking_io.py](../tests/test_unit/test_tracking_io.py) both pin. **Out of scope here and deserves its own PR** — this PR reads the format as it is. | |
+| 5 | **Should this path's `individual` labels be `id_0000`-style, matching a trajectories-store-derived mask store?** One coordinate shape across every mask store is genuinely attractive — no consumer would have to branch on `id_source`. Two obstacles make it more than a formatting change. `_renumber_individuals` ([create_dataset.py:251-258](../crabs/zarr/create_dataset.py#L251-L258)) takes `width` from **the whole video's** `M`, and 2 of the 27 videos use three digits against the others' four ([prerequisite §5](proposal-mask-tracked-crabs.md)) — a one-clip csv run cannot know which, so it would guess `4` and disagree with the store for those two. And `i` is position in `movement`'s parse order, so the reader would have to route through `from_via_tracks_file` rather than the raw csv rows it uses now. It would also cost [§6](#6-the-read-side-here-the-pixel-values-are-the-sort-track-ids): `label_of` would stop being the track IDs themselves, so `regionprops(...).label` would need decoding where today it does not. Against all that, the consistency bought is cosmetic — [prerequisite §3c](proposal-mask-tracked-crabs.md) already establishes that `id_0003` means "the 3rd individual of *this* clip", so a third differently-derived namespace that *looks* identical to the other two is the failure mode mirroring was meant to avoid. **Recommend keeping the SORT IDs**, with `boxes["ids"]` carrying the distinction. If it is unified anyway, note it reaches back into PR 1: deferred unit test [1b](proposal-mask-tracked-crabs.md) is written against this path's `["2", "9", "10"]` coordinate shape. | |
