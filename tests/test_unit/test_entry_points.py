@@ -11,6 +11,7 @@ import pytest
         "train-detector",
         "evaluate-detector",
         "detect-and-track-video",
+        "mask-tracked-crabs",
         "create-zarr-dataset",
     ],
 )

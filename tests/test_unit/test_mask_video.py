@@ -8,8 +8,12 @@ import zarr
 
 from crabs.tracker.mask_video import (
     create_mask_store,
+    main,
+    mask_parse_args,
     write_clip_masks_to_store,
 )
+from crabs.tracker.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
+from tests.test_unit.test_boxes_from_zarr import clip_dataset, concat_clips
 
 FRAME_SHAPE = (64, 64)  # height, width
 N_FRAMES = 5
@@ -180,3 +184,145 @@ def test_write_clip_masks_to_store(
 
     # the other clip is untouched by this one's writes
     assert not np.asarray(labels_array[1]).any()
+
+
+@pytest.fixture()
+def trajectories_store(tmp_path: Path) -> Path:
+    """Write a one-video trajectories store and the clip videos it names.
+
+    Clip "Loop00" runs 3 frames and holds 2 individuals, the second of
+    which is absent from the last frame. Clip "Loop01" runs 2 frames and
+    holds 1 individual, so it is NaN-padded along `individual`.
+    """
+    position_0 = np.full((3, 2, 2), np.nan)
+    position_0[:2] = [[10.0, 40.0], [10.0, 40.0]]  # x, y per individual
+    position_0[2] = [[10.0, np.nan], [10.0, np.nan]]  # id_1 absent
+    position_1 = np.full((2, 2, 1), 20.0)
+
+    ds_video = concat_clips(
+        [
+            clip_dataset("Loop00", position_0, np.full((3, 2, 2), 8.0)),
+            clip_dataset("Loop01", position_1, np.full((2, 2, 1), 8.0)),
+        ]
+    )
+    store_path = tmp_path / "CrabTracks.zarr"
+    ds_video.to_zarr(store_path, group="video")
+
+    videos_dir = tmp_path / "clips"
+    videos_dir.mkdir()
+    for clip_id, n_frames in [("Loop00", 3), ("Loop01", 2)]:
+        writer = cv2.VideoWriter(
+            str(videos_dir / f"video-{clip_id}.mp4"),
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            10,
+            FRAME_SHAPE[::-1],
+        )
+        for _ in range(n_frames):
+            writer.write(np.zeros((*FRAME_SHAPE, 3), dtype=np.uint8))
+        writer.release()
+
+    return store_path
+
+
+def run_main(
+    trajectories_store: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    predictor=None,
+    extra_args: list[str] | None = None,
+) -> Path:
+    """Run `mask-tracked-crabs` with SAM2 replaced by the fake predictor.
+
+    A None predictor makes loading one an error, which is how the tests
+    that must fail *before* SAM2 is loaded assert that they do.
+    """
+
+    def fake_load(model_id: str, device: str):
+        assert predictor is not None, "SAM2 should not have been loaded"
+        return predictor
+
+    monkeypatch.setattr(
+        "crabs.tracker.mask_video.load_sam2_predictor", fake_load
+    )
+    output_dir = trajectories_store.parent / "mask_output"
+    main(
+        mask_parse_args(
+            [
+                "--boxes",
+                str(trajectories_store),
+                "--videos",
+                str(trajectories_store.parent / "clips"),
+                "--output_dir",
+                str(output_dir),
+                "--accelerator",
+                "cpu",
+                *(extra_args or []),
+            ]
+        )
+    )
+    return output_dir
+
+
+def test_main(trajectories_store: Path, monkeypatch: pytest.MonkeyPatch):
+    """The masks hold the crabs the trajectories store has, frame by frame.
+
+    That comparison is the contract of this entry point: a frame-index
+    error, a mis-assigned label and a dropped shard tail all fail it.
+    """
+    output_dir = run_main(trajectories_store, monkeypatch, FakePredictor())
+
+    stores = list(output_dir.glob("*_masks_*.zarr"))
+    assert len(stores) == 1
+    assert stores[0].name.startswith("CrabTracks_masks_")
+
+    masks = xr.open_datatree(stores[0], engine="zarr")["video"].to_dataset()
+    tracks = xr.open_datatree(trajectories_store, engine="zarr")[
+        "video"
+    ].to_dataset()
+
+    # the coordinates are the trajectories store's own, so the two stores
+    # align 1:1 with no reindexing
+    assert list(masks.clip_id.values) == list(tracks.clip_id.values)
+    assert list(masks.individual.values) == list(tracks.individual.values)
+    assert masks.labels.shape == (2, 3, *FRAME_SHAPE)
+    assert masks.labels.dtype == np.uint16
+    assert masks.attrs["boxes"]["source"] == "trajectories_zarr"
+
+    # decode pixel values back to individuals through `label_of`, never by
+    # position
+    inverse = np.empty(int(masks.label_of.max()) + 1, dtype=int)
+    inverse[masks.label_of.values] = np.arange(masks.sizes["individual"])
+
+    for clip_index, clip_id in enumerate(masks.clip_id.values):
+        n_clip_frames = len(read_tracked_bboxes_from_zarr(tracks, clip_id)[0])
+        for time_index in range(n_clip_frames):
+            frame = masks.labels.values[clip_index, time_index]
+            in_masks = set(
+                masks.individual.values[inverse[np.unique(frame[frame > 0])]]
+            )
+            in_tracks = set(
+                tracks.position.isel(clip_id=clip_index, time=time_index)
+                .dropna(dim="individual", how="all")
+                .individual.values
+            )
+            assert in_masks == in_tracks, (clip_id, time_index)
+
+
+@pytest.mark.parametrize(
+    ("extra_args", "expected_error", "expected_message"),
+    [
+        # PR 2 widens the accepted suffixes to include .csv
+        (["--boxes", "tracks.csv"], ValueError, "must be a trajectories"),
+        (["--match", "nope*"], ValueError, "selected no video group"),
+        (["--videos", "wrong_dir"], FileNotFoundError, "video-Loop00.mp4"),
+    ],
+)
+def test_main_fails_before_sam2_is_loaded(
+    trajectories_store: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    extra_args: list[str],
+    expected_error: type[Exception],
+    expected_message: str,
+):
+    """A bad input costs a second, not a model download."""
+    with pytest.raises(expected_error, match=expected_message):
+        run_main(trajectories_store, monkeypatch, extra_args=extra_args)

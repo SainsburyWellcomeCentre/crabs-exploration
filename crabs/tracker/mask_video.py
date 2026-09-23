@@ -1,16 +1,23 @@
 """Mask tracked crabs in a video with SAM2."""
 
+import argparse
+import logging
+import sys
+from datetime import datetime
 from pathlib import Path
 
 import cv2
 import dask.array as da
 import numpy as np
+import torch
 import xarray as xr
 import yaml  # type: ignore
 import zarr
 from zarr.codecs import BloscCodec, ZstdCodec
 
+from crabs.tracker.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
 from crabs.tracker.utils.io import (
+    get_video_parameters,
     open_video,
     parse_video_frame_reading_error_and_log,
 )
@@ -297,3 +304,262 @@ def write_clip_masks_to_store(
 
     input_video_object.release()
     return frame_idx
+
+
+def _resolve_clip_videos(
+    videos_dir: str, video_id: str, clip_ids: list[str]
+) -> list[Path]:
+    """Map a video group's clips to the clip videos they refer to.
+
+    `extract-loop-clips` writes one .mp4 per clip, which is the video the
+    store's clip-local time axis refers to. The name is only ever
+    formatted here, never parsed.
+    """
+    clip_videos = [
+        Path(videos_dir) / f"{video_id}-{clip_id}.mp4" for clip_id in clip_ids
+    ]
+    for clip_video in clip_videos:
+        if not clip_video.exists():
+            raise FileNotFoundError(f"Clip video not found: {clip_video}")
+    return clip_videos
+
+
+def _video_group_image_shape_and_n_frames(
+    clip_videos: list[Path], video_id: str
+) -> tuple[tuple[int, int], int]:
+    """Read the frame size and the longest clip of a video group.
+
+    One group holds a single frame size, so a group whose clips disagree
+    fails naming them, rather than writing truncated masks.
+    """
+    video_params = [get_video_parameters(str(p)) for p in clip_videos]
+    image_shapes = {
+        (p["frame_height"], p["frame_width"]) for p in video_params
+    }
+    if len(image_shapes) > 1:
+        raise ValueError(
+            f"{video_id}: its clips differ in frame size {image_shapes}, "
+            "but one mask store group holds a single frame size."
+        )
+    return image_shapes.pop(), max(p["total_frames"] for p in video_params)
+
+
+def main(args: argparse.Namespace) -> None:
+    """Mask the tracked crabs of a trajectories store with SAM2."""
+    boxes_path = Path(args.boxes)
+    if boxes_path.suffix != ".zarr":
+        raise ValueError(
+            f"--boxes must be a trajectories zarr store (.zarr), but "
+            f"'{boxes_path.name}' has suffix '{boxes_path.suffix}'."
+        )
+
+    mask_config = load_mask_config(args.mask_config_file)
+    sam2_model_id = mask_config.get(
+        "sam2_model_id", "facebook/sam2.1-hiera-base-plus"
+    )
+    max_prompts_per_batch = mask_config.get("max_prompts_per_batch", 32)
+    shard_n_frames = mask_config.get("shard_n_frames", 32)
+    occlusion_policy = mask_config.get("occlusion_policy", "smallest_wins")
+    if occlusion_policy != "smallest_wins":
+        raise ValueError(
+            f"Unknown occlusion_policy '{occlusion_policy}'. The only policy "
+            "implemented is 'smallest_wins'."
+        )
+
+    datatree = xr.open_datatree(args.boxes, engine="zarr", chunks={})
+    # a pattern that matches nothing leaves only the root node behind
+    video_nodes = [
+        node for node in datatree.match(args.match).leaves if node.path != "/"
+    ]
+    if not video_nodes:
+        raise ValueError(
+            f"--match '{args.match}' selected no video group of {args.boxes}."
+        )
+
+    # Resolve every clip video before SAM2 is loaded, so a mis-pointed
+    # --videos costs a second rather than a model download
+    map_video_to_clips = {}
+    for node in video_nodes:
+        clip_ids = [str(c) for c in node.clip_id.values]
+        map_video_to_clips[node.name] = (
+            clip_ids,
+            _resolve_clip_videos(args.videos, node.name, clip_ids),
+        )
+
+    device = accelerator_to_device(args.accelerator)
+    predictor = load_sam2_predictor(sam2_model_id, device)
+
+    # The store name is timestamped, so re-masking does not collide
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    store_path = (
+        Path(args.output_dir) / f"{boxes_path.stem}_masks_{timestamp}.zarr"
+    )
+    zarr.open_group(store_path, mode=args.zarr_mode_store)
+
+    for node in video_nodes:
+        video_id = node.name
+        ds_video = node.to_dataset()
+        clip_ids, clip_videos = map_video_to_clips[video_id]
+
+        # Every dimension is known from the trajectories store and the
+        # video headers, so the template needs no two-pass temp store
+        image_shape, n_frames = _video_group_image_shape_and_n_frames(
+            clip_videos, video_id
+        )
+
+        labels_array = create_mask_store(
+            store_path=store_path,
+            video_id=video_id,
+            clip_ids=clip_ids,
+            n_frames=n_frames,
+            # copied from the trajectories store, never derived
+            individuals=[str(i) for i in ds_video.individual.values],
+            image_shape=image_shape,
+            metadata_dict={
+                "timestamp": timestamp,
+                "sam2_model": sam2_model_id,
+                "device": device,
+                "source_video": [str(p) for p in clip_videos],
+                "boxes": {
+                    "file": str(boxes_path),
+                    "source": "trajectories_zarr",
+                    "ids": "trajectories_store_individual",
+                },
+                "background_label": BACKGROUND_LABEL,
+                "occlusion_policy": occlusion_policy,
+                "prompt_type": "bounding_box",
+            },
+            shard_n_frames=shard_n_frames,
+            zarr_mode_group=args.zarr_mode_group,
+        )
+        label_of = xr.open_datatree(store_path, engine="zarr")[
+            video_id
+        ].label_of
+
+        for clip_index, clip_id in enumerate(clip_ids):
+            logging.info(f"Masking {video_id}/{clip_id}")
+            tracked_bboxes_dict, _ = read_tracked_bboxes_from_zarr(
+                ds_video, clip_id
+            )
+            if not tracked_bboxes_dict:
+                logging.info(
+                    f"{video_id}/{clip_id}: no tracked boxes, skipping"
+                )
+                continue
+            write_clip_masks_to_store(
+                video_path=str(clip_videos[clip_index]),
+                tracked_bboxes_dict=tracked_bboxes_dict,
+                labels_array=labels_array,
+                clip_index=clip_index,
+                label_of=label_of,
+                predictor=predictor,
+                max_prompts_per_batch=max_prompts_per_batch,
+                shard_n_frames=shard_n_frames,
+            )
+
+    logging.info(f"Masks written to {store_path}")
+
+
+def mask_parse_args(args: list[str]) -> argparse.Namespace:
+    """Parse command-line arguments for masking tracked crabs."""
+    parser = argparse.ArgumentParser(
+        # the default formatter re-wraps the epilog to terminal width and
+        # breaks the command name across two lines, on its hyphens
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "To run detection, tracking and masking in one command, "
+            "use detect-and-track-mask."
+        ),
+    )
+    parser.add_argument(
+        "--boxes",
+        type=str,
+        required=True,
+        help=(
+            "Location of the tracked boxes to prompt SAM2 with: a "
+            "trajectories zarr store written by create-zarr-dataset. "
+            "The suffix selects how it is read."
+        ),
+    )
+    parser.add_argument(
+        "--videos",
+        type=str,
+        required=True,
+        help=(
+            "Directory holding the clip videos the boxes refer to, named "
+            "<video-id>-<clip-id>.mp4."
+        ),
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default="mask_output",
+        help=(
+            "Directory the mask store is written into. The store name "
+            "carries a timestamp, so runs do not collide. "
+            "Default: mask_output."
+        ),
+    )
+    parser.add_argument(
+        "--match",
+        type=str,
+        default="*",
+        help=(
+            "Glob selecting which video groups of the store to mask, e.g. "
+            "'07.09.2023*'. Every clip of a selected video is masked. "
+            "Default: all."
+        ),
+    )
+    parser.add_argument(
+        "--mask_config_file",
+        type=str,
+        default=DEFAULT_MASK_CONFIG,
+        help=(
+            "Location of YAML config to control masking. "
+            "Default: crabs/tracker/config/mask_config.yaml."
+        ),
+    )
+    parser.add_argument(
+        "--accelerator",
+        type=str,
+        default="gpu",
+        help=(
+            "Accelerator for Pytorch. "
+            "Valid inputs are: cpu, mps, or gpu. Default: gpu."
+        ),
+    )
+    parser.add_argument(
+        "--zarr_mode_store",
+        type=str,
+        default="w-",
+        help=(
+            "Mode to open the output zarr store with. "
+            "Default: 'w-' (will fail if store exists). "
+            "Use 'a' to append, e.g. from a cluster array job with one "
+            "job per video."
+        ),
+    )
+    parser.add_argument(
+        "--zarr_mode_group",
+        type=str,
+        default="w-",
+        help=(
+            "Mode to write each video's zarr group with. "
+            "Default: 'w-' (will fail if group exists)."
+        ),
+    )
+    return parser.parse_args(args)
+
+
+def app_wrapper():
+    """Wrap function to run the masking application."""
+    logging.getLogger().setLevel(logging.INFO)
+
+    torch.set_float32_matmul_precision("medium")
+
+    main(mask_parse_args(sys.argv[1:]))
+
+
+if __name__ == "__main__":
+    app_wrapper()
