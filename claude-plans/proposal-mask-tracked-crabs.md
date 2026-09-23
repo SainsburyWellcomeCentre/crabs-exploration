@@ -7,7 +7,9 @@ covers PR 2 and [`proposal-detect-and-track-mask.md`](proposal-detect-and-track-
 ## Description
 
 A new CLI entry point, `mask-tracked-crabs`, that prompts SAM2 with **boxes someone already
-computed** and writes one boolean mask per crab per frame.
+computed** and exist as a zarr store, and writes a zarr store that follows the structure of the
+input zarr as much as possible, holding **one label image per frame**: a single integer array in
+which each crab's pixels carry that crab's own value.
 
 It needs no trained detector model and no detector pass.
 
@@ -19,11 +21,11 @@ flowchart TD
     RZ --> D["tracked_bboxes_dict<br/>frame_idx -> boxes, ids"]
     RC -.-> D
     D --> CS["✨ create_mask_store<br/>one per video group"]
-    D --> MC["✨ mask_clip_into<br/>one video pass per clip"]
+    D --> MC["✨ write_clip_masks_to_store<br/>one video pass per clip"]
     V["clip .mp4<br/>pixels, from --videos"] --> MC
     CS --> MC
-    MC --> Z[("✨ &lt;output_dir&gt;/&lt;name&gt;_masks_&lt;timestamp&gt;.zarr<br/>group per video<br/>clip_id, time, individual, img_h, img_w — bool")]
-    Z -.->|"read side"| L["✨ to_label_image<br/>for regionprops / napari"]
+    MC --> Z[("✨ &lt;output_dir&gt;/&lt;name&gt;_masks_&lt;timestamp&gt;.zarr<br/>group per video<br/>labels: clip_id, time, img_h, img_w — uint16")]
+    Z -.->|"read side, no conversion"| L["regionprops / napari<br/>direct"]
     style CLI fill:#e0e7ff,stroke:#4338ca,color:#1e1b4b
     style DISP fill:#fef3c7,stroke:#b45309,color:#451a03
     style RC fill:#f5f5f5,stroke:#999,color:#333
@@ -42,18 +44,18 @@ flowchart TD
 [`create-zarr-dataset`](../crabs/zarr/create_dataset.py) writes — one zarr group per video, holding
 an xarray dataset whose `clip_id`, `time` and `individual` coordinates are the same ones the
 trajectories store uses. Masks and trajectories for the same clips then align 1:1 with no
-reindexing. See [§5](#5-output-format-an-xarray-store-mirroring-the-trajectories-datatree).
+reindexing. See [§5](#5-output-format-a-label-image-mirroring-the-trajectories-datatree).
 
 > [!NOTE]
 > Nomenclature
 >
 > - **Prompt** — a hint telling SAM2 *which* object to segment. Here, one bounding box in
 >   `[x1, y1, x2, y2]` pixel coordinates per tracked crab.
-> - **Instance plane** — a 2-D **boolean** array holding exactly one crab's mask. The store is a
->   stack of these, indexed by the `individual` coordinate. This is what is written to disk.
 > - **Label image** — a 2-D **integer** array where `0` is background and every other value
->   identifies one object. This is the array `skimage.measure.regionprops` takes. Here it is derived
->   on read, never stored.
+>   identifies one object. This is the array `skimage.measure.regionprops` and
+>   `napari.add_labels` take, and it is exactly what this store holds, one per frame.
+> - **Occlusion policy** — the rule deciding which crab keeps a pixel where two masks overlap.
+>   Applied once, by the writer; see [§5a](#5a-the-occlusion-policy-and-what-it-costs).
 > - **Trajectories store** — the zarr store `create-zarr-dataset` writes: a `movement` bboxes
 >   dataset per video, with a `clip_id` dimension. Boxes, not pixels.
 
@@ -82,10 +84,15 @@ reindexing. See [§5](#5-output-format-an-xarray-store-mirroring-the-trajectorie
 
 ## Overview of steps
 
-1. Add `crabs/tracker/mask_video.py`: `create_mask_store`, `mask_clip_into`, `predict_masks_into`,
-   `load_sam2_predictor`, `load_mask_config`, `accelerator_to_device`, the parser and the entry
-   point.
-2. Add `crabs/tracker/utils/masks.py`: `to_label_image`, the read-side helper, pure Python.
+1. Add `crabs/tracker/mask_video.py`:
+    - `create_mask_store`,
+    - `write_clip_masks_to_store`,
+   - `predict_masks_into`,
+   - `load_sam2_predictor`,
+   - `load_mask_config`,
+   - `accelerator_to_device`,
+   - the parser and
+   - the entry point.
 3. Add `read_tracked_bboxes_from_zarr` to a new `crabs/tracker/utils/boxes_from_zarr.py`.
 4. Add `crabs/tracker/config/mask_config.yaml`: the three SAM2 and store knobs.
 5. Declare the dependencies in [`pyproject.toml`](../pyproject.toml): the `mask-tracked-crabs`
@@ -145,23 +152,30 @@ splits where that boundary is:
 ```python
 # crabs/tracker/mask_video.py                                                     ✨ new
 def create_mask_store(store_path, video_id, clip_ids, n_frames, individuals,
-                      image_shape, metadata_dict, shard_n_planes,
+                      image_shape, metadata_dict, shard_n_frames, codec,
                       zarr_mode_group) -> zarr.Array:
-    """Write the xarray template for one video group; return its raw zarr array."""
+    """Write the xarray template for one video group; return its raw `labels` array.
+
+    Also writes `label_of`, the individual -> pixel value mapping.  [§5]
+    """
 
 
-def mask_clip_into(video_path, tracked_bboxes_dict, mask_array, clip_index,
-                   individuals, predictor, max_prompts_per_batch) -> int:
-    """One video pass. SAM2 per frame, scattered into mask_array[clip_index]."""
+def write_clip_masks_to_store(video_path, tracked_bboxes_dict, labels_array, clip_index,
+                              label_of, predictor, max_prompts_per_batch,
+                              shard_n_frames) -> int:
+    """One video pass. SAM2 per frame, painted into one label image per frame,
+    buffered a shard at a time and written whole.  [§5a, §6]
+    """
 ```
 
 This shape is the whole reason there is no class here.
 
-- **This PR calls `create_mask_store` once per video group and `mask_clip_into` once per clip**, with
-  a single SAM2 predictor loaded once for the whole run. The predictor is the expensive object; it is
-  the caller's, not the pass's.
+- **This PR calls `create_mask_store` once per video group and `write_clip_masks_to_store` once per
+  clip**, with a single SAM2 predictor loaded once for the whole run. The predictor is the expensive
+  object; it is the caller's, not the pass's.
 - **[PR 2](proposal-mask-tracked-crabs-from-csv.md) calls both with a single clip** — one `clip_id`,
-  one `mask_clip_into`. It adds a thin `generate_masks` wrapper over the two, for the one-clip case.
+  one `write_clip_masks_to_store`. It adds a thin `generate_masks` wrapper over the two, for the
+  one-clip case.
 - **PR 3 calls that same wrapper**, with the dict built from a `Tracking` run in memory.
 
 **The split is load-bearing from the first commit.** This PR's own loop is the multi-clip caller, so
@@ -261,9 +275,9 @@ and is worth running over any pre-291 store still in use.
 
 `extract-loop-clips` ([scripts/extract_loop_clips.py](../scripts/extract_loop_clips.py)) writes one
 `.mp4` per row of the metadata csv, named `<video_id>-<clip_id>.mp4`. Those are the files the
-store's clip-local `time` axis refers to, so **the clip `.mp4` is the video `mask_clip_into` reads**
-and `clip_first_frame_0idx` never has to be applied. This is also why the output store is grouped by
-video and indexed by clip: it is the shape the input already has.
+store's clip-local `time` axis refers to, so **the clip `.mp4` is the video
+`write_clip_masks_to_store` reads** and `clip_first_frame_0idx` never has to be applied. This is also
+why the output store is grouped by video and indexed by clip: it is the shape the input already has.
 
 The entry point derives `<videos>/<video_id>-<clip_id>.mp4` and fails naming the path if it is
 missing. That is a *format* rule, not a parse — PR 1 never has to take a filename apart, which is
@@ -274,7 +288,7 @@ why it touches no existing Python at all.
 `_renumber_individuals` ([create_dataset.py:251-259](../crabs/zarr/create_dataset.py#L251-L259))
 runs **once per clip**, inside the list comprehension at
 [:380](../crabs/zarr/create_dataset.py#L380), so every clip is renumbered from `id_0000`. The
-explicit `individual` coordinate ([§5](#5-output-format-an-xarray-store-mirroring-the-trajectories-datatree))
+explicit `individual` coordinate ([§5](#5-output-format-a-label-image-mirroring-the-trajectories-datatree))
 carries them through unchanged — no mapping, no offset arithmetic, and the mask store's coordinate
 is *identical* to the trajectories store's, which is what makes the two align.
 
@@ -300,7 +314,7 @@ prompt, but it means the bit-exactness argument in
 
 ### 4. The `tracked_bboxes_dict` contract
 
-`mask_clip_into` reads a mapping of frame index to
+`write_clip_masks_to_store` reads a mapping of frame index to
 `{"tracked_boxes": (n, 4) float, "ids": (n,) labels}`, and must tolerate all three producers:
 
 ```python
@@ -315,14 +329,14 @@ FOR EACH frame_idx IN 0 .. total_n_frames - 1:
   ([track_video.py:264-269](../crabs/tracker/track_video.py#L264-L269)), some with zero boxes.
   `.get(frame_idx)` plus the length check covers both.
 - **Values may carry extra keys.** The tracker's dict has a `"scores"` key
-  ([track_video.py:267](../crabs/tracker/track_video.py#L267)). `mask_clip_into` never reads it and
-  never validates the key set.
+  ([track_video.py:267](../crabs/tracker/track_video.py#L267)). `write_clip_masks_to_store` never
+  reads it and never validates the key set.
 - **`len(tracked_bboxes_dict)` is not `total_n_frames`.** The frame count comes from the video, via
   `get_video_parameters` ([io.py:21](../crabs/tracker/utils/io.py#L21)), so all three producers
   yield the same `T`.
 - **`ids` are labels, not necessarily numbers.** `id_0003` from a store, `"7"` from a csv or the
   tracker. They are looked up against the `individual` coordinate, never arithmetic
-  ([§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)).
+  ([§6](#6-chunking-sharding-and-the-frame-at-a-time-write)).
 - **An empty dict must not raise** inside the pass. The entry point skips a clip with no boxes at
   all, naming it, rather than creating a zero-length `individual` axis.
 
@@ -336,30 +350,50 @@ because they are what the `.get`-and-length-check shape exists for:
   two extremes the pass has to tolerate;
 - **its `ids` are bare SORT numbers as strings** — `"1"`, `"7"`, `"12"` — sorted numerically, which
   is the coordinate shape that makes `np.searchsorted` wrong
-  ([§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)).
+  ([§6](#6-chunking-sharding-and-the-frame-at-a-time-write)).
 
 What the CSV round trip preserves and loses, and where that path's `video_id` / `clip_id` come from,
 are in [PR 2 §3 and §4](proposal-mask-tracked-crabs-from-csv.md).
 
-### 5. Output format: an xarray store mirroring the trajectories datatree
+### 5. Output format: a label image, mirroring the trajectories datatree
 
 ```
 <output_dir>/<name>_masks_<timestamp>.zarr/     # one zarr store
 └── <video_id>/                                 # one group per video, as create_dataset writes
-    ├── masks  (clip_id, time, individual, img_h, img_w)  bool
-    ├── clip_id      <U     e.g. ["Loop00", "Loop05"]
-    ├── time         int    0 .. T-1            — clip-local frame index
-    └── individual   <U     e.g. ["id_0000", …] — copied from whatever produced the boxes
+    ├── labels    (clip_id, time, img_h, img_w)  uint16   # 0 = background
+    ├── label_of  (individual,)                  uint16   # this crab's pixel value
+    ├── clip_id     <U   e.g. ["Loop00", "Loop05"]
+    └── individual  <U   e.g. ["id_0000", …]  — copied from the trajectories store
 ```
 
-The same shape `create-zarr-dataset` writes for trajectories, with `space` replaced by the two pixel
-axes. **A mask store and a trajectories store for the same clips align 1:1 with no reindexing**, and
-one entry point fills the shape from either input.
+**One integer per pixel**, naming which crab owns it. The `clip_id`, `time` and `individual`
+coordinates are the trajectories store's own, so the two stores align 1:1 with no reindexing.
 
-- **Identity lives in the `individual` coordinate, not in a convention.** There is no
-  `track_id_offset` and no `m = track_id - 1` arithmetic to get wrong: plane `i` belongs to
-  `individual[i]`, whatever string that is. Each producer writes the IDs **its own input used**, and
-  `.attrs["id_source"]` says which:
+Everything a reader does, with **no arithmetic anywhere**:
+
+```python
+import xarray as xr
+
+ds = xr.open_datatree("<name>_masks_<timestamp>.zarr", engine="zarr", chunks={})["<video_id>"]
+
+v = int(ds.label_of.sel(individual="id_0003"))         # this crab's pixel value
+mask = ds.labels.sel(clip_id="Loop05") == v            # (time, img_h, img_w) bool
+frame = ds.labels.sel(clip_id="Loop05").isel(time=t)   # (img_h, img_w) — straight into regionprops
+```
+
+- **`label_of` is what keeps the mapping explicit.** The writer happens to assign
+  `label_of[i] = i + 1`, but **no reader is ever told that** — the offset is an implementation
+  detail, and [PR 2](proposal-mask-tracked-crabs-from-csv.md) sets `label_of` to the SORT IDs
+  directly, which are not contiguous. The inverse, for decoding `regionprops` output, is two lines
+  built once:
+
+    ```python
+    inv = np.empty(int(ds.label_of.max()) + 1, dtype=int)
+    inv[ds.label_of.values] = np.arange(ds.sizes["individual"])
+    ds.individual.values[inv[[p.label for p in props]]]     # -> ['id_0002', 'id_0000', …]
+    ```
+
+- **`.attrs["id_source"]` says whose IDs these are:**
 
     | boxes from | `individual` values | `id_source` |
     |---|---|---|
@@ -367,51 +401,25 @@ one entry point fills the shape from either input.
     | a `<clip>_tracks.csv` ([PR 2](proposal-mask-tracked-crabs-from-csv.md)) | `"1"`, `"7"`, `"12"` — the SORT IDs actually emitted, as strings | `sort_track_id` |
     | a `Tracking` run (PR 3) | the same | `sort_track_id` |
 
-    ```python
-    import xarray as xr
+- **It opens in napari and feeds `regionprops` with no reconstruction step.**
+  `viewer.add_labels(ds.labels)` gives sliders over clip and time; `regionprops(ds.labels[c, t].values)`
+  returns `orientation`, `area` and the rest per crab. Those were the two things the format had to
+  deliver, and a label image is exactly their native input.
 
-    dt = xr.open_datatree("<name>_masks_<timestamp>.zarr", engine="zarr", chunks={})
-    masks = dt["<video_id>"].masks      # (clip_id, time, individual, img_h, img_w) bool
+- **`uint16`, which covers the real data with room to spare.** The largest video group in
+  `CrabTracks-slurm3644250.zarr` has **M = 8,082** individuals, against uint16's ceiling of 65,535.
+  Background is `0`, so `label_of` starts at 1.
 
-    m = masks.sel(clip_id="Loop05")
-    m.isel(time=t).sel(individual="id_0003")   # (img_h, img_w) — one crab in one frame
-    m.isel(time=t)                             # (individual, …) — every crab in frame t
-    m.sel(individual="id_0003")                # (time, …)       — one crab's whole trajectory
-    ```
+- **It is lossy on overlap, and that is the deliberate trade.** A label image holds one ID per pixel,
+  so where two masks meet, one crab takes the pixel and the other loses it.
+  See [§5a](#5a-the-occlusion-policy-and-what-it-costs).
 
-    > [!IMPORTANT]
-    > **Read this store through `xarray`, not through `zarr` directly.** xarray encodes a boolean
-    > array as `int8` plus a `dtype: bool` attribute on the array; `xr.open_datatree` decodes it
-    > back to `bool`, while `zarr.open(...)` hands you `int8`. Checked on xarray 2026.7.0 /
-    > zarr 3.4.0. The write path uses the raw zarr array
-    > ([§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)), where the two are the same
-    > bytes and the distinction does not arise.
-
-- **Why per-instance planes and not a single label image.** A label image cannot represent two crabs
-  occupying the same pixel, and this scene has ~100 frequently touching individuals — so flattening
-  would silently discard one crab's overlapping pixels. Here each crab owns its plane: overlap is
-  representable, nothing is discarded, and there is **no overlap policy to choose**.
-
-- **`bool`, and the whole dtype question disappears.** Identity lives in the coordinate, not in the
-  pixel values, so there is nothing to encode and no `int16`/`int32`/`uint16` ceiling to argue about.
-  Under this format the defect in
-  [`generate_masks_from_bboxes.py`](../scripts/generate_masks_from_bboxes.py) — declaring `bool` and
-  writing `int16` IDs into it — **cannot be expressed**. See
-  [`proposal-mask-zarr-dtype.md`](proposal-mask-zarr-dtype.md).
-
-- **`M` is the number of IDs actually present, not `max(id)`.** Here it is the video group's own
-  `individual` size, copied straight across; for [PR 2](proposal-mask-tracked-crabs-from-csv.md) it
-  is the sorted set of IDs the csv emits.
-  Counter values SORT burned on tracks suppressed below `min_hits`
-  ([sort.py:39](../crabs/tracker/sort.py#L39), [:76](../crabs/tracker/sort.py#L76)) never inflate
-  the axis, because there is no offset convention needing gaps left in it.
-
-- **Padding is `False`, and `False` is not "not applicable".** `bool` has no NaN, so where the array
-  is padded — along `time` for a short clip, or along `individual` for a clip with fewer crabs than
-  its video's maximum — it holds `False`, indistinguishable from *"this crab is on screen and SAM2
-  returned an empty mask"*. **Presence belongs to the trajectories store**, whose `position` is NaN
-  exactly where a crab is absent. The README has to say this before someone infers presence from a
-  mask store.
+- **Everything is per video group**, and must stay that way. The `individual` names are **not**
+  comparable across videos, and not even across clips — measured in
+  [§3c](#3c-ids-are-per-clip-renumbered-strings). Nor is their *format* the same: two of the 27
+  videos have M < 1000 and so use three digits (`id_000`), the other twenty-five use four
+  (`id_0000`), because `create_dataset` derives the padding from each video's own M. **Never
+  reconstruct a name with a format string** — read `ds.individual`.
 
 - **The store name is timestamped**, `<name>_masks_<YYYYMMDD_HHMMSS>.zarr`, which is what both
   existing SAM2/SAM3 mask scripts already do — the latter documented as *"timestamped so runs don't
@@ -430,7 +438,8 @@ one entry point fills the shape from either input.
     # ^ the other two values are written by the later PRs; the key ships here
     "id_source": "trajectories_store_individual",# or "sort_track_id"
     "image_shape": [H, W],
-    "mask_encoding": "instance_planes",
+    "background_label": 0,
+    "occlusion_policy": "smallest_wins",         # [§5a]
     "prompt_type": "bounding_box",
     "prompt_source": "tracked_boxes",
     "multimask_output": False,
@@ -441,32 +450,142 @@ one entry point fills the shape from either input.
 ([create_dataset.py:324-327](../crabs/zarr/create_dataset.py#L324-L327)), so one clip video per
 `clip_id` fits without the key changing type between PRs.
 
-There is deliberately **no `overlap_policy`, no `background_label` and no `track_id_offset`**: this
-format has none of them, which is the point of it. Nor `n_frames`, `n_track_ids` or `dims` — the
-coordinates carry all three.
+There is deliberately **no `mask_encoding`**. An earlier draft carried one, to say "label image"
+rather than "one boolean plane per crab" — but `labels.dims` and `labels.dtype` already say that, and
+a declaration that merely restates the data is the thing that goes stale. That is precisely the
+defect in [`generate_masks_from_bboxes.py`](../scripts/generate_masks_from_bboxes.py), which opens
+its store as `dtype="bool"` while declaring `"mask_encoding": "instance_id"` and writing `int16` into
+it (see [`proposal-mask-zarr-dtype.md`](proposal-mask-zarr-dtype.md)): the attribute could not guard
+against the mismatch, because the attribute *was* the mismatch.
 
-### 6. Chunking, sharding, and the whole-frame write they force
+**What is kept is what the data cannot say for itself** — `boxes_source`, `boxes_file`,
+`source_video`, `id_source`, `occlusion_policy`, and the SAM2 provenance. `prompt_type` and
+`prompt_source` never vary today, and are kept anyway so that a store prompted some other way (a
+point, a mask, an untracked detection) is distinguishable from this one without guessing.
 
-**`chunks=(1, 1, 1, H, W)`** — one chunk per (clip, frame, crab), the unit every access pattern in
-[§5](#5-output-format-an-xarray-store-mirroring-the-trajectories-datatree) reads.
+There is also deliberately **no `track_id_offset`** — `label_of` is the mapping — and no `n_frames`,
+`n_track_ids` or `dims`, which the coordinates carry.
 
-A chunk is 2.07 MB raw at 1920×1080 and ~0.17% non-zero, so it compresses to a few KB, and zarr does
-not write all-`False` chunks at all. The count is the problem: ~`n_frames × n_crabs` ≈ **300,000
-chunks** for a 3000-frame clip, which means 300,000 files in a directory store — genuinely bad on
-the cluster's network filesystem.
+#### 5a. The occlusion policy, and what it costs
 
-**The mitigation is zarr 3's sharding codec**, `shards=(1, 1, 128, H, W)`, packing 128 planes per
-file. Only shards actually written become files, so a store's file count is `Σᵢ nᵢ × ceil(M/128)`
-over its clips — the `time` padding of a short clip costs nothing.
+**Measured first.** Box overlap across 27,458 crab-instances sampled from all 27 videos — and since a
+crab fills only ~π/4 of its box, mask overlap is strictly lower than this:
 
-**Both are set through xarray's `encoding`**, because the array has to carry xarray's dimension
-metadata to be readable as a dataset. Verified end to end on xarray 2026.7.0 / zarr 3.4.0 —
-template write, sharded region write, read-back with coordinates intact:
+| | |
+|---|---|
+| crabs whose box overlaps **no** other box | **94.0%** |
+| total box area that is contested | **0.62%** (a ceiling for masks) |
+| crabs losing >10% of their box | 3.2% |
+| crabs losing >25% | 2.4% |
+
+So overlap is **rare but severe when it happens** — a heavy tail of touching pairs. Losing 0.62% of
+pixels to buy napari and `regionprops` directly is a good trade; losing them *silently* would not be,
+hence the rest of this section.
+
+**The policy is `smallest_wins`**: masks are painted largest-area first, smallest last, so the
+smaller crab keeps the contested pixels. That is the common convention in instance-segmentation
+rendering, and the reason is that a large crab losing a few pixels barely moves its fitted ellipse,
+whereas a small crab losing pixels to a large neighbour can be gutted. Smallest-wins minimises the
+worst *relative* distortion. SAM2's predicted-IoU score is the other plausible precedence and is
+worth comparing once there are real masks — *Points to discuss* [#3](#points-to-discuss).
+
+> [!IMPORTANT]
+> **The lost pixels are not recoverable from the store.** An earlier draft carried an `n_px_lost`
+> array recording, per crab per frame, how many pixels it lost — deliberately dropped for simplicity.
+> Nothing downstream can now distinguish a clean mask from a remnant, and recovering that would mean
+> re-running SAM2.
+>
+> **On read, occluded crabs are found by adjacency**: if two labelled regions touch in `labels`, they
+> were plausibly overlapping. That over-flags (touching ≠ overlapping) but needs no extra storage,
+> and it is what the README tells a reader to do. The mask area can also be compared against the
+> tracked box area from the trajectories store, which is already aligned.
+
+The policy name is written into `.attrs["occlusion_policy"]` so a store records which one produced
+it, and so a future store written under a different policy is distinguishable from this one.
+
+### 6. Chunking, sharding, and the frame-at-a-time write
+
+**`chunks=(1, 1, H, W)` — one chunk is one frame.** That is the unit both access patterns want:
+napari dragging the time slider, and the `regionprops` sweep. A frame is 4096×2160 uint16 =
+**17.7 MB raw**, ~26 KB compressed.
+
+**Bigger chunks are pure loss here**, which was measured rather than assumed:
+
+| chunk | on disk | compression | read one frame |
+|---|---|---|---|
+| **1 frame** | 13.2 KB/frame | 315× | **3.7 ms** |
+| 8 frames | 13.1 KB/frame | 315× | 6.9 ms |
+| 32 frames | 13.2 KB/frame | 315× | **21.0 ms** |
+
+*(measured at 1920×1080 for speed; the ratios are what matter)*
+
+**Identical compression, 5.7× slower reads.** A label frame is ~96% zeros and the compressor already
+exploits that *within* one frame; zarr compresses each chunk independently and does not delta-encode
+along time, so grouping frames adds no exploitable redundancy — just more bytes to decompress when
+you want one.
+
+> **Chunk size is set by the access pattern. Shard size is set by the filesystem.**
+>
+> Before zarr 3 these fought each other, so you compromised on both. Sharding decouples them. Never
+> inflate a chunk to fix a file-count problem — that is the shard's job now.
+
+#### How sharding works, and why reads and writes are asymmetric
+
+A **shard** is one file holding many chunks, plus an index at the end giving each chunk's byte offset
+and length. Measured on a real sharded array (16 planes, 8 per shard, ~18 KB per shard file):
+
+| operation | reads | bytes read | writes | bytes written |
+|---|---|---|---|---|
+| **read one chunk** | 2, **both ranged** | **2.0 KB** | – | – |
+| read the whole shard | 1, unranged | 17.6 KB | – | – |
+| **write a whole shard at once** | **0** | **0 KB** | 1 | 17.6 KB |
+| **write one chunk into an existing shard** | 1, **unranged** | **17.6 KB** | 1 | **17.6 KB** |
+
+**Reads stay granular**: ranged-read the index, ranged-read that chunk's bytes, decompress only it —
+2.0 KB of a 17.6 KB file. Works on a local filesystem (`seek`) and over S3/HTTP (`Range:`) alike. So
+sharding costs nothing on the read side.
+
+**Writes cannot do the equivalent.** Chunks are compressed, so replacing one shifts every later
+byte offset and invalidates the index; inserting bytes mid-file means moving everything after them.
+So zarr reads the shard, splices, recomputes offsets and rewrites it whole — visible in the last row
+above, and the source of the **×58.6 write amplification** measured when filling a 128-chunk shard
+one chunk at a time.
+
+#### Which is why one frame per chunk matters
+
+**A frame's write is exactly one chunk, contiguous.** So the writer buffers one shard's worth of
+frames and writes them in a single assignment — zarr never sees a partial shard, and there is no
+read-modify-write at all:
 
 ```python
-enc = {"masks": {"chunks": (1, 1, 1, H, W), "shards": (1, 1, shard_n_planes, H, W)}}
+buf[k] = label_frame                          # (shard_n_frames, H, W) uint16, filled in order
+...
+labels_array[clip_index, t0:t0 + shard_n_frames] = buf      # one whole-shard write
+```
+
+**`shards=(1, 32, H, W)` — 32 frames per file.** The constraint is the write buffer, not the file
+count:
+
+| shard | write buffer (4K) | file size | files, whole store |
+|---|---|---|---|
+| **32 frames** | **566 MB** | **~0.85 MB** | **~155,000** |
+| 64 frames | 1.13 GB | ~1.7 MB | ~77,000 |
+| 128 frames | 2.27 GB | ~3.4 MB | ~39,000 |
+
+155,000 files across 234 clips is ~660 per clip — nothing for GPFS — so 32 is the default and
+`shard_n_frames` is a config knob ([§8](#8-configuration-a-separate-mask-config-file)) for a cluster
+that prefers fewer, larger files. A larger shard also means more work lost if a job dies mid-shard.
+
+**Both chunks and shards are set through xarray's `encoding`**, because the array has to carry
+xarray's dimension metadata to be readable as a dataset. Verified end to end on xarray 2026.7.0 /
+zarr 3.4.0 — template write, sharded region write, read-back with coordinates intact:
+
+```python
+enc = {"labels": {"chunks": (1, 1, H, W),
+                  "shards": (1, shard_n_frames, H, W),
+                  "compressors": [BloscCodec(cname="zstd", clevel=9, shuffle="bitshuffle")]}}
 ds.to_zarr(store_path, group=video_id, compute=False, encoding=enc)   # metadata only, no data
-mask_array = zarr.open_group(store_path)[f"{video_id}/masks"]         # fill this, region by region
+labels_array = zarr.open_group(store_path)[f"{video_id}/labels"]      # fill this, shard by shard
 ```
 
 **`compute=False` is what makes a two-pass temp store unnecessary.** `create-zarr-dataset` needs one
@@ -475,139 +594,84 @@ video's concatenated shape without holding every clip dataset in memory. The mas
 problem: every dimension is known from the trajectories store and the video headers before SAM2
 runs, so the template is written once and each clip fills its own region.
 
-**This is measured, not assumed** (zarr 3.2.1, 60 frames at 1920×1080, M=100; full numbers in
-*Points to discuss* [#1](#points-to-discuss)). Sharding delivers **61 files instead of 6001**,
-1.80 MB vs 1.68 MB on disk, and a whole-frame write no slower than unsharded.
+#### The codec
 
-A coarser chunk — one per frame — is the obvious alternative way to cut the file count, and it is
-rejected on measurements, not taste: same file count, while making one crab's trajectory **~8×
-slower** to read. See [*Formats considered and rejected*](#detailed-implementation).
+**`blosc-zstd level 9 + bitshuffle`**, measured on realistic 4K label frames with ragged mask
+boundaries:
 
-#### Sharding dictates how the writer must write
+| codec | KB/frame | whole store |
+|---|---|---|
+| default (zstd level 0) | 30.4 | 151 GB |
+| zstd level 9 | 26.8 | 133 GB |
+| **blosc-zstd 9 + bitshuffle** | **26.5** | **131 GB** |
+| blosc-zstd 5 + *byte* shuffle | 41.0 | 203 GB ❌ |
 
-**A shard is one file holding many chunks, and zarr can only write a shard whole.**
+Byte shuffle is actively worse — don't use it. The ~13% win costs only write CPU, which is
+negligible beside SAM2.
 
-- **Writing one plane at a time makes zarr rewrite the whole file, once per plane** — measured at
-  **×58.6 write amplification** and 703 ms/frame, against 27 ms/frame when the frame goes in as one
-  assignment.
-- **The natural spelling does not merely degrade, it fails.**
-  `mask_array.oindex[clip_i, frame_idx, plane_idx] = masks` raises `ValueError: shape mismatch` from
-  inside zarr's sharding partial-write path, on 3.2.1 and 3.3.0. Plain `arr[c, t, planes]` fails
-  identically, and so do contiguous planes and a one-element list — so it is neither the spelling
-  nor the scattering.
-- **Unsharded, both spellings work fine**, which is the trap: a test written against an unsharded
-  fixture passes while production crashes on frame 0.
+> [!IMPORTANT]
+> **`label_of` takes a different codec.** It is tiny, and the same measurement run showed bitshuffle
+> *hurting* on a mostly-zero integer array (70× vs 96× for plain zstd). Codec per array, not per
+> store.
 
-**So the writer scatters in numpy, where partial indexing is free, and hands zarr a complete frame:**
+### 7. Flattening happens on write, and the read side needs no helper
+
+`regionprops` and `napari.add_labels` both take an `(H, W)` **integer label image**, and that is now
+exactly what the store holds ([§5](#5-output-format-a-label-image-mirroring-the-trajectories-datatree)).
+So there is no conversion step on read at all:
 
 ```python
-dense[:] = False                            # (M, H, W) bool, allocated once outside the frame loop
-dense[plane_idx] = masks                    # numpy: (N, H, W) into N of the M planes — cheap
-mask_array[clip_index, frame_idx] = dense   # zarr: one whole-shard write, no read-modify-write
+regionprops(ds.labels.sel(clip_id="Loop05").isel(time=t).values)   # that is the whole read path
+viewer.add_labels(ds.labels)                                       # sliders over clip and time
 ```
 
-zarr never sees a partial frame, so there is nothing to splice and nothing to read back. **This
-holds with the `clip_id` axis in front**: `mask_array[c, t]` names a whole shard-aligned slab just as
-`mask_array[t]` did, verified on a sharded store at xarray 2026.7.0 / zarr 3.4.0.
-
-`plane_idx` is where the emitted IDs land on the `individual` axis: a **dict lookup**,
-`{label: position}` built once per clip from the coordinate `create_mask_store` was given.
-
-> [!IMPORTANT]
-> **Not `np.searchsorted`**, the tempting one-liner, which is wrong twice over. It compares strings
-> **lexically**, so a `sorted(..., key=int)` coordinate — `["1", "2", "10"]`, which is what
-> [PR 2](proposal-mask-tracked-crabs-from-csv.md) wants for readability — resolves `"10"` to
-> position 1. And on a label missing altogether it
-> returns an insertion point rather than raising, turning a bug into a silently mis-assigned mask. A
-> dict raises `KeyError` on the second and has no ordering assumption for the first.
-
-> [!IMPORTANT]
-> If sharding is ever disabled (`shard_n_planes: null`), indexed assignment starts working again —
-> so this must not be "simplified" back to `oindex` after a test run without shards. Test
-> [6b](#tests) pins the dense write against a sharded store.
-
-**The cost is the buffer**, `M × H × W` bool — **207 MB at M=100 and 1920×1080** — counted against
-the memory budget in [Gotchas](#gotchas). It is allocated **once per run**, not per clip, since `M`
-is the video group's `individual` size. The empty planes in it cost nothing on disk.
-
-### 7. Where the flattening happens: planes on disk, label image on read
-
-`regionprops` and `napari.add_labels` both take an `(H, W)` **integer label image**; the store holds
-**boolean instance planes**. So the flattening has to happen somewhere. The question is **which side
-of the disk**.
-
-**A label image holds one ID per pixel, so flattening is a decision, not a conversion.** Wherever two
-masks meet, something decides which ID takes the pixel and which loses it.
-
-- **On the write side**, the decision would be made once, by this entry point, for every future
-  consumer. The losing ID would never reach the store. Changing the policy would mean re-running
-  SAM2.
-- **On the read side**, it is an argument to a pure function over data already on disk. Every
-  consumer picks its own policy, the store never changes, and a wrong pick costs a re-read.
-
-**This PR takes the read side**, which is why the write path has no flattening step at all: SAM2
-returns one mask per prompt box already, so the writer only scatters them into the frame buffer.
+**The flattening happens once, in the writer**, where SAM2's per-prompt masks are painted into one
+frame under the `smallest_wins` policy ([§5a](#5a-the-occlusion-policy-and-what-it-costs)).
 
 ```mermaid
 flowchart LR
-    S["SAM2 output<br/>N,H,W bool, one mask per box"] --> X["✗ combine at write time<br/>T,H,W int32, policy fixed for the store"]
-    S ==>|"✨ scatter, no decision"| Z[("✨ clip_id,time,individual,img_h,img_w<br/>bool store, overlaps intact")]
-    Z -.->|"✨ to_label_image(policy)<br/>per call, per consumer"| K["H,W int32<br/>regionprops / napari"]
+    S["SAM2 output<br/>N,H,W bool, one mask per box"] ==>|"✨ paint largest-first<br/>smallest_wins"| Z[("✨ clip_id,time,img_h,img_w<br/>uint16 label image")]
+    Z ==>|"no conversion"| K["regionprops / napari<br/>direct"]
+    X["✗ one bool plane per crab<br/>clip_id,time,individual,img_h,img_w"] -.->|"would need to_label_image<br/>per frame, per consumer"| K
     style X fill:#f5f5f5,stroke:#999,color:#333,stroke-dasharray: 4 4
     style Z fill:#e0e7ff,stroke:#4338ca,color:#1e1b4b
 ```
 
-The grey node is the design not taken. The dashed arrow is run later by a consumer, not by this entry
-point.
+The grey node is the design not taken — one boolean plane per crab, overlaps intact, flattened by a
+`to_label_image` helper on every read. It was rejected on measurement, not taste: at the real
+`M` of 791–8,082 it needs a 1.6–16.8 GB write buffer, spreads one frame's write across 2–19 shard
+files, and produces 54k–979k files per clip. The numbers are in
+[*Formats considered and rejected*](#detailed-implementation).
 
-**Read side**: one helper in a new `crabs/tracker/utils/masks.py`, pure (no `sam2`, no torch), so it
-is unit-testable on CI:
-
-```python
-def to_label_image(mask_planes, labels=None, policy="last_wins"):
-    """(M, H, W) bool -> (H, W) int32 label image, for regionprops and napari.
-
-    `labels` is an optional length-M array of **integers**, one pixel value per
-    plane, defaulting to 1..M — positional, and honest about being positional.
-
-    This is where the overlap decision lives: it is the caller's, per call,
-    and it never touches what is stored.
-    """
-```
-
-**A label image cannot hold the store's IDs when those IDs are strings**, which is the one place the
-explicit coordinate costs something:
-
-| store's `individual` | pass as `labels` | result |
-|---|---|---|
-| `"id_0000"`, `"id_0001"`, … (this PR) | nothing — take the `1..M` default | labels are positions; carry the coordinate alongside to name them |
-| `"1"`, `"7"`, `"12"` ([PR 2](proposal-mask-tracked-crabs-from-csv.md)) | `[int(s) for s in individual]` | `regionprops` labels **are** the SORT track IDs |
-
-**The overlap policy is positional, not ID-based.** `"id_0010"` versus `"id_0009"` has no meaningful
-ordering to break a tie on. `last_wins` — later position along `individual` takes the contested pixel
-— is deterministic, depends only on the coordinate order the store already fixes, and does not
-invite the reader to believe a higher ID means anything.
+**So `crabs/tracker/utils/masks.py` and `to_label_image` do not exist in this design.** An earlier
+draft added both; the label image makes them unnecessary, which is one new module and one helper
+fewer to ship, test and document.
 
 `ellipses_from_labels` in
-[`notebook_visualise_masks_from_zarr.py`](../notebooks/notebook_visualise_masks_from_zarr.py)
-consumes `to_label_image`'s output unchanged, so the same shape reaches the same geometry code.
+[`notebook_visualise_masks_from_zarr.py`](../notebooks/notebook_visualise_masks_from_zarr.py) takes a
+label image, so it consumes `ds.labels[c, t]` unchanged — the same geometry code, with nothing in
+between.
 
-**What this costs.** The store is not directly droppable into napari — `viewer.add_labels` on the
-5-D boolean array gives sliders over clips and crabs, not a frame view. A caller who wants a frame
-view goes through `to_label_image` per frame, and so picks the overlap policy at that moment. A lazy
-`(time, img_h, img_w)` label-image view over one clip would be droppable and is ~10 lines, but bakes
-in one policy as a default — *Points to discuss* [#3](#points-to-discuss).
+**What this costs** is stated plainly in [§5a](#5a-the-occlusion-policy-and-what-it-costs): the
+policy is fixed at write time, the pixels a crab lost are gone, and changing the policy means
+re-running SAM2. Measured at 0.62% of box area contested, with 94% of crabs untouched.
 
 ### 8. Configuration: a separate mask config file
 
-Three knobs, in a file of their own rather than in the tracking config:
+Four knobs, in a file of their own rather than in the tracking config:
 
 ```yaml
 # crabs/tracker/config/mask_config.yaml   ✨ new file
 sam2_model_id: facebook/sam2.1-hiera-base-plus   # matches the existing script's default
 max_prompts_per_batch: 32                        # see Gotchas
-shard_n_planes: 128                              # see §6; null disables sharding
+shard_n_frames: 32                               # see §6; null disables sharding
+occlusion_policy: smallest_wins                  # see §5a
 ```
+
+`shard_n_frames` is the one to tune per filesystem: it sets both the write buffer
+(`shard_n_frames × 17.7 MB` at 4K) and the file count. `occlusion_policy` is a knob rather than a
+constant so that a second policy can be compared without a format change — its value is copied into
+`.attrs` so a store always records which one produced it.
 
 **Why not a `masks:` block in `tracking_config.yaml`.** `mask-tracked-crabs` never reads the tracking
 config at all — it has no `--config_file` and no SORT parameters to load, so the SAM2 knobs cannot
@@ -710,7 +774,7 @@ flowchart TD
     M --> LP["load_sam2_predictor<br/>lazy sam2 import — once per run"]
     M --> RZ["✨ read_tracked_bboxes_from_zarr<br/>per clip"]
     M --> CS["✨ create_mask_store<br/>per video group"]
-    M --> MC["✨ mask_clip_into<br/>per clip"]
+    M --> MC["✨ write_clip_masks_to_store<br/>per clip"]
     MC --> PM["predict_masks_into<br/>per frame, per chunk of 32"]
     RC["✨ read_tracked_bboxes_from_csv<br/>PR 2"] -.-> GM["generate_masks<br/>one-clip wrapper, PR 2"]
     GM -.-> CS
@@ -733,13 +797,12 @@ Arrows point from a caller to what it calls. Solid nodes are this PR; dashed are
 | # | Change | Signature / notes |
 |---|---|---|
 | 1 | **new** `crabs/tracker/mask_video.py` — the pass and the entry point, ~250 lines | see below |
-| 2 | **new** `crabs/tracker/utils/masks.py` — the read-side helper, ~25 lines | `to_label_image` ([§7](#7-where-the-flattening-happens-planes-on-disk-label-image-on-read)) |
 | 3 | **new** `crabs/tracker/utils/boxes_from_zarr.py` — the reader, ~40 lines | `read_tracked_bboxes_from_zarr` ([§3](#3-reading-boxes-from-a-trajectories-store)) |
 | 4 | **new** `crabs/tracker/config/mask_config.yaml` | the three knobs ([§8](#8-configuration-a-separate-mask-config-file)) |
 | 5 | [`pyproject.toml`](../pyproject.toml) | `mask-tracked-crabs` script; `zarr>=3`, `xarray`; `[dependency-groups] masks` + `[tool.uv] no-build-isolation-package` |
 | 6 | **new** `tests/test_unit/test_mask_video.py` | no `sam2` needed |
 | 7 | pooch/GIN registry | a small trajectories store + the clip `.mp4`s it names ([Tests](#tests)) |
-| 8 | [`crabs/tracker/README.md`](../crabs/tracker/README.md) + [`guides/DetectAndTrackHPC.md`](../guides/DetectAndTrackHPC.md) | install, run, read back |
+| 8 | [`crabs/tracker/README.md`](../crabs/tracker/README.md) + [`guides/DetectAndTrackHPC.md`](../guides/DetectAndTrackHPC.md) | install, run, read back, and the five things in [Documentation updates](#documentation-updates) that the store cannot say for itself |
 
 **Nothing existing is touched.** `create_dataset.py`, `track_video.py`, `sort.py`, `utils/io.py`,
 `utils/tracking.py`, the trajectories store format, the CSV format and the detector are all
@@ -752,8 +815,8 @@ move two filename helpers.
 <summary><b>1. The new module in full outline</b></summary>
 
 Module-level functions only — no new class. Everything except `load_sam2_predictor`,
-`predict_masks_into` and the video loop in `mask_clip_into` is pure — no `sam2`, no torch, no I/O
-beyond zarr and the config file — which is what makes the unit tests possible on CI.
+`predict_masks_into` and the video loop in `write_clip_masks_to_store` is pure — no `sam2`, no
+torch, no I/O beyond zarr and the config file — which is what makes the unit tests possible on CI.
 
 ```python
 """Mask tracked crabs in a video with SAM2."""
@@ -777,7 +840,7 @@ def accelerator_to_device(accelerator):
 
 
 def create_mask_store(store_path, video_id, clip_ids, n_frames, individuals,
-                      image_shape, metadata_dict, shard_n_planes,
+                      image_shape, metadata_dict, shard_n_frames, codec,
                       zarr_mode_group) -> zarr.Array:
     """Write the xarray template for group `video_id`; return its raw zarr array.
 
@@ -785,8 +848,8 @@ def create_mask_store(store_path, video_id, clip_ids, n_frames, individuals,
     three coordinates it is given, writes it with compute=False (metadata, no
     data), and hands back the zarr array for the region writes.  [§5, §6]
 
-    chunks=(1,1,1,H,W), shards=(1,1,shard_n_planes,H,W), fill_value=False;
-    shard_n_planes=None disables sharding.
+    chunks=(1,1,H,W), shards=(1,shard_n_frames,H,W), fill_value=0;
+    shard_n_frames=None disables sharding. Also writes `label_of`.  [§5, §6]
     `individuals` is the label list, already ordered by the caller — this
     function never invents IDs, which is what keeps §5's table true.
     """
@@ -806,30 +869,36 @@ def load_sam2_predictor(model_id: str, device: str):
     return SAM2ImagePredictor.from_pretrained(model_id, device=device)
 
 
-def predict_masks_into(predictor, frame_bgr, boxes, plane_idx, dense, max_prompts_per_batch):
+def predict_masks_into(predictor, frame_bgr, boxes, values, label_frame, max_prompts_per_batch):
     """SAM2 on one frame, scattered straight into the caller's (M, H, W) bool buffer.
 
     `plane_idx` is positions along the `individual` axis, not IDs — the caller
-    resolved them once through the plane_of dict (§6).
+    `values` are the pixel values for these boxes, straight from label_of (§5).
 
-    Writes into `dense` rather than returning (N, H, W), so each prompt chunk's
+    Paints into `label_frame` rather than returning (N, H, W), so each prompt chunk's
     float masks are released before the next chunk is predicted (Gotchas), and so
     the caller holds exactly one frame-sized buffer for the whole run (§6).
     """
     predictor.set_image(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
     FOR EACH (box_chunk, idx_chunk) OF (boxes, plane_idx), size max_prompts_per_batch:
         masks, _iou, _low_res = predictor.predict(box=box_chunk, multimask_output=False)
-        dense[idx_chunk] = masks.reshape(len(box_chunk), *masks.shape[-2:]).astype(bool)
+        m = masks.reshape(len(box_chunk), *masks.shape[-2:]).astype(bool)
+        FOR EACH (mask, value) IN order of DECREASING mask.sum():   # smallest_wins  [§5a]
+            label_frame[mask] = value
 
 
-def mask_clip_into(video_path, tracked_bboxes_dict, mask_array, clip_index,
-                   individuals, predictor, max_prompts_per_batch) -> int:
-    """One video pass, writing into mask_array[clip_index]. Returns frames read."""
-    M, H, W = mask_array.shape[2:]
-    plane_of = {label: i for i, label in enumerate(individuals)}   # §6: not searchsorted
-    total_n_frames = mask_array.shape[1]
+def write_clip_masks_to_store(video_path, tracked_bboxes_dict, labels_array, clip_index,
+                              label_of, predictor, max_prompts_per_batch,
+                              shard_n_frames) -> int:
+    """One video pass, writing into labels_array[clip_index]. Returns frames read."""
+    total_n_frames, H, W = labels_array.shape[1:]
+    # individual -> pixel value, as an ordinary dict. KeyError here means the
+    # coordinate and the boxes dict disagree — loud, not a silently wrong mask.
+    value_of = {name: int(v) for name, v in zip(label_of.individual.values,
+                                                label_of.values)}
     input_video_object = open_video(video_path)
-    dense = np.zeros((M, H, W), dtype=bool)          # see main(): allocated once per run
+    # ONE shard's worth of label frames, allocated once per run  [§6, Gotchas]
+    buf = np.zeros((shard_n_frames, H, W), dtype=np.uint16)
     frame_idx = 0
     WHILE input_video_object.isOpened():
         ret, frame = input_video_object.read()
@@ -837,18 +906,28 @@ def mask_clip_into(video_path, tracked_bboxes_dict, mask_array, clip_index,
             parse_video_frame_reading_error_and_log(frame_idx, total_n_frames)
             break
 
+        k = frame_idx % shard_n_frames
+        buf[k] = 0                                   # 0 = background  [§5]
+
         # .get, not [...]: no key for a frame with no boxes  [§4]
         frame_data = tracked_bboxes_dict.get(frame_idx)
         IF frame_data is not None and len(frame_data["tracked_boxes"]) > 0:
-            # KeyError here means the coordinate and the dict disagree — loud, not silent
-            plane_idx = np.array([plane_of[str(i)] for i in frame_data["ids"]])
-            dense[:] = False
+            values = np.array([value_of[str(i)] for i in frame_data["ids"]])
             predict_masks_into(
                 predictor, frame, frame_data["tracked_boxes"],
-                plane_idx, dense, max_prompts_per_batch,
+                values, buf[k], max_prompts_per_batch,      # paints in place  [§5a]
             )
-            mask_array[clip_index, frame_idx] = dense     # one whole-frame write  [§6]
+
+        # flush a whole shard at a time: never a partial-shard write  [§6]
+        IF k == shard_n_frames - 1:
+            t0 = frame_idx - k
+            labels_array[clip_index, t0:frame_idx + 1] = buf
         frame_idx += 1
+
+    # the tail: whatever is left of a part-filled shard
+    IF frame_idx % shard_n_frames:
+        k = frame_idx % shard_n_frames
+        labels_array[clip_index, frame_idx - k:frame_idx] = buf[:k]
 
     input_video_object.release()
     return frame_idx
@@ -864,7 +943,8 @@ def main(args):                            # mask-tracked-crabs
     mask_config = load_mask_config(args.mask_config_file)
     sam2_model_id = mask_config.get("sam2_model_id", "facebook/sam2.1-hiera-base-plus")
     max_prompts_per_batch = mask_config.get("max_prompts_per_batch", 32)
-    shard_n_planes = mask_config.get("shard_n_planes", 128)
+    shard_n_frames = mask_config.get("shard_n_frames", 32)
+    occlusion_policy = mask_config.get("occlusion_policy", "smallest_wins")
 
     predictor = load_sam2_predictor(sam2_model_id, accelerator_to_device(args.accelerator))
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -888,7 +968,7 @@ def main(args):                            # mask-tracked-crabs
 
         mask_array = create_mask_store(
             store_path, video_id, clip_ids, T, individuals, (H, W),
-            metadata, shard_n_planes, args.zarr_mode_group,
+            metadata, shard_n_frames, codec, args.zarr_mode_group,
         )
 
         FOR EACH (i, clip_id) IN enumerate(clip_ids):
@@ -896,7 +976,7 @@ def main(args):                            # mask-tracked-crabs
             IF not boxes:
                 log(f"{video_id}/{clip_id}: no tracked boxes, skipping")   # §4
                 continue
-            mask_clip_into(
+            write_clip_masks_to_store(
                 str(clip_videos[i]), boxes, mask_array, i,
                 individuals, predictor, max_prompts_per_batch,
             )
@@ -909,10 +989,11 @@ def app_wrapper():                         # mask-tracked-crabs
 ```
 
 **Note `individuals` is the *video group's* coordinate, not the clip's.** The `individual` axis is
-shared across a video's clips, so `create_mask_store` gets the union and `mask_clip_into` looks each
-clip's own labels up in it. The clip-level list `read_tracked_bboxes_from_zarr` also returns is
-used by the tests and by [§7](#7-where-the-flattening-happens-planes-on-disk-label-image-on-read)'s
-read path; the writer does not need it.
+shared across a video's clips, so `create_mask_store` gets the union and
+`write_clip_masks_to_store` looks each clip's own labels up in it. The clip-level list
+`read_tracked_bboxes_from_zarr` also returns is used by the tests and by
+[§7](#7-flattening-happens-on-write-and-the-read-side-needs-no-helper)'s read path; the writer
+does not need it.
 
 Frames with no tracked boxes are left at the store's `fill_value=False`, and those chunks are never
 written — correct by construction, whether the frame was absent from the dict or present and empty.
@@ -941,18 +1022,49 @@ files than the content justifies. See *Points to discuss* [#2](#points-to-discus
 <details>
 <summary><b>3. Formats considered and rejected</b></summary>
 
-All four are lossless-or-not on overlap, and all four are `regionprops`-shaped at read time. The
-choice came down to the downstream access pattern. Read the shapes as *within one video group and one
-`clip_id`* — the `clip_id` axis and the mirroring coordinates
-([§5](#5-output-format-an-xarray-store-mirroring-the-trajectories-datatree)) are orthogonal to this
-comparison and wrap whichever pixel layout wins.
+Four layouts were compared, and the choice was settled by measuring the real store rather than by
+argument. Read the shapes as *within one video group and one `clip_id`* — the `clip_id` axis and the
+mirroring coordinates ([§5](#5-output-format-a-label-image-mirroring-the-trajectories-datatree)) wrap
+whichever pixel layout wins.
 
-| Format | Lossless on overlap | per-crab slice | Opens in napari as-is | Note |
+| Format | Lossless on overlap | napari / regionprops direct | store | Note |
 |---|---|---|---|---|
-| **bool, one plane per individual** ✅ chosen | yes | **yes, one slice** | no | chunk count is the cost — answered by sharding ([§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)) |
-| `(T, H, W)` int32 label image | **no** | no | yes | simplest; discards the lower-ID crab's overlapping pixels |
-| `(T, K, H, W)` int32 overlap layers | yes | no | plane 0 ≈ whole frame | `K`≈2–4; needs a greedy packing pass at write time |
-| bbox-local crops + index table | yes | no (needs a scan) | no | ~500× smaller raw, but ragged and no time-slicing |
+| **`(T, H, W)` uint16 label image** ✅ chosen | **no** — 0.62% of box area contested | **yes, both** | ~131 GB | one crab loses each contested pixel; measured cost in [§5a](#5a-the-occlusion-policy-and-what-it-costs) |
+| `(T, M, H, W)` bool, one plane per crab | yes | no | — | **fails at the real `M`**; see below |
+| `(T, K, H, W)` int32 overlap layers | yes | plane 0 only | — | `K`≈2–4; needs a greedy packing pass at write time, and the axis carries no identity |
+| bbox-local crops + index table | yes | no (needs reconstruction) | ~150 GB | ~386× smaller per mask, but not viewable without a helper |
+
+**Why not one boolean plane per crab — the design this proposal originally had.** It was rejected on
+measurements of `CrabTracks-slurm3644250.zarr`, not on taste. `M` is the `individual` axis size, and
+it is **791–8,082** (median 3,326), because it counts distinct track IDs over a whole clip while only
+~60 crabs are on screen at once:
+
+| | designed for | measured |
+|---|---|---|
+| dense write buffer (`M×H×W`, needed whole for a shard-aligned write) | 207 MB | **1.6–16.8 GB** |
+| shard files touched per frame write | 1 | **2–19** (the live crabs span 226–2,262 positions) |
+| files per clip | ~3,000 | **54,000–979,000** |
+| decompressed to read one frame's 60 crabs | — | **186 MB** (vs 0.9 MB for crops, 17.7 MB for the label image) |
+
+Compression does not help with any of those: all-`False` chunks are never written, but the buffer is
+uncompressed by construction, the file count follows where the live crabs land, and a chunk is the
+minimum *decompression* unit. Spatial chunking would fix the last one, but then you can fix the file
+count **or** the write buffer, not both. The label image has no `M` axis, so none of it arises.
+
+**Why not the label image's own losses matter less than they look.** 94.0% of crabs have no box
+overlap at all, and box overlap is a ceiling for mask overlap. The tail is heavy — 2.4% lose >25% of
+their box — which is why the policy is recorded in `.attrs` and the README says how to find affected
+crabs by adjacency ([§5a](#5a-the-occlusion-policy-and-what-it-costs)).
+
+**Why not crops.** The strongest rival: ~386× smaller per mask, and a frame reads in 0.32 MB against
+17.7 MB. It loses because it is not a label image — napari cannot open it and `regionprops` cannot
+read it without a reconstruction helper, and those two were the requirements. Worth revisiting if the
+store turns out larger than *Points to discuss* [#1](#points-to-discuss) expects.
+
+**Why not overlap layers.** Genuinely lossless and compact, but the axis carries no identity, so
+every read needs the companion array to say which crab is in which layer — all of the label image's
+reconstruction cost with none of its simplicity.
+
 
 **Why not the label image.** It cannot represent two crabs on one pixel, and the ellipse fits the
 orientation work wants would be biased by exactly the neighbours that touch most. Rejected on
@@ -967,36 +1079,12 @@ the axis carrying the IDs, so losing it would cost the 1:1 alignment with the tr
 Rejected for now because it is ragged, needs a scan to assemble one crab's time series, and cannot be
 read without the repo's helpers. Worth revisiting if [#1](#points-to-discuss) comes back badly.
 
-**Why not one chunk per frame** — same format, coarser chunking. The obvious way to kill the
-file-count problem without the sharding codec, and it makes the write trivially correct. Measured,
-60 frames at 1920×1080, M=100 (pre-`clip_id` notation: read `masks[t, tid]` as one plane of one frame
-of one clip):
-
-| layout | files | disk | `masks[t, tid]` | `masks[t]` | `masks[:, tid]` |
-|---|---|---|---|---|---|
-| per-instance chunks, unsharded | 6001 | 1.68 MB | 0.6 ms | 15.9 ms | 9.9 ms |
-| **per-instance chunks + shards of 128** ✅ | **61** | 1.80 MB | **0.9 ms** | 23.5 ms | **22.1 ms** |
-| one chunk per frame | 61 | 1.42 MB | 5.4 ms | 10.5 ms | **170.5 ms** |
-
-Extrapolated to 3000 frames, one crab's trajectory costs **1.1 s** chunked-and-sharded versus
-**8.5 s** with per-frame chunks. Three reasons per-frame chunking loses:
-
-1. **It buys nothing sharding does not.** Both give 3050 files. Sharding *is* the mechanism for "many
-   chunks, one file", so per-frame chunking gives up per-plane granularity for free.
-2. **One crab's trajectory costs ~8× more**, because reading one crab means decompressing every
-   frame's entire `M`-plane chunk — ~100× more data than asked for.
-3. **The chunk size scales with `M`.** A chunk is zarr's minimum decompression unit, so a per-frame
-   chunk means every read — napari asking for a single plane included — decompresses `M × H × W`:
-
-    | layout | M | chunk raw size | per-crab slice |
-    |---|---|---|---|
-    | one chunk per frame | 100 | 52 MB | 17.4 ms |
-    | one chunk per frame | 400 | **207 MB** | 40.1 ms |
-    | per-plane chunks + shards | 100 | 1 MB | 14.2 ms |
-    | per-plane chunks + shards | 400 | **1 MB** | 14.2 ms |
-
-    (540×960 here, so raw sizes are a quarter of full resolution.) Sharding holds the chunk at
-    2.07 MB whatever `M` does, and just packs more chunks per file.
+**Why not a coarser chunk than one frame** — the chunk-size question, now that the layout is
+settled. Measured in [§6](#6-chunking-sharding-and-the-frame-at-a-time-write): grouping 8 or 32
+frames into a chunk gives **identical compression** (13.1–13.2 KB/frame either way) and makes reading
+one frame **5.7× slower**, because a label frame is ~96% zeros that the compressor already exploits
+within a single frame, and a chunk is the minimum decompression unit. There is nothing to gain and a
+frame read to lose, so the chunk stays one frame and the shard carries the file-count job.
 
 </details>
 
@@ -1025,42 +1113,54 @@ than this PR's, deliberately — noted where that is so.
     `sorted(..., key=int)` — `["2", "9", "10"]`, **[PR 2](proposal-mask-tracked-crabs-from-csv.md)'s
     shape, written here on purpose** — masks for IDs `10` and `2` land on planes 2 and 0.
     `np.searchsorted` would put `"10"` on plane 1
-    ([§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)). The dict lookup this pins is
+    ([§6](#6-chunking-sharding-and-the-frame-at-a-time-write)). The dict lookup this pins is
     shipped by this PR, so the test that guards it ships here too rather than waiting for the PR that
     makes it a live case.
-2. **Overlap is preserved.** Two masks sharing a block of pixels: both planes contain the shared
-   pixels in full, and each plane's `sum()` equals its input's. The test that would fail under the
-   label-image format.
-3. **`to_label_image`.** Non-overlapping planes give a label image whose non-zero values are `{1,2,3}`
-   by default and `{3,7,12}` under `labels=[3,7,12]`, with regions in the right places; overlapping
-   planes resolve by `policy`; and the result depends only on plane order, not on label values.
-4. **Round-trip through the consumer.** Feed `to_label_image` output to
-   `skimage.measure.regionprops` and assert `{p.label for p in props} == {3, 7, 12}`.
-5. **A frame with no tracked boxes** leaves every plane all-`False` and does not raise.
-6. **`create_mask_store`.** The array is `(n_clips, T, M, H, W)`; `fill_value` is `False`; chunks are
-   `(1,1,1,H,W)`; shards are `(1,1,128,H,W)`; the `clip_id`, `time` and `individual` coordinates are
-   exactly what was passed in, **in order**; `.attrs["mask_encoding"] == "instance_planes"`.
+2. **The occlusion policy is applied, and in the stated direction.** Two masks overlapping, the
+   smaller one second in prompt order: in the written frame the **smaller** crab owns every contested
+   pixel, the larger owns the rest, and neither is erased. Repeat with the prompt order reversed and
+   assert the result is identical — the policy must depend on area, not on the order SAM2 happened to
+   return things in ([§5a](#5a-the-occlusion-policy-and-what-it-costs)).
+3. **Non-overlapping masks are untouched.** Three crabs apart from each other: each region's pixel
+   count in `labels` equals its input mask's `sum()` exactly. This is the 94% case
+   ([§5a](#5a-the-occlusion-policy-and-what-it-costs)) and it must be lossless.
+4. **Round-trip through the consumer.** `regionprops(labels[c, t])` returns exactly the crabs that
+   were painted, and `{p.label for p in props}` equals the set of `label_of` values used — so the
+   store feeds the analysis with no conversion step
+   ([§7](#7-flattening-happens-on-write-and-the-read-side-needs-no-helper)).
+5. **A frame with no tracked boxes** stays all-`0` and does not raise.
+6. **`create_mask_store`.** `labels` is `(n_clips, T, H, W)` uint16 with `fill_value` 0; chunks are
+   `(1,1,H,W)`; shards are `(1,32,H,W)`; `label_of` is `(M,)` uint16 with no zero in it; the
+   `clip_id` and `individual` coordinates are exactly what was passed in, **in order**; and
+   `.attrs["occlusion_policy"]` matches the config, and `.attrs` carries `boxes_file`,
+   `source_video`, `prompt_type` and `prompt_source`. Assert **`mask_encoding` is absent** — it was
+   dropped deliberately and re-adding it would restate what `labels.dims` and `labels.dtype` say.
 
-    **6a. `bool` survives the xarray round trip.** The raw zarr array is `int8`, and
-    `xr.open_datatree(...)[video_id].masks.dtype` is `bool`. Both halves asserted, because
-    [§5](#5-output-format-an-xarray-store-mirroring-the-trajectories-datatree)'s read guidance rests
-    on exactly this asymmetry and a future xarray could change it without anything else failing.
+    **6a. `label_of` round-trips, in both directions.** `ds.label_of.sel(individual="id_0003")` gives
+    the value that crab's pixels carry in `labels`, and the two-line inverse
+    ([§5](#5-output-format-a-label-image-mirroring-the-trajectories-datatree)) maps it back. Assert
+    `label_of` has no duplicates and no zeros, since 0 is background — a collision would silently
+    merge two crabs.
 
-    **6b. The write path against a *sharded* store — the one zarr will not forgive.** Build the store
-    through `create_mask_store` (so `shards` is set, as in production — *not* a bare
-    `zarr.create_array` with chunks only), write two frames of scattered IDs through the dense
-    assignment, and round-trip them. Indexed assignment (`arr[c, t, planes]` or `oindex`) raises
-    `ValueError` on a sharded array in zarr 3.2.1 and 3.3.0 but works fine unsharded — so a test built
-    on an unsharded fixture would pass while production crashed on frame 0. **Assert the fixture *is*
-    sharded**, so the test cannot quietly stop covering the thing it exists to cover.
+    **6b. The write path against a *sharded* store.** Build the store through `create_mask_store`
+    (so `shards` is set, as in production — *not* a bare `zarr.create_array` with chunks only), write
+    `2 × shard_n_frames + 3` frames so that two whole shards **and** a part-filled tail are exercised,
+    and round-trip every frame. **Assert the fixture *is* sharded.** Sharding is where writes go
+    wrong: a partial-shard write costs a full read-modify-write (measured: one chunk into an existing
+    shard reads 17.6 KB and writes 17.6 KB, against 0 read for a whole-shard write), so a test on an
+    unsharded fixture would pass while production crawled.
 
-    **6c. A template write puts no data on disk.** After `create_mask_store` and before any region
+    **6c. The tail of a clip is written.** A clip whose frame count is not a multiple of
+    `shard_n_frames` still has its last partial shard flushed — the one line in the writer that is
+    easy to drop and would silently lose up to 31 frames per clip.
+
+    **6d. A template write puts no data on disk.** After `create_mask_store` and before any region
     write, the store holds metadata only — no chunk or shard files. One `os.walk`.
-7. **Two clips into one store.** `create_mask_store` with **two** `clip_id`s, then `mask_clip_into`
-   once per clip with different box dicts and one predictor shared across both. Assert each clip's
-   populated `(frame, individual)` set is its own and neither write disturbed the other's shard; that
-   the `individual` coordinate is the union passed in; and that a clip shorter than `time` leaves the
-   tail `False` rather than raising.
+7. **Two clips into one store.** `create_mask_store` with **two** `clip_id`s, then
+   `write_clip_masks_to_store` once per clip with different box dicts and one predictor shared across
+   both. Assert each clip's set of painted label values per frame is its own and neither write
+   disturbed the other's shard; that the `individual` coordinate is the union passed in; and that a
+   clip shorter than `time` leaves the tail `0` rather than raising.
 8. **`read_tracked_bboxes_from_zarr` against a synthetic store.** Build a two-clip video group the way
    `create_final_zarr_store` does — per-clip `_renumber_individuals`, then
    `xr.concat(join="outer")` — and assert: frame indices come back as the `time` values; boxes are
@@ -1133,6 +1233,58 @@ csv comes out of the run itself.
 
 ---
 
+## Documentation updates
+
+Two files, and the README carries five things a reader cannot work out from the store itself.
+
+**[`crabs/tracker/README.md`](../crabs/tracker/README.md)** — the entry point, its arguments, the
+store layout, and:
+
+1. **⚠️ Occlusion is resolved at write time, and the losses are not recorded.** Where two masks
+   overlapped, the smaller crab kept the contested pixels (`smallest_wins`,
+   [§5a](#5a-the-occlusion-policy-and-what-it-costs)) and the larger one's are **gone from the
+   store**. Measured on the trajectories store: 94% of crabs never overlap and 0.62% of box area is
+   contested, but the tail is heavy — 2.4% of crabs lose more than a quarter of their box.
+
+    An `n_px_lost` array recording the per-crab loss was considered and **deliberately dropped** for
+    simplicity, so **filtering occluded crabs is a read-side job**:
+
+    - **by adjacency** — two labelled regions that touch in `labels` were plausibly overlapping.
+      Over-flags (touching ≠ overlapping) but needs nothing extra;
+    - **by area** — compare a crab's `regionprops` area against its tracked box area from the
+      trajectories store, which is already aligned on `(clip_id, time, individual)`. A mask much
+      smaller than its box is a candidate.
+
+    Either way the orientation work should exclude flagged instances rather than fit ellipses to
+    remnants. Recovering the exact loss would mean re-running SAM2.
+
+2. **`individual` names mean something only within a clip.** `id_003` in `Loop00` and in `Loop01`
+   are different crabs — measured, [§3c](#3c-ids-are-per-clip-renumbered-strings). Always select a
+   `clip_id` before an `individual`.
+
+3. **And only within a video.** The names are not comparable across video groups, and their *format*
+   differs too: 2 of 27 videos use `id_000`, the rest `id_0000`, because the padding is derived from
+   each video's own `M`. **Never rebuild a name with a format string** — read `ds.individual`.
+
+4. **`label_of` is the mapping, in both directions.** `ds.label_of.sel(individual=...)` gives a
+   crab's pixel value; the two-line inverse
+   ([§5](#5-output-format-a-label-image-mirroring-the-trajectories-datatree)) decodes `regionprops`
+   output. There is no offset to remember, and the rule differs between this path and
+   [PR 2](proposal-mask-tracked-crabs-from-csv.md).
+
+5. **The trajectories store is the index for the mask store.** `labels` has no `individual` axis, so
+   fetching one crab is a full-clip scan unless you narrow it first — `position` is NaN where a crab
+   is absent, so `isel(time=frames_present)` cuts a real example from 27,054 frames to 1,158, a ~23×
+   saving.
+
+**[`guides/DetectAndTrackHPC.md`](../guides/DetectAndTrackHPC.md)** — installing the `masks` group on
+the cluster, staging the mask config, and the SLURM array: **one task per video**, 27 tasks,
+`--gres=gpu:1` (the existing `create-zarr-dataset` script requests `-p gpu` but no device), `--mem
+16G`, `-t 1-00:00`, and the same `--zarr_mode_store a` / `--zarr_mode_group w-` append pattern
+[`bash_scripts/run_zarr_dataset.sh`](../bash_scripts/run_zarr_dataset.sh) already uses. Measured
+sizing: 1.9–9.1 h per video at 10 fps, 137 GPU-hours for the whole store.
+
+
 ## Dependencies
 
 **`sam-2` is not on PyPI, and a plain `pip install` from git pulls a second torch.** The only source
@@ -1173,7 +1325,7 @@ pip install --no-build-isolation "sam-2 @ git+https://github.com/facebookresearc
 **`zarr` and `xarray` are imported directly but not declared** —
 [`create_dataset.py:20-21`](../crabs/zarr/create_dataset.py#L20-L21) relies on both arriving
 transitively via `movement`. This PR adds a second direct importer of each, so declare them:
-`zarr>=3`, because [§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)'s sharding needs
+`zarr>=3`, because [§6](#6-chunking-sharding-and-the-frame-at-a-time-write)'s sharding needs
 3.x, and `xarray`, which the store template and the documented read path both need. **Neither belongs
 in the `masks` group**: they are needed to read a mask store and to run the unit tests, both of which
 must work without SAM2.
@@ -1207,9 +1359,9 @@ from the installed `dist-info`), and the Hugging Face model cards for `facebook/
 |---|---|---|
 | `cv2.VideoCapture.read()` returns **BGR**; `set_image` documents **RGB** | Silently worse masks — no error, no warning. The existing script never hit this because it reads RGB PNGs via PIL | `cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)` |
 | `predict()` ends with `masks.squeeze(0)`: returns `(N, 1, H, W)` for N>1 but `(1, H, W)` for N==1 | Crash or wrong axis on any frame with exactly one tracked crab. The same latent bug is in [generate_masks_from_bboxes.py:171](../scripts/generate_masks_from_bboxes.py#L171) | `masks.reshape(len(boxes), *masks.shape[-2:])` |
-| Every prompt gets a **full-frame** mask: `_predict` upsamples to `self._orig_hw`, then `predict()` does `.float().cpu().numpy()` | At 1920×1080 that is 8.29 MB per prompt in float32 — **829 MB on CPU for a 100-crab frame** | Chunk the prompts (`max_prompts_per_batch`, default 32 → 265 MB peak) and scatter each chunk into the dense `bool` buffer, releasing the float masks before the next chunk |
-| The dense `(M, H, W)` bool buffer the sharded store requires ([§6](#6-chunking-sharding-and-the-whole-frame-write-they-force)) | `M × H × W` bytes — **207 MB at M=100, 1920×1080** — scaling with the video group's `individual` count — i.e. **exactly the input store's `individual` size** here. Not yet looked up (*Points to discuss* [#5](#points-to-discuss)) | Allocate **once per run**, outside both loops, and `dense[:] = False` per frame. Live at the same time as the 265 MB above, so budget ~0.5 GB |
-| One SAM2 predictor for a whole run, many clips | Loading it per clip would dominate a many-clip run | `load_sam2_predictor` is called once in `main` and passed down. It is also why `mask_clip_into` takes a predictor rather than a model id |
+| Every prompt gets a **full-frame** mask: `_predict` upsamples to `self._orig_hw`, then `predict()` does `.float().cpu().numpy()` | At **4096×2160** that is **35.4 MB per prompt** in float32 — **2.1 GB on CPU for a 60-crab frame**, and the videos really are 4K (measured: box corners reach x=4096, y=2160) | Chunk the prompts (`max_prompts_per_batch`, default 32 → **1.13 GB** peak) and paint each chunk into the frame's `uint16` label image, releasing the float masks before the next chunk. **Lower the default if that is too much** — it is the one knob that trades speed for peak memory |
+| The shard buffer ([§6](#6-chunking-sharding-and-the-frame-at-a-time-write)) | `shard_n_frames × H × W × 2` bytes — **566 MB at 32 frames, 4096×2160**. It does **not** scale with `M`, which is the whole point of the label image: the old one-plane-per-crab layout needed `M × H × W` and `M` is 791–8,082 in the real store, i.e. **1.6–16.8 GB** | Allocate **once per run**, outside both loops. Live at the same time as the 1.13 GB above, so budget **~2 GB** for the masking pass |
+| One SAM2 predictor for a whole run, many clips | Loading it per clip would dominate a many-clip run | `load_sam2_predictor` is called once in `main` and passed down. It is also why `write_clip_masks_to_store` takes a predictor rather than a model id |
 | Clips of one video group may differ in frame size | `create_mask_store` fixes one `(H, W)` per group | Read all the group's video headers up front and fail naming the offending clip, rather than writing a truncated mask |
 
 Also: skip SAM2 entirely on frames with zero tracked boxes, rather than calling `set_image` and then
@@ -1258,34 +1410,34 @@ Then confirm the contract and eyeball the masks:
 import xarray as xr
 from pathlib import Path
 from skimage.measure import regionprops
-from crabs.tracker.utils.masks import to_label_image
 
 store = sorted(Path("mask_output").glob("*_masks_*.zarr"))[-1]   # the name is timestamped
-dt = xr.open_datatree(store, engine="zarr", chunks={})
-node = dt["<video_id>"]
-masks = node.masks
-print(masks.shape, masks.dtype)          # ... and bool — NOT int8; see §5
-print(node.attrs["boxes_source"], node.attrs["id_source"])
+ds = xr.open_datatree(store, engine="zarr", chunks={})["<video_id>"]
+print(ds.labels.shape, ds.labels.dtype)          # (n_clips, T, 2160, 4096) uint16
+print(ds.attrs["boxes_source"], ds.attrs["id_source"], ds.attrs["occlusion_policy"])
 
 # the contract: the same crabs the trajectories store has, in the same frames
-tracks = xr.open_datatree("CrabTracks-slurm3012633.zarr", engine="zarr", chunks={})["<video_id>"]
-assert list(masks.individual.values) == list(tracks.individual.values)
-assert list(masks.clip_id.values) == list(tracks.clip_id.values)
+tracks = xr.open_datatree("CrabTracks-slurm3644250.zarr", engine="zarr", chunks={})["<video_id>"]
+assert list(ds.individual.values) == list(tracks.individual.values)
+assert list(ds.clip_id.values) == list(tracks.clip_id.values)
 
-frame = masks.isel(clip_id=0, time=0).compute()
-present_in_masks = set(frame.individual[frame.any(dim=("img_h", "img_w"))].values)
+frame = ds.labels.isel(clip_id=0, time=0).compute()
+inv = np.empty(int(ds.label_of.max()) + 1, dtype=int)
+inv[ds.label_of.values] = np.arange(ds.sizes["individual"])
+present_in_masks = set(ds.individual.values[inv[np.unique(frame.values[frame.values > 0])]])
 present_in_tracks = set(
     tracks.position.isel(clip_id=0, time=0).dropna(dim="individual", how="all").individual.values
 )
 print(present_in_masks == present_in_tracks)     # True
 
-# the read path
-props = regionprops(to_label_image(frame.values))
+# the read path — no conversion step
+props = regionprops(frame.values)
 print([p.area for p in props][:10])       # sanity: no zero-area or whole-frame regions
+print([p.orientation for p in props][:5]) # what the orientation work is actually after
 ```
 
-To eyeball the masks, build a label image per frame with `to_label_image` and drop that into napari
-over the clip's frames.
+To eyeball the masks, drop the store straight into napari — `viewer.add_labels(ds.labels)` — over
+the clip's frames. No helper, no per-frame conversion.
 
 **Record three numbers once**, since they decide the format's viability: `du -sh` **and the file
 count** (`find ... | wc -l`) of the store for one real video, and the wall-clock time of the masking
@@ -1299,11 +1451,11 @@ means the whole-frame write has regressed to a per-plane one.
 
 | # | To discuss | Conclusion |
 |---|---|---|
-| 1 | **Chunk count was this format's one weak spot; sharding answers it, but dictates the write.** Measured numbers in [*Formats considered and rejected*](#detailed-implementation). `shard_n_planes` stays a config value so it can be tuned without a format change. Still unmeasured: the cluster's network filesystem specifically — these numbers are local APFS. | |
+| 1 | **Chunk count was this format's one weak spot; sharding answers it, but dictates the write.** Measured numbers in [*Formats considered and rejected*](#detailed-implementation). `shard_n_frames` stays a config value so it can be tuned without a format change. Still unmeasured: the cluster's network filesystem specifically — these numbers are local APFS. | |
 | 2 | **Module layout: one module or three.** This PR puts the pass and the entry point in `crabs/tracker/mask_video.py`; PR 2 adds `generate_masks` and PR 3 its entry point to the same file. The alternative is `masking.py` plus one thin module per entry point. Recommend one module now, and the split if it grows past ~300 lines. | |
-| 3 | **A convenience view that makes the store droppable into napari.** A lazy `(time, img_h, img_w)` label image — `to_label_image` under a dask `map_blocks` — would be droppable, and is ~10 lines reusing the helper this PR adds. The catch is that it bakes in one overlap policy as a default, which is the decision [§7](#7-where-the-flattening-happens-planes-on-disk-label-image-on-read) deliberately moved to the caller. Recommend adding it **after** the first real clip has been looked at, so the default is chosen from what overlap actually looks like. | |
+| 3 | **The occlusion policy is a guess until there are real masks.** `smallest_wins` is argued from what it does to a fitted ellipse ([§5a](#5a-the-occlusion-policy-and-what-it-costs)), not measured. SAM2's predicted-IoU score is the other plausible precedence — higher-quality mask wins — and comparing them needs one real clip and two runs, which the timestamped store name already makes cheap. The policy name is in `.attrs`, so stores written under each are distinguishable. | |
 | 4 | **Selecting clips, not just videos.** `--match` is video-level, because that is what `dt.match()` matches. Filtering clips by metadata — `--escape_type triggered`, say, using the `clip_escape_type` coordinate — is a natural next argument, but it interacts with the store layout: a group whose `clip_id` axis is a *subset* of the trajectories store's no longer aligns 1:1 by position, only by label. Recommend deferring until there is a reason to mask a subset of a video's clips. | |
-| 5 | **`M` has not been looked up — but here it is not an unknown, it is a coordinate.** Every memory figure — the 207 MB dense buffer, the ~0.5 GB budget — uses M=100, and that 100 is the *detector's* `box_detections_per_img` cap ([#6](#points-to-discuss)), which bounds crabs **per frame**. This PR's `M` is something else: `create_mask_store` is given `ds_video.individual` verbatim ([§5](#5-output-format-an-xarray-store-mirroring-the-trajectories-datatree)), so **`M` is exactly the input store's `individual` axis size** for that video group — which, after the outer join, is the largest clip's individual count. It is readable off any existing store today, without running anything: `max(len(node.ds.individual) for node in dt.leaves)`. [PR 2](proposal-mask-tracked-crabs-from-csv.md)'s `M` is a genuinely different quantity (distinct SORT IDs in one clip's csv) and needs its own look. Reads are immune either way — sharding holds the chunk at 2.07 MB whatever `M` does — so this is a write-buffer question only. | |
+| 5 | **`M` was looked up, and it is not ~100 — it is 791 to 8,082.** Measured across all 27 video groups of `CrabTracks-slurm3644250.zarr`: median 3,326, max 8,082, because `individual` counts *distinct track IDs over a whole clip* and clips run 1,947–108,922 frames with constant ID churn. Crabs **per frame** are a different and much smaller number — 26 to 81, median ~60 — which is what the ~100 figure was really about. **This is why the store is a label image and not one boolean plane per crab** ([§7](#7-flattening-happens-on-write-and-the-read-side-needs-no-helper)): under the plane layout, `M` sized the write buffer (1.6–16.8 GB), spread one frame's write across 2–19 shard files, and gave 54k–979k files per clip. Under the label image, `M` sizes nothing but the `label_of` lookup and the uint16 ceiling, both of which it is nowhere near. Nothing here is outstanding; the entry stays as the record of why the format changed. | |
 | 6 | **⚠️ The detector is running at its detection cap.** `fasterrcnn_resnet50_fpn_v2` is constructed with no kwargs ([models.py:82](../crabs/detector/models.py#L82)), so torchvision's default `box_detections_per_img=100` applies — and this scene has ~100 crabs per frame. Dense frames are plausibly truncated to the top 100 by score, silently, before tracking. Nothing here changes it, but it caps what the masks can ever cover. Worth its own issue and a quick check: log `max(len(boxes))` over a real clip. | |
 | 7 | **`sam2_model_id` default.** Matched to the existing script's `-base-plus` so the two agree. `-tiny` / `-small` are considerably faster and may well be enough at this object size — comparing them is exactly what the timestamped store name is for. | |
 | 8 | **The dependency group only helps a uv checkout, and this repo is not one yet.** `uv.lock` is gitignored and untracked, and the install docs are conda + pip throughout. Committing `uv.lock` and making uv the documented path would also pin the SAM2 commit rather than tracking whatever `main` is on the day someone installs — a bigger, separate decision. | |

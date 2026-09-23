@@ -35,9 +35,9 @@ flowchart TD
     RZ --> D["tracked_bboxes_dict<br/>frame_idx -> boxes, ids"]
     RC --> D
     RT --> D
-    D --> M["✨ the masking pass<br/>create_mask_store + mask_clip_into<br/><b>PR 1</b>"]
+    D --> M["✨ the masking pass<br/>create_mask_store + write_clip_masks_to_store<br/><b>PR 1</b>"]
     V["clip .mp4 pixels"] --> M
-    M --> S[("✨ mask store<br/>clip_id, time, individual, img_h, img_w — bool<br/>mirrors the trajectories datatree")]
+    M --> S[("✨ mask store<br/>labels: clip_id, time, img_h, img_w — uint16<br/>one label image per frame")]
     style RZ fill:#e0e7ff,stroke:#4338ca,color:#1e1b4b
     style M fill:#e0e7ff,stroke:#4338ca,color:#1e1b4b
     style S fill:#e0e7ff,stroke:#4338ca,color:#1e1b4b
@@ -60,17 +60,19 @@ the dict. That is what makes PR 2 and PR 3 small.
 
 Carries everything the other two build on:
 
-- **the masking pass** — `create_mask_store`, `mask_clip_into`, `predict_masks_into`,
+- **the masking pass** — `create_mask_store`, `write_clip_masks_to_store`, `predict_masks_into`,
   `load_sam2_predictor`
-- **the store format** — `(clip_id, time, individual, img_h, img_w)` bool, one group per video,
-  mirroring the trajectories datatree so masks and tracks align 1:1
+- **the store format** — `labels (clip_id, time, img_h, img_w)` uint16, one label image per frame,
+  one group per video, with the trajectories store's own `clip_id` and `individual` coordinates so
+  masks and tracks align 1:1
 - `read_tracked_bboxes_from_zarr`, and the loop over videos and clips
-- `to_label_image` (the read side), `mask_config.yaml`, the opt-in `masks` dependency group
+- `label_of`, the explicit individual → pixel-value mapping; `mask_config.yaml`; the opt-in `masks`
+  dependency group
 - a new pooch fixture: a small trajectories store plus the clip `.mp4`s it names
 
 It is first because it is the path that will actually be used, and because its multi-clip loop is
-what justifies the `create_mask_store` / `mask_clip_into` split. Shipping the split first with only
-a single-clip caller would have been speculative generality.
+what justifies the `create_mask_store` / `write_clip_masks_to_store` split. Shipping the split first
+with only a single-clip caller would have been speculative generality.
 
 ### PR 2 — the same command, widened to a tracks csv
 
@@ -94,38 +96,51 @@ Each is argued where it is listed; this table exists so they are not re-opened b
 |---|---|
 | **One entry point taking `--boxes`, dispatching on the file's suffix** — not two commands, and not a mutually-exclusive pair of flags | [proposal §1](proposal-mask-tracked-crabs.md) |
 | **The store mirrors the trajectories datatree** — chosen up front so there is never a second, incompatible mask format | [proposal §5](proposal-mask-tracked-crabs.md) |
-| **Identity is an explicit `individual` coordinate**, copied from whatever produced the boxes — no `track_id - 1` convention, and `M` is the emitted ID count rather than `max(id)` | [proposal §5](proposal-mask-tracked-crabs.md) |
-| **One boolean plane per crab, not a label image** — overlap is representable, so nothing is discarded and there is no overlap policy baked into the store | [proposal §5](proposal-mask-tracked-crabs.md) |
-| **Chunk per plane, shard per 128 planes**, and the whole-frame write that sharding forces | [proposal §6](proposal-mask-tracked-crabs.md) |
-| **Flattening to a label image happens on read**, per consumer, per call | [proposal §7](proposal-mask-tracked-crabs.md) |
+| **Identity is an explicit `label_of` mapping**, individual → pixel value, so no reader ever needs to know the writer's offset. The `individual` coordinate is copied verbatim from whatever produced the boxes | [proposal §5](proposal-mask-tracked-crabs.md) |
+| **A label image, not one boolean plane per crab** — so the store opens in napari and feeds `regionprops` with no conversion. Decided on measurement: at the real `M` of 791–8,082 the plane layout needs a 1.6–16.8 GB write buffer and 54k–979k files per clip | [proposal §5, §7](proposal-mask-tracked-crabs.md) |
+| **Chunk = one frame, shard = 32 frames**, blosc-zstd-9 + bitshuffle. Bigger chunks were measured to give identical compression and 5.7× slower frame reads | [proposal §6](proposal-mask-tracked-crabs.md) |
+| **Occlusion is resolved on write**, `smallest_wins`, recorded in `.attrs`. Measured: 94% of crabs never overlap, 0.62% of box area is contested. `n_px_lost` was considered and **dropped** — affected crabs are found on read by adjacency in the label image | [proposal §5a](proposal-mask-tracked-crabs.md) |
 | **SAM2 is an opt-in dependency group**, not a hard requirement | [proposal, Dependencies](proposal-mask-tracked-crabs.md) |
+| **SAM2 runs frame by frame, through `SAM2ImagePredictor`** — not `SAM2VideoPredictor`, whose point is to propagate a few prompted frames across a clip. Three reasons: every frame already carries a box for every tracked crab, so there is **nothing to propagate**; propagation would make SAM2 a **second owner of identity**, competing with the SORT ids the `individual` coordinate copies verbatim, which is what keeps the three box sources interchangeable; and `init_state` over a whole clip **fights the one-pass streaming write**, which is what holds peak memory flat in clip length. The cost is **no temporal consistency** — a crab's mask can flicker between frames and nothing smooths it, deliberately, in the same way occlusion is resolved once, at write time, rather than tracked per frame. Argued from the input rather than measured: the two predictors have not been run against each other on a real clip, worth doing when `-tiny` and `-base-plus` are compared | *here* |
 
 ---
 
 ## Prerequisites and open questions
 
-**Resolved.** The `time`-coordinate defect that would have made a trajectories store unsafe to read
-was fixed by [PR #291](https://github.com/SainsburyWellcomeCentre/crabs-exploration/pull/291)
-(`99a2fcb`, *Make zarr time axis dense*). Stores built since then have a dense, clip-anchored `time`
-axis, so row *p* is clip frame *p* by construction. PR 1 keeps a cheap guard that refuses an older
-store rather than silently masking the wrong frames —
-[`audit-zarr-time-coordinate.md`](audit-zarr-time-coordinate.md) is what the guard is checking for,
-and is still worth running over any store built before 291 that is still in use.
+**Resolved: the `time`-coordinate defect.** [PR #291](https://github.com/SainsburyWellcomeCentre/crabs-exploration/pull/291)
+(`99a2fcb`, *Make zarr time axis dense*) made the axis dense and clip-anchored, so row *p* is clip
+frame *p* by construction.
+
+**And it never bit this data.** Checked on both an old store (`CrabTracks-slurm3012633.zarr`,
+pre-291) and a new one (`CrabTracks-slurm3644250.zarr`): **all 234 clips of both** store exactly
+`clip_last - clip_first + 1` frames. The bug only manifests when a VIA tracks file has a frame with
+no boxes at all, and with ~60 crabs on screen that never happens. So
+[`audit-zarr-time-coordinate.md`](audit-zarr-time-coordinate.md) does not need running for these two
+stores.
+
+**The version discriminator is the dimension name, not the frame count.** The pre-291 store uses
+`individuals` (plural), the current one `individual` — a `movement` naming change. PR 1 refuses the
+old spelling outright rather than trying to infer the version from the data, which the measurement
+shows cannot be done.
+
+**Measured scale**, from `CrabTracks-slurm3644250.zarr`: 27 videos, 234 clips, **4,949,234 frames**
+at 4096×2160, ~60 crabs per frame, ~297M masks. **137 GPU-hours** at 10 fps (275 at 5 fps), which is
+1.9–9.1 h per video — one SLURM array task per video, inside the existing 20 h limit.
 
 **Open, and not blocking:**
 
-- **`M` is not yet known, but it is a lookup rather than an estimate.** The dense write buffer is
-  `M × H × W` bool — 207 MB at M=100 and 1920×1080. For PR 1, `M` is **exactly the input store's
-  `individual` axis size** for a video group, because the mask store copies that coordinate
-  verbatim. So it can be read off any existing store right now, without running anything:
-  `max(len(node.ds.individual) for node in dt.leaves)`. Only [PR 2](proposal-mask-tracked-crabs-from-csv.md) has an `M` that is a
-  different quantity — the distinct SORT IDs in one clip's csv — and that one is bounded by the same
-  scene.
-- **⚠️ The detector may be running at its detection cap.** `fasterrcnn_resnet50_fpn_v2` is built with
-  no kwargs ([models.py:82](../crabs/detector/models.py#L82)), so torchvision's default
-  `box_detections_per_img=100` applies to a scene with ~100 crabs per frame. That caps what any mask
-  store can ever cover. It affects PR 3 directly and everything upstream of PR 1's inputs. **Worth
-  its own issue.**
+- **How much store, and how ragged the masks are.** Measured at ~**131 GB** for the whole store
+  (4.95M frames at 4096×2160, blosc-zstd-9 + bitshuffle), with ~80 GB as a floor and ~300 GB if SAM2
+  segments the legs rather than just the carapace. That spread is the one number a first real clip
+  settles, and it is a `du -sh` after one job.
+
+- **The detector's detection cap — probably not binding, but unconfirmed.**
+  `fasterrcnn_resnet50_fpn_v2` is built with no kwargs
+  ([models.py:82](../crabs/detector/models.py#L82)), so torchvision's default
+  `box_detections_per_img=100` applies. Sampling the trajectories store gives a **maximum of 81
+  crabs in any frame** (median ~60), which is evidence against the cap binding — though that count is
+  post-tracking and possibly post-filtering, so it is not conclusive. Still worth its own issue, and
+  it matters most for PR 3, the one that runs the detector.
 - **Whether the trajectories store should carry its clip video paths.** PR 1 takes `--videos` and
   derives `<video_id>-<clip_id>.mp4`; an attr on the store would make it self-sufficient, but only
   for stores built afterwards.

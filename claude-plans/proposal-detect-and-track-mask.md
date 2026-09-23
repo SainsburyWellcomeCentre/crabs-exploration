@@ -18,7 +18,7 @@ flowchart TD
     T --> D["✨ self.tracked_bboxes_dict<br/><i>in memory, one added line</i>"]
     D --> G["generate_masks<br/><i>already on main</i>"]
     OD["inference.tracking_output_dir<br/>inference.csv_file_path"] --> G
-    G --> Z["&lt;dir&gt;/&lt;video&gt;_masks_&lt;timestamp&gt;.zarr<br/>group &lt;video_id&gt;, one clip_id<br/>clip_id, time, individual, img_h, img_w — bool"]
+    G --> Z["&lt;dir&gt;/&lt;video&gt;_masks_&lt;timestamp&gt;.zarr<br/>group &lt;video_id&gt;, one clip_id<br/>labels: clip_id, time, img_h, img_w — uint16"]
     style CLI fill:#e0e7ff,stroke:#4338ca,color:#1e1b4b
     style D fill:#e0e7ff,stroke:#4338ca,color:#1e1b4b
     style G fill:#f5f5f5,stroke:#999,color:#333
@@ -37,7 +37,7 @@ Node → code legend:
 > [!NOTE]
 > **Prompt** — a hint telling SAM2 *which* object to segment. Here, one bounding box in
 > `[x1, y1, x2, y2]` pixel coordinates per tracked crab. The other terms this document uses
-> (*instance plane*, *label image*, *trajectories store*) are defined in
+> (*label image*, *occlusion policy*, *trajectories store*) are defined in
 > [`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md).
 
 ---
@@ -116,15 +116,14 @@ See [`proposal-mask-tracked-crabs.md`](proposal-mask-tracked-crabs.md) §2.
 | What this PR calls | Where it landed |
 |---|---|
 | `generate_masks(video_path, tracked_bboxes_dict, output_dir, boxes_file, device, mask_config, boxes_source, id_source, video_id, clip_id)` | `crabs/tracker/mask_video.py`, [PR 2](proposal-mask-tracked-crabs-from-csv.md) |
-| `create_mask_store`, `mask_clip_into` — under `generate_masks`, not called directly here | `crabs/tracker/mask_video.py`, PR 1 |
+| `create_mask_store`, `write_clip_masks_to_store` — under `generate_masks`, not called directly here | `crabs/tracker/mask_video.py`, PR 1 |
 | `accelerator_to_device(accelerator)` | `crabs/tracker/mask_video.py`, PR 1 |
 | `load_mask_config(path)` — there is no `MASK_DEFAULTS`; each knob is defaulted at its use site | `crabs/tracker/mask_video.py`, PR 1 |
 | `DEFAULT_MASK_CONFIG`, `MASK_CONFIG_HELP` | inline literals in PR 1's parser — **this PR promotes them** to module constants, since it is the second caller ([§5](#5-the-new-parser-the-tracking-arguments-plus-one-flag)) |
 | `video_and_clip_id_from_stem(stem)` | `crabs/tracker/utils/tracking.py`, [PR 2](proposal-mask-tracked-crabs-from-csv.md) — this PR calls it for the same reason the csv path does ([§3](#3-one-added-line-in-track_videopy-so-main-can-see-the-boxes)) |
 | `boxes_source="tracker"` as an `.attrs` value | the key is already written, with `"trajectories_zarr"` and `"tracks_csv"` as its other values. `id_source` is `"sort_track_id"`, the same value the csv path writes |
-| The `(clip_id, time, individual, img_h, img_w)` bool store, its chunking and sharding | `create_mask_store` |
+| The `labels (clip_id, time, img_h, img_w)` uint16 store, `label_of`, the chunking, sharding and occlusion policy | `create_mask_store` + `write_clip_masks_to_store` |
 | The `masks` dependency group, `zarr>=3` and `xarray` | [`pyproject.toml`](../pyproject.toml) |
-| `to_label_image` | `crabs/tracker/utils/masks.py` |
 
 **`generate_masks` needs no change to accept the tracker's dict**, which is the one thing that could
 have made this PR big. The two dicts differ in two ways, and the prerequisite handles both and pins
@@ -428,8 +427,8 @@ commands is the detector pass, not the masking.
 | [`guides/DetectAndTrackHPC.md`](../guides/DetectAndTrackHPC.md) | the end-to-end command on the cluster |
 
 **Nothing else is touched.** In particular: no change to the store format, to `mask_config.yaml`, to
-`generate_masks`, to `create_mask_store` or `mask_clip_into`, to
-`crabs/tracker/utils/masks.py`, to [`sort.py`](../crabs/tracker/sort.py), to
+`generate_masks`, to `create_mask_store` or `write_clip_masks_to_store`, to
+to [`sort.py`](../crabs/tracker/sort.py), to
 [`utils/io.py`](../crabs/tracker/utils/io.py), to
 [`create_dataset.py`](../crabs/zarr/create_dataset.py), to `tracking_config.yaml`, to the CSV format,
 or to the detector.
@@ -497,8 +496,9 @@ importable.
 6. **`test_detect_and_track_mask` on its own**, alongside
    [`test_detect_and_track_video`](../tests/test_integration/test_inference.py). Opened with
    `xr.open_datatree`, assert the store has one group named for the clip's `video_id`, holding `masks`
-   of shape `(1, 3, M, H, W)` and dtype `bool`, and that for each frame the set of `individual` labels
-   with any `True` pixel is exactly the set of track IDs in that frame's CSV rows, as strings. The
+   of shape `(1, 3, H, W)` and dtype `uint16`, and that for each frame the set of non-zero pixel
+   values is exactly the set of track IDs in that frame's CSV rows — which on this path *are* the
+   pixel values ([PR 2 §6](proposal-mask-tracked-crabs-from-csv.md)). The
    store is found by globbing `<video>_masks_*.zarr`, since the name is timestamped.
 
     This test passes the registry's `tracking_config.yaml` **unchanged** and lets `--mask_config_file`
@@ -583,17 +583,18 @@ import xarray as xr, numpy as np
 from pathlib import Path
 
 stores = sorted(Path("tracking_output").glob("<clip>_masks_*.zarr"))
-# read through xarray, not zarr: the raw array is int8 (prerequisite §5)
 a, b = (xr.open_datatree(s, engine="zarr", chunks={})["<video_id>"] for s in stores[-2:])
 print(a.attrs["boxes_source"], b.attrs["boxes_source"])         # "tracker", "tracks_csv"
-print(a.masks.shape == b.masks.shape, a.masks.dtype)            # True, bool
+print(a.labels.shape == b.labels.shape, a.labels.dtype)         # True, uint16
 print(list(a.individual.values) == list(b.individual.values))   # True — same crabs, same order
+print((a.label_of.values == b.label_of.values).all())           # True — same pixel values too
 
-# same crabs in the same frames, masks within a few percent of each other
-pa, pb = (
-    m.masks.isel(clip_id=0, time=0).any(dim=("img_h", "img_w")).values for m in (a, b)
-)
-print(np.array_equal(pa, pb))                                   # True
+# same crabs in the same frames; masks close but NOT identical (csv truncation, §2)
+fa, fb = (m.labels.isel(clip_id=0, time=0).values for m in (a, b))
+print(set(np.unique(fa)) == set(np.unique(fb)))                 # True — same IDs painted
+for v in sorted(set(np.unique(fa)) - {0})[:5]:
+    na, nb = (fa == v).sum(), (fb == v).sum()
+    print(v, na, nb, f"{abs(na - nb) / na:.1%}")                # a few percent, not zero
 ```
 
 ---
