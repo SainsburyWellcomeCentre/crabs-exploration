@@ -56,7 +56,7 @@ mask-tracked-crabs \
 - `--match` is a glob over **video groups**, not clips; every clip of a selected video is masked.
 - The store name carries a timestamp, so re-masking with a different SAM2 model does not collide. Readers glob for it rather than naming it.
 
-On the cluster, use one SLURM array task per video with `--gres=gpu:1`, and the same `--zarr_mode_store a` / `--zarr_mode_group w-` append pattern [`bash_scripts/run_zarr_dataset.sh`](../../bash_scripts/run_zarr_dataset.sh) uses, so every task writes into one shared store.
+To mask a whole trajectories store on the cluster, use [`bash_scripts/run_mask_array.sh`](../../bash_scripts/run_mask_array.sh): a SLURM array with one task per video, each appending its own group to one shared store. See [`guides/MaskTrackedCrabsHPC.md`](../../guides/MaskTrackedCrabsHPC.md).
 
 The knobs are in `crabs/tracker/config/mask_config.yaml`, and a config of your own need only name the keys it changes:
 
