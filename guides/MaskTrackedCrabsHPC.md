@@ -90,7 +90,13 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     - `GIT_BRANCH`: version of the 🦀 package to use. Usually we will use the version at the tip of the `main` branch.
 
     > [!NOTE]
-    > Unlike the other bash scripts in the repository, this one installs a second package after the 🦀 package: SAM2 is an opt-in dependency, because it is not on PyPI. It is installed with `--no-build-isolation` so that it builds against the torch already in the environment, rather than pulling a whole second torch into an isolated build environment. The script also sets `HF_HOME` to a location on `/ceph/scratch`, so that the SAM2 checkpoint is downloaded once and shared across jobs rather than re-downloaded into each home directory.
+    > Unlike the other bash scripts in the repository, this one installs a second package after the 🦀 package: SAM2 is an opt-in dependency, because it is not on PyPI. Three details in that step are deliberate:
+    >
+    > - **`--no-build-isolation`**, so SAM2 builds against the torch already in the environment. Without it, SAM2's build requirement on `torch>=2.5.1` pulls a whole second torch into an isolated build environment — possibly a different variant from the one we will actually run on.
+    > - **`uv pip install setuptools` first.** Turning isolation off means SAM2's build requirements have to be satisfied in our own environment, and a `uv venv` starts with no setuptools. torch happens to depend on setuptools today, so this is belt-and-braces, but without it the failure is an opaque `No module named 'setuptools'` from inside the build backend.
+    > - **`SAM2_BUILD_CUDA=0`**, which skips the optional `sam2._C` CUDA extension. It is only used to fill holes and remove sprinkles in predicted masks, which `SAM2ImagePredictor` does not do — `max_hole_area` and `max_sprinkle_area` both default to 0 — so we never call into it. Left on, the build either spends minutes compiling it or, if there is no `nvcc` on the compute node, prints a traceback and carries on, since SAM2 allows build errors by default.
+    >
+    > The script also sets `HF_HOME` to a location on `/ceph/scratch`, so that the SAM2 checkpoint is downloaded once and shared across jobs rather than re-downloaded into each home directory.
 
 7.  **Run the job using the SLURM scheduler**
 
