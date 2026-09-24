@@ -98,10 +98,25 @@ source $ENV_PREFIX/bin/activate
 # install crabs package in virtual env
 uv pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
 
-# install SAM2, which is an opt-in dependency of the crabs package.
-# We build it against the torch already installed in the environment,
-# rather than letting pip pull a second one into an isolated build env.
-uv pip install --no-build-isolation "sam-2 @ git+https://github.com/facebookresearch/sam2.git"
+# SAM2's build needs setuptools in *this* environment, since we install it
+# below without build isolation. torch depends on setuptools today, so this
+# is belt-and-braces -- but a bare uv venv has no setuptools, and without it
+# the build fails with an opaque "No module named 'setuptools'".
+uv pip install setuptools
+
+# install SAM2, an opt-in dependency of the crabs package that is not on PyPI.
+# --no-build-isolation builds it against the torch already installed here;
+# otherwise SAM2's build requirement on torch pulls a whole second torch into
+# an isolated build environment, possibly a different variant from ours.
+#
+# SAM2_BUILD_CUDA=0 skips the optional sam2._C CUDA extension. It is only used
+# to fill holes and remove sprinkles in predicted masks, which the image
+# predictor does not do (max_hole_area and max_sprinkle_area default to 0), so
+# we never call into it. Left on, the build either spends minutes compiling it
+# or, with no nvcc on the compute node, prints a traceback and carries on,
+# since SAM2 allows build errors by default.
+SAM2_BUILD_CUDA=0 uv pip install --no-build-isolation \
+    "sam-2 @ git+https://github.com/facebookresearch/sam2.git"
 
 # cache the SAM2 checkpoint on ceph rather than in the home directory,
 # so that it is downloaded once and shared across jobs
