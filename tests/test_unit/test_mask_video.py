@@ -1,3 +1,4 @@
+import shutil
 from pathlib import Path
 
 import cv2
@@ -326,3 +327,44 @@ def test_main_fails_before_sam2_is_loaded(
     """A bad input costs a second, not a model download."""
     with pytest.raises(expected_error, match=expected_message):
         run_main(trajectories_store, monkeypatch, extra_args=extra_args)
+
+
+def test_main_output_store_is_shared_across_runs(
+    trajectories_store: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The array-job pattern: one run per video, all into one store.
+
+    `--output_store` names the store exactly, so runs that would each
+    pick their own timestamp write into the same one instead.
+    """
+    # add a second video group, and the clip videos it names
+    tracks = xr.open_datatree(trajectories_store, engine="zarr")[
+        "video"
+    ].to_dataset()
+    tracks.to_zarr(trajectories_store, group="video2")
+    clips = trajectories_store.parent / "clips"
+    for clip_video in sorted(clips.glob("video-*.mp4")):
+        shutil.copy(
+            clip_video, clips / clip_video.name.replace("video-", "video2-")
+        )
+
+    store_path = trajectories_store.parent / "CrabMasks-slurm42.zarr"
+    for video_id in ["video", "video2"]:
+        run_main(
+            trajectories_store,
+            monkeypatch,
+            FakePredictor(),
+            extra_args=[
+                "--output_store",
+                str(store_path),
+                "--match",
+                video_id,
+                "--zarr_mode_store",
+                "a",
+            ],
+        )
+
+    masks = xr.open_datatree(store_path, engine="zarr")
+    assert sorted(node.name for node in masks.leaves) == ["video", "video2"]
+    for video_id in ["video", "video2"]:
+        assert masks[video_id].labels.values.any()
