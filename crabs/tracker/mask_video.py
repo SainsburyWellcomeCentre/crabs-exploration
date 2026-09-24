@@ -389,12 +389,15 @@ def main(args: argparse.Namespace) -> None:
     device = accelerator_to_device(args.accelerator)
     predictor = load_sam2_predictor(sam2_model_id, device)
 
-    # The store name is timestamped, so re-masking does not collide
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-    store_path = (
-        Path(args.output_dir) / f"{boxes_path.stem}_masks_{timestamp}.zarr"
-    )
+    if args.output_store:
+        store_path = Path(args.output_store)
+    else:
+        # the default name is timestamped, so re-masking does not collide
+        store_path = (
+            Path(args.output_dir) / f"{boxes_path.stem}_masks_{timestamp}.zarr"
+        )
+    store_path.parent.mkdir(parents=True, exist_ok=True)
     zarr.open_group(store_path, mode=args.zarr_mode_store)
 
     for node in video_nodes:
@@ -499,6 +502,17 @@ def mask_parse_args(args: list[str]) -> argparse.Namespace:
             "Directory the mask store is written into. The store name "
             "carries a timestamp, so runs do not collide. "
             "Default: mask_output."
+        ),
+    )
+    parser.add_argument(
+        "--output_store",
+        type=str,
+        default=None,
+        help=(
+            "Path to the mask zarr store to write, naming it exactly and "
+            "ignoring --output_dir. Use it when several runs must write "
+            "into one store, e.g. a cluster array job with one task per "
+            "video. Default: a timestamped store under --output_dir."
         ),
     )
     parser.add_argument(
