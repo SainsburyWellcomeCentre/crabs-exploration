@@ -33,9 +33,9 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     ls -d <path-to-trajectories-store>/*/ | wc -l
     ```
 
-4.  **Stage the mask config file**
+4.  **Get the mask config file**
 
-    The masking parameters live in their own config file, separate from the tracking config. Copy the default from the 🦀 repository to a location you can edit, for example `/ceph/zoo/users/sminano/cluster_mask_config.yaml`:
+    The masking parameters live in their own config file, separate from the tracking config. To get it locally (required), copy the default from the 🦀 repository to a location you can edit, for example `/ceph/zoo/users/sminano/cluster_mask_config.yaml`:
 
     ```
     curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/crabs/tracker/config/mask_config.yaml > /ceph/zoo/users/sminano/cluster_mask_config.yaml
@@ -48,7 +48,7 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     - `shard_n_frames`: frames per shard file in the output store. It sets both the write buffer (`shard_n_frames × H × W × 2` bytes, so 566 MB at 32 frames and 4K) and the number of files. This is the one to tune per filesystem.
     - `occlusion_policy`: which crab keeps a pixel where two masks overlap. Currently `smallest_wins` is the only policy implemented.
 
-    A config of your own need only name the keys it changes: the rest fall back to these defaults.
+    A custom config only needs to include the keys it changes: the rest fall back to the defaults.
 
     > [!CAUTION]
     >
@@ -90,9 +90,9 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     - `GIT_BRANCH`: version of the 🦀 package to use. Usually we will use the version at the tip of the `main` branch.
 
     > [!NOTE]
-    > Unlike the other bash scripts in the repository, this one installs a second package after the 🦀 package: SAM2 is an opt-in dependency, because it is not on PyPI. Three details in that step are deliberate:
+    > Unlike the other bash scripts in the repository, this one installs the 🦀 package in two steps: first on its own, then with its `masks` extra, which adds SAM2 and `huggingface_hub`. SAM2's build imports torch, and in a single install uv would build SAM2 before torch is in the environment. Three details in the second step are deliberate:
     >
-    > - **`--no-build-isolation`**, so SAM2 builds against the torch already in the environment. Without it, SAM2's build requirement on `torch>=2.5.1` pulls a whole second torch into an isolated build environment — possibly a different variant from the one we will actually run on.
+    > - **`--no-build-isolation-package sam-2`**, so SAM2 builds against the torch already in the environment. Without it, SAM2's build requirement on `torch>=2.5.1` pulls a whole second torch into an isolated build environment — possibly a different variant from the one we will actually run on. The same setting in the 🦀 `pyproject.toml` only applies in a checkout of the repository, not when installing the package from git.
     > - **`uv pip install setuptools` first.** Turning isolation off means SAM2's build requirements have to be satisfied in our own environment, and a `uv venv` starts with no setuptools. torch happens to depend on setuptools today, so this is belt-and-braces, but without it the failure is an opaque `No module named 'setuptools'` from inside the build backend.
     > - **`SAM2_BUILD_CUDA=0`**, which skips the optional `sam2._C` CUDA extension. It is only used to fill holes and remove sprinkles in predicted masks, which `SAM2ImagePredictor` does not do — `max_hole_area` and `max_sprinkle_area` both default to 0 — so we never call into it. Left on, the build either spends minutes compiling it or, if there is no `nvcc` on the compute node, prints a traceback and carries on, since SAM2 allows build errors by default.
     >
