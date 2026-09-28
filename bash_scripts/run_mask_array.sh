@@ -96,19 +96,26 @@ uv venv $ENV_PREFIX --python 3.12
 # activate environment
 source $ENV_PREFIX/bin/activate
 
-# install crabs package in virtual env
-uv pip install git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH
+# install crabs package in virtual env. This brings in torch, which SAM2
+# builds against below.
+CRABS_URL="git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH"
+uv pip install "crabs @ $CRABS_URL"
 
 # SAM2's build needs setuptools in *this* environment, since we install it
 # below without build isolation. torch depends on setuptools today, so this
 # is belt-and-braces -- but a bare uv venv has no setuptools, and without it
 # the build fails with an opaque "No module named 'setuptools'".
-uv pip install setuptools
 
-# install SAM2, an opt-in dependency of the crabs package that is not on PyPI.
-# --no-build-isolation builds it against the torch already installed here;
+# add the masks extra: SAM2 (pinned in crabs' pyproject.toml, not on PyPI)
+# and huggingface_hub. This cannot happen in the first install: SAM2's build
+# imports torch, and within a single install uv builds SAM2 before torch is
+# in the environment.
+#
+# --no-build-isolation-package builds SAM2 against the torch installed above;
 # otherwise SAM2's build requirement on torch pulls a whole second torch into
 # an isolated build environment, possibly a different variant from ours.
+# The same setting in crabs' pyproject.toml ([tool.uv]) only applies when
+# working in a checkout of the repo, not when installing crabs from git.
 #
 # SAM2_BUILD_CUDA=0 skips the optional sam2._C CUDA extension. It is only used
 # to fill holes and remove sprinkles in predicted masks, which the image
@@ -116,8 +123,9 @@ uv pip install setuptools
 # we never call into it. Left on, the build either spends minutes compiling it
 # or, with no nvcc on the compute node, prints a traceback and carries on,
 # since SAM2 allows build errors by default.
-SAM2_BUILD_CUDA=0 uv pip install --no-build-isolation \
-    "sam-2 @ git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4"
+uv pip install setuptools
+SAM2_BUILD_CUDA=0 uv pip install --no-build-isolation-package sam-2 \
+    "crabs[masks] @ $CRABS_URL"
 
 # cache the SAM2 checkpoint on ceph rather than in the home directory,
 # so that it is downloaded once and shared across jobs
