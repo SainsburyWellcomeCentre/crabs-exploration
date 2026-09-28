@@ -101,28 +101,12 @@ source $ENV_PREFIX/bin/activate
 CRABS_URL="git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH"
 uv pip install "crabs @ $CRABS_URL"
 
-# SAM2's build needs setuptools in *this* environment, since we install it
-# below without build isolation. torch depends on setuptools today, so this
-# is belt-and-braces -- but a bare uv venv has no setuptools, and without it
-# the build fails with an opaque "No module named 'setuptools'".
-
-# add the masks extra: SAM2 (pinned in crabs' pyproject.toml, not on PyPI)
-# and huggingface_hub. This cannot happen in the first install: SAM2's build
-# imports torch, and within a single install uv builds SAM2 before torch is
-# in the environment.
-#
-# --no-build-isolation-package builds SAM2 against the torch installed above;
-# otherwise SAM2's build requirement on torch pulls a whole second torch into
-# an isolated build environment, possibly a different variant from ours.
-# The same setting in crabs' pyproject.toml ([tool.uv]) only applies when
-# working in a checkout of the repo, not when installing crabs from git.
-#
-# SAM2_BUILD_CUDA=0 skips the optional sam2._C CUDA extension. It is only used
-# to fill holes and remove sprinkles in predicted masks, which the image
-# predictor does not do (max_hole_area and max_sprinkle_area default to 0), so
-# we never call into it. Left on, the build either spends minutes compiling it
-# or, with no nvcc on the compute node, prints a traceback and carries on,
-# since SAM2 allows build errors by default.
+# We install sam2 without build isolation. This is so that it picks up the torch
+# already installed in the environment. We also explicitly install setuptools,
+# because SAM2 needs it (it is belt-and-braces tho, because torch depends on
+# setuptools today, but that may change). We also set SAM2_BUILD_CUDA=0 to
+# skip the optional sam2._C CUDA extension, which is unused in the image
+# predictor.
 uv pip install setuptools
 SAM2_BUILD_CUDA=0 uv pip install --no-build-isolation-package sam-2 \
     "crabs[masks] @ $CRABS_URL"
