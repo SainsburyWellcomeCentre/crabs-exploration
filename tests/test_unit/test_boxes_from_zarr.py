@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from crabs.tracker.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
+from crabs.mask.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
 
 
 def clip_dataset(

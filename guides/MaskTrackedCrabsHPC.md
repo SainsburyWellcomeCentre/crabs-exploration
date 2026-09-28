@@ -38,7 +38,7 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     The masking parameters live in their own config file, separate from the tracking config. To get it locally (required), copy the default from the 🦀 repository to a location you can edit, for example `/ceph/zoo/users/sminano/cluster_mask_config.yaml`:
 
     ```
-    curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/crabs/tracker/config/mask_config.yaml > /ceph/zoo/users/sminano/cluster_mask_config.yaml
+    curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/crabs/mask/config/mask_config.yaml > /ceph/zoo/users/sminano/cluster_mask_config.yaml
     ```
 
     The knobs are:
@@ -157,7 +157,7 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     > [!WARNING]
     > **Occlusion is resolved at write time, and the losses are not recorded.** A label image holds one crab per pixel, so where two masks overlapped the smaller crab kept the contested pixels and the larger one's are gone from the store. Measured on the trajectories store, 94% of crabs never overlap and 0.62% of box area is contested, but the tail is heavy: 2.4% of crabs lose more than a quarter of their box. Occluded crabs have to be found on read, by adjacency in `labels` or by comparing mask area against the tracked box area.
 
-    For the rest of what the store cannot say for itself — in particular that `individual` names mean something only within one clip of one video, and how to decode `regionprops` output back to them — see [the masking section of the tracker README](../crabs/tracker/README.md#masking-tracked-crabs).
+    For the rest of what the store cannot say for itself — in particular that `individual` names mean something only within one clip of one video, and how to decode `regionprops` output back to them — see [the masking README](../crabs/mask/README.md).
 
 ### Re-running failed jobs
 

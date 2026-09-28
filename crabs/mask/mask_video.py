@@ -15,8 +15,8 @@ import yaml  # type: ignore
 import zarr
 from zarr.codecs import BloscCodec, ZstdCodec
 
-from crabs.tracker.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
-from crabs.tracker.utils.io import (
+from crabs.mask.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
+from crabs.utils.io import (
     get_video_parameters,
     open_video,
     parse_video_frame_reading_error_and_log,
@@ -478,15 +478,7 @@ def main(args: argparse.Namespace) -> None:
 
 def mask_parse_args(args: list[str]) -> argparse.Namespace:
     """Parse command-line arguments for masking tracked crabs."""
-    parser = argparse.ArgumentParser(
-        # the default formatter re-wraps the epilog to terminal width and
-        # breaks the command name across two lines, on its hyphens
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "To run detection, tracking and masking in one command, "
-            "use detect-and-track-mask."
-        ),
-    )
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--boxes",
         type=str,
@@ -543,7 +535,7 @@ def mask_parse_args(args: list[str]) -> argparse.Namespace:
         default=DEFAULT_MASK_CONFIG,
         help=(
             "Location of YAML config to control masking. "
-            "Default: crabs/tracker/config/mask_config.yaml."
+            "Default: crabs/mask/config/mask_config.yaml."
         ),
     )
     parser.add_argument(

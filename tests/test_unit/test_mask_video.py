@@ -7,13 +7,13 @@ import pytest
 import xarray as xr
 import zarr
 
-from crabs.tracker.mask_video import (
+from crabs.mask.mask_video import (
     create_mask_store,
     main,
     mask_parse_args,
     write_clip_masks_to_store,
 )
-from crabs.tracker.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
+from crabs.mask.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
 from tests.test_unit.test_boxes_from_zarr import clip_dataset, concat_clips
 
 FRAME_SHAPE = (64, 64)  # height, width
@@ -241,9 +241,7 @@ def run_main(
         assert predictor is not None, "SAM2 should not have been loaded"
         return predictor
 
-    monkeypatch.setattr(
-        "crabs.tracker.mask_video.load_sam2_predictor", fake_load
-    )
+    monkeypatch.setattr("crabs.mask.mask_video.load_sam2_predictor", fake_load)
     output_dir = trajectories_store.parent / "mask_output"
     main(
         mask_parse_args(
