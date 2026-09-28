@@ -49,11 +49,15 @@ def load_sam2_predictor(model_id: str, device: str):
         from sam2.sam2_image_predictor import SAM2ImagePredictor
     except ImportError as e:
         raise ImportError(
-            "mask-tracked-crabs needs SAM2. Install it with:\n"
-            "  uv sync --group masks\n"
-            "or, in a conda env with torch already installed:\n"
-            "  pip install --no-build-isolation "
-            '"sam-2 @ git+https://github.com/facebookresearch/sam2.git"'
+            "mask-tracked-crabs needs SAM2, from the masks extra. "
+            "SAM2's build imports torch, so install crabs first and then "
+            "the extra. From a checkout of the repo:\n"
+            "  uv sync\n"
+            "  uv sync --extra masks\n"
+            "or, with pip:\n"
+            "  pip install .\n"
+            "  pip install setuptools setuptools_scm\n"
+            '  pip install --no-build-isolation ".[masks]"'
         ) from e
     return SAM2ImagePredictor.from_pretrained(model_id, device=device)
 
