@@ -37,10 +37,11 @@ dependencies = [
     "movement>=0.17.0", # dimensions renamed to singular (individual, keypoint)
     "dask",
     "numba>=0.60.0",
+    # numba is not used directly: movement pulls it in via xarray[accel].
+    # Pinned to avoid a resolver conflict between movement and sleap-nn
+    # (>=0.60 is also the first numba release that supports numpy 2).
     "zarr>=3",  # sharding
     "xarray",
-    # to avoid conflict between movement and sleap-nn;
-    # numba is installed via xarray[accel] from movement
 ]
 
 
@@ -69,12 +70,15 @@ notebooks = [
     "plotly",
     "datashader",
 ]
-# for mask-tracked-crabs. SAM2 is not on PyPI, so it is pinned to a commit
-# of its repo; this also means crabs cannot be published to PyPI.
-# SAM2 downloads its checkpoints with huggingface_hub but does not declare it.
-# SAM2's build imports torch, so install crabs first and then this extra
-# with --no-build-isolation-package to use the pre-existing torch in the environment.
-# (see bash_scripts/run_mask_array.sh).
+# "masks" extra is required for mask-tracked-crabs.
+# - SAM2 is pinned to a git commit because it is not on PyPI (this means
+#   `crabs` cannot be published to PyPI).
+# - We include huggingface_hub because SAM2 downloads its checkpoints with it
+#   but does not declare it.
+# - SAM2's build imports `torch`, so install `crabs` (and `setuptools`) first,
+#   then uv-pip-install `crabs[masks]` with `--no-build-isolation-package sam-2`, so
+#   that SAM2 builds against the `torch` already in the environment
+#   (see bash_scripts/run_mask_array.sh).
 masks = [
     "huggingface_hub",
     "sam-2 @ git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4",
@@ -94,8 +98,7 @@ create-zarr-dataset = "crabs.zarr.create_dataset:app_wrapper"
 # build SAM2 against the environment's torch rather than a second one.
 # Only relevant for a uv-managed local environment, installed from a
 # checkout of this repo with `uv sync --extra masks`. pip ignores it, and
-# so does uv when installing crabs from git (as bash_scripts/run_mask_array.sh
-# does), so there it is passed on the command line instead.
+# so does uv when installing crabs from git (as in bash_scripts/run_mask_array.sh).
 no-build-isolation-package = ["sam-2"]
 
 [build-system]
