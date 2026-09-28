@@ -73,6 +73,7 @@ notebooks = [
 # of its repo; this also means crabs cannot be published to PyPI.
 # SAM2 downloads its checkpoints with huggingface_hub but does not declare it.
 # SAM2's build imports torch, so install crabs first and then this extra
+# with --no-build-isolation-package to use the pre-existing torch in the environment.
 # (see bash_scripts/run_mask_array.sh).
 masks = [
     "huggingface_hub",
@@ -85,7 +86,7 @@ combine-annotations = "crabs.bboxes_labelling.combine_and_format_annotations:app
 train-detector = "crabs.detector.train_model:app_wrapper"
 evaluate-detector = "crabs.detector.evaluate_model:app_wrapper"
 detect-and-track-video = "crabs.tracker.track_video:app_wrapper"
-mask-tracked-crabs = "crabs.tracker.mask_video:app_wrapper"
+mask-tracked-crabs = "crabs.mask.mask_video:app_wrapper"
 # support scripts
 create-zarr-dataset = "crabs.zarr.create_dataset:app_wrapper"
 
