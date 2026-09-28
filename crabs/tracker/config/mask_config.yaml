@@ -1,10 +1,26 @@
+# SAM2 model to use, as a Hugging Face model ID. Options are, from
+# fastest to most accurate:
+#   - facebook/sam2.1-hiera-tiny
+#   - facebook/sam2.1-hiera-small
+#   - facebook/sam2.1-hiera-base-plus
+#   - facebook/sam2.1-hiera-large
+# The older SAM2 checkpoints (facebook/sam2-hiera-*) also work.
 sam2_model_id: facebook/sam2.1-hiera-base-plus
-# Number of box prompts passed to SAM2 at once. It bounds peak memory:
-# every prompt gets a full-frame float32 mask back.
+
+# Number of box prompts passed to SAM2 at once. It is the main knob for
+# peak memory. SAM2 returns a full-frame float32 mask for every prompt
+# (a float32 is 32 bits = 4 bytes; a float32 frame is H x W x 4 bytes,
+# ~33 MB at 3840x2160; so 33MB x 32 ~ 1GB of masks for 32 prompts).
 max_prompts_per_batch: 32
-# Number of frames per shard file. It sets both the write buffer
-# (shard_n_frames x H x W x 2 bytes) and the file count. null disables
-# sharding.
+
+# Number of frames per shard file. We keep finished frames in memory
+# until we have `shard_n_frames` of them, then write them as one shard
+# file. Each buffered frame is one label image (a uint16 array), so the
+# buffer is shard_n_frames x H x W x 2 bytes.
+# For a 4K image: 32 × 3840 × 2160 × 2 ≈ 530 MB.
+# Larger shard_n_frames values use more memory but produce fewer files.
+# null disables sharding (which is like shard_n_frames=1 but with no index).
 shard_n_frames: 32
+
 # Which crab keeps a pixel where two masks overlap.
 occlusion_policy: smallest_wins

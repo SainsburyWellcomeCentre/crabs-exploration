@@ -64,8 +64,8 @@ To mask a whole trajectories store on the cluster, use [`bash_scripts/run_mask_a
 The knobs are in `crabs/tracker/config/mask_config.yaml`, and a config of your own need only name the keys it changes:
 
 - `sam2_model_id`: the Hugging Face model. By default, `facebook/sam2.1-hiera-base-plus`.
-- `max_prompts_per_batch`: how many box prompts go to SAM2 at once. It bounds peak memory, because every prompt gets a full-frame float32 mask back. By default, 32.
-- `shard_n_frames`: frames per shard file. It sets both the write buffer (`shard_n_frames × H × W × 2` bytes) and the file count, and is the one to tune per filesystem. By default, 32.
+- `max_prompts_per_batch`: how many box prompts go to SAM2 at once. It is the main knob for peak memory, because every prompt gets a full-frame float32 mask back (`H × W × 4` bytes, ~33 MB at 3840×2160, so ~1 GB of masks for 32 prompts). By default, 32.
+- `shard_n_frames`: frames per shard file. Finished frames are held in memory until a shard is full, then written as one file, so it sets both the write buffer (`shard_n_frames × H × W × 2` bytes, ~530 MB for 32 frames at 3840×2160) and the file count. Larger values use more memory but produce fewer files; it is the one to tune per filesystem. `null` disables sharding, which is like `1` but with no shard index. By default, 32.
 - `occlusion_policy`: which crab keeps a pixel where two masks overlap. By default, `smallest_wins`, which is the only policy implemented.
 
 ### The store, and how to read it
