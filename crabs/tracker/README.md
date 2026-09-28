@@ -35,12 +35,15 @@ Note that this definition of identity switches is slightly different to some oth
 
 `mask-tracked-crabs` prompts [SAM2](https://github.com/facebookresearch/sam2) with boxes someone already computed, and writes a zarr store holding **one label image per frame**: a single `uint16` array in which each crab's pixels carry that crab's own value, and `0` is background. It needs no trained detector and no detection pass.
 
-SAM2 is an opt-in dependency, since it is not on PyPI:
+SAM2 and its dependencies are in the opt-in `masks` extra. SAM2's build imports torch, so install the package first and then the extra:
 
 ```bash
-uv sync --group masks
-# or, in a conda environment with torch already installed:
-pip install --no-build-isolation "sam-2 @ git+https://github.com/facebookresearch/sam2.git"
+uv sync
+uv sync --extra masks
+# or, with pip:
+pip install .
+pip install setuptools setuptools_scm  # needed below, as build isolation is off
+pip install --no-build-isolation ".[masks]"
 ```
 
 ```bash
