@@ -104,11 +104,9 @@ uv pip install "crabs @ $CRABS_URL"
 # We install sam2 without build isolation. This is so that it picks up the torch
 # already installed in the environment. We also explicitly install setuptools,
 # because SAM2 needs it (it is belt-and-braces tho, because torch depends on
-# setuptools today, but that may change). We also set SAM2_BUILD_CUDA=0 to
-# skip the optional sam2._C CUDA extension, which is unused in the image
-# predictor.
+# setuptools today, but that may change).
 uv pip install setuptools
-SAM2_BUILD_CUDA=0 uv pip install --no-build-isolation-package sam-2 \
+uv pip install --no-build-isolation-package sam-2 \
     "crabs[masks] @ $CRABS_URL"
 
 # cache the SAM2 checkpoint on ceph rather than in the home directory,
