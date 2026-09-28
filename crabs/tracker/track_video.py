@@ -19,15 +19,15 @@ from crabs.detector.utils.evaluate import (
 )
 from crabs.tracker.evaluate_tracker import TrackerEvaluate
 from crabs.tracker.sort import Sort
-from crabs.tracker.utils.io import (
+from crabs.tracker.utils.tracking import (
+    format_and_filter_bbox_predictions_for_sort,
+)
+from crabs.utils.io import (
     generate_tracked_video,
     open_video,
     parse_video_frame_reading_error_and_log,
     write_all_video_frames_as_images,
     write_tracked_detections_to_csv,
-)
-from crabs.tracker.utils.tracking import (
-    format_and_filter_bbox_predictions_for_sort,
 )
 
 DEFAULT_TRACKING_CONFIG = str(
