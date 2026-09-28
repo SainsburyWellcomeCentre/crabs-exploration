@@ -189,7 +189,15 @@ def predict_and_flatten_masks_into(
     a later chunk would overwrite a small crab from an earlier one, which
     is the opposite of the occlusion policy.
     """
-    predictor.set_image(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+    # SAM2 logs three INFO lines to the root logger on every set_image call,
+    # so silence INFO for that call only
+    root_logger = logging.getLogger()
+    previous_level = root_logger.level
+    root_logger.setLevel(logging.WARNING)
+    try:
+        predictor.set_image(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+    finally:
+        root_logger.setLevel(previous_level)
 
     # largest box first, so chunk order agrees with the occlusion policy
     areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
