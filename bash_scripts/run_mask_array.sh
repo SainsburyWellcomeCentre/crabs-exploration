@@ -25,11 +25,11 @@ set -o pipefail
 # ----------------------
 # Trajectories zarr store with the boxes to prompt SAM2 with,
 # as written by create-zarr-dataset. One group per video.
-BOXES_ZARR_STORE="/ceph/zoo/users/sminano/CrabTracks-slurm3644250.zarr"
+BOXES_ZARR_STORE="/ceph/zoo/processed/CrabField/ramalhete_2023/CrabTracks/CrabTracks-slurm3644250.zarr"
 
 # Directory with the clip videos the boxes refer to, named
 # <video-id>-<clip-id>.mp4, as written by extract-loop-clips
-CLIP_VIDEOS_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops-clips"
+CLIP_VIDEOS_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops"
 
 # Path to the mask config file
 MASK_CONFIG_FILE="/ceph/zoo/users/sminano/cluster_mask_config.yaml"
@@ -46,7 +46,7 @@ LOG_DIR=$MASK_ZARR_STORE_OUTPUT/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
 
 # Version of the codebase
-GIT_BRANCH=main
+GIT_BRANCH=smg/mask-tracked-crabs
 
 # --------------------
 # Check inputs
@@ -79,15 +79,16 @@ module load uv
 # set uv cache dir to /ceph/scratch/sminano
 # (should be faster than /nfs/nhome/live/sminano/.cache/uv and
 # gets purged regularly)
-export UV_CACHE_DIR=/ceph/scratch/sminano/uv-cache
-# The uv cache and the env are on different filesystems (ceph vs tmpfs)
-# so we set link mode to copy across the necessary files,
-# instead of symlinking (which would not work across filesystems)
-export UV_LINK_MODE=copy
-export UV_HTTP_TIMEOUT=120  # seconds
+export UV_CACHE_DIR=/ceph/python_envs/sminano/uv-cache
+
+# uv holds a lock on the shared cache while it fetches and builds a git
+# dependency (SAM2 below). With several array jobs starting together on a
+# slow shared filesystem, the default 300 s wait for that lock is not enough
+# and the other jobs fail with "Timeout when waiting for lock".
+export UV_LOCK_TIMEOUT=3600  # seconds
 
 ENV_NAME=crabs-mask-$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID
-ENV_PREFIX=$TMPDIR/$ENV_NAME
+ENV_PREFIX=/ceph/python_envs/sminano/$ENV_NAME
 
 # create virtual environment with uv
 uv venv $ENV_PREFIX --python 3.12
@@ -116,7 +117,7 @@ uv pip install setuptools
 # or, with no nvcc on the compute node, prints a traceback and carries on,
 # since SAM2 allows build errors by default.
 SAM2_BUILD_CUDA=0 uv pip install --no-build-isolation \
-    "sam-2 @ git+https://github.com/facebookresearch/sam2.git"
+    "sam-2 @ git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4"
 
 # cache the SAM2 checkpoint on ceph rather than in the home directory,
 # so that it is downloaded once and shared across jobs
