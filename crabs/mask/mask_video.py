@@ -166,6 +166,30 @@ def create_mask_store(
     return zarr.open_group(store_path)[f"{video_id}/labels"]
 
 
+def predict_masks_on_device(predictor, boxes: np.ndarray) -> torch.Tensor:
+    """Return SAM2's masks for these box prompts, left on its device.
+
+    `SAM2ImagePredictor.predict` copies every full-frame mask to the host
+    as float32, which at 4K costs far more than SAM2 itself. So this calls
+    the two private methods `predict` is made of, and skips that copy.
+    They are private API, but SAM2 is pinned to one commit in
+    pyproject.toml.
+
+    Returns
+    -------
+    torch.Tensor
+        A (N, H, W) boolean tensor, one mask per box, for any N.
+
+    """
+    _, _, _, unnorm_box = predictor._prep_prompts(
+        None, None, boxes, None, normalize_coords=True
+    )
+    masks, _, _ = predictor._predict(
+        None, None, unnorm_box, None, multimask_output=False
+    )
+    return masks[:, 0]
+
+
 def predict_and_flatten_masks_into(
     predictor,
     frame_bgr: np.ndarray,
@@ -180,9 +204,9 @@ def predict_and_flatten_masks_into(
     They are the numbers written into `label_frame`, not positions along
     any axis.
 
-    Flattening into `label_frame` in place, rather than returning one mask
-    per prompt, is what releases a prompt chunk's full-frame float masks
-    before the next chunk is predicted.
+    The masks are flattened on SAM2's device, so only the finished label
+    image is copied to the host. Flattening each prompt chunk as it is
+    predicted releases its full-frame masks before the next one.
 
     The prompts are sorted by box area before chunking, because a chunk is
     painted before the next is predicted: without the sort, a large crab in
@@ -204,21 +228,23 @@ def predict_and_flatten_masks_into(
     order = np.argsort(-areas)
     boxes, values = boxes[order], values[order]
 
+    # int32, not uint16: torch implements few ops for unsigned types
+    label_frame_on_device = torch.zeros(
+        label_frame.shape, dtype=torch.int32, device=predictor.device
+    )
     for start in range(0, len(boxes), max_prompts_per_batch):
         box_chunk = boxes[start : start + max_prompts_per_batch]
         value_chunk = values[start : start + max_prompts_per_batch]
 
-        masks, _scores, _low_res = predictor.predict(
-            box=box_chunk, multimask_output=False
-        )
-        # predict() squeezes: (N, 1, H, W) for N>1 but (1, H, W) for N==1
-        masks = masks.reshape(len(box_chunk), *masks.shape[-2:]).astype(bool)
+        masks = predict_masks_on_device(predictor, box_chunk)
 
         # smallest_wins: paint largest first, so where two masks overlap
         # the smaller crab keeps the contested pixels
-        mask_areas = masks.reshape(len(box_chunk), -1).sum(axis=1)
-        for i in np.argsort(-mask_areas):
-            label_frame[masks[i]] = value_chunk[i]
+        mask_areas = masks.flatten(start_dim=1).sum(dim=1)
+        for i in torch.argsort(mask_areas, descending=True).tolist():
+            label_frame_on_device.masked_fill_(masks[i], int(value_chunk[i]))
+
+    label_frame[:] = label_frame_on_device.cpu().numpy()
 
 
 def write_clip_masks_to_store(
