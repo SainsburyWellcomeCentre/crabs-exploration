@@ -169,11 +169,10 @@ def create_mask_store(
 def predict_masks_on_device(predictor, boxes: np.ndarray) -> torch.Tensor:
     """Return SAM2's masks for these box prompts, left on its device.
 
-    `SAM2ImagePredictor.predict` copies every full-frame mask to the host
-    as float32, which at 4K costs far more than SAM2 itself. So this calls
-    the two private methods `predict` is made of, and skips that copy.
-    They are private API, but SAM2 is pinned to one commit in
-    pyproject.toml.
+    `SAM2ImagePredictor.predict` copies every full-frame mask from the GPU
+    to CPU memory as float32, which at 4K costs far more than SAM2
+    itself. So this calls the two private methods `predict` is made of,
+    and skips that copy.
 
     Returns
     -------
@@ -181,6 +180,7 @@ def predict_masks_on_device(predictor, boxes: np.ndarray) -> torch.Tensor:
         A (N, H, W) boolean tensor, one mask per box, for any N.
 
     """
+    # move boxes to device and rescale to model input size
     _, _, _, unnorm_box = predictor._prep_prompts(
         None, None, boxes, None, normalize_coords=True
     )
@@ -204,9 +204,10 @@ def predict_and_flatten_masks_into(
     They are the numbers written into `label_frame`, not positions along
     any axis.
 
-    The masks are flattened on SAM2's device, so only the finished label
-    image is copied to the host. Flattening each prompt chunk as it is
-    predicted releases its full-frame masks before the next one.
+    The masks are flattened on SAM2's device (usually the GPU), so only
+    the finished label image is copied back to CPU memory. Flattening
+    each prompt chunk as it is predicted releases its full-frame masks
+    before the next one.
 
     The prompts are sorted by box area before chunking, because a chunk is
     painted before the next is predicted: without the sort, a large crab in
