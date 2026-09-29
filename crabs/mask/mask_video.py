@@ -206,12 +206,12 @@ def predict_and_flatten_masks_into(
 
     The masks are flattened on SAM2's device (usually the GPU), so only
     the finished label image is copied back to CPU memory. Flattening
-    each prompt chunk as it is predicted releases its full-frame masks
-    before the next one.
+    each batch of prompts as it is predicted releases its full-frame
+    masks before the next one.
 
-    The prompts are sorted by box area before chunking, because a chunk is
+    The prompts are sorted by box area before batching, because a batch is
     painted before the next is predicted: without the sort, a large crab in
-    a later chunk would overwrite a small crab from an earlier one, which
+    a later batch would overwrite a small crab from an earlier one, which
     is the opposite of the occlusion policy.
     """
     # SAM2 logs three INFO lines to the root logger on every set_image call,
@@ -224,7 +224,7 @@ def predict_and_flatten_masks_into(
     finally:
         root_logger.setLevel(previous_level)
 
-    # largest box first, so chunk order agrees with the occlusion policy
+    # largest box first, so batch order agrees with the occlusion policy
     areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
     order = np.argsort(-areas)
     boxes, values = boxes[order], values[order]
@@ -234,16 +234,16 @@ def predict_and_flatten_masks_into(
         label_frame.shape, dtype=torch.int32, device=predictor.device
     )
     for start in range(0, len(boxes), max_prompts_per_batch):
-        box_chunk = boxes[start : start + max_prompts_per_batch]
-        value_chunk = values[start : start + max_prompts_per_batch]
+        box_batch = boxes[start : start + max_prompts_per_batch]
+        value_batch = values[start : start + max_prompts_per_batch]
 
-        masks = predict_masks_on_device(predictor, box_chunk)
+        masks = predict_masks_on_device(predictor, box_batch)
 
         # smallest_wins: paint largest first, so where two masks overlap
         # the smaller crab keeps the contested pixels
         mask_areas = masks.flatten(start_dim=1).sum(dim=1)
         for i in torch.argsort(mask_areas, descending=True).tolist():
-            label_frame_on_device.masked_fill_(masks[i], int(value_chunk[i]))
+            label_frame_on_device.masked_fill_(masks[i], int(value_batch[i]))
 
     label_frame[:] = label_frame_on_device.cpu().numpy()
 

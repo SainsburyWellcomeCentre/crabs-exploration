@@ -176,7 +176,7 @@ def test_write_clip_masks_to_store(
 
     tracked_bboxes_dict = {
         # the smaller crab is given first, so the pre-sort by box area is
-        # what puts the larger one in the earlier prompt chunk
+        # what puts the larger one in the earlier batch of prompts
         0: {
             "tracked_boxes": np.array(
                 [[24.0, 24.0, 40.0, 40.0], [0.0, 0.0, 32.0, 32.0]]
