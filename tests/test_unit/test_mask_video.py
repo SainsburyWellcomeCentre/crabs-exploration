@@ -4,6 +4,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
+import torch
 import xarray as xr
 import zarr
 
@@ -11,6 +12,7 @@ from crabs.mask.mask_video import (
     create_mask_store,
     main,
     mask_parse_args,
+    predict_masks_on_device,
     write_clip_masks_to_store,
 )
 from crabs.mask.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
@@ -30,9 +32,12 @@ ATTRS = {
 class FakePredictor:
     """A predictor returning each box's own rectangle as its mask.
 
-    It reproduces the squeeze in `SAM2ImagePredictor.predict`, which
-    returns (N, 1, H, W) for N>1 but (1, H, W) for N==1.
+    It implements the two private `SAM2ImagePredictor` methods that
+    `predict_masks_on_device` calls, with the same return shapes: `_predict`
+    returns (N, 1, H, W) boolean masks, for any N.
     """
+
+    device = torch.device("cpu")
 
     def __init__(self):
         """Initialise the count of frames the predictor was shown."""
@@ -42,14 +47,60 @@ class FakePredictor:
         """Count the frame; its pixels are ignored."""
         self.n_frames_seen += 1
 
-    def predict(self, box: np.ndarray, multimask_output: bool):
+    def _prep_prompts(
+        self, point_coords, point_labels, box, mask_logits, normalize_coords
+    ):
+        """Pass the boxes through untransformed, as a tensor."""
+        return None, None, None, torch.as_tensor(box)
+
+    def _predict(
+        self, point_coords, point_labels, boxes, mask_input, multimask_output
+    ):
         """Return one full-frame mask per box."""
-        masks = np.zeros((len(box), *FRAME_SHAPE), dtype=np.float32)
-        for mask, (x1, y1, x2, y2) in zip(masks, box.astype(int), strict=True):
-            mask[y1:y2, x1:x2] = 1.0
-        if len(box) == 1:
-            return masks, None, None
-        return masks[:, np.newaxis], None, None
+        masks = torch.zeros((len(boxes), 1, *FRAME_SHAPE), dtype=torch.bool)
+        for mask, (x1, y1, x2, y2) in zip(
+            masks, boxes.int().tolist(), strict=True
+        ):
+            mask[0, y1:y2, x1:x2] = True
+        return masks, None, None
+
+
+@pytest.mark.parametrize("n_boxes", [1, 3])
+def test_predict_masks_on_device_matches_sam2_predict(n_boxes: int):
+    """The private-API path gives the masks SAM2's public `predict` does.
+
+    It runs a randomly initialised SAM2, so no checkpoint is downloaded:
+    the masks are meaningless, but must be identical. A SAM2 bump that
+    changes the private methods fails here, not on the cluster.
+    """
+    pytest.importorskip("sam2")
+    from sam2.build_sam import build_sam2
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+    torch.manual_seed(0)
+    predictor = SAM2ImagePredictor(
+        build_sam2(
+            "configs/sam2.1/sam2.1_hiera_t.yaml", ckpt_path=None, device="cpu"
+        )
+    )
+    rng = np.random.default_rng(0)
+    predictor.set_image(rng.integers(0, 255, (48, 80, 3), dtype=np.uint8))
+    boxes = np.array(
+        [
+            [2.0, 3.0, 30.0, 40.0],
+            [10.0, 5.0, 70.0, 45.0],
+            [40.0, 20.0, 60.0, 30.0],
+        ]
+    )[:n_boxes]
+
+    masks_public, _, _ = predictor.predict(box=boxes, multimask_output=False)
+    masks_on_device = predict_masks_on_device(predictor, boxes)
+
+    assert masks_on_device.shape == (n_boxes, 48, 80)
+    np.testing.assert_array_equal(
+        masks_on_device.numpy(),
+        masks_public.reshape(n_boxes, 48, 80).astype(bool),
+    )
 
 
 @pytest.fixture()
@@ -176,7 +227,8 @@ def test_write_clip_masks_to_store(
     assert not labels[1].any()
     assert not labels[2].any()
 
-    # frame 3 is the single-prompt case, where predict() squeezes
+    # frame 3 is the single-prompt case, which SAM2's public predict()
+    # would have squeezed
     assert set(np.unique(labels[3])) == {0, 2}
     assert labels[3, 40:56, 40:56].min() == 2
 
