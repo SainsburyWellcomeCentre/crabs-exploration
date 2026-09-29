@@ -5,7 +5,7 @@
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 2
 #SBATCH --mem 16G # memory pool for all cores
-#SBATCH -t 2-00:00 # time (D-HH:MM); ~0.25 s/frame at 4K on an L40S, so ~1 day for a 330k-frame video
+#SBATCH -t 5-00:00 # time (D-HH:MM);
 #SBATCH -o slurm_array.%A-%a.%N.out
 #SBATCH -e slurm_array.%A-%a.%N.err
 #SBATCH --mail-type=ALL
