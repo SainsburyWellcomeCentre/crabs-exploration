@@ -8,9 +8,13 @@
 sam2_model_id: facebook/sam2.1-hiera-base-plus
 
 # Number of box prompts passed to SAM2 at once. It is the main knob for
-# peak memory. SAM2 returns a full-frame float32 mask for every prompt
-# (a float32 is 32 bits = 4 bytes; a float32 frame is H x W x 4 bytes,
-# ~33 MB at 3840x2160; so 33MB x 32 ~ 1GB of masks for 32 prompts).
+# peak GPU memory. SAM2 upsamples every prompt's mask to the full frame
+# as float32 logits, then thresholds them to a boolean mask, all on the
+# GPU: ~5 bytes per pixel per prompt (4 bytes float32 + 1 byte boolean),
+# ~42 MB at 4096x2160; so ~1.4 GB for 32 prompts. The masks never leave
+# the GPU, so host memory does not grow with it.
+# A chunk holding all of a frame's boxes also applies the occlusion policy
+# exactly: across chunks, box area stands in for mask area.
 max_prompts_per_batch: 32
 
 # Number of frames per shard file. We keep finished frames in memory
