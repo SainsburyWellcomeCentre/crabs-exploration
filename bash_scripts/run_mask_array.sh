@@ -72,12 +72,12 @@ fi
 # Create virtual environment
 # ---------------------------
 # We create a virtual environment for each job in the array,
-# under tmpdir, using uv. We create a separate environment per job
+# using uv. We create a separate environment per job
 # to avoid all jobs to race and run uv venv and uv pip install simultaneously,
 # which could cause issues.
 module load uv
 
-# set uv cache dir to /ceph/scratch/sminano
+# set uv cache dir under ceph
 # (should be faster than /nfs/nhome/live/sminano/.cache/uv and
 # gets purged regularly)
 export UV_CACHE_DIR=/ceph/python_envs/sminano/uv-cache
@@ -88,31 +88,27 @@ export UV_CACHE_DIR=/ceph/python_envs/sminano/uv-cache
 # and the other jobs fail with "Timeout when waiting for lock".
 export UV_LOCK_TIMEOUT=3600  # seconds
 
+# create virtual environment with uv
 ENV_NAME=crabs-mask-$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID
 ENV_PREFIX=/ceph/python_envs/sminano/$ENV_NAME
-
-# create virtual environment with uv
 uv venv $ENV_PREFIX --python 3.12
 
 # activate environment
 source $ENV_PREFIX/bin/activate
 
-# install crabs package in virtual env. This brings in torch, which SAM2
-# builds against below.
+# install crabs package in virtual env.
+# This brings in torch, which SAM2 builds against below.
 CRABS_URL="git+https://github.com/SainsburyWellcomeCentre/crabs-exploration.git@$GIT_BRANCH"
 uv pip install "crabs @ $CRABS_URL"
 
-# We install sam2 without build isolation. This is so that it picks up the torch
-# already installed in the environment. We also explicitly install setuptools,
-# because SAM2 needs it (it is belt-and-braces tho, because torch depends on
+# install sam2 without build isolation.
+# This is so that it picks up the torch already installed in the environment.
+# We also explicitly install setuptools, because SAM2 needs it
+# (it is belt-and-braces tho, because torch depends on
 # setuptools today, but that may change).
 uv pip install setuptools
 uv pip install --no-build-isolation-package sam-2 \
     "crabs[masks] @ $CRABS_URL"
-
-# cache the SAM2 checkpoint on ceph rather than in the home directory,
-# so that it is downloaded once and shared across jobs
-export HF_HOME=/ceph/scratch/sminano/huggingface
 
 # log pip and python locations
 echo $ENV_PREFIX
@@ -123,6 +119,10 @@ which pip
 echo "Git branch: $GIT_BRANCH"
 uv pip show crabs
 echo "-----"
+
+# cache the SAM2 checkpoint on ceph rather than in the home directory,
+# so that it is downloaded once and shared across jobs
+export HF_HOME=/ceph/scratch/sminano/huggingface
 
 # ------------------------------------
 # GPU specs
@@ -143,6 +143,9 @@ echo "videos: $CLIP_VIDEOS_DIR"
 echo "output_store: $MASK_ZARR_STORE_OUTPUT"
 echo "match: $VIDEO_ID"
 echo "mask_config_file: $MASK_CONFIG_FILE"
+
+# Log config values
+cat "$MASK_CONFIG_FILE"
 
 # --match is an exact video group name here, so this job masks every clip
 # of one video. --output_store names the store rather than letting the
