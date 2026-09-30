@@ -144,13 +144,13 @@ def create_mask_store(
     encoding: dict = {
         "labels": {
             "chunks": chunks,
-            "compressors": [
-                BloscCodec(cname="zstd", clevel=9, shuffle="bitshuffle")
-            ],
+            # the default clevel: at 4K, clevel=9 took ~0.6 s per frame,
+            # longer than SAM2, for label images only ~25% smaller
+            "compressors": [BloscCodec(cname="zstd", shuffle="bitshuffle")],
         },
         # bitshuffle measured worse than plain zstd on this small,
         # mostly-zero integer array: codec per array, not per store
-        "label_of": {"compressors": [ZstdCodec(level=9)]},
+        "label_of": {"compressors": [ZstdCodec()]},
     }
     if shards:
         encoding["labels"]["shards"] = shards
