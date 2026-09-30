@@ -49,6 +49,19 @@ COMPRESSORS = {
 VIDEO_N_FRAMES = [70_000, 216_000, 330_000]
 
 
+def log_memory(step: str) -> None:
+    """Print current and peak host memory, flushed in case of an OOM kill."""
+    with open("/proc/self/status") as f:
+        status = dict(line.split(":", 1) for line in f)
+    current_gb, peak_gb = (
+        int(status[key].split()[0]) / 1e6 for key in ("VmRSS", "VmHWM")
+    )
+    print(
+        f"[memory] {step}: {current_gb:.1f} GB now, {peak_gb:.1f} GB peak",
+        flush=True,
+    )
+
+
 def time_shard_writes(
     label_frames: np.ndarray,
     compressors,
@@ -124,9 +137,12 @@ def main():
     value_of = {
         str(name): i + 1 for i, name in enumerate(ds_video.individual.values)
     }
+    log_memory("boxes read")
     predictor = load_sam2_predictor(args.model_id, "cuda")
+    log_memory("SAM2 loaded")
 
     cap = cv2.VideoCapture(f"{args.videos}/{args.video_id}-{args.clip_id}.mp4")
+    log_memory("video opened")
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     label_frames = np.zeros((args.n_frames, height, width), dtype=np.uint16)
@@ -159,6 +175,8 @@ def main():
             decode_s.append(decoded - start)
             sam2_s.append(time.perf_counter() - decoded)
             n_boxes.append(n)
+        if frame_idx % 8 == 0:
+            log_memory(f"frame {frame_idx}")
     cap.release()
 
     print(
@@ -176,6 +194,7 @@ def main():
         seconds, n_bytes = time_shard_writes(
             label_frames, compressors, args.shard_n_frames, args.scratch_dir
         )
+        log_memory(f"written, {name}")
         per_frame[f"write, {name}"] = seconds
         kb_per_frame[name] = n_bytes / 1e3
 
