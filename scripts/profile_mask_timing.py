@@ -1,166 +1,203 @@
-"""Time each stage of mask-tracked-crabs on the first frames of one clip.
+"""Estimate the speed-up of the mask store's compressor change on the cluster.
 
-It mirrors `predict_and_flatten_masks_into`, but splits SAM2's `predict`
-into its GPU part and its GPU-to-CPU copy, and also times painting on the
-GPU, so the per-frame cost can be attributed before optimising it.
+It runs `predict_and_flatten_masks_into` on the first frames of one clip,
+as `mask-tracked-crabs` does, then writes the label frames shard by shard
+twice: with the old compressor (Blosc zstd, clevel=9, bitshuffle) and with
+zarr's default, which the mask store now uses. The shards are written
+under --scratch_dir, so run it from the filesystem the real jobs write
+to. It prints the time per frame of each, and projects it to whole videos.
 
 Example, on a GPU node, in an environment with crabs[masks] installed:
 
-    python scripts/profile_mask_timing.py \
-        --boxes /ceph/zoo/processed/CrabField/ramalhete_2023/CrabTracks/CrabTracks-slurm3644250.zarr \
-        --videos /ceph/zoo/processed/CrabField/ramalhete_2023/Loops \
+    DATA=/ceph/zoo/processed/CrabField/ramalhete_2023
+    cd /ceph/zoo/users/sminano
+    python /path/to/crabs-exploration/scripts/profile_mask_timing.py \
+        --boxes $DATA/CrabTracks/CrabTracks-slurm3644250.zarr \
+        --videos $DATA/Loops \
         --video_id 04.09.2023-01-Right --clip_id Loop00
 """
 
 import argparse
 import logging
+import os
+import shutil
+import tempfile
 import time
-from contextlib import contextmanager
+from pathlib import Path
 
 import cv2
 import numpy as np
 import torch
 import xarray as xr
+import zarr
+from zarr.codecs import BloscCodec
 
-from crabs.mask.mask_video import load_sam2_predictor
+from crabs.mask.mask_video import (
+    load_sam2_predictor,
+    predict_and_flatten_masks_into,
+)
 from crabs.mask.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
 
+COMPRESSORS = {
+    "old: Blosc zstd clevel=9": [
+        BloscCodec(cname="zstd", clevel=9, shuffle="bitshuffle")
+    ],
+    "new: zarr default": "auto",
+}
 
-@contextmanager
-def timer(stage: str, frame_times: dict):
-    """Add a stage's wall-clock time to `frame_times`, syncing CUDA."""
-    torch.cuda.synchronize()
-    start = time.perf_counter()
-    yield
-    torch.cuda.synchronize()
-    frame_times[stage] = frame_times.get(stage, 0.0) + (
-        time.perf_counter() - start
-    )
+# frame counts of the smallest, median and largest videos in the store
+VIDEO_N_FRAMES = [70_000, 216_000, 330_000]
 
 
-def profile_frame(predictor, frame_bgr, boxes, max_prompts_per_batch):
-    """Run one frame through every stage and return seconds per stage."""
-    t: dict[str, float] = {}
-    height, width = frame_bgr.shape[:2]
-    label_frame = np.zeros((height, width), dtype=np.uint16)
-    label_frame_gpu = torch.zeros(
-        (height, width), dtype=torch.int32, device="cuda"
-    )
-    # stand-in pixel values: only the cost matters here
-    values = np.arange(1, len(boxes) + 1)
-
-    with timer("1_cvtColor", t):
-        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-    with timer("2_set_image (encoder)", t):
-        predictor.set_image(frame_rgb)
-
-    areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
-    order = np.argsort(-areas)
-    boxes, values = boxes[order], values[order]
-
-    for start in range(0, len(boxes), max_prompts_per_batch):
-        box_chunk = boxes[start : start + max_prompts_per_batch]
-        value_chunk = values[start : start + max_prompts_per_batch]
-
-        # the two halves of SAM2ImagePredictor.predict, timed separately
-        with timer("3_predict: decoder + upsample (GPU)", t):
-            _, _, _, unnorm_box = predictor._prep_prompts(
-                None, None, box_chunk, None, True
-            )
-            masks_gpu, _, _ = predictor._predict(
-                None, None, unnorm_box, None, multimask_output=False
-            )
-            masks_gpu = masks_gpu.reshape(len(box_chunk), height, width)
-        with timer("4_predict: .float().cpu() copy", t):
-            masks = masks_gpu.float().cpu().numpy()
-
-        # what mask_video.py does with the copied masks
-        with timer("5_astype(bool)", t):
-            masks = masks.astype(bool)
-        with timer("6_mask area sum (CPU)", t):
-            mask_areas = masks.reshape(len(box_chunk), -1).sum(axis=1)
-        with timer("7_paint (CPU)", t):
-            for i in np.argsort(-mask_areas):
-                label_frame[masks[i]] = value_chunk[i]
-
-        # the alternative: flatten on the GPU, never copy the masks
-        with timer("8_alt: area sum + paint (GPU)", t):
-            gpu_areas = masks_gpu.flatten(1).sum(dim=1)
-            for i in torch.argsort(-gpu_areas).tolist():
-                label_frame_gpu.masked_fill_(masks_gpu[i], int(value_chunk[i]))
-        del masks, masks_gpu
-
-    with timer("9_alt: label frame .cpu() copy", t):
-        label_frame_gpu.to(torch.uint16).cpu().numpy()
-    return t
+def time_shard_writes(
+    label_frames: np.ndarray,
+    compressors,
+    shard_n_frames: int,
+    scratch_dir: str,
+) -> tuple[float, float]:
+    """Write the frames shard by shard; return s/frame and bytes/frame."""
+    n_frames, height, width = label_frames.shape
+    store_dir = tempfile.mkdtemp(dir=scratch_dir, prefix="mask_codec_")
+    try:
+        # the same chunks and shards as the mask store, minus clip_id
+        array = zarr.create_array(
+            store_dir,
+            shape=label_frames.shape,
+            chunks=(1, height, width),
+            shards=(shard_n_frames, height, width),
+            dtype=np.uint16,
+            compressors=compressors,
+        )
+        start = time.perf_counter()
+        for first in range(0, n_frames, shard_n_frames):
+            array[first : first + shard_n_frames] = label_frames[
+                first : first + shard_n_frames
+            ]
+        seconds = time.perf_counter() - start
+        n_bytes = sum(
+            f.stat().st_size for f in Path(store_dir).rglob("*") if f.is_file()
+        )
+    finally:
+        shutil.rmtree(store_dir)
+    return seconds / n_frames, n_bytes / n_frames
 
 
 def main():
-    """Profile the first frames of one clip."""
+    """Time the SAM2 pass and both shard writes on one clip."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--boxes", required=True)
     parser.add_argument("--videos", required=True)
     parser.add_argument("--video_id", required=True)
     parser.add_argument("--clip_id", required=True)
-    parser.add_argument("--n_frames", type=int, default=50)
+    parser.add_argument(
+        "--n_frames",
+        type=int,
+        default=64,
+        help="Frames to time, after the warm-up. Default: 64, two shards.",
+    )
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument(
         "--model_id", default="facebook/sam2.1-hiera-base-plus"
     )
     parser.add_argument("--max_prompts_per_batch", type=int, default=32)
+    parser.add_argument("--shard_n_frames", type=int, default=32)
+    parser.add_argument(
+        "--scratch_dir",
+        default=".",
+        help="Where the test shards are written, then deleted. Default: .",
+    )
     args = parser.parse_args()
 
     torch.set_float32_matmul_precision("medium")
     # SAM2 logs three INFO lines on every set_image call
     logging.getLogger().setLevel(logging.WARNING)
-    print(torch.cuda.get_device_name(0), "| CPUs:", torch.get_num_threads())
+    print(
+        f"{torch.cuda.get_device_name(0)} | "
+        f"CPUs allocated: {len(os.sched_getaffinity(0))}"
+    )
 
     ds_video = xr.open_datatree(args.boxes, engine="zarr", chunks={})[
         args.video_id
     ].to_dataset()
     boxes_dict, _ = read_tracked_bboxes_from_zarr(ds_video, args.clip_id)
+    # the pixel values the mask store's label_of assigns
+    value_of = {
+        str(name): i + 1 for i, name in enumerate(ds_video.individual.values)
+    }
     predictor = load_sam2_predictor(args.model_id, "cuda")
 
     cap = cv2.VideoCapture(f"{args.videos}/{args.video_id}-{args.clip_id}.mp4")
-    rows, n_boxes = [], []
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    label_frames = np.zeros((args.n_frames, height, width), dtype=np.uint16)
+    decode_s, sam2_s, n_boxes = [], [], []
     for frame_idx in range(args.warmup + args.n_frames):
         start = time.perf_counter()
         ret, frame = cap.read()
-        decode_s = time.perf_counter() - start
+        decoded = time.perf_counter()
         if not ret:
-            break
-        frame_data = boxes_dict.get(frame_idx)
-        if frame_data is None or len(frame_data["tracked_boxes"]) == 0:
-            continue
-        t = profile_frame(
-            predictor,
-            frame,
-            frame_data["tracked_boxes"],
-            args.max_prompts_per_batch,
+            raise ValueError(f"Clip ended at frame {frame_idx}")
+
+        # warm-up frames are masked into a throwaway frame, and not timed
+        k = frame_idx - args.warmup
+        label_frame = (
+            label_frames[k] if k >= 0 else np.zeros((height, width), np.uint16)
         )
-        if frame_idx >= args.warmup:
-            t["0_video decode"] = decode_s
-            rows.append(t)
-            n_boxes.append(len(frame_data["tracked_boxes"]))
+        frame_data = boxes_dict.get(frame_idx)
+        n = 0 if frame_data is None else len(frame_data["tracked_boxes"])
+        if n > 0:
+            predict_and_flatten_masks_into(
+                predictor,
+                frame,
+                frame_data["tracked_boxes"],
+                np.array([value_of[str(i)] for i in frame_data["ids"]]),
+                label_frame,
+                args.max_prompts_per_batch,
+            )
+        # it ends copying the label frame to the CPU, so the GPU is done
+        if k >= 0:
+            decode_s.append(decoded - start)
+            sam2_s.append(time.perf_counter() - decoded)
+            n_boxes.append(n)
     cap.release()
 
     print(
-        f"\n{len(rows)} frames of {frame.shape[1]}x{frame.shape[0]}, "
-        f"{np.mean(n_boxes):.0f} boxes/frame on average\n"
+        f"\n{args.n_frames} frames of {width}x{height}, "
+        f"{np.mean(n_boxes):.0f} boxes/frame on average, "
+        f"shards of {args.shard_n_frames} frames written to "
+        f"{Path(args.scratch_dir).resolve()}\n"
     )
-    stages = sorted(rows[0])
-    # stages are numbered: 0-7 is today's pipeline, 0-3 plus 8-9 the
-    # GPU-paint alternative
-    totals = {
-        "current total": [s for s in stages if s[0] in "01234567"],
-        "GPU-paint total": [s for s in stages if s[0] in "012389"],
+    per_frame = {
+        "video decode": np.mean(decode_s),
+        "SAM2 + paint on GPU": np.mean(sam2_s),
     }
-    print(f"{'stage':42s} {'ms/frame':>10s}")
-    for stage in stages:
-        print(f"{stage:42s} {1000 * np.mean([r[stage] for r in rows]):10.1f}")
-    for name, group in totals.items():
-        total = np.mean([sum(r[s] for s in group) for r in rows])
-        print(f"{name:42s} {1000 * total:10.1f}")
+    kb_per_frame = {}
+    for name, compressors in COMPRESSORS.items():
+        seconds, n_bytes = time_shard_writes(
+            label_frames, compressors, args.shard_n_frames, args.scratch_dir
+        )
+        per_frame[f"write, {name}"] = seconds
+        kb_per_frame[name] = n_bytes / 1e3
+
+    print(f"{'stage':36s} {'ms/frame':>10s} {'kB/frame':>10s}")
+    for stage, seconds in per_frame.items():
+        codec = stage.removeprefix("write, ")
+        size = f"{kb_per_frame[codec]:10.0f}" if codec in kb_per_frame else ""
+        print(f"{stage:36s} {1000 * seconds:10.1f} {size}")
+
+    shared = per_frame["video decode"] + per_frame["SAM2 + paint on GPU"]
+    totals = {
+        name: shared + per_frame[f"write, {name}"] for name in COMPRESSORS
+    }
+    print()
+    for name, total in totals.items():
+        hours = ", ".join(
+            f"{n // 1000}k frames: {n * total / 3600:5.1f} h"
+            for n in VIDEO_N_FRAMES
+        )
+        print(f"total, {name:29s} {1000 * total:10.1f}   ({hours})")
+    old, new = totals.values()
+    print(f"\nspeed-up: {old / new:.1f}x")
 
 
 if __name__ == "__main__":
