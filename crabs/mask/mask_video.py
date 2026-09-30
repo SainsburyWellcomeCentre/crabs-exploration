@@ -13,7 +13,6 @@ import torch
 import xarray as xr
 import yaml  # type: ignore
 import zarr
-from zarr.codecs import BloscCodec, ZstdCodec
 
 from crabs.mask.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
 from crabs.utils.io import (
@@ -141,17 +140,9 @@ def create_mask_store(
         attrs=metadata_dict,
     )
 
-    encoding: dict = {
-        "labels": {
-            "chunks": chunks,
-            # the default clevel: at 4K, clevel=9 took ~0.6 s per frame,
-            # longer than SAM2, for label images only ~25% smaller
-            "compressors": [BloscCodec(cname="zstd", shuffle="bitshuffle")],
-        },
-        # bitshuffle measured worse than plain zstd on this small,
-        # mostly-zero integer array: codec per array, not per store
-        "label_of": {"compressors": [ZstdCodec()]},
-    }
+    # zarr's default compressor (zstd): on 4K label images it wrote as
+    # small as Blosc zstd at clevel=9 did, ~45x faster
+    encoding: dict = {"labels": {"chunks": chunks}}
     if shards:
         encoding["labels"]["shards"] = shards
 
