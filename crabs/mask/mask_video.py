@@ -140,8 +140,7 @@ def create_mask_store(
         attrs=metadata_dict,
     )
 
-    # zarr's default compressor (zstd): on 4K label images it wrote as
-    # small as Blosc zstd at clevel=9 did, ~45x faster
+    # zarr's default compressor (zstd)
     encoding: dict = {"labels": {"chunks": chunks}}
     if shards:
         encoding["labels"]["shards"] = shards
