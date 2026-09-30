@@ -7,6 +7,7 @@ import pytest
 import torch
 import xarray as xr
 import zarr
+from zarr.codecs import ZstdCodec
 
 from crabs.mask.mask_video import (
     create_mask_store,
@@ -143,6 +144,8 @@ def test_create_mask_store(mask_store: tuple[Path, zarr.Array]):
     assert labels_array.dtype == np.uint16
     assert labels_array.chunks == (1, 1, height, width)
     assert labels_array.shards == (1, SHARD_N_FRAMES, height, width)
+    # zarr's default: Blosc zstd at clevel=9 cost more per frame than SAM2
+    assert [type(c) for c in labels_array.compressors] == [ZstdCodec]
 
     # a template write puts metadata and coordinates on disk, but no
     # labels: each clip fills its own region afterwards
