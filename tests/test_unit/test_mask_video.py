@@ -144,7 +144,7 @@ def test_create_mask_store(mask_store: tuple[Path, zarr.Array]):
     assert labels_array.dtype == np.uint16
     assert labels_array.chunks == (1, 1, height, width)
     assert labels_array.shards == (1, SHARD_N_FRAMES, height, width)
-    # zarr's default: Blosc zstd at clevel=9 cost more per frame than SAM2
+    # zarr's default compressor
     assert [type(c) for c in labels_array.compressors] == [ZstdCodec]
 
     # a template write puts metadata and coordinates on disk, but no
