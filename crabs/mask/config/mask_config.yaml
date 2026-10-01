@@ -1,0 +1,35 @@
+# SAM2 model to use, as a Hugging Face model ID. Options are, from
+# fastest to most accurate:
+#   - facebook/sam2.1-hiera-tiny
+#   - facebook/sam2.1-hiera-small
+#   - facebook/sam2.1-hiera-base-plus
+#   - facebook/sam2.1-hiera-large
+# The older SAM2 checkpoints (facebook/sam2-hiera-*) also work.
+sam2_model_id: facebook/sam2.1-hiera-base-plus
+
+# Number of box prompts passed to SAM2 at once. It is the main knob for
+# peak GPU memory. SAM2 upsamples every prompt's mask to the full frame
+# as float32 logits, then thresholds them to a boolean mask, all on the
+# GPU.
+# Each prompt is ~5 bytes per pixel (4 bytes float32 + 1 byte boolean),
+# so ~44 MB at 4096 × 2160, and ~1.4 GB for 32 prompts.
+# The masks never leave the GPU, so host (CPU) memory does not grow with it.
+max_prompts_per_batch: 32
+
+# Number of frames per shard file. We keep finished frames in memory
+# until we have `shard_n_frames` of them, then write them as one shard
+# file. Each buffered frame is one label image (a uint16 array), so the
+# buffer is shard_n_frames x H x W x 2 bytes.
+# For a 4K image: 32 × 4096 × 2160 × 2 ≈ 570 MB.
+# Larger shard_n_frames values use more memory but produce fewer files.
+# null disables sharding (which is like shard_n_frames=1 but with no index).
+shard_n_frames: 32
+
+# Which crab keeps a pixel where two masks overlap.
+# smallest_wins gives the pixel to the mask with the smaller area.
+# This is exact when a frame has at most `max_prompts_per_batch` prompts.
+# With more, the prompt boxes are sorted by area first and then split into batches.
+# Batches with larger boxes are painted first, so later batches (with smaller boxes) paint
+# on top of them. Box area is a proxy for mask area across batches, so the
+# policy is only approximate in that case.
+occlusion_policy: smallest_wins
