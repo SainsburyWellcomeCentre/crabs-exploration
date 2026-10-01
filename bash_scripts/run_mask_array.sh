@@ -2,7 +2,7 @@
 
 #SBATCH -p gpu # partition
 #SBATCH --gres=gpu:1 # For any GPU: --gres=gpu:1. For a specific one: --gres=gpu:rtx5000
-#SBATCH --exclude=gpu-380-10   # Quadro P5000, old GPU (2016) unsupported by CUDA 13.0
+#SBATCH --exclude=gpu-380-10,gpu-380-12,gpu-380-14 # they all have Quadro P5000, old GPU unsupported by CUDA 13.0
 #SBATCH -N 1   # number of nodes
 #SBATCH --ntasks-per-node 2
 #SBATCH --mem 16G # memory pool for all cores
