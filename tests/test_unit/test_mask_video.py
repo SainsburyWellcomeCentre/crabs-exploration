@@ -242,6 +242,45 @@ def test_write_clip_masks_to_store(
     assert not np.asarray(labels_array[1]).any()
 
 
+def test_write_clip_masks_to_store_clip_shorter_than_store(
+    tmp_path: Path, clip_video: str, caplog: pytest.LogCaptureFixture
+):
+    """A clip shorter than its group's longest clip is read in full.
+
+    The store's time axis is the longest clip in the group, so reaching
+    the end of a shorter clip must not be logged as a frame reading error.
+    """
+    store_path = tmp_path / "masks.zarr"
+    labels_array = create_mask_store(
+        store_path=store_path,
+        video_id="video",
+        clip_ids=["Loop00"],
+        n_frames=N_FRAMES + 3,
+        individuals=INDIVIDUALS,
+        image_shape=FRAME_SHAPE,
+        metadata_dict=ATTRS,
+        shard_n_frames=SHARD_N_FRAMES,
+        zarr_mode_group="w-",
+    )
+    label_of = xr.open_datatree(store_path, engine="zarr")["video"].label_of
+
+    with caplog.at_level("INFO"):
+        n_frames_read = write_clip_masks_to_store(
+            video_path=clip_video,
+            tracked_bboxes_dict={},
+            labels_array=labels_array,
+            clip_index=0,
+            label_of=label_of,
+            predictor=FakePredictor(),
+            max_prompts_per_batch=2,
+            shard_n_frames=SHARD_N_FRAMES,
+        )
+
+    assert n_frames_read == N_FRAMES
+    assert f"All {N_FRAMES} frames processed" in caplog.text
+    assert "Error reading frame" not in caplog.text
+
+
 @pytest.fixture()
 def trajectories_store(tmp_path: Path) -> Path:
     """Write a one-video trajectories store and the clip videos it names.

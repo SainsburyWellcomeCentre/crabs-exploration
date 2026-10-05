@@ -283,7 +283,7 @@ def write_clip_masks_to_store(
         The number of frames read from the clip video.
 
     """
-    total_n_frames, height, width = labels_array.shape[1:]
+    height, width = labels_array.shape[2:]
 
     # a KeyError from this lookup means the `individual` coordinate and the
     # boxes dict disagree: loud, rather than a silently mislabelled mask
@@ -298,12 +298,16 @@ def write_clip_masks_to_store(
     buffer_n_frames = shard_n_frames or 1
     buffer = np.zeros((buffer_n_frames, height, width), dtype=np.uint16)
 
+    # the store's time axis is the group's longest clip, so the end of
+    # this clip is checked against the clip's own length
+    clip_n_frames = get_video_parameters(video_path)["total_frames"]
+
     input_video_object = open_video(video_path)
     frame_idx = 0
     while input_video_object.isOpened():
         ret, frame = input_video_object.read()
         if not ret:
-            parse_video_frame_reading_error_and_log(frame_idx, total_n_frames)
+            parse_video_frame_reading_error_and_log(frame_idx, clip_n_frames)
             break
 
         k = frame_idx % buffer_n_frames
