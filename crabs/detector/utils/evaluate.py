@@ -171,9 +171,9 @@ def get_mlflow_parameters_from_ckpt(trained_model_path: str) -> dict:
     # we simply check if the parent directory is called
     # 'checkpoints', so it is not a very strict check.
     try:
-        assert (
-            Path(trained_model_path).parent.stem == "checkpoints"
-        ), "The parent directory to an MLflow checkpoint is expected to be called 'checkpoints'"  # noqa: E501
+        assert Path(trained_model_path).parent.stem == "checkpoints", (
+            "The parent directory to an MLflow checkpoint is expected to be called 'checkpoints'"
+        )  # noqa: E501
     except AssertionError as e:
         print(f"Assertion failed: {e}")
         sys.exit(1)

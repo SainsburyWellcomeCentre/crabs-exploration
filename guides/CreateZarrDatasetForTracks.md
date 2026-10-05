@@ -87,7 +87,9 @@
     ```python
     ds = ds_video.isel(clip_id=0)
     n_clip_frames = int(ds.clip_last_frame_0idx - ds.clip_first_frame_0idx) + 1
-    ds_clip = ds.isel(time=slice(0, n_clip_frames)) # or equivalently: ds.sel(time=slice(0, n_clip_frames - 1)). Note that .sel is end-inclusive.
+    ds_clip = ds.isel(
+        time=slice(0, n_clip_frames)
+    )  # or equivalently: ds.sel(time=slice(0, n_clip_frames - 1)). Note that .sel is end-inclusive.
     ```
 
     Notice that when we drop all NaN frames with `dropna(dim="time", how="all")`, we cannot tell which NaN frames are padding and which NaN frames are "no detections in this frame": it silently returns a potentially gapped time axis. Instead the slice keeps every frame of the clip.
@@ -128,17 +130,20 @@ Sometimes some of the jobs in the array job fail due to non reproducible issues 
 
         ```python
         import zarr
-        zarr.consolidate_metadata('path/to/merged/store.zarr')
+
+        zarr.consolidate_metadata("path/to/merged/store.zarr")
         ```
     - Check the resulting zarr store is readable and contains the expected number of videos:
 
         ```python
         dt = xr.open_datatree(
-            'path/to/merged/store.zarr',
+            "path/to/merged/store.zarr",
             engine="zarr",
             chunks={},
         )
-        print(f"Total groups: {len(dt)}") # should match the total number of videos processed
+        print(
+            f"Total groups: {len(dt)}"
+        )  # should match the total number of videos processed
         ```
     - If all looks good, delete `store_2`.
 
@@ -148,8 +153,11 @@ Sometimes some of the jobs in the array job fail due to non reproducible issues 
 
     ```python
     import xarray as xr
+
     dt = xr.open_datatree(path_to_merged_store, engine="zarr", chunks={})
-    print(f"Total groups: {len(dt)}") # should match the total number of videos processed
+    print(
+        f"Total groups: {len(dt)}"
+    )  # should match the total number of videos processed
     ```
 
 
