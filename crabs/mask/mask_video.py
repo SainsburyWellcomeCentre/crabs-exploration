@@ -239,7 +239,7 @@ def predict_and_flatten_masks_into(
 
 
 def write_clip_masks_to_store(
-    video_path: str,
+    video_clip_path: str,
     tracked_bboxes_dict: dict,
     labels_array: zarr.Array,
     clip_index: int,
@@ -256,7 +256,7 @@ def write_clip_masks_to_store(
 
     Parameters
     ----------
-    video_path : str
+    video_clip_path : str
         Path to the clip video to read pixels from.
     tracked_bboxes_dict : dict
         Map from clip frame index to
@@ -283,55 +283,83 @@ def write_clip_masks_to_store(
         The number of frames read from the clip video.
 
     """
-    total_n_frames, height, width = labels_array.shape[1:]
-
+    # Get map from individual name to mask label
     # a KeyError from this lookup means the `individual` coordinate and the
     # boxes dict disagree: loud, rather than a silently mislabelled mask
-    value_of = {
-        str(name): int(value)
-        for name, value in zip(
+    map_individual_to_label = {
+        str(ind): int(lbl)
+        for ind, lbl in zip(
             label_of.individual.values, label_of.values, strict=True
         )
     }
 
-    # one shard's worth of label frames, allocated once per clip
+    # Define buffer,
+    # one shard's of label frames.
+    # We use buffers to keep memory bounded (only one shard of frames
+    # is held at a time, not the full clip's masks)
+    height, width = labels_array.shape[2:]
     buffer_n_frames = shard_n_frames or 1
     buffer = np.zeros((buffer_n_frames, height, width), dtype=np.uint16)
 
-    input_video_object = open_video(video_path)
+    # Get this clip's length
+    # (Note: the store's time axis is the group's longest clip)
+    clip_n_frames = get_video_parameters(video_clip_path)["total_frames"]
+
     frame_idx = 0
+    input_video_object = open_video(video_clip_path)
     while input_video_object.isOpened():
+        # Read one frame
         ret, frame = input_video_object.read()
         if not ret:
-            parse_video_frame_reading_error_and_log(frame_idx, total_n_frames)
+            parse_video_frame_reading_error_and_log(frame_idx, clip_n_frames)
             break
 
-        k = frame_idx % buffer_n_frames
-        buffer[k] = BACKGROUND_LABEL
+        # Prepare output mask;
+        # initialise slot for this frame in the current buffer
+        # (the buffer is reused )
+        idx_in_buffer = frame_idx % buffer_n_frames
+        buffer[idx_in_buffer, :, :] = BACKGROUND_LABEL
 
-        # .get, not [...]: there may be no key for a frame with no boxes
+        # Predict masks using SAM2 and boxes prompt
+        # Note: we use .get because there may be frames with no boxes
         frame_data = tracked_bboxes_dict.get(frame_idx)
         if frame_data is not None and len(frame_data["tracked_boxes"]) > 0:
             predict_and_flatten_masks_into(
                 predictor,
                 frame,
                 frame_data["tracked_boxes"],
-                np.array([value_of[str(i)] for i in frame_data["ids"]]),
-                buffer[k],
+                np.array(
+                    [
+                        map_individual_to_label[str(i)]
+                        for i in frame_data["ids"]
+                    ]
+                ),
+                buffer[idx_in_buffer, :, :],
                 max_prompts_per_batch,
             )
 
-        # flush a whole shard at a time: never a partial-shard write
-        if k == buffer_n_frames - 1:
-            labels_array[clip_index, frame_idx - k : frame_idx + 1] = buffer
+        # When idx_in_buffer == buffer_n_frames - 1, the buffer is full,
+        # and so we write it into the final `labels_array` array
+        if idx_in_buffer == buffer_n_frames - 1:
+            labels_array[
+                clip_index, frame_idx - idx_in_buffer : frame_idx + 1
+            ] = buffer
+
+        # Update frame index
         frame_idx += 1
 
-    # the tail: whatever is left of a part-filled shard
-    k = frame_idx % buffer_n_frames
-    if k:
-        labels_array[clip_index, frame_idx - k : frame_idx] = buffer[:k]
+    # After the loop, frame_idx represents the number of frames read.
+    # If frame_idx % buffer_n_frames != 0, the last buffer/shard is
+    # partially filled and has not been written to labels_array yet
+    n_frames_in_buffer = frame_idx % buffer_n_frames
+    if n_frames_in_buffer:
+        start = frame_idx - n_frames_in_buffer
+        labels_array[clip_index, start:frame_idx] = buffer[:n_frames_in_buffer]
 
+    # Release video capture
     input_video_object.release()
+
+    # Return number of frames actually read
     return frame_idx
 
 
@@ -480,7 +508,7 @@ def main(args: argparse.Namespace) -> None:
                 )
                 continue
             write_clip_masks_to_store(
-                video_path=str(clip_videos[clip_index]),
+                video_clip_path=str(clip_videos[clip_index]),
                 tracked_bboxes_dict=tracked_bboxes_dict,
                 labels_array=labels_array,
                 clip_index=clip_index,
