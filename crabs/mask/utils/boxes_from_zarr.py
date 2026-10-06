@@ -31,6 +31,11 @@ def read_tracked_bboxes_from_zarr(
 ) -> tuple[dict, list[str]]:
     """Read one clip of a trajectories store as tracked boxes.
 
+    A dask-backed clip is read one `time` chunk at a time, and the boxes
+    are built frame by frame, to avoid memory peaks. A long clip can hold
+    thousands of track IDs  but only tens of crabs per frame, so as one dense
+    (time, individual) array it is mostly NaN but can take tens of GB.
+
     Parameters
     ----------
     ds_video : xr.Dataset
@@ -49,26 +54,47 @@ def read_tracked_bboxes_from_zarr(
         labels present in this clip.
 
     """
-    ds = ds_video.sel(clip_id=clip_id)
-    n_clip_frames = int(ds.clip_last_frame_0idx - ds.clip_first_frame_0idx) + 1
+    # Get clip dataset for the range of frames in clip
+    ds_clip_all = ds_video.sel(clip_id=clip_id)
+    n_clip_frames = (
+        int(
+            ds_clip_all.clip_last_frame_0idx
+            - ds_clip_all.clip_first_frame_0idx
+        )
+        + 1
+    )
+    _validate_time_axis_is_dense(ds_clip_all, n_clip_frames, clip_id)
+    ds_clip = ds_clip_all.isel(time=slice(0, n_clip_frames))
 
-    _validate_time_axis_is_dense(ds, n_clip_frames, clip_id)
+    # get the clip's individuals, without the NaN padding
+    in_clip = ds_clip.position.notnull().any(dim=("time", "space")).values
+    all_ids = ds_clip.individual.values
+    ids_in_clip = all_ids[in_clip].tolist()
 
-    ds = ds.isel(time=slice(0, n_clip_frames))
-    # drop the NaN padding added when concatenating clips along clip_id
-    ds = ds.dropna(dim="individual", how="all")
+    # loop one block per dask chunk along time
+    time_chunks = ds_clip.position.chunksizes.get(
+        "time",
+        (n_clip_frames,),  # or the whole clip if not a dask array
+    )
+    block_ends = np.cumsum(time_chunks)
 
-    # movement stores the centroid and the box size
-    xy, wh = ds.position.values, ds.shape.values  # (t, 2, m)
-    corners = np.concatenate([xy - wh / 2, xy + wh / 2], axis=1)  # (t, 4, m)
+    boxes_per_frame = {}
+    for start, end in zip(block_ends - time_chunks, block_ends, strict=True):
+        # Get data for one block (/chunk)
+        # x,y = centroid; w,h = box full width and height
+        ds_block = ds_clip.isel(time=slice(start, end))
+        xy, wh = ds_block.position.values, ds_block.shape.values  # (t, 2, m)
 
-    individuals = [str(v) for v in ds.individual.values]
-    boxes = {}
-    for i, t in enumerate(ds.time.values):
-        present = ~np.isnan(corners[i, 0])
-        if present.any():
-            boxes[int(t)] = {
-                "tracked_boxes": corners[i][:, present].T.astype(np.float64),
-                "ids": np.array(individuals, dtype=object)[present],
-            }
-    return boxes, individuals
+        # Loop thru frames, keep only IDs present per frame
+        for i, frame_clip in enumerate(ds_block.time.values):
+            present = ~np.isnan(xy[i, 0])
+            if present.any():
+                xy_t, wh_t = xy[i][:, present], wh[i][:, present]  # (2, n)
+                box_corners = np.concatenate(
+                    [xy_t - wh_t / 2, xy_t + wh_t / 2]
+                )
+                boxes_per_frame[int(frame_clip)] = {
+                    "tracked_boxes": box_corners.T.astype(np.float64),
+                    "ids": all_ids[present],
+                }
+    return boxes_per_frame, ids_in_clip

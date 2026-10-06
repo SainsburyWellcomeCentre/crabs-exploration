@@ -98,6 +98,46 @@ def test_read_tracked_bboxes_from_zarr(ds_video: xr.Dataset):
     )
 
 
+@pytest.mark.parametrize("time_chunk", [1, 2, 3, 1000])
+def test_read_tracked_bboxes_from_zarr_dask_chunks(
+    ds_video: xr.Dataset, time_chunk: int
+):
+    """Test that the chunking of a video dataset does not change output.
+
+    The chunking of a video dataset should not change the extracted boxes
+    per frame for each clip. Chunks of 1 to 3 frames make the clips split
+    across chunk boundaries. With this test we indirectly ensure the keys
+    in the output are clip frame indices, not indices within a chunk.
+    """
+    ds_chunked = ds_video.chunk({"time": time_chunk})
+    for clip_id in ["Loop00", "Loop01"]:
+        # get data from un-chunked dataset
+        unchunked_boxes, unchunked_individuals = read_tracked_bboxes_from_zarr(
+            ds_video, clip_id
+        )
+        # get data from chunked dataset
+        chunked_boxes, chunked_individuals = read_tracked_bboxes_from_zarr(
+            ds_chunked, clip_id
+        )
+
+        # check individuals are the same in chunked and unchunked output
+        assert chunked_individuals == unchunked_individuals
+
+        # check frames w data are the same in chunked and unchunked output
+        # (Note: sorted returns list of sorted keys)
+        assert sorted(chunked_boxes) == sorted(unchunked_boxes)
+
+        # compare boxes per unchunked frame
+        for frame, unchunked_boxes_one_frame in unchunked_boxes.items():
+            np.testing.assert_array_equal(
+                chunked_boxes[frame]["tracked_boxes"],
+                unchunked_boxes_one_frame["tracked_boxes"],
+            )
+            assert list(chunked_boxes[frame]["ids"]) == list(
+                unchunked_boxes_one_frame["ids"]
+            )
+
+
 def test_read_tracked_bboxes_from_zarr_rejects_sparse_time_axis():
     """A store whose time axis is shorter than the clip is refused.
 
