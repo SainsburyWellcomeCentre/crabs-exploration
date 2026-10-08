@@ -8,18 +8,14 @@ import numpy as np
 import xarray as xr
 
 
-def extract_bboxes_from_clip(
-    ds_video: xr.Dataset,
-    clip_id: str,
-) -> dict:
+def extract_bboxes_from_clip(ds_clip: xr.Dataset) -> dict:
     """Extract boxes from a clip dataset as a dictionary.
 
     Parameters
     ----------
-    ds_video : xr.Dataset
-        The trajectory data for one video group of a trajectories zarr store.
-    clip_id : str
-        The clip to extract the boxes from.
+    ds_clip : xr.Dataset
+        The trajectory data for one clip. Usually selected from a video group
+        of a trajectories zarr store with ``ds_video.sel(clip_id=...)``.
 
     Returns
     -------
@@ -30,19 +26,20 @@ def extract_bboxes_from_clip(
         with bounding boxes are included in the output.
 
     """
-    # Get clip dataset
-    ds_clip_all = ds_video.sel(clip_id=clip_id)
-    n_frames_in_clip = (
-        int(
-            ds_clip_all.clip_last_frame_0idx
-            - ds_clip_all.clip_first_frame_0idx
+    if "clip_id" in ds_clip.dims:
+        raise ValueError(
+            "Expected a single clip; select one with .sel(clip_id=...)."
         )
-        + 1
+
+    # Validate time axis
+    clip_id = str(ds_clip.clip_id.item())
+    n_frames_in_clip = (
+        int(ds_clip.clip_last_frame_0idx - ds_clip.clip_first_frame_0idx) + 1
     )
-    _validate_time_axis_is_dense(ds_clip_all, clip_id, n_frames_in_clip)
+    _validate_time_axis_is_dense(ds_clip, clip_id, n_frames_in_clip)
 
     # Drop padding frames
-    ds_clip = ds_clip_all.isel(time=slice(0, n_frames_in_clip))
+    ds_clip = ds_clip.isel(time=slice(0, n_frames_in_clip))
 
     # Get list of individuals
     # (includes padding to max individuals in video)

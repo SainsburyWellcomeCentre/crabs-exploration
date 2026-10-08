@@ -75,9 +75,9 @@ def ds_video() -> xr.Dataset:
     )
 
 
-def test_extract_tracked_bboxes_from_trajectories(ds_video: xr.Dataset):
+def test_extract_bboxes_from_clip(ds_video: xr.Dataset):
     """Boxes are `position +/- shape/2`, keyed by clip frame index."""
-    boxes = extract_bboxes_from_clip(ds_video, "Loop00")
+    boxes = extract_bboxes_from_clip(ds_video.sel(clip_id="Loop00"))
 
     # no key for a frame with no boxes
     assert sorted(boxes) == [0, 1]
@@ -96,7 +96,7 @@ def test_extract_tracked_bboxes_from_trajectories(ds_video: xr.Dataset):
 
 
 @pytest.mark.parametrize("time_chunk", [1, 2, 3, 1000])
-def test_extract_tracked_bboxes_from_trajectories_dask_chunks(
+def test_extract_bboxes_from_clip_dask_chunks(
     ds_video: xr.Dataset, time_chunk: int
 ):
     """Test that the chunking of a video dataset does not change output.
@@ -109,9 +109,13 @@ def test_extract_tracked_bboxes_from_trajectories_dask_chunks(
     ds_chunked = ds_video.chunk({"time": time_chunk})
     for clip_id in ["Loop00", "Loop01"]:
         # get data from un-chunked dataset
-        unchunked_boxes = extract_bboxes_from_clip(ds_video, clip_id)
+        unchunked_boxes = extract_bboxes_from_clip(
+            ds_video.sel(clip_id=clip_id)
+        )
         # get data from chunked dataset
-        chunked_boxes = extract_bboxes_from_clip(ds_chunked, clip_id)
+        chunked_boxes = extract_bboxes_from_clip(
+            ds_chunked.sel(clip_id=clip_id)
+        )
 
         # check frames w data are the same in chunked and unchunked output
         # (Note: sorted returns list of sorted keys)
@@ -128,7 +132,7 @@ def test_extract_tracked_bboxes_from_trajectories_dask_chunks(
             )
 
 
-def test_extract_tracked_bboxes_from_trajectories_rejects_sparse_time_axis():
+def test_extract_bboxes_from_clip_rejects_sparse_time_axis():
     """A store whose time axis is shorter than the clip is refused.
 
     The guard must count finite `escape_state` rows: after the outer join
@@ -150,4 +154,12 @@ def test_extract_tracked_bboxes_from_trajectories_rejects_sparse_time_axis():
     assert ds_video.sel(clip_id="Loop00").sizes["time"] == 6
 
     with pytest.raises(ValueError, match="Loop00: the time axis holds 4"):
-        extract_bboxes_from_clip(ds_video, "Loop00")
+        extract_bboxes_from_clip(ds_video.sel(clip_id="Loop00"))
+
+
+def test_extract_bboxes_from_clip_rejects_video_dataset(
+    ds_video: xr.Dataset,
+):
+    """Passing a whole video group, not one clip, is refused."""
+    with pytest.raises(ValueError, match="Expected a single clip"):
+        extract_bboxes_from_clip(ds_video)

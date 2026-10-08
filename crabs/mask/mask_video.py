@@ -501,7 +501,9 @@ def main(args: argparse.Namespace) -> None:
 
         for clip_index, clip_id in enumerate(clip_ids):
             logging.info(f"Masking {video_id}/{clip_id}")
-            tracked_bboxes_dict = extract_bboxes_from_clip(ds_video, clip_id)
+            tracked_bboxes_dict = extract_bboxes_from_clip(
+                ds_video.sel(clip_id=clip_id)
+            )
             if not tracked_bboxes_dict:
                 logging.info(
                     f"{video_id}/{clip_id}: no tracked boxes, skipping"
