@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from crabs.mask.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
+from crabs.mask.utils.boxes_from_dataset import extract_bboxes_from_clip
 
 
 def clip_dataset(
@@ -75,9 +75,9 @@ def ds_video() -> xr.Dataset:
     )
 
 
-def test_read_tracked_bboxes_from_zarr(ds_video: xr.Dataset):
+def test_extract_tracked_bboxes_from_trajectories(ds_video: xr.Dataset):
     """Boxes are `position +/- shape/2`, keyed by clip frame index."""
-    boxes = read_tracked_bboxes_from_zarr(ds_video, "Loop00")
+    boxes = extract_bboxes_from_clip(ds_video, "Loop00")
 
     # no key for a frame with no boxes
     assert sorted(boxes) == [0, 1]
@@ -96,7 +96,7 @@ def test_read_tracked_bboxes_from_zarr(ds_video: xr.Dataset):
 
 
 @pytest.mark.parametrize("time_chunk", [1, 2, 3, 1000])
-def test_read_tracked_bboxes_from_zarr_dask_chunks(
+def test_extract_tracked_bboxes_from_trajectories_dask_chunks(
     ds_video: xr.Dataset, time_chunk: int
 ):
     """Test that the chunking of a video dataset does not change output.
@@ -109,9 +109,9 @@ def test_read_tracked_bboxes_from_zarr_dask_chunks(
     ds_chunked = ds_video.chunk({"time": time_chunk})
     for clip_id in ["Loop00", "Loop01"]:
         # get data from un-chunked dataset
-        unchunked_boxes = read_tracked_bboxes_from_zarr(ds_video, clip_id)
+        unchunked_boxes = extract_bboxes_from_clip(ds_video, clip_id)
         # get data from chunked dataset
-        chunked_boxes = read_tracked_bboxes_from_zarr(ds_chunked, clip_id)
+        chunked_boxes = extract_bboxes_from_clip(ds_chunked, clip_id)
 
         # check frames w data are the same in chunked and unchunked output
         # (Note: sorted returns list of sorted keys)
@@ -128,7 +128,7 @@ def test_read_tracked_bboxes_from_zarr_dask_chunks(
             )
 
 
-def test_read_tracked_bboxes_from_zarr_rejects_sparse_time_axis():
+def test_extract_tracked_bboxes_from_trajectories_rejects_sparse_time_axis():
     """A store whose time axis is shorter than the clip is refused.
 
     The guard must count finite `escape_state` rows: after the outer join
@@ -150,4 +150,4 @@ def test_read_tracked_bboxes_from_zarr_rejects_sparse_time_axis():
     assert ds_video.sel(clip_id="Loop00").sizes["time"] == 6
 
     with pytest.raises(ValueError, match="Loop00: the time axis holds 4"):
-        read_tracked_bboxes_from_zarr(ds_video, "Loop00")
+        extract_bboxes_from_clip(ds_video, "Loop00")

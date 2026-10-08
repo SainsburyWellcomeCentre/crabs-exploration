@@ -14,7 +14,7 @@ import xarray as xr
 import yaml  # type: ignore
 import zarr
 
-from crabs.mask.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
+from crabs.mask.utils.boxes_from_dataset import extract_bboxes_from_clip
 from crabs.utils.io import (
     get_video_parameters,
     open_video,
@@ -501,9 +501,7 @@ def main(args: argparse.Namespace) -> None:
 
         for clip_index, clip_id in enumerate(clip_ids):
             logging.info(f"Masking {video_id}/{clip_id}")
-            tracked_bboxes_dict = read_tracked_bboxes_from_zarr(
-                ds_video, clip_id
-            )
+            tracked_bboxes_dict = extract_bboxes_from_clip(ds_video, clip_id)
             if not tracked_bboxes_dict:
                 logging.info(
                     f"{video_id}/{clip_id}: no tracked boxes, skipping"

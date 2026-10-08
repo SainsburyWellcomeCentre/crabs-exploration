@@ -16,8 +16,11 @@ from crabs.mask.mask_video import (
     predict_masks_on_device,
     write_clip_masks_to_store,
 )
-from crabs.mask.utils.boxes_from_zarr import read_tracked_bboxes_from_zarr
-from tests.test_unit.test_boxes_from_zarr import clip_dataset, concat_clips
+from crabs.mask.utils.boxes_from_dataset import extract_bboxes_from_clip
+from tests.test_unit.test_boxes_from_dataset import (
+    clip_dataset,
+    concat_clips,
+)
 
 FRAME_SHAPE = (64, 64)  # height, width
 N_FRAMES = 5
@@ -386,7 +389,7 @@ def test_main(trajectories_store: Path, monkeypatch: pytest.MonkeyPatch):
     inverse[masks.label_of.values] = np.arange(masks.sizes["individual"])
 
     for clip_index, clip_id in enumerate(masks.clip_id.values):
-        n_clip_frames = len(read_tracked_bboxes_from_zarr(tracks, clip_id))
+        n_clip_frames = len(extract_bboxes_from_clip(tracks, clip_id))
         for time_index in range(n_clip_frames):
             frame = masks.labels.values[clip_index, time_index]
             in_masks = set(

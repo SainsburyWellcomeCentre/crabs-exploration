@@ -1,14 +1,18 @@
-"""Read tracked bounding boxes from a trajectories zarr store."""
+"""Utils to extract bounding boxes from a trajectories dataset.
+
+The boxes are formatted following the dictionary structure of the tracker
+output.
+"""
 
 import numpy as np
 import xarray as xr
 
 
-def read_tracked_bboxes_from_zarr(
+def extract_bboxes_from_clip(
     ds_video: xr.Dataset,
     clip_id: str,
 ) -> dict:
-    """Extract boxes from a single clip.
+    """Extract boxes from a clip dataset as a dictionary.
 
     Parameters
     ----------
@@ -21,8 +25,8 @@ def read_tracked_bboxes_from_zarr(
     -------
     dict
         A dictionary mapping clip frame index to bounding boxes coordinates
-        and IDs, formatted as:
-        ``{"tracked_boxes": (n, 4) float, "ids": (n,) labels}``. Only frames
+        and IDs. Coordinates are in corner format ``(x_min, y_min, x_max,
+        y_max)`` as an (n,4) arrays. Only frames
         with bounding boxes are included in the output.
 
     """
