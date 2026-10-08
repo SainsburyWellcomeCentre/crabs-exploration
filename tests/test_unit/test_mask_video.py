@@ -129,7 +129,7 @@ def mask_store(tmp_path: Path) -> tuple[Path, zarr.Array]:
         individuals=INDIVIDUALS,
         image_shape=FRAME_SHAPE,
         metadata_dict=ATTRS,
-        shard_n_frames=SHARD_N_FRAMES,
+        n_frames_per_shard=SHARD_N_FRAMES,
         zarr_mode_group="w-",
     )
     return store_path, labels_array
@@ -211,7 +211,7 @@ def test_write_clip_masks_to_store(
         label_of=label_of,
         predictor=predictor,
         max_prompts_per_batch=max_prompts_per_batch,
-        shard_n_frames=SHARD_N_FRAMES,
+        n_frames_per_shard=SHARD_N_FRAMES,
     )
 
     assert n_frames_read == N_FRAMES
@@ -259,7 +259,7 @@ def test_write_clip_masks_to_store_clip_shorter_than_store(
         individuals=INDIVIDUALS,
         image_shape=FRAME_SHAPE,
         metadata_dict=ATTRS,
-        shard_n_frames=SHARD_N_FRAMES,
+        n_frames_per_shard=SHARD_N_FRAMES,
         zarr_mode_group="w-",
     )
     label_of = xr.open_datatree(store_path, engine="zarr")["video"].label_of
@@ -273,7 +273,7 @@ def test_write_clip_masks_to_store_clip_shorter_than_store(
             label_of=label_of,
             predictor=FakePredictor(),
             max_prompts_per_batch=2,
-            shard_n_frames=SHARD_N_FRAMES,
+            n_frames_per_shard=SHARD_N_FRAMES,
         )
 
     assert n_frames_read == N_FRAMES

@@ -69,7 +69,7 @@ def create_mask_store(
     individuals: list[str],
     image_shape: tuple[int, int],
     metadata_dict: dict,
-    shard_n_frames: int | None,
+    n_frames_per_shard: int | None,
     zarr_mode_group: str,
 ) -> zarr.Array:
     """Write the template for one video group and return its labels array.
@@ -100,7 +100,7 @@ def create_mask_store(
         Frame height and width, in pixels.
     metadata_dict : dict
         Attributes to write on the group.
-    shard_n_frames : int | None
+    n_frames_per_shard : int | None
         Number of frames per shard file. None disables sharding.
     zarr_mode_group : str
         Mode to write the zarr group with.
@@ -113,7 +113,9 @@ def create_mask_store(
     """
     height, width = image_shape
     chunks = (1, 1, height, width)
-    shards = (1, shard_n_frames, height, width) if shard_n_frames else None
+    shards = (
+        (1, n_frames_per_shard, height, width) if n_frames_per_shard else None
+    )
 
     ds = xr.Dataset(
         {
@@ -246,7 +248,7 @@ def write_clip_masks_to_store(
     label_of: xr.DataArray,
     predictor,
     max_prompts_per_batch: int,
-    shard_n_frames: int | None,
+    n_frames_per_shard: int | None,
 ) -> int:
     """Mask one clip into `labels_array[clip_index]`.
 
@@ -274,7 +276,7 @@ def write_clip_masks_to_store(
         The predictor, loaded once by the caller and reused across clips.
     max_prompts_per_batch : int
         Number of box prompts passed to SAM2 at once.
-    shard_n_frames : int | None
+    n_frames_per_shard : int | None
         Number of frames per shard file. None disables sharding.
 
     Returns
@@ -298,7 +300,7 @@ def write_clip_masks_to_store(
     # We use buffers to keep memory bounded (only one shard of frames
     # is held at a time, not the full clip's masks)
     height, width = labels_array.shape[2:]
-    buffer_n_frames = shard_n_frames or 1
+    buffer_n_frames = n_frames_per_shard or 1
     buffer = np.zeros((buffer_n_frames, height, width), dtype=np.uint16)
 
     # Get this clip's length
@@ -415,7 +417,7 @@ def main(args: argparse.Namespace) -> None:
         "sam2_model_id", "facebook/sam2.1-hiera-base-plus"
     )
     max_prompts_per_batch = mask_config.get("max_prompts_per_batch", 32)
-    shard_n_frames = mask_config.get("shard_n_frames", 32)
+    n_frames_per_shard = mask_config.get("n_frames_per_shard", 32)
     occlusion_policy = mask_config.get("occlusion_policy", "smallest_wins")
     if occlusion_policy != "smallest_wins":
         raise ValueError(
@@ -490,7 +492,7 @@ def main(args: argparse.Namespace) -> None:
                 "occlusion_policy": occlusion_policy,
                 "prompt_type": "bounding_box",
             },
-            shard_n_frames=shard_n_frames,
+            n_frames_per_shard=n_frames_per_shard,
             zarr_mode_group=args.zarr_mode_group,
         )
         label_of = xr.open_datatree(store_path, engine="zarr")[
@@ -515,7 +517,7 @@ def main(args: argparse.Namespace) -> None:
                 label_of=label_of,
                 predictor=predictor,
                 max_prompts_per_batch=max_prompts_per_batch,
-                shard_n_frames=shard_n_frames,
+                n_frames_per_shard=n_frames_per_shard,
             )
 
     logging.info(f"Masks written to {store_path}")

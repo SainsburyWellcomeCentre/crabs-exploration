@@ -45,7 +45,7 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
 
     - `sam2_model_id`: the Hugging Face model. By default `facebook/sam2.1-hiera-base-plus`. The `-tiny` and `-small` variants are considerably faster and may well be enough at this object size.
     - `max_prompts_per_batch`: how many box prompts go to SAM2 at once. It bounds peak GPU memory, because every prompt gets a full-frame float32 mask back — at 4K that is 35 MB per prompt, so the default of 32 peaks at about 1.1 GB. Lower it if you hit out-of-memory errors.
-    - `shard_n_frames`: frames per shard file in the output store. It sets both the write buffer (`shard_n_frames × H × W × 2` bytes, so 566 MB at 32 frames and 4K) and the number of files. This is the one to tune per filesystem.
+    - `n_frames_per_shard`: frames per shard file in the output store. It sets both the write buffer (`n_frames_per_shard × H × W × 2` bytes, so 566 MB at 32 frames and 4K) and the number of files. This is the one to tune per filesystem.
     - `occlusion_policy`: which crab keeps a pixel where two masks overlap. Currently `smallest_wins` is the only policy implemented.
 
     A custom config only needs to include the keys it changes: the rest fall back to the defaults.
