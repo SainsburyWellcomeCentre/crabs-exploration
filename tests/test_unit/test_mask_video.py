@@ -386,7 +386,7 @@ def test_main(trajectories_store: Path, monkeypatch: pytest.MonkeyPatch):
     inverse[masks.label_of.values] = np.arange(masks.sizes["individual"])
 
     for clip_index, clip_id in enumerate(masks.clip_id.values):
-        n_clip_frames = len(read_tracked_bboxes_from_zarr(tracks, clip_id)[0])
+        n_clip_frames = len(read_tracked_bboxes_from_zarr(tracks, clip_id))
         for time_index in range(n_clip_frames):
             frame = masks.labels.values[clip_index, time_index]
             in_masks = set(

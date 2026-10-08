@@ -77,10 +77,7 @@ def ds_video() -> xr.Dataset:
 
 def test_read_tracked_bboxes_from_zarr(ds_video: xr.Dataset):
     """Boxes are `position +/- shape/2`, keyed by clip frame index."""
-    boxes, individuals = read_tracked_bboxes_from_zarr(ds_video, "Loop00")
-
-    # the clip's own individuals, without the padding from the longer clip
-    assert individuals == ["id_0", "id_1"]
+    boxes = read_tracked_bboxes_from_zarr(ds_video, "Loop00")
 
     # no key for a frame with no boxes
     assert sorted(boxes) == [0, 1]
@@ -112,16 +109,9 @@ def test_read_tracked_bboxes_from_zarr_dask_chunks(
     ds_chunked = ds_video.chunk({"time": time_chunk})
     for clip_id in ["Loop00", "Loop01"]:
         # get data from un-chunked dataset
-        unchunked_boxes, unchunked_individuals = read_tracked_bboxes_from_zarr(
-            ds_video, clip_id
-        )
+        unchunked_boxes = read_tracked_bboxes_from_zarr(ds_video, clip_id)
         # get data from chunked dataset
-        chunked_boxes, chunked_individuals = read_tracked_bboxes_from_zarr(
-            ds_chunked, clip_id
-        )
-
-        # check individuals are the same in chunked and unchunked output
-        assert chunked_individuals == unchunked_individuals
+        chunked_boxes = read_tracked_bboxes_from_zarr(ds_chunked, clip_id)
 
         # check frames w data are the same in chunked and unchunked output
         # (Note: sorted returns list of sorted keys)

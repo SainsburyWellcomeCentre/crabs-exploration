@@ -501,7 +501,7 @@ def main(args: argparse.Namespace) -> None:
 
         for clip_index, clip_id in enumerate(clip_ids):
             logging.info(f"Masking {video_id}/{clip_id}")
-            tracked_bboxes_dict, _ = read_tracked_bboxes_from_zarr(
+            tracked_bboxes_dict = read_tracked_bboxes_from_zarr(
                 ds_video, clip_id
             )
             if not tracked_bboxes_dict:
