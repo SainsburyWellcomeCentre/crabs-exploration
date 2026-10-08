@@ -22,39 +22,34 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
 
     - A **trajectories zarr store**, as written by `create-zarr-dataset` (see [CreateZarrDatasetForTracks.md](CreateZarrDatasetForTracks.md)). This is where the boxes that prompt SAM2 come from. Copy its full path, since we will need it to set the `BOXES_ZARR_STORE` variable in the bash script.
 
-        > [!WARNING]
-        > The store must have been built **after** the `time` coordinate was made dense ([PR #291](https://github.com/SainsburyWellcomeCentre/crabs-exploration/pull/291)). In an older store, frames with no tracked crabs shifted every later frame earlier, so the masks would land on the wrong frames. `mask-tracked-crabs` checks this per clip and exits with a message naming the clip if the store predates it — rebuild the store with `create-zarr-dataset` in that case.
-
     - The **clip videos** the boxes refer to, as written by `extract-loop-clips` (see [ExtractLoopClipsCluster.md](ExtractLoopClipsCluster.md)), named `<video-id>-<clip-id>.mp4` — for example `04.09.2023-01-Right-Loop05.mp4`. These are the videos the store's clip-local `time` coordinate refers to, so they are the ones SAM2 reads pixels from. Copy the full path to the directory holding them, for the `CLIP_VIDEOS_DIR` variable.
 
-    To check how many video groups the store holds, which is the number of tasks the array job will need:
+    To check how many video groups the store holds, run:
 
     ```
-    ls -d <path-to-trajectories-store>/*/ | wc -l
+    find <path-to-trajectories-store> -mindepth 1 -maxdepth 1 -type d -not -name "logs*" | wc -l
     ```
+
+    This mirrors the equivalent check in the bash script. The bash script will launch an array job, and each job in the array will deal with one video.
 
 4.  **Get the mask config file**
 
-    The masking parameters live in their own config file, separate from the tracking config. To get it locally (required), copy the default from the 🦀 repository to a location you can edit, for example `/ceph/zoo/users/sminano/cluster_mask_config.yaml`:
+    The masking parameters live in their own config file. To get it locally (required), copy the default from the 🦀 repository to a location you can edit, for example `/ceph/zoo/users/sminano/cluster_mask_config.yaml`:
 
     ```
     curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/crabs/mask/config/mask_config.yaml > /ceph/zoo/users/sminano/cluster_mask_config.yaml
     ```
 
-    The knobs are:
+    The parameters are described in the [masking README](../crabs/mask/README.md#parameters). Your file only needs the keys you want to change; the rest take the defaults. On the cluster, the two most likely to need tuning are:
 
-    - `sam2_model_id`: the Hugging Face model. By default `facebook/sam2.1-hiera-base-plus`. The `-tiny` and `-small` variants are considerably faster and may well be enough at this object size.
-    - `max_prompts_per_batch`: how many box prompts go to SAM2 at once. It bounds peak GPU memory, because every prompt gets a full-frame float32 mask back — at 4K that is 35 MB per prompt, so the default of 32 peaks at about 1.1 GB. Lower it if you hit out-of-memory errors.
-    - `n_frames_per_shard`: frames per shard file in the output store. It sets both the write buffer (`n_frames_per_shard × H × W × 2` bytes, so 566 MB at 32 frames and 4K) and the number of files. This is the one to tune per filesystem.
-    - `occlusion_policy`: which crab keeps a pixel where two masks overlap. Currently `smallest_wins` is the only policy implemented.
-
-    A custom config only needs to include the keys it changes: the rest fall back to the defaults.
+    - `max_prompts_per_batch`: lower it if jobs fail with GPU out-of-memory errors.
+    - `n_frames_per_shard`: trades memory per job against the number of files written to `/ceph`.
 
     > [!CAUTION]
     >
     > If we launch a job and then modify the config file _before_ the job has been able to read it, we may be using an undesired version of the config in our job! To avoid this, it is best to wait until you can verify that the job has the expected config parameters (and then edit the file to launch a new job if needed).
 
-5.  **Download the masking bash script from the 🦀 repository**
+5.  **Download the bash script from the 🦀 repository**
 
     To do so, run the following command, which will download a bash script called `run_mask_array.sh` to the current working directory.
     ```
@@ -81,22 +76,27 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     - `BOXES_ZARR_STORE`: path to the input trajectories zarr store, from Step 3.
     - `CLIP_VIDEOS_DIR`: path to the directory with the clip videos, from Step 3.
     - `MASK_CONFIG_FILE`: path to the mask config file, from Step 4.
-    - Remember that the number of video groups in the input store needs to match the number of jobs in the array. To change the number of jobs, edit the line that starts with `#SBATCH --array=0-n%m` and set `n` to the total number of video groups minus 1. The variable `m` refers to the number of jobs that can run at a time.
+
+    Remember that the number of video groups in the input store needs to match the number of jobs in the array. To change the number of jobs, edit the line that starts with `#SBATCH --array=0-n%m` and set `n` to the total number of video groups minus 1. The variable `m` refers to the number of jobs that can run at a time.
 
     Less frequently, you may also need to set:
-    - `MASK_ZARR_STORE_OUTPUT`: path to the output mask store. By default it is named after the SLURM array job ID, which ensures different runs generate different stores. **Every job in the array must point at the same store**, so this name must not depend on `SLURM_ARRAY_TASK_ID`.
+    - `MASK_ZARR_STORE_OUTPUT`: path to the output mask store. By default it is named after the SLURM array job ID, which ensures different runs generate different stores. **Every job in the array should point to the same store**, so this name must not depend on `SLURM_ARRAY_TASK_ID`.
     - `ZARR_MODE_STORE`: whether to create a new store (`'w'`) or add to an existing one (`'a'`). By default `'a'`, since each job in the array adds one video's masks to the same store.
     - `ZARR_MODE_GROUP`: whether to overwrite existing groups (`'w'`), update them (`'a'`), or throw an error if the group already exists (`'w-'`). By default `'w-'`, since each job should create a new group for its own video.
     - `GIT_BRANCH`: version of the 🦀 package to use. Usually we will use the version at the tip of the `main` branch.
 
     > [!NOTE]
-    > Unlike the other bash scripts in the repository, this one installs the 🦀 package in two steps: first on its own, then with its `masks` extra, which adds SAM2 and `huggingface_hub`. SAM2's build imports torch, and in a single install uv would build SAM2 before torch is in the environment. Three details in the second step are deliberate:
+    > Unlike the other bash scripts in the repository, this one installs the 🦀 package in two steps: first on its own, then with its `masks` extra, which adds SAM2 and `huggingface_hub`. SAM2's build imports torch, and in a single install uv would build SAM2 before torch is in the environment. Two details in the second step are deliberate:
     >
     > - **`--no-build-isolation-package sam-2`**, so SAM2 builds against the torch already in the environment. Without it, SAM2's build requirement on `torch>=2.5.1` pulls a whole second torch into an isolated build environment — possibly a different variant from the one we will actually run on. The same setting in the 🦀 `pyproject.toml` only applies in a checkout of the repository, not when installing the package from git.
     > - **`uv pip install setuptools` first.** Turning isolation off means SAM2's build requirements have to be satisfied in our own environment, and a `uv venv` starts with no setuptools. torch happens to depend on setuptools today, so this is belt-and-braces, but without it the failure is an opaque `No module named 'setuptools'` from inside the build backend.
-    > - **`SAM2_BUILD_CUDA=0`**, which skips the optional `sam2._C` CUDA extension. It is only used to fill holes and remove sprinkles in predicted masks, which `SAM2ImagePredictor` does not do — `max_hole_area` and `max_sprinkle_area` both default to 0 — so we never call into it. Left on, the build either spends minutes compiling it or, if there is no `nvcc` on the compute node, prints a traceback and carries on, since SAM2 allows build errors by default.
+    >
+    > Each job in the array creates its own virtual environment, so that jobs do not race to create and install into a shared one. They do share the uv cache, though, and uv holds a lock on it while it fetches and builds SAM2 from git. With several jobs starting together on a slow shared filesystem, uv's default 300 s wait for that lock is not enough, so the script raises it with `UV_LOCK_TIMEOUT=3600`. Without it, the other jobs fail with `Timeout when waiting for lock`.
     >
     > The script also sets `HF_HOME` to a location on `/ceph/scratch`, so that the SAM2 checkpoint is downloaded once and shared across jobs rather than re-downloaded into each home directory.
+
+    > [!NOTE]
+    > The `#SBATCH --exclude` line keeps the jobs off the nodes with Quadro P5000 GPUs. These are too old for CUDA 13.0, which the installed torch is built against. If you change the partition or GPU request, keep this line or update it with any other nodes whose GPUs are not supported.
 
 7.  **Run the job using the SLURM scheduler**
 
@@ -113,7 +113,7 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     - Check the SLURM logs: these should be created automatically in the directory from which the `sbatch` command is run, and are moved into `<mask-store>/logs` when each job finishes.
     - Run supporting SLURM commands (see [below](#some-useful-slurm-commands)).
 
-    Masking is the slowest step of the pipeline: expect **roughly 2 to 9 hours per video** at 10 fps, depending on the clip lengths, so the array job's wall time is set to 1 day per task. If your jobs are being cut short, raise the `#SBATCH -t` line.
+    Masking is the slowest step of the pipeline: expect **roughly 2 to 9 hours per video** at 10 fps, depending on the clip lengths, so the array job's wall time is set to 5 days per task. If your jobs are being cut short, raise the `#SBATCH -t` line.
 
 9. **Expected output**
 
@@ -139,56 +139,6 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     dt = xr.open_datatree(path_to_mask_store, engine="zarr", chunks={})
     print(f"Total groups: {len(dt)}")  # should match the number of videos processed
     ```
-
-    A label image is the native input of both `skimage.measure.regionprops` and napari, so there is no conversion step on read:
-
-    ```python
-    import xarray as xr
-    from skimage.measure import regionprops
-
-    ds = xr.open_datatree(path_to_mask_store, engine="zarr", chunks={})["<video_id>"]
-
-    v = int(ds.label_of.sel(individual="id_0003"))         # this crab's pixel value
-    mask = ds.labels.sel(clip_id="Loop05") == v            # (time, img_h, img_w) bool
-    regionprops(ds.labels.sel(clip_id="Loop05").isel(time=t).values)
-    viewer.add_labels(ds.labels)                           # napari, sliders over clip and time
-    ```
-
-    > [!WARNING]
-    > **Occlusion is resolved at write time, and the losses are not recorded.** A label image holds one crab per pixel, so where two masks overlapped the smaller crab kept the contested pixels and the larger one's are gone from the store. Measured on the trajectories store, 94% of crabs never overlap and 0.62% of box area is contested, but the tail is heavy: 2.4% of crabs lose more than a quarter of their box. Occluded crabs have to be found on read, by adjacency in `labels` or by comparing mask area against the tracked box area.
-
-    For the rest of what the store cannot say for itself — in particular that `individual` names mean something only within one clip of one video, and how to decode `regionprops` output back to them — see [the masking README](../crabs/mask/README.md).
-
-### Re-running failed jobs
-
-Because each job in the array writes its own group, a failed job leaves the store simply missing that video, rather than corrupting it. To re-run the failed jobs into the **same** store:
-
-1. **Edit the bash script to run the failed jobs only**
-
-    First, edit the `#SBATCH --array=...` line to specify the failed task indices only, as a comma-separated list (e.g. `#SBATCH --array=0,5,7-9%m` for failed tasks 0, 5, 7, 8 and 9, with `m` the maximum number of jobs that can run simultaneously). For more details about the syntax of the `--array` option, see the [SBATCH documentation](https://slurm.schedmd.com/sbatch.html#OPT_array).
-
-    Next, comment out the if-clause in the `Check inputs` section of the bash script, which throws an error if the number of video groups in the input store does not match the number of jobs in the array. We are re-running only a subset of the tasks, so this check needs to be skipped.
-
-    > [!IMPORTANT]
-    > Task indices are positions in the **sorted list of video groups in the input store**, which the script derives with `find ... | sort`. That list is the same on every run as long as the input store does not change, so the indices reported in the logs of the first run are still the right ones.
-
-    Finally, set `MASK_ZARR_STORE_OUTPUT` to the **existing** store from the first run, rather than leaving it to be named after the new array job ID. With `ZARR_MODE_STORE="a"` and `ZARR_MODE_GROUP="w-"`, the re-run adds the missing groups and throws an error rather than silently overwriting one that already succeeded.
-
-2. **Run the edited bash script with `sbatch`**
-
-    ```bash
-    sbatch path/to/edited/run_mask_array.sh
-    ```
-
-3. **Check the results**
-
-    ```python
-    import xarray as xr
-    dt = xr.open_datatree(path_to_mask_store, engine="zarr", chunks={})
-    print(f"Total groups: {len(dt)}")  # should match the total number of videos processed
-    ```
-
-    Note the logs of the two runs will both be under `<mask-store>/logs`, distinguished by their array job ID.
 
 ### Some useful SLURM commands
 
