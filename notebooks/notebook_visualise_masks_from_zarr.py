@@ -128,7 +128,7 @@ ds_bboxes.attrs["image_array"] = image_array
 # ID-encoded masks (int16): 0 = background, k + 1 = the k-th box
 # in the frame. Set the store name to the output of
 # scripts/generate_masks_from_bboxes.py
-MASKS_ZARR = DATA_DIR / "annotations" / "masks_<timestamp>.zarr"
+MASKS_ZARR = DATA_DIR / "annotations" / "masks_20261009_133849.zarr"
 
 mask_da_array = da.from_zarr(MASKS_ZARR, mode="r")  # (image_id, H, W)
 
