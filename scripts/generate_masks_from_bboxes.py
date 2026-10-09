@@ -3,6 +3,9 @@
 Pass bounding boxes as prompts to SAM2, predict masks in those regions,
 and save as an ID-encoded zarr store.
 
+This script is a one-off tool to run on annotated frames whose mask labels
+are only meaningful within a frame.
+
 Expected data directory structure::
 
     <data_dir>/
@@ -117,8 +120,8 @@ def create_mask_zarr(
         path_to_zarr,
         mode="w",
         shape=(n_images, image_h, image_w),
-        dtype="bool",
-        fill_value=False,
+        dtype="int16",
+        fill_value=0,
         chunks=(1, image_h, image_w),
     )
 
@@ -140,59 +143,86 @@ def predict_masks_across_images(
         1:3
     ]  # ds_bboxes.attrs["image_array"].shape[1:3]
 
-    for idx in range(0, n_frames, img_batch_size):
-        actual_batch_size = min(img_batch_size, n_frames - idx)
+    for batch_start in range(0, n_frames, img_batch_size):
+        actual_batch_size = min(img_batch_size, n_frames - batch_start)
 
         # Integer array (B, H, W):
         # 0 = background, 1+ = object instance IDs
-        id_mask_batch = np.zeros(
+        label_mask_batch = np.zeros(
             (actual_batch_size, img_h, img_w), dtype=np.int16
         )
-
-        # Compute embeddings for image batch
-        image_batch = [image_array[idx + i] for i in range(actual_batch_size)]
-        model.set_image_batch(image_batch)
 
         # List of (N_i, 4) arrays, one per image
         boxes_batch = [
             bbox_prompts_per_frame_idx[f_i]
-            for f_i in range(idx, idx + actual_batch_size)
+            for f_i in range(batch_start, batch_start + actual_batch_size)
         ]
 
-        # Predict batch of masks — list of (N, 1, H, W) arrays
-        masks_batch, _scores_batch, _ = model.predict_batch(
-            box_batch=boxes_batch,
-            multimask_output=False,
-        )
+        # Only pass frames with at least one box to SAM2;
+        # frames without boxes are left as background (0)
+        # idcs_rel = indices within the batch
+        idcs_rel_with_boxes = []
+        for i, boxes in enumerate(boxes_batch):
+            if len(boxes):
+                idcs_rel_with_boxes.append(i)
+            else:
+                print(f"Frame {batch_start + i}: no boxes, skipped")
 
-        # Convert boolean masks to ID-encoded masks
-        # (higher ID wins in overlap)
-        for idx_rel_batch in range(actual_batch_size):
-            masks_one_frame = masks_batch[idx_rel_batch].squeeze(
-                axis=1
-            )  # (N, H, W)
-
-            n_objects = masks_one_frame.shape[0]
-            obj_ids = np.arange(1, n_objects + 1, dtype=np.int16)[
-                :, None, None
+        if idcs_rel_with_boxes:
+            # Compute embeddings for images with boxes
+            image_batch = [
+                image_array[batch_start + i] for i in idcs_rel_with_boxes
             ]
-            id_mask_batch[idx_rel_batch] = (masks_one_frame * obj_ids).max(
-                axis=0
+            model.set_image_batch(image_batch)
+
+            # List of (N_i, 4) arrays, one per image with boxes
+            box_batch = [boxes_batch[i] for i in idcs_rel_with_boxes]
+
+            # Predict batch of masks — list of (N, 1, H, W) arrays,
+            # it has one per mask image for each frame **with boxes**
+            masks_batch, _scores_batch, _ = model.predict_batch(
+                box_batch=box_batch,
+                multimask_output=False,
             )
 
-            print(
-                f"Frame {idx + idx_rel_batch}: "
-                f"{n_objects} masks / "
-                f"{boxes_batch[idx_rel_batch].shape[0]}"
-                " boxes"
-            )
+            # Convert boolean masks to ID-encoded masks
+            # (higher ID wins in overlap)
+            # idcs_rel = indices within the batch
+            for idx_rel_batch, masks in zip(
+                idcs_rel_with_boxes,
+                masks_batch,
+                strict=True,
+            ):
+                # SAM2 squeezes the box axis when N == 1, returning
+                # (1, H, W) instead of (N, 1, H, W); we use reshape
+                # to handle both
+                masks_one_frame = masks.reshape(-1, img_h, img_w)  # (N, H, W)
+                n_objects = masks_one_frame.shape[0]
+                obj_ids = np.arange(1, n_objects + 1, dtype=np.int16)[
+                    :, None, None
+                ]
+
+                # Add results to batch array (B,H,W)
+                label_mask_batch[idx_rel_batch] = (
+                    masks_one_frame * obj_ids
+                ).max(axis=0)
+
+                # log
+                print(
+                    f"Frame {batch_start + idx_rel_batch}: "
+                    f"{n_objects} masks / "
+                    f"{boxes_batch[idx_rel_batch].shape[0]}"
+                    " boxes"
+                )
 
         # Save id_mask to zarr store
-        output_zarr[idx : idx + actual_batch_size] = id_mask_batch
+        output_zarr[batch_start : batch_start + actual_batch_size] = (
+            label_mask_batch
+        )
 
         # Mark frames as annotated in zarr store attributes
         annotated = set(output_zarr.attrs.get("annotated_frames", []))
-        annotated.update(range(idx, idx + actual_batch_size))
+        annotated.update(range(batch_start, batch_start + actual_batch_size))
         output_zarr.attrs["annotated_frames"] = sorted(annotated)
 
 
