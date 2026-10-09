@@ -10,7 +10,7 @@ import numpy as np
 import xarray as xr
 from ethology.io.annotations import load_bboxes
 from PIL import Image
-from skimage.measure import regionprops, label
+from skimage.measure import regionprops
 
 # %%
 # %matplotlib widget
@@ -63,6 +63,7 @@ def ellipses_from_labels(label_image):
         Endpoint pairs for the major axis (y, x).
     minor_axes : list of (2, 2) arrays
         Endpoint pairs for the minor axis (y, x).
+
     """
     ellipse_corners = []
     major_axes = []
@@ -124,15 +125,12 @@ ds_bboxes.attrs["image_array"] = image_array
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Load masks
-# zarr_root = zarr.open(
-#     DATA_DIR / 'annotations'/'masks_20260324_192631.zarr',
-#     mode="r",
-# )
+# ID-encoded masks (int16): 0 = background, k + 1 = the k-th box
+# in the frame. Set the store name to the output of
+# scripts/generate_masks_from_bboxes.py
+MASKS_ZARR = DATA_DIR / "annotations" / "masks_<timestamp>.zarr"
 
-mask_da_array = da.from_zarr(
-    DATA_DIR / "annotations" / "masks_20260324_192631.zarr",
-    mode="r",
-) # bool array
+mask_da_array = da.from_zarr(MASKS_ZARR, mode="r")  # (image_id, H, W)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -144,8 +142,13 @@ n_ids = ds_bboxes.sizes["id"]
 
 # for one task per chunk:
 def _apply_one_hot_encoding_for_IDs(block, n_ids):
-    """Transform a block of shape (chunk_frames, H, W)
+    """Apply one hot encoding to ID-encoded block.
+    
+    Transform an ID-encoded block of shape (chunk_frames, H, W)
     into a boolean array of shape (chunk_frames, n_ids, H, W).
+
+    Label k + 1 in the block is the mask of the box at position k
+    along the `id` dimension.
 
     This is most efficient if chunk_frames=1.
     """
@@ -205,12 +208,12 @@ ax.imshow(
 )
 ax.contour(single_mask, levels=[0.5], colors="red", linewidths=0.5)
 
-# plot all masks in one frame (boolean masks, all same color!)
-all_masks = ds_bboxes.masks_bool.sel(image_id=image_id).any(dim="id")
+# plot all masks in one frame (one color per ID)
+label_frame = mask_da_array[image_id].compute()
 ax.imshow(
-    all_masks,
+    label_frame,
     cmap="turbo",
-    alpha=all_masks.astype(float) * 0.5,
+    alpha=(label_frame > 0) * 0.5,
 )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -228,10 +231,9 @@ all_ellipses = []
 all_major_axes = []
 all_minor_axes = []
 for frame_idx in range(mask_array.shape[0]):
-    label_frame = label(np.asarray(mask_array[frame_idx]))
-    ellipse_corners, major_axes, minor_axes = ellipses_from_labels(
-        label_frame
-    )
+    # masks are already ID-encoded, so each ID is one region
+    label_frame = np.asarray(mask_array[frame_idx])
+    ellipse_corners, major_axes, minor_axes = ellipses_from_labels(label_frame)
     for corners in ellipse_corners:
         # Prepend frame index as first column for nD shapes
         nd = np.column_stack(
