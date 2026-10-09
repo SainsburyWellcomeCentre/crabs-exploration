@@ -3,6 +3,9 @@
 Pass bounding boxes as prompts to SAM2, predict masks in those regions,
 and save as an ID-encoded zarr store.
 
+This script is a one-off tool to run on annotated frames whose mask labels
+are only meaningful within a frame.
+
 Expected data directory structure::
 
     <data_dir>/
