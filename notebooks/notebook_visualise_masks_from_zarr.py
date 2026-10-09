@@ -32,21 +32,34 @@ class ImageArrayLazy:
 
     def __init__(self, img_paths):
         self.img_paths = sorted(img_paths)
-        # add image shape, assuming all have same as
+        # add image shape and dtype, assuming all have same as
         # first sample
-        sample = np.array(Image.open(img_paths[0]))  # H, W, C
+        sample = np.array(Image.open(self.img_paths[0]))  # H, W, C
         self.img_h, self.img_w, self.img_c = sample.shape
+        self.dtype = sample.dtype
 
     def __len__(self):
         return len(self.img_paths)
 
     def __getitem__(self, idx):
-        return np.array(Image.open(self.img_paths[idx]))
+        # napari indexes with a tuple, e.g. (frame, slice, slice)
+        frame_idx, *rest = idx if isinstance(idx, tuple) else (idx,)
+        if isinstance(frame_idx, slice):
+            frames = np.stack(
+                [np.array(Image.open(p)) for p in self.img_paths[frame_idx]]
+            )
+            return frames[(slice(None), *rest)]
+        return np.array(Image.open(self.img_paths[frame_idx]))[tuple(rest)]
 
     @property
     def shape(self):
+        """Shape of array (B, H, W, C)."""
         return (len(self.img_paths), self.img_h, self.img_w, self.img_c)
-        # B, H, W, C
+
+    @property
+    def ndim(self):
+        """Number of dimensions in array."""
+        return len(self.shape)
 
 
 def ellipses_from_labels(label_image):
@@ -143,7 +156,7 @@ n_ids = ds_bboxes.sizes["id"]
 # for one task per chunk:
 def _apply_one_hot_encoding_for_IDs(block, n_ids):
     """Apply one hot encoding to ID-encoded block.
-    
+
     Transform an ID-encoded block of shape (chunk_frames, H, W)
     into a boolean array of shape (chunk_frames, n_ids, H, W).
 
@@ -221,9 +234,9 @@ ax.imshow(
 mask_array = mask_da_array
 viewer = napari.Viewer()
 
-# viewer.add_image(np.asarray(image_array).moveaxis(0, -1, 1, 2), name="image")
-
-viewer.add_labels(np.asarray(mask_array), name=f"{LABEL_NAME} masks")
+# both layers are lazy, so napari only loads the frame displayed
+viewer.add_image(image_array, name="frames", rgb=True)
+viewer.add_labels(mask_array, name=f"{LABEL_NAME} masks")
 
 # %%
 # build ellipses and axis lines for napari Shapes layers
