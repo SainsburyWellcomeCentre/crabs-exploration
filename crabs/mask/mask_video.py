@@ -28,18 +28,14 @@ DEFAULT_MASK_CONFIG = str(
 # 0 is background in a label image, so crab labels start at 1
 BACKGROUND_LABEL = 0
 
+# Pytorch accelerator names that differ from their torch device name
+ACCELERATOR_TO_DEVICE = {"gpu": "cuda"}
+
 
 def load_mask_config(config_file: str) -> dict:
     """Load yaml file that contains the masking config parameters."""
     with open(config_file) as f:
         return yaml.safe_load(f)
-
-
-def accelerator_to_device(accelerator: str) -> str:
-    """Map a Pytorch accelerator name to a torch device name."""
-    if accelerator == "gpu":
-        return "cuda"
-    return accelerator
 
 
 def load_sam2_predictor(model_id: str, device: str):
@@ -445,7 +441,7 @@ def main(args: argparse.Namespace) -> None:
             _resolve_clip_videos(args.videos, node.name, clip_ids),
         )
 
-    device = accelerator_to_device(args.accelerator)
+    device = ACCELERATOR_TO_DEVICE.get(args.accelerator, args.accelerator)
     predictor = load_sam2_predictor(sam2_model_id, device)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -589,10 +585,8 @@ def mask_parse_args(args: list[str]) -> argparse.Namespace:
         "--accelerator",
         type=str,
         default="gpu",
-        help=(
-            "Accelerator for Pytorch. "
-            "Valid inputs are: cpu, mps, or gpu. Default: gpu."
-        ),
+        choices=["cpu", "mps", "gpu"],
+        help="Accelerator for Pytorch. Default: gpu.",
     )
     parser.add_argument(
         "--zarr_mode_store",
