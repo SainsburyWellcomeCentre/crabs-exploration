@@ -7,11 +7,10 @@ import dask.array as da
 import matplotlib.pyplot as plt
 import napari
 import numpy as np
-import sparse
 import xarray as xr
-import zarr
 from ethology.io.annotations import load_bboxes
 from PIL import Image
+from skimage.measure import regionprops, label
 
 # %%
 # %matplotlib widget
@@ -26,6 +25,7 @@ LABEL_NAME = "crab"
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
 # Helpers
+
 
 class ImageArrayLazy:
     """A lazy array for images in a list."""
@@ -124,12 +124,15 @@ ds_bboxes.attrs["image_array"] = image_array
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Load masks
-zarr_root = zarr.open(
-    DATA_DIR / f"{LABEL_NAME} masks.zarr",
-    mode="r",
-)
+# zarr_root = zarr.open(
+#     DATA_DIR / 'annotations'/'masks_20260324_192631.zarr',
+#     mode="r",
+# )
 
-mask_da_array = da.from_zarr(zarr_root["masks"])
+mask_da_array = da.from_zarr(
+    DATA_DIR / "annotations" / "masks_20260324_192631.zarr",
+    mode="r",
+) # bool array
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -138,14 +141,15 @@ mask_da_array = da.from_zarr(zarr_root["masks"])
 # CONS: can be slow to compute
 n_ids = ds_bboxes.sizes["id"]
 
+
 # for one task per chunk:
 def _apply_one_hot_encoding_for_IDs(block, n_ids):
-    """Transform a block of shape (chunk_frames, H, W) 
+    """Transform a block of shape (chunk_frames, H, W)
     into a boolean array of shape (chunk_frames, n_ids, H, W).
 
     This is most efficient if chunk_frames=1.
     """
-    labels = np.arange(1, n_ids + 1)[None, :, None, None] # (1, n_ids, 1, 1)
+    labels = np.arange(1, n_ids + 1)[None, :, None, None]  # (1, n_ids, 1, 1)
     # compare every pixel against every label simultaneously
     # via broadcasting (i.e. for each pixel, we have a 1-hot encoding
     # vector indicate which label/id it is)
@@ -154,16 +158,16 @@ def _apply_one_hot_encoding_for_IDs(block, n_ids):
 
 # Apply expand labels chunk by chunk
 # we define one chunk per image
-mask_da_array = mask_da_array.rechunk({0: 1}) 
+mask_da_array = mask_da_array.rechunk({0: 1})
 mask_4d = mask_da_array.map_blocks(
     _apply_one_hot_encoding_for_IDs,
     n_ids=n_ids,
-    new_axis=1, # position of new_axis id
-    chunks=( # sizes of output chunks (if diff from input)
-        mask_da_array.chunks[0], # same as input chunk axis=0
-        (n_ids,),   # ids
-        mask_da_array.chunks[1], # same as input chunk axis=1
-        mask_da_array.chunks[2], # same as input chunk axis=2
+    new_axis=1,  # position of new_axis id
+    chunks=(  # sizes of output chunks (if diff from input)
+        mask_da_array.chunks[0],  # same as input chunk axis=0
+        (n_ids,),  # ids
+        mask_da_array.chunks[1],  # same as input chunk axis=1
+        mask_da_array.chunks[2],  # same as input chunk axis=2
     ),
     dtype=bool,
 )  # (image_id, id, img_h, img_w)
@@ -224,8 +228,9 @@ all_ellipses = []
 all_major_axes = []
 all_minor_axes = []
 for frame_idx in range(mask_array.shape[0]):
+    label_frame = label(np.asarray(mask_array[frame_idx]))
     ellipse_corners, major_axes, minor_axes = ellipses_from_labels(
-        np.asarray(mask_array[frame_idx])
+        label_frame
     )
     for corners in ellipse_corners:
         # Prepend frame index as first column for nD shapes
@@ -266,3 +271,5 @@ viewer.add_shapes(
     edge_width=4,
     name="major axes",
 )
+
+# %%
