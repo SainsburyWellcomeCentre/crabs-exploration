@@ -67,8 +67,12 @@ class ImageArrayLazy:
     """A lazy array for images in a list."""
 
     def __init__(self, img_paths):
-        """Initialise with a list of image file paths."""
-        self.img_paths = sorted(img_paths)
+        """Initialise with a list of image file paths.
+
+        The order of ``img_paths`` is preserved, so that index ``i``
+        corresponds to the ``i``-th path.
+        """
+        self.img_paths = list(img_paths)
         # add image shape, assuming all have same as
         # first sample
         sample = np.array(Image.open(img_paths[0]))  # H, W, C
@@ -89,20 +93,42 @@ class ImageArrayLazy:
         # B, H, W, C
 
 
+def get_image_paths(ds_bboxes):
+    """Return image file paths in the order of the ``image_id`` coordinate.
+
+    The ``i``-th path is the image of the ``i``-th element of
+    ``ds_bboxes.image_id``.
+    """
+    images_dir = Path(ds_bboxes.attrs["images_directories"])
+    map_id_to_filename = ds_bboxes.attrs["map_image_id_to_filename"]
+    img_paths = [
+        images_dir / map_id_to_filename[img_id]
+        for img_id in ds_bboxes.image_id.values
+    ]
+    missing = [p for p in img_paths if not p.is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f"{len(missing)} annotated images not found, e.g. {missing[0]}"
+        )
+    return img_paths
+
+
 def get_bboxes_x1y1_x2y2_per_frame(ds_bboxes):
     """Build a dict mapping frame index to (N, 4) bbox arrays.
 
-    Converts centre+shape format to [x1, y1, x2, y2] corners.
+    The frame index is the position along the ``image_id`` coordinate
+    (not the ``image_id`` value). Converts centre+shape format to
+    [x1, y1, x2, y2] corners.
     """
     x1y1 = ds_bboxes.position - ds_bboxes.shape / 2
     x2y2 = ds_bboxes.position + ds_bboxes.shape / 2
 
     return {
         idx: np.c_[
-            x1y1.sel(image_id=idx).dropna(dim="id", how="all").values.T,
-            x2y2.sel(image_id=idx).dropna(dim="id", how="all").values.T,
+            x1y1.isel(image_id=idx).dropna(dim="id", how="all").values.T,
+            x2y2.isel(image_id=idx).dropna(dim="id", how="all").values.T,
         ]
-        for idx in range(len(ds_bboxes.image_id))
+        for idx in range(ds_bboxes.sizes["image_id"])
     }
 
 
@@ -257,10 +283,10 @@ def main(args):
         images_dirs=images_dir,
     )
 
-    # Load ground truth images as lazy array
-    png_files = sorted(ds_bboxes.attrs["images_directories"].glob("*.png"))
-    image_array = ImageArrayLazy(png_files)
-    # ds_bboxes.attrs["image_array"] = image_array
+    # Load ground truth images as lazy array, aligned with
+    # the image_id coordinate
+    img_paths = get_image_paths(ds_bboxes)
+    image_array = ImageArrayLazy(img_paths)
 
     # Load SAM2 predictor on device
     image_predictor = SAM2ImagePredictor.from_pretrained(
@@ -285,6 +311,9 @@ def main(args):
         "background_label": 0,
         "id_offset": 1,
         "device": device,
+        # frame i in the zarr store corresponds to image_ids[i]
+        "image_ids": ds_bboxes.image_id.values.tolist(),
+        "image_filenames": [p.name for p in img_paths],
     }
     mask_zarr = create_mask_zarr(
         output_masks_zarr,
