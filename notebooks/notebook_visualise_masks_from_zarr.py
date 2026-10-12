@@ -9,32 +9,30 @@ import matplotlib.pyplot as plt
 import napari
 import numpy as np
 import xarray as xr
-import zarr
-from ethology.io.annotations import load_bboxes
+from matplotlib.patches import Ellipse
 from PIL import Image
-from skimage.measure import regionprops
 
 # %%
 # %matplotlib widget
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# September groundtruth data
+# Groundtruth data
 
-# map dataset to masks
+# map dataset to the output store of scripts/generate_masks_from_bboxes.py
+# (stores named masks_<timestamp>.zarr, written before the bboxes and mask
+# parameters were added, cannot be read here; re-run the script)
 map_month_to_zarr = {
-    "sep": "masks_20261009_133849.zarr",
-    "aug": "masks_20261009_135707.zarr",
+    "sep": "bboxes_and_masks_<timestamp>.zarr",
+    "aug": "bboxes_and_masks_<timestamp>.zarr",
 }
 
 MONTH = "aug"
 
 DATA_DIR = Path(f"/Users/sofia/swc/CrabLabels/{MONTH}2023-full")
-IMAGES_DIR = DATA_DIR / "frames"
-ANNOTATIONS_FILE = DATA_DIR / "annotations" / "VIA_JSON_combined_coco_gen.json"
 
 LABEL_NAME = "crab"
 
-MASKS_ZARR = DATA_DIR / "annotations" / map_month_to_zarr[MONTH]
+ZARR_STORE = DATA_DIR / "annotations" / map_month_to_zarr[MONTH]
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -46,77 +44,69 @@ def _read_image(path):
     return np.array(Image.open(path))
 
 
-def ellipses_from_labels(label_image):
-    """Return ellipse corners, major-axis lines, and minor-axis lines.
+def ellipse_shapes_from_ds(ds):
+    """Return napari ellipses, major axes and minor axes for every mask.
 
     Each ellipse is represented by the 4 corners of its oriented bounding
-    rectangle (for napari's built-in ``"ellipse"`` shape type).
+    rectangle (for napari's built-in ``"ellipse"`` shape type), and each
+    axis by its 2 endpoints. Points are in (frame index, y, x) order.
 
     Returns
     -------
-    ellipse_corners : list of (4, 2) arrays
-        Corners in (y, x) order.
-    major_axes : list of (2, 2) arrays
-        Endpoint pairs for the major axis (y, x).
-    minor_axes : list of (2, 2) arrays
-        Endpoint pairs for the minor axis (y, x).
+    ellipse_corners : (N, 4, 3) array
+    major_axes : (N, 2, 3) array
+    minor_axes : (N, 2, 3) array
 
     """
-    ellipse_corners = []
-    major_axes = []
-    minor_axes = []
-    for prop in regionprops(label_image):
-        cy, cx = prop.centroid
-        a = prop.major_axis_length / 2
-        b = prop.minor_axis_length / 2
-        theta = prop.orientation
-        # scikit-image orientation: angle of the major axis
-        # measured counter-clockwise from the row (y) axis
-        # direction vectors in (y, x)
-        dir_major = np.array([np.cos(theta), np.sin(theta)])
-        dir_minor = np.array([-np.sin(theta), np.cos(theta)])
+    f, k = np.nonzero(ds.mask_area.notnull().values)  # frame, id index
+    cx = ds.mask_centroid.sel(space="x").values[f, k]
+    cy = ds.mask_centroid.sel(space="y").values[f, k]
+    a = ds.ellipse_major_axis_length.values[f, k][:, None] / 2
+    b = ds.ellipse_minor_axis_length.values[f, k][:, None] / 2
+    theta = ds.ellipse_major_axis_theta.values[f, k]
 
-        center = np.array([cy, cx])
+    # unit vectors in (y, x): major axis at theta from +x, minor at 90 deg
+    u = np.stack([np.sin(theta), np.cos(theta)], axis=-1)
+    v = np.stack([np.cos(theta), -np.sin(theta)], axis=-1)
+    c = np.stack([cy, cx], axis=-1)
 
-        # 4 corners of the oriented bounding rectangle
-        corners = np.array(
-            [
-                center + a * dir_major + b * dir_minor,
-                center + a * dir_major - b * dir_minor,
-                center - a * dir_major - b * dir_minor,
-                center - a * dir_major + b * dir_minor,
-            ]
-        )
-        ellipse_corners.append(corners)
+    corners = np.stack(
+        [
+            c + a * u + b * v,
+            c + a * u - b * v,
+            c - a * u - b * v,
+            c - a * u + b * v,
+        ],
+        axis=1,
+    )  # (N, 4, 2)
+    major = np.stack([c - a * u, c + a * u], axis=1)  # (N, 2, 2)
+    minor = np.stack([c - b * v, c + b * v], axis=1)  # (N, 2, 2)
 
-        # axis endpoints
-        major_axes.append(
-            np.array([center - a * dir_major, center + a * dir_major])
-        )
-        minor_axes.append(
-            np.array([center - b * dir_minor, center + b * dir_minor])
-        )
+    def with_frame(points):
+        frame = np.broadcast_to(f[:, None, None], (*points.shape[:2], 1))
+        return np.concatenate([frame, points], axis=-1)
 
-    return ellipse_corners, major_axes, minor_axes
+    return with_frame(corners), with_frame(major), with_frame(minor)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%
-# Read groundtruth as ethology annotation dataset
-ds_bboxes = load_bboxes.from_files(
-    ANNOTATIONS_FILE,
-    format="COCO",
-    images_dirs=IMAGES_DIR,
-)
+# Read bboxes, masks and mask parameters from one store
+# - labels: ID-encoded masks (uint16), 0 = background
+# - label_of: label k + 1 is the mask for the box at position k along `id`
+# - mask_* and ellipse_*: parameters per mask, on (image_id, id)
+ds = xr.open_zarr(ZARR_STORE)
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load ground truth images as lazy dask array
 # Build the list of image files from the dataset's image_id -> filename
-# map, so that the images are aligned with the image_id coordinate
-images_dir = Path(ds_bboxes.attrs["images_directories"])
-map_id_to_filename = ds_bboxes.attrs["map_image_id_to_filename"]
+# map, so that the images are aligned with the image_id coordinate.
+# zarr stores dict keys as strings, so convert them back to int once
+images_dir = Path(ds.attrs["images_directories"])
+map_id_to_filename = {
+    int(k): v for k, v in ds.attrs["map_image_id_to_filename"].items()
+}
 img_paths = [
-    images_dir / map_id_to_filename[img_id]
-    for img_id in ds_bboxes.image_id.values
+    images_dir / map_id_to_filename[img_id] for img_id in ds.image_id.values
 ]
 
 # assume all images have the same shape and dtype as the first one
@@ -134,59 +124,37 @@ images = da.stack(
 print(images.shape)
 
 # add as data variable
-ds_bboxes["images"] = xr.DataArray(
+ds["images"] = xr.DataArray(
     data=images,
     dims=["image_id", "img_h", "img_w", "rgb"],
 )
 
+# %%%%%%%%%%%%%%%%%%%%%%
+# Bbox, mask and ellipse of one box, all at the same (image_id, id)
+image_id = 40
+id = 10
+box = ds.sel(image_id=image_id, id=id)
 
-# %%%%%%%%%%%%%%%%%%%%%%%
-# Load masks
-# ID-encoded masks (uint16): 0 = background, k + 1 = the mask
-# for the box at position k along `id`. Set the store name to the output of
-# scripts/generate_masks_from_bboxes.py
-# (older stores are int16, so we cast for consistency)
-mask_da_array = da.from_zarr(MASKS_ZARR, mode="r").astype(
-    np.uint16
-)  # (image_id, H, W)
-
-# check frames in the zarr store are aligned with the image_id coordinate
-mask_image_ids = zarr.open(MASKS_ZARR, mode="r").attrs.get("image_ids")
-if mask_image_ids is not None:
-    assert mask_image_ids == ds_bboxes.image_id.values.tolist()
-
-
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Add masks as label images, with a map from id to label
-# (same layout as the output of `mask-tracked-crabs`)
-ds_bboxes["labels"] = xr.DataArray(
-    data=mask_da_array,
-    dims=["image_id", "img_h", "img_w"],
-)
-# label k + 1 is the box at position k along `id`
-ds_bboxes["label_of"] = xr.DataArray(
-    data=np.arange(1, ds_bboxes.sizes["id"] + 1, dtype=np.uint16),
-    dims=["id"],
-)
+print(box.position.values)  # bbox centre (x, y)
+print(box.shape.values)  # bbox width, height
+print(box.mask_centroid.values)  # mask centroid (x, y)
+print(box.mask_area.values)  # mask area, in pixels
+print(box.ellipse_major_axis_length.values)  # full length, in pixels
+print(box.ellipse_major_axis_theta.values)  # radians, from +x towards +y
+single_mask = ds.labels.sel(image_id=image_id) == box.label_of
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Plot single mask and all masks in frame
 
-# Show single mask for id=10 in frame 40
-image_id = 40
-id = 10
-label = ds_bboxes.label_of.sel(id=id)
-single_mask = ds_bboxes.labels.sel(image_id=image_id) == label
-
 fig, ax = plt.subplots(1, 1)
 
 # image
-ax.imshow(ds_bboxes.images.sel(image_id=image_id))
+ax.imshow(ds.images.sel(image_id=image_id))
 
 # bbox centre
 ax.scatter(
-    ds_bboxes.position.sel(image_id=image_id, id=id, space="x"),
-    ds_bboxes.position.sel(image_id=image_id, id=id, space="y"),
+    ds.position.sel(image_id=image_id, id=id, space="x"),
+    ds.position.sel(image_id=image_id, id=id, space="y"),
     15,
     marker="x",
     color="r",
@@ -199,8 +167,20 @@ ax.imshow(
 )
 ax.contour(single_mask, levels=[0.5], colors="red", linewidths=0.5)
 
+# ellipse fitted to the single mask
+ax.add_patch(
+    Ellipse(
+        xy=box.mask_centroid.values,  # (x, y)
+        width=float(box.ellipse_major_axis_length),
+        height=float(box.ellipse_minor_axis_length),
+        angle=np.degrees(float(box.ellipse_major_axis_theta)),
+        fill=False,
+        edgecolor="yellow",
+    )
+)
+
 # plot all masks in one frame (one color per ID)
-label_frame = ds_bboxes.labels.sel(image_id=image_id).values
+label_frame = ds.labels.sel(image_id=image_id).values
 ax.imshow(
     label_frame,
     cmap="turbo",
@@ -209,41 +189,20 @@ ax.imshow(
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Visualise frames and masks in napari viewer
-mask_array = ds_bboxes.labels.data
+mask_array = ds.labels.data
 viewer = napari.Viewer()
 
 # both layers are lazy, so napari only loads the frame displayed
-viewer.add_image(ds_bboxes.images.data, name="frames", rgb=True)
+viewer.add_image(ds.images.data, name="frames", rgb=True)
 viewer.add_labels(mask_array, name=f"{LABEL_NAME} masks")
 
 # %%
-# build ellipses and axis lines for napari Shapes layers
-all_ellipses = []
-all_major_axes = []
-all_minor_axes = []
-for frame_idx in range(mask_array.shape[0]):
-    # masks are already ID-encoded, so each ID is one region
-    label_frame = np.asarray(mask_array[frame_idx])
-    ellipse_corners, major_axes, minor_axes = ellipses_from_labels(label_frame)
-    for corners in ellipse_corners:
-        # Prepend frame index as first column for nD shapes
-        nd = np.column_stack(
-            [np.full(corners.shape[0], fill_value=frame_idx), corners]
-        )
-        all_ellipses.append(nd)
-    for axis in major_axes:
-        nd = np.column_stack(
-            [np.full(axis.shape[0], fill_value=frame_idx), axis]
-        )
-        all_major_axes.append(nd)
-    for axis in minor_axes:
-        nd = np.column_stack(
-            [np.full(axis.shape[0], fill_value=frame_idx), axis]
-        )
-        all_minor_axes.append(nd)
+# ellipses and axis lines for napari Shapes layers,
+# from the stored ellipse parameters
+all_ellipses, all_major_axes, all_minor_axes = ellipse_shapes_from_ds(ds)
 
 viewer.add_shapes(
-    all_ellipses,
+    list(all_ellipses),
     shape_type="ellipse",
     edge_color="yellow",
     edge_width=4,
@@ -251,14 +210,14 @@ viewer.add_shapes(
     name="ellipses",
 )
 viewer.add_shapes(
-    all_minor_axes,
+    list(all_minor_axes),
     shape_type="line",
     edge_color="green",
     edge_width=4,
     name="minor axes",
 )
 viewer.add_shapes(
-    all_major_axes,
+    list(all_major_axes),
     shape_type="line",
     edge_color="red",
     edge_width=4,
