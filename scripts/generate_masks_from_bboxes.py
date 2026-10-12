@@ -1,7 +1,8 @@
 """Generate SAM2 masks from provided bboxes annotations.
 
 Pass bounding boxes as prompts to SAM2, predict masks in those regions,
-and save as an ID-encoded zarr store.
+and save them as ID-encoded label images in a zarr store, together with
+the bounding boxes and a few shape parameters per mask.
 
 This script is a one-off tool to run on annotated frames whose mask labels
 are only meaningful within a frame.
@@ -13,8 +14,45 @@ Expected data directory structure::
         annotations/                            # contains COCO-format JSON
             VIA_JSON_combined_coco_gen.json
 
-Output masks are written to:
-    <data_dir>/annotations/masks_<timestamp>.zarr
+Output is written to an xarray dataset in a zarr store:
+    <data_dir>/annotations/bboxes_and_masks_<timestamp>.zarr
+
+with the following layout::
+
+    ├── image_id, space, id             coordinates from ds_bboxes
+    ├── position, shape, category, ...  (image_id, [space,] id)  from ethology
+    ├── labels                          (image_id, img_h, img_w) uint16,
+    │                                   0 = background
+    ├── label_of                        (id,) uint16, label = id + 1
+    ├── mask_centroid                   (image_id, space, id) float64
+    └── mask_area, mask_area_to_convex_hull_area,
+        mask_area_to_mask_bbox_area, ellipse_major_axis_length,
+        ellipse_minor_axis_length, ellipse_major_axis_theta,
+        ellipse_eccentricity            (image_id, id) float64
+
+All variables share the ``image_id`` and ``id`` coordinates, so the mask
+and ellipse parameters of a bounding box sit at the same (image_id, id)
+as the box. Slots with no box, or with an empty mask, are NaN.
+
+The mask parameters are computed with scikit-image's
+``regionprops_table`` on the stored ``labels``, so an occluded crab is
+measured on its visible pixels only ("smallest_wins" occlusion policy).
+The ellipse is the one with the same second moments as the mask:
+
+- ``mask_centroid``: mean (x, y) of the mask pixels, and ellipse centre.
+- ``mask_area``: number of mask pixels.
+- ``mask_area_to_convex_hull_area``: mask area / area of its convex hull.
+- ``mask_area_to_mask_bbox_area``: mask area / area of the mask's own
+  axis-aligned bounding box (not the annotated bounding box).
+- ``ellipse_major_axis_length``, ``ellipse_minor_axis_length``: full axis
+  lengths in pixels, not semi-axes.
+- ``ellipse_major_axis_theta``: angle of the major axis from the image
+  x-axis towards the y-axis, in radians, in [0, pi). The image y-axis
+  points down, so a positive angle looks clockwise on screen. It can be
+  passed to matplotlib's ``Ellipse(..., angle=np.degrees(theta))``
+  directly on an image axis.
+- ``ellipse_eccentricity``: 0 for a circle, towards 1 for an elongated
+  ellipse.
 
 The bbox format for SAM is a (N, 4) float array of
 [x1, y1, x2, y2] in pixel coordinates, where x = column (width axis),
