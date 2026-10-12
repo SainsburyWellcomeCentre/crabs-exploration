@@ -3,11 +3,13 @@
 # %%
 from pathlib import Path
 
+import dask
 import dask.array as da
 import matplotlib.pyplot as plt
 import napari
 import numpy as np
 import xarray as xr
+import zarr
 from ethology.io.annotations import load_bboxes
 from PIL import Image
 from skimage.measure import regionprops
@@ -17,49 +19,31 @@ from skimage.measure import regionprops
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # September groundtruth data
-DATA_DIR = Path("/Users/sofia/swc/CrabLabels/sep2023-full")
+
+# map dataset to masks
+map_month_to_zarr = {
+    "sep": "masks_20261009_133849.zarr",
+    "aug": "masks_20261009_135707.zarr",
+}
+
+MONTH = "aug"
+
+DATA_DIR = Path(f"/Users/sofia/swc/CrabLabels/{MONTH}2023-full")
 IMAGES_DIR = DATA_DIR / "frames"
 ANNOTATIONS_FILE = DATA_DIR / "annotations" / "VIA_JSON_combined_coco_gen.json"
 
 LABEL_NAME = "crab"
 
+MASKS_ZARR = DATA_DIR / "annotations" / map_month_to_zarr[MONTH]
+
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%
 # Helpers
 
 
-class ImageArrayLazy:
-    """A lazy array for images in a list."""
-
-    def __init__(self, img_paths):
-        self.img_paths = sorted(img_paths)
-        # add image shape and dtype, assuming all have same as
-        # first sample
-        sample = np.array(Image.open(self.img_paths[0]))  # H, W, C
-        self.img_h, self.img_w, self.img_c = sample.shape
-        self.dtype = sample.dtype
-
-    def __len__(self):
-        return len(self.img_paths)
-
-    def __getitem__(self, idx):
-        # napari indexes with a tuple, e.g. (frame, slice, slice)
-        frame_idx, *rest = idx if isinstance(idx, tuple) else (idx,)
-        if isinstance(frame_idx, slice):
-            frames = np.stack(
-                [np.array(Image.open(p)) for p in self.img_paths[frame_idx]]
-            )
-            return frames[(slice(None), *rest)]
-        return np.array(Image.open(self.img_paths[frame_idx]))[tuple(rest)]
-
-    @property
-    def shape(self):
-        """Shape of array (B, H, W, C)."""
-        return (len(self.img_paths), self.img_h, self.img_w, self.img_c)
-
-    @property
-    def ndim(self):
-        """Number of dimensions in array."""
-        return len(self.shape)
+def _read_image(path):
+    """Read an image file as a numpy array of shape (H, W, C)."""
+    return np.array(Image.open(path))
 
 
 def ellipses_from_labels(label_image):
@@ -125,15 +109,35 @@ ds_bboxes = load_bboxes.from_files(
 )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Load ground truth images as lazy array
+# Load ground truth images as lazy dask array
+# Build the list of image files from the dataset's image_id -> filename
+# map, so that the images are aligned with the image_id coordinate
+images_dir = Path(ds_bboxes.attrs["images_directories"])
+map_id_to_filename = ds_bboxes.attrs["map_image_id_to_filename"]
+img_paths = [
+    images_dir / map_id_to_filename[img_id]
+    for img_id in ds_bboxes.image_id.values
+]
 
-# build lazy image array
-png_files = sorted(ds_bboxes.attrs["images_directories"].glob("*.png"))
-image_array = ImageArrayLazy(png_files)
-print(image_array.shape)
+# assume all images have the same shape and dtype as the first one
+sample = _read_image(img_paths[0])  # H, W, C
+images = da.stack(
+    [
+        da.from_delayed(
+            dask.delayed(_read_image)(p),
+            shape=sample.shape,
+            dtype=sample.dtype,
+        )
+        for p in img_paths
+    ]
+)  # (image_id, H, W, C), one chunk per image
+print(images.shape)
 
-# add as attribute
-ds_bboxes.attrs["image_array"] = image_array
+# add as data variable
+ds_bboxes["images"] = xr.DataArray(
+    data=images,
+    dims=["image_id", "img_h", "img_w", "rgb"],
+)
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%
@@ -141,9 +145,13 @@ ds_bboxes.attrs["image_array"] = image_array
 # ID-encoded masks (int16): 0 = background, k + 1 = the k-th box
 # in the frame. Set the store name to the output of
 # scripts/generate_masks_from_bboxes.py
-MASKS_ZARR = DATA_DIR / "annotations" / "masks_20261009_133849.zarr"
-
 mask_da_array = da.from_zarr(MASKS_ZARR, mode="r")  # (image_id, H, W)
+
+# check frames in the zarr store are aligned with the image_id coordinate
+# (only for stores generated after "image_ids" was added to the metadata)
+mask_image_ids = zarr.open(MASKS_ZARR, mode="r").attrs.get("image_ids")
+if mask_image_ids is not None:
+    assert mask_image_ids == ds_bboxes.image_id.values.tolist()
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -203,7 +211,7 @@ single_mask = ds_bboxes.masks_bool.sel(image_id=image_id, id=id)
 fig, ax = plt.subplots(1, 1)
 
 # image
-ax.imshow(ds_bboxes.image_array[image_id])
+ax.imshow(ds_bboxes.images.sel(image_id=image_id))
 
 # bbox centre
 ax.scatter(
@@ -235,7 +243,7 @@ mask_array = mask_da_array
 viewer = napari.Viewer()
 
 # both layers are lazy, so napari only loads the frame displayed
-viewer.add_image(image_array, name="frames", rgb=True)
+viewer.add_image(ds_bboxes.images.data, name="frames", rgb=True)
 viewer.add_labels(mask_array, name=f"{LABEL_NAME} masks")
 
 # %%
