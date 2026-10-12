@@ -33,6 +33,9 @@ Usage (dependencies are auto-installed via uv):
 # dependencies = [
 #   "Pillow",
 #   "zarr",
+#   "xarray",
+#   "dask",
+#   "scikit-image",
 #   "torch>=2.5.1",
 #   "torchvision>=0.20.1",
 #   "sam-2 @ git+https://github.com/facebookresearch/sam2.git",
@@ -58,9 +61,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import zarr
-from ethology.io.annotations import load_bboxes
 from PIL import Image
-from sam2.sam2_image_predictor import SAM2ImagePredictor
 
 
 class ImageArrayLazy:
@@ -276,6 +277,10 @@ def predict_masks_across_images(
 
 def main(args):
     """Generate masks from bbox annotations using SAM2."""
+    # imported here, so that tests can import this module without them
+    from ethology.io.annotations import load_bboxes
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+
     # Parse CLI args
     data_dir = args.data_dir
     images_dir = data_dir / "frames"
