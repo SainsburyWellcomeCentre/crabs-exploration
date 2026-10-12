@@ -165,6 +165,22 @@ def create_mask_zarr(
     return mask_zarr
 
 
+def flatten_masks_smallest_wins(masks, labels):
+    """Flatten (N, H, W) masks of one frame into an (H, W) label image.
+
+    The pixels of mask ``i`` take the value ``labels[i]``, and 0 is
+    background. Masks are painted from largest to smallest area, so
+    where two masks overlap the smaller one keeps the shared pixels
+    ("smallest_wins" occlusion policy).
+    """
+    masks = masks.astype(bool)
+    label_frame = np.zeros(masks.shape[1:], dtype=np.uint16)
+    areas = masks.reshape(len(masks), -1).sum(axis=1)
+    for i in np.argsort(-areas, kind="stable"):
+        label_frame[masks[i]] = labels[i]
+    return label_frame
+
+
 def predict_masks_across_images(
     model,
     image_array,
@@ -222,7 +238,6 @@ def predict_masks_across_images(
             )
 
             # Convert boolean masks to ID-encoded masks
-            # (higher ID wins in overlap)
             # idcs_rel = indices within the batch
             for idx_rel_batch, masks in zip(
                 idcs_rel_with_boxes,
@@ -234,12 +249,11 @@ def predict_masks_across_images(
                 # to handle both
                 masks_one_frame = masks.reshape(-1, img_h, img_w)  # (N, H, W)
                 n_objects = masks_one_frame.shape[0]
-                obj_ids = labels_batch[idx_rel_batch][:, None, None]
 
                 # Add results to batch array (B,H,W)
-                label_mask_batch[idx_rel_batch] = (
-                    masks_one_frame * obj_ids
-                ).max(axis=0)
+                label_mask_batch[idx_rel_batch] = flatten_masks_smallest_wins(
+                    masks_one_frame, labels_batch[idx_rel_batch]
+                )
 
                 # log
                 print(
@@ -318,6 +332,7 @@ def main(args):
         "mask_encoding": "instance_id",
         "background_label": 0,
         "id_offset": 1,
+        "occlusion_policy": "smallest_wins",
         "device": device,
         # frame i in the zarr store corresponds to image_ids[i]
         "image_ids": ds_bboxes.image_id.values.tolist(),
