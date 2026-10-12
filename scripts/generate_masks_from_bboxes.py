@@ -113,23 +113,32 @@ def get_image_paths(ds_bboxes):
     return img_paths
 
 
-def get_bboxes_x1y1_x2y2_per_frame(ds_bboxes):
-    """Build a dict mapping frame index to (N, 4) bbox arrays.
+def get_bboxes_mask_labels_per_frame(ds_bboxes):
+    """Build a dict mapping frame index to (boxes, mask labels).
 
-    The frame index is the position along the ``image_id`` coordinate
-    (not the ``image_id`` value). Converts centre+shape format to
-    [x1, y1, x2, y2] corners.
+    The frame index is the position along the ``image_id`` coordinate.
+    ``boxes`` is an (N, 4) array of [x1, y1, x2, y2] corners.
+    ``labels`` is an (N,) array with the label (id) used to paint the
+    mask associated to each box. The label matches the box's position
+    along the ``id`` dimension + 1.
     """
     x1y1 = ds_bboxes.position - ds_bboxes.shape / 2
     x2y2 = ds_bboxes.position + ds_bboxes.shape / 2
 
-    return {
-        idx: np.c_[
-            x1y1.isel(image_id=idx).dropna(dim="id", how="all").values.T,
-            x2y2.isel(image_id=idx).dropna(dim="id", how="all").values.T,
+    boxes_and_labels = {}
+    for idx in range(ds_bboxes.sizes["image_id"]):
+        # (n_ids, 4), with one row per id slot, NaN for empty slots
+        corners = np.c_[
+            x1y1.isel(image_id=idx).values.T,
+            x2y2.isel(image_id=idx).values.T,
         ]
-        for idx in range(ds_bboxes.sizes["image_id"])
-    }
+        # select non-nan only
+        non_nan = ~np.isnan(corners).all(axis=1)
+        boxes_and_labels[idx] = (
+            corners[non_nan],
+            np.flatnonzero(non_nan).astype(np.uint16) + 1,
+        )
+    return boxes_and_labels
 
 
 def create_mask_zarr(
@@ -159,7 +168,7 @@ def create_mask_zarr(
 def predict_masks_across_images(
     model,
     image_array,
-    bbox_prompts_per_frame_idx,
+    boxes_and_labels_per_frame_idx,
     output_zarr,
     img_batch_size=4,
 ):
@@ -178,11 +187,12 @@ def predict_masks_across_images(
             (actual_batch_size, img_h, img_w), dtype=np.uint16
         )
 
-        # List of (N_i, 4) arrays, one per image
-        boxes_batch = [
-            bbox_prompts_per_frame_idx[f_i]
-            for f_i in range(batch_start, batch_start + actual_batch_size)
-        ]
+        # Lists of (N_i, 4) boxes and (N_i,) labels, one per image
+        frame_idcs = range(batch_start, batch_start + actual_batch_size)
+        boxes_batch, labels_batch = zip(
+            *(boxes_and_labels_per_frame_idx[f_i] for f_i in frame_idcs),
+            strict=True,
+        )
 
         # Only pass frames with at least one box to SAM2;
         # frames without boxes are left as background (0)
@@ -224,9 +234,7 @@ def predict_masks_across_images(
                 # to handle both
                 masks_one_frame = masks.reshape(-1, img_h, img_w)  # (N, H, W)
                 n_objects = masks_one_frame.shape[0]
-                obj_ids = np.arange(1, n_objects + 1, dtype=np.uint16)[
-                    :, None, None
-                ]
+                obj_ids = labels_batch[idx_rel_batch][:, None, None]
 
                 # Add results to batch array (B,H,W)
                 label_mask_batch[idx_rel_batch] = (
@@ -322,16 +330,19 @@ def main(args):
     )
 
     # Compute bbox prompts per frame,
-    # as dict mapping frame index to
+    # as dict mapping frame index to a tuple of
     # (N, 4) bbox arrays in [x1, y1, x2, y2] format
-    map_frame_idx_to_boxes = get_bboxes_x1y1_x2y2_per_frame(ds_bboxes)
+    # and (N,) arrays with the mask label associated to each box
+    map_frame_idx_to_boxes_and_labels = get_bboxes_mask_labels_per_frame(
+        ds_bboxes
+    )
 
     # Predict masks in image batches
     # and write to zarr store in OCTRON-format
     predict_masks_across_images(
         image_predictor,
         image_array,
-        map_frame_idx_to_boxes,
+        map_frame_idx_to_boxes_and_labels,
         mask_zarr,
         batch_size,
     )
