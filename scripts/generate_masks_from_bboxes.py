@@ -58,6 +58,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import dask.array as da
 import numpy as np
 import torch
 import zarr
@@ -142,28 +143,66 @@ def get_bboxes_mask_labels_per_frame(ds_bboxes):
     return boxes_and_labels
 
 
-def create_mask_zarr(
-    path_to_zarr,
-    zarr_array_shape,
-    metadata_dict=None,
-):
-    """Create a zarr store for ID-encoded masks and write metadata."""
-    n_images = zarr_array_shape[0]
-    image_h = zarr_array_shape[1]
-    image_w = zarr_array_shape[2]
+def create_dataset_store(path_to_zarr, ds_bboxes, image_shape, metadata_dict):
+    """Write ds_bboxes, empty ``labels`` and ``label_of``; return ``labels``.
 
-    mask_zarr = zarr.open(
+    ``labels`` is an (image_id, img_h, img_w) uint16 array of ID-encoded
+    masks, with 0 as background. ``label_of`` maps each ``id`` to the label
+    of its mask, which is the box's position along ``id`` + 1.
+
+    The template is written with ``compute=False``: coordinates, metadata and
+    the bbox variables go to disk, but no ``labels`` chunk does. Unwritten
+    chunks read back as the fill value, 0. The caller fills ``labels``
+    through the returned zarr array, which has one frame per chunk.
+    """
+    image_h, image_w = image_shape
+    n_images = ds_bboxes.sizes["image_id"]
+
+    ds = ds_bboxes.assign(
+        labels=(
+            ("image_id", "img_h", "img_w"),
+            # lazy zeros, so to_zarr writes no data;
+            # one dask chunk per frame, matching the zarr chunks
+            da.zeros(
+                (n_images, image_h, image_w),
+                chunks=(1, image_h, image_w),
+                dtype=np.uint16,
+            ),
+        ),
+        # label k + 1 is the mask of the box at position k along `id`
+        label_of=(
+            "id",
+            np.arange(1, ds_bboxes.sizes["id"] + 1, dtype=np.uint16),
+        ),
+    )
+    ds.attrs = _attrs_for_zarr({**ds_bboxes.attrs, **metadata_dict})
+
+    ds.to_zarr(
         path_to_zarr,
         mode="w",
-        shape=(n_images, image_h, image_w),
-        dtype="uint16",
-        fill_value=0,
-        chunks=(1, image_h, image_w),
+        encoding={"labels": {"chunks": (1, image_h, image_w)}},
+        compute=False,
     )
+    return zarr.open_group(path_to_zarr)["labels"]
 
-    if metadata_dict is not None:
-        mask_zarr.attrs.update(metadata_dict)
-    return mask_zarr
+
+def _attrs_for_zarr(attrs):
+    """Return a copy of ``attrs`` with every ``Path`` turned into ``str``.
+
+    zarr cannot store ``Path`` attributes. Dict keys are left unchanged:
+    zarr writes ``int`` keys as strings, so readers convert them back.
+    """
+
+    def fix(value):
+        if isinstance(value, Path):
+            return str(value)
+        if isinstance(value, dict):
+            return {k: fix(v) for k, v in value.items()}
+        if isinstance(value, list | tuple):
+            return [fix(v) for v in value]
+        return value
+
+    return {key: fix(value) for key, value in attrs.items()}
 
 
 def flatten_masks_smallest_wins(masks, labels):
@@ -298,10 +337,9 @@ def main(args):
         device = "cpu"
     print(f"Using device: {device}")
 
-    # Create output zarr store
+    # Output zarr store, holding bboxes, masks and mask parameters
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_masks_zarr = annotations_dir / f"masks_{timestamp}.zarr"
-    output_masks_zarr.mkdir(parents=True, exist_ok=True)
+    output_zarr = annotations_dir / f"bboxes_and_masks_{timestamp}.zarr"
 
     # Read groundtruth as ethology annotation dataset
     ds_bboxes = load_bboxes.from_files(
@@ -309,6 +347,9 @@ def main(args):
         format="COCO",
         images_dirs=images_dir,
     )
+    # zarr 3 has no stable format for numpy's fixed-width strings,
+    # so store the `space` coordinate as variable-length strings
+    ds_bboxes = ds_bboxes.assign_coords(space=ds_bboxes.space.astype(object))
 
     # Load ground truth images as lazy array, aligned with
     # the image_id coordinate
@@ -321,7 +362,8 @@ def main(args):
         device=device,
     )
 
-    # Create zarr store for output ID-encoded masks
+    # Create zarr store with the bboxes and an empty array
+    # for the output ID-encoded masks
     n_images, image_h, image_w = image_array.shape[:3]  # (T, H, W)
     metadata_dict = {
         "timestamp": timestamp,
@@ -343,9 +385,10 @@ def main(args):
         "image_ids": ds_bboxes.image_id.values.tolist(),
         "image_filenames": [p.name for p in img_paths],
     }
-    mask_zarr = create_mask_zarr(
-        output_masks_zarr,
-        (n_images, image_h, image_w),
+    labels_zarr = create_dataset_store(
+        output_zarr,
+        ds_bboxes,
+        (image_h, image_w),
         metadata_dict=metadata_dict,
     )
 
@@ -363,11 +406,11 @@ def main(args):
         image_predictor,
         image_array,
         map_frame_idx_to_boxes_and_labels,
-        mask_zarr,
+        labels_zarr,
         batch_size,
     )
 
-    print(f"Saved ID-encoded mask zarr to {output_masks_zarr}")
+    print(f"Saved bboxes and ID-encoded masks to {output_zarr}")
 
 
 def parse_args(list_args: list[str]) -> argparse.Namespace:
