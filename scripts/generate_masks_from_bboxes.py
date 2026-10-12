@@ -146,7 +146,7 @@ def create_mask_zarr(
         path_to_zarr,
         mode="w",
         shape=(n_images, image_h, image_w),
-        dtype="int16",
+        dtype="uint16",
         fill_value=0,
         chunks=(1, image_h, image_w),
     )
@@ -175,7 +175,7 @@ def predict_masks_across_images(
         # Integer array (B, H, W):
         # 0 = background, 1+ = object instance IDs
         label_mask_batch = np.zeros(
-            (actual_batch_size, img_h, img_w), dtype=np.int16
+            (actual_batch_size, img_h, img_w), dtype=np.uint16
         )
 
         # List of (N_i, 4) arrays, one per image
@@ -224,7 +224,7 @@ def predict_masks_across_images(
                 # to handle both
                 masks_one_frame = masks.reshape(-1, img_h, img_w)  # (N, H, W)
                 n_objects = masks_one_frame.shape[0]
-                obj_ids = np.arange(1, n_objects + 1, dtype=np.int16)[
+                obj_ids = np.arange(1, n_objects + 1, dtype=np.uint16)[
                     :, None, None
                 ]
 
