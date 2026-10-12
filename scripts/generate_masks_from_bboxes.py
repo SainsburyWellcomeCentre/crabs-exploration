@@ -61,8 +61,20 @@ from pathlib import Path
 import dask.array as da
 import numpy as np
 import torch
+import xarray as xr
 import zarr
 from PIL import Image
+from skimage.measure import regionprops_table
+
+# regionprops_table property -> data variable on (image_id, id)
+PROPS_TO_VARS = {
+    "area": "mask_area",
+    "solidity": "mask_area_to_convex_hull_area",
+    "extent": "mask_area_to_mask_bbox_area",
+    "axis_major_length": "ellipse_major_axis_length",
+    "axis_minor_length": "ellipse_minor_axis_length",
+    "eccentricity": "ellipse_eccentricity",
+}
 
 
 class ImageArrayLazy:
@@ -219,6 +231,63 @@ def flatten_masks_smallest_wins(masks, labels):
     for i in np.argsort(-areas, kind="stable"):
         label_frame[masks[i]] = labels[i]
     return label_frame
+
+
+def compute_mask_props(labels_zarr, ds_bboxes):
+    """Measure each mask and its fitted ellipse, per (image_id, id).
+
+    Masks are read from ``labels_zarr`` one frame at a time. The mask with
+    label ``k + 1`` is measured and stored at position ``k`` along ``id``,
+    so each value sits at the (image_id, id) of its bounding box.
+
+    The ellipse is the one with the same second moments as the mask, as
+    defined by scikit-image. The returned dataset has these data variables,
+    with NaN for slots with no mask:
+
+    - ``mask_centroid`` (image_id, space, id): mean (x, y) of the mask
+      pixels, which is also the ellipse centre.
+    - ``mask_area``: number of mask pixels.
+    - ``mask_area_to_convex_hull_area``: mask area / area of its convex
+      hull (scikit-image's ``solidity``).
+    - ``mask_area_to_mask_bbox_area``: mask area / area of the mask's own
+      axis-aligned bounding box (scikit-image's ``extent``). Note this is
+      the bounding box of the mask, not the annotated (prompt) bounding
+      box, so it depends on the mask's rotation.
+    - ``ellipse_major_axis_length``, ``ellipse_minor_axis_length``: full
+      axis lengths in pixels, not semi-axes.
+    - ``ellipse_major_axis_theta``: angle of the major axis from the image
+      x-axis (columns) towards the y-axis (rows), in radians, in [0, pi).
+      The image y-axis points down, so a positive angle looks clockwise
+      on screen.
+    - ``ellipse_eccentricity``: 0 for a circle, towards 1 for an elongated
+      ellipse.
+    """
+    n_images, n_ids = ds_bboxes.sizes["image_id"], ds_bboxes.sizes["id"]
+    names = [*PROPS_TO_VARS.values(), "ellipse_major_axis_theta"]
+    out = {name: np.full((n_images, n_ids), np.nan) for name in names}
+    centroid = np.full((n_images, 2, n_ids), np.nan)  # space = ["x", "y"]
+
+    for f in range(n_images):
+        table = regionprops_table(
+            np.asarray(labels_zarr[f]),
+            properties=["label", "centroid", "orientation", *PROPS_TO_VARS],
+        )
+        # label k + 1 is the mask of the box at position k along `id`
+        idx = table["label"] - 1
+        for prop, name in PROPS_TO_VARS.items():
+            out[name][f, idx] = table[prop]
+        # scikit-image measures from the row axis; convert to the x-axis
+        out["ellipse_major_axis_theta"][f, idx] = np.mod(
+            np.pi / 2 - table["orientation"], np.pi
+        )
+        centroid[f, 0, idx] = table["centroid-1"]  # x = column
+        centroid[f, 1, idx] = table["centroid-0"]  # y = row
+
+    data_vars = {name: (("image_id", "id"), arr) for name, arr in out.items()}
+    data_vars["mask_centroid"] = (("image_id", "space", "id"), centroid)
+    return xr.Dataset(
+        data_vars, coords=ds_bboxes[["image_id", "space", "id"]].coords
+    )
 
 
 def predict_masks_across_images(
@@ -410,7 +479,11 @@ def main(args):
         batch_size,
     )
 
-    print(f"Saved bboxes and ID-encoded masks to {output_zarr}")
+    # Add mask and ellipse parameters per bbox, measured on the stored masks
+    ds_props = compute_mask_props(labels_zarr, ds_bboxes)
+    ds_props.to_zarr(output_zarr, mode="a")
+
+    print(f"Saved bboxes, masks and mask parameters to {output_zarr}")
 
 
 def parse_args(list_args: list[str]) -> argparse.Namespace:

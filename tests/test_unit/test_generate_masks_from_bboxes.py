@@ -3,8 +3,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
+from skimage.draw import ellipse
 
-from scripts.generate_masks_from_bboxes import create_dataset_store
+from scripts.generate_masks_from_bboxes import (
+    compute_mask_props,
+    create_dataset_store,
+)
 
 
 @pytest.fixture
@@ -27,6 +31,54 @@ def ds_bboxes():
             "map_image_id_to_filename": {5: "a.png", 7: "b.png"},
         },
     )
+
+
+@pytest.fixture
+def labels():
+    """(2, 100, 120) label images: id 0 in image 5, id 2 in image 7."""
+    lab = np.zeros((2, 100, 120), np.uint16)
+    rr, cc = ellipse(50, 60, 8, 20)  # semi-axes 8 (rows), 20 (cols)
+    lab[0, rr, cc] = 1  # elongated along x
+    # skimage.draw rotates from +x towards -y, so this is theta = pi / 4
+    rr, cc = ellipse(50, 60, 8, 20, rotation=-np.pi / 4)
+    lab[1, rr, cc] = 3
+    return lab
+
+
+def test_compute_mask_props(labels, ds_bboxes):
+    """Check values land at the right (image_id, id) and are correct."""
+    ds = compute_mask_props(labels, ds_bboxes)
+
+    first = ds.sel(image_id=5, id=0)
+    assert first.mask_area == (labels[0] == 1).sum()
+    np.testing.assert_allclose(first.mask_centroid, [60, 50])  # (x, y)
+    # axis lengths are full lengths, not semi-axes
+    np.testing.assert_allclose(first.ellipse_major_axis_length, 40, rtol=0.05)
+    np.testing.assert_allclose(first.ellipse_minor_axis_length, 16, rtol=0.1)
+    np.testing.assert_allclose(first.ellipse_major_axis_theta, 0, atol=0.02)
+    np.testing.assert_allclose(
+        ds.ellipse_major_axis_theta.sel(image_id=7, id=2),
+        np.pi / 4,
+        atol=0.02,
+    )
+    # every other slot has no mask
+    for name in ds.data_vars:
+        assert int(ds[name].isnull().sum()) == 4 * ds[name].sizes.get(
+            "space", 1
+        )
+
+
+def test_store_round_trip(tmp_path, ds_bboxes, labels):
+    """Run the three passes of main, without SAM2."""
+    store = tmp_path / "bboxes_and_masks.zarr"
+    labels_zarr = create_dataset_store(store, ds_bboxes, (100, 120), {})
+    labels_zarr[:] = labels  # what predict_masks_across_images does
+    compute_mask_props(labels_zarr, ds_bboxes).to_zarr(store, mode="a")
+
+    ds = xr.open_zarr(store)
+    mask = ds.labels.sel(image_id=7) == ds.label_of.sel(id=2)
+    assert int(mask.sum()) == ds.mask_area.sel(image_id=7, id=2)
+    np.testing.assert_array_equal(ds.labels.values, labels)
 
 
 def test_create_dataset_store(tmp_path, ds_bboxes):
