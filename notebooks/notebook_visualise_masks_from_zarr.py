@@ -142,8 +142,8 @@ ds_bboxes["images"] = xr.DataArray(
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Load masks
-# ID-encoded masks (uint16): 0 = background, k + 1 = the k-th box
-# in the frame. Set the store name to the output of
+# ID-encoded masks (uint16): 0 = background, k + 1 = the mask
+# for the box at position k along `id`. Set the store name to the output of
 # scripts/generate_masks_from_bboxes.py
 # (older stores are int16, so we cast for consistency)
 mask_da_array = da.from_zarr(MASKS_ZARR, mode="r").astype(
