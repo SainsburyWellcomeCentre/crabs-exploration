@@ -11,7 +11,7 @@ def test_extract_bounding_box_info():
     csv_row = [
         "frame_00000001.png",
         "26542080",
-        "{" "clip" ":123}",
+        "{clip:123}",
         "1",
         "0",
         '{"name":"rect","x":2894.860594987354,"y":975.8516839863181,"width":51,"height":41}',

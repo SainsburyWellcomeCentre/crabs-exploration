@@ -80,9 +80,9 @@ def test_ground_truth_data_values(tracker_evaluate_interface):
             expected_frame_data["bbox"],
             strict=False,
         ):
-            assert np.allclose(
-                bbox, expected_bbox
-            ), f"Frame {expected_frame_number}, bbox mismatch"
+            assert np.allclose(bbox, expected_bbox), (
+                f"Frame {expected_frame_number}, bbox mismatch"
+            )
 
         # check id arrays match the expected values
         assert np.array_equal(

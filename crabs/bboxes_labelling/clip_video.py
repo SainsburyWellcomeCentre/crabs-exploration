@@ -130,8 +130,7 @@ if __name__ == "__main__":
 
     input_file = args.video_path
     file_name = (
-        f"{Path(args.video_path).parent.stem}_"
-        f"{Path(args.video_path).stem}_"
+        f"{Path(args.video_path).parent.stem}_{Path(args.video_path).stem}_"
     )
 
     start_real_time = datetime.strptime(args.start_time, "%H:%M:%S")

@@ -130,9 +130,7 @@ def parse_video_frame_reading_error_and_log(frame_idx: int, total_frames: int):
     if frame_idx == total_frames:
         logging.info(f"All {total_frames} frames processed")
     else:
-        logging.info(
-            f"Error reading frame index " f"{frame_idx}/{total_frames}."
-        )
+        logging.info(f"Error reading frame index {frame_idx}/{total_frames}.")
 
 
 def setup_video_writer_from_input_video(
