@@ -142,71 +142,41 @@ ds_bboxes["images"] = xr.DataArray(
 
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Load masks
-# ID-encoded masks (int16): 0 = background, k + 1 = the k-th box
+# ID-encoded masks (uint16): 0 = background, k + 1 = the k-th box
 # in the frame. Set the store name to the output of
 # scripts/generate_masks_from_bboxes.py
-mask_da_array = da.from_zarr(MASKS_ZARR, mode="r")  # (image_id, H, W)
+# (older stores are int16, so we cast for consistency)
+mask_da_array = da.from_zarr(MASKS_ZARR, mode="r").astype(
+    np.uint16
+)  # (image_id, H, W)
 
 # check frames in the zarr store are aligned with the image_id coordinate
-# (only for stores generated after "image_ids" was added to the metadata)
 mask_image_ids = zarr.open(MASKS_ZARR, mode="r").attrs.get("image_ids")
 if mask_image_ids is not None:
     assert mask_image_ids == ds_bboxes.image_id.values.tolist()
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Load as 4D boolean dask array with id dim
-# Each slice [image_id, id] is a boolean mask for that object in that frame
-# CONS: can be slow to compute
-n_ids = ds_bboxes.sizes["id"]
-
-
-# for one task per chunk:
-def _apply_one_hot_encoding_for_IDs(block, n_ids):
-    """Apply one hot encoding to ID-encoded block.
-
-    Transform an ID-encoded block of shape (chunk_frames, H, W)
-    into a boolean array of shape (chunk_frames, n_ids, H, W).
-
-    Label k + 1 in the block is the mask of the box at position k
-    along the `id` dimension.
-
-    This is most efficient if chunk_frames=1.
-    """
-    labels = np.arange(1, n_ids + 1)[None, :, None, None]  # (1, n_ids, 1, 1)
-    # compare every pixel against every label simultaneously
-    # via broadcasting (i.e. for each pixel, we have a 1-hot encoding
-    # vector indicate which label/id it is)
-    return block[:, None, :, :] == labels
-
-
-# Apply expand labels chunk by chunk
-# we define one chunk per image
-mask_da_array = mask_da_array.rechunk({0: 1})
-mask_4d = mask_da_array.map_blocks(
-    _apply_one_hot_encoding_for_IDs,
-    n_ids=n_ids,
-    new_axis=1,  # position of new_axis id
-    chunks=(  # sizes of output chunks (if diff from input)
-        mask_da_array.chunks[0],  # same as input chunk axis=0
-        (n_ids,),  # ids
-        mask_da_array.chunks[1],  # same as input chunk axis=1
-        mask_da_array.chunks[2],  # same as input chunk axis=2
-    ),
-    dtype=bool,
-)  # (image_id, id, img_h, img_w)
-
-ds_bboxes["masks_bool"] = xr.DataArray(
-    data=mask_4d,
-    dims=["image_id", "id", "img_h", "img_w"],
+# Add masks as label images, with a map from id to label
+# (same layout as the output of `mask-tracked-crabs`)
+ds_bboxes["labels"] = xr.DataArray(
+    data=mask_da_array,
+    dims=["image_id", "img_h", "img_w"],
 )
+# label k + 1 is the box at position k along `id`
+ds_bboxes["label_of"] = xr.DataArray(
+    data=np.arange(1, ds_bboxes.sizes["id"] + 1, dtype=np.uint16),
+    dims=["id"],
+)
+
 # %%%%%%%%%%%%%%%%%%%%%%%
 # Plot single mask and all masks in frame
 
 # Show single mask for id=10 in frame 40
 image_id = 40
 id = 10
-single_mask = ds_bboxes.masks_bool.sel(image_id=image_id, id=id)
+label = ds_bboxes.label_of.sel(id=id)
+single_mask = ds_bboxes.labels.sel(image_id=image_id) == label
 
 fig, ax = plt.subplots(1, 1)
 
@@ -230,7 +200,7 @@ ax.imshow(
 ax.contour(single_mask, levels=[0.5], colors="red", linewidths=0.5)
 
 # plot all masks in one frame (one color per ID)
-label_frame = mask_da_array[image_id].compute()
+label_frame = ds_bboxes.labels.sel(image_id=image_id).values
 ax.imshow(
     label_frame,
     cmap="turbo",
@@ -239,7 +209,7 @@ ax.imshow(
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Visualise frames and masks in napari viewer
-mask_array = mask_da_array
+mask_array = ds_bboxes.labels.data
 viewer = napari.Viewer()
 
 # both layers are lazy, so napari only loads the frame displayed
