@@ -52,6 +52,9 @@ Arrows point from what a step reads to the step, and from a step to what it writ
 - [#292](https://github.com/SainsburyWellcomeCentre/crabs-exploration/pull/292) — *Segment
   crabs with SAM2 after detection proposals*, which leaves ellipse fitting and orientation
   explicitly out of scope.
+- [ethology#159](https://github.com/neuroinformatics-unit/ethology/pull/159) — *Store the space
+  coordinate of bboxes datasets as object dtype*; the upstream fix for the `space` warning in
+  [Gotchas](#gotchas).
 - [scikit-image `regionprops_table`](https://scikit-image.org/docs/0.25.x/api/skimage.measure.html#skimage.measure.regionprops_table)
   — the source of every parameter.
 - [OCTRON-GUI](https://github.com/OCTRON-tracking/OCTRON-GUI) — uses the same
@@ -751,7 +754,7 @@ Yes:
 | ethology's `map_image_id_to_filename` has `int` keys | written without error, but read back with `str` keys | readers convert the keys to `int` once, as the notebook does |
 | `labels` chunks are never written for frames with no box | they must read back as 0 | zarr returns the fill value, 0 for `uint16`; checked by `test_create_dataset_store` |
 | The dask chunks of the template must match the zarr chunks | otherwise `to_zarr` refuses the encoding | both are `(1, H, W)` |
-| ethology's `space` coordinate is a numpy fixed-width string (`<U1`), which has no stable zarr 3 format | `UnstableSpecificationWarning` on every write | `main` casts `space` to `object`, which zarr writes as variable-length strings; verified to remove the warning, and `.sel(space="x")` still works |
+| ethology's `space` coordinate is a numpy fixed-width string (`<U1`), which has no stable zarr 3 format | `UnstableSpecificationWarning` on every write | `main` casts `space` to `object`, which zarr writes as variable-length strings; verified to remove the warning, and `.sel(space="x")` still works. [ethology#159](https://github.com/neuroinformatics-unit/ethology/pull/159) fixes this upstream; the cast is a no-op once a release includes it |
 | zarr 3 flags consolidated metadata as outside its specification | `ZarrUserWarning` on every write | none: writing with `consolidated=False` removes it, but then every `xr.open_zarr` warns unless it passes `consolidated=False` too |
 | A mask split into disconnected pieces is still one label | one ellipse spans all pieces | none; `mask_area_to_convex_hull_area` is low for these |
 | A box whose mask is empty, or fully hidden by a smaller mask | no region for that label | parameters stay `NaN` |
