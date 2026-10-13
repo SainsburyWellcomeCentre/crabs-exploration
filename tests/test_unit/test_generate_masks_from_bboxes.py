@@ -10,6 +10,7 @@ from scripts.generate_masks_from_bboxes import (
     ImageArrayLazy,
     compute_mask_props,
     create_dataset_store,
+    flatten_masks_smallest_wins,
     get_image_paths,
 )
 
@@ -59,6 +60,18 @@ def test_compute_mask_props(labels, ds_bboxes):
     np.testing.assert_allclose(first.ellipse_major_axis_length, 40, rtol=0.05)
     np.testing.assert_allclose(first.ellipse_minor_axis_length, 16, rtol=0.1)
     np.testing.assert_allclose(first.ellipse_major_axis_theta, 0, atol=0.02)
+    np.testing.assert_allclose(
+        first.ellipse_eccentricity,
+        np.sqrt(
+            1
+            - (
+                first.ellipse_minor_axis_length
+                / first.ellipse_major_axis_length
+            )
+            ** 2
+        ),
+        atol=1e-3,
+    )
     np.testing.assert_allclose(
         ds.ellipse_major_axis_theta.sel(image_id=7, id=2),
         np.pi / 4,
@@ -143,3 +156,27 @@ def test_image_array_lazy_different_sizes(tmp_path):
     Image.new("RGB", (60, 100)).save(paths[1])
     with pytest.raises(ValueError, match="different sizes"):
         ImageArrayLazy(iter(paths))
+
+
+def test_flatten_masks_smallest_wins():
+    """Check overlapping pixels take the label of the smaller mask."""
+    masks = np.zeros((3, 10, 10), bool)
+    masks[0, 2:8, 2:8] = True  # small, 36 pixels
+    masks[1, :, :6] = True  # large, 60 pixels, overlaps mask 0
+    masks[2, 8:, 6:] = True  # 8 pixels, no overlap
+    label_frame = flatten_masks_smallest_wins(masks, [4, 7, 9])
+
+    assert label_frame.dtype == np.uint16
+    assert (label_frame[masks[0]] == 4).all()
+    assert (label_frame[masks[1] & ~masks[0]] == 7).all()
+    assert (label_frame[masks[2]] == 9).all()
+    assert (label_frame[~masks.any(axis=0)] == 0).all()
+
+
+def test_flatten_masks_equal_areas():
+    """Check equal-area masks are painted in input order: last one wins."""
+    masks = np.zeros((2, 10, 10), bool)
+    masks[0, :, :6] = True
+    masks[1, :, 4:] = True
+    label_frame = flatten_masks_smallest_wins(masks, [1, 2])
+    assert (label_frame[:, 4:6] == 2).all()
