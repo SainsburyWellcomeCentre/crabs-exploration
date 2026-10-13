@@ -103,6 +103,10 @@ def ellipse_shapes_from_ds(ds):
 # - label_of: label k + 1 is the mask for the box at position k along `id`
 # - mask_* and ellipse_*: parameters per mask, on (image_id, id)
 ds = xr.open_zarr(ZARR_STORE)
+if "mask_area" not in ds:
+    raise ValueError(
+        f"{ZARR_STORE} has no mask parameters: the script did not finish"
+    )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Load ground truth images as lazy dask array
