@@ -157,7 +157,6 @@ def test_extract_bboxes_from_clip_rejects_sparse_time_axis(
     # Define a video dataset with a sparse clip
     ds_video = concat_clips(
         [
-            # clip_id = 0
             # 4 stored rows for a 6-frame clip
             clip_dataset_factory(
                 "Loop00",
@@ -165,7 +164,6 @@ def test_extract_bboxes_from_clip_rejects_sparse_time_axis(
                 np.ones((4, 2, 1)),  # shape
                 n_clip_frames=6,
             ),
-            # clip_id = 1
             clip_dataset_factory(
                 "Loop01",
                 np.zeros((6, 2, 1)),
@@ -174,7 +172,7 @@ def test_extract_bboxes_from_clip_rejects_sparse_time_axis(
         ]
     )
 
-    # The length of the clip_id time axis is 6 frames
+    # Loop00 is padded to Loop01's 6 frames by the outer join
     assert ds_video.sel(clip_id="Loop00").sizes["time"] == 6
 
     with pytest.raises(ValueError, match="Loop00: the time axis holds 4"):
