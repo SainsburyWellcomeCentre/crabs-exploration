@@ -68,7 +68,7 @@ def create_mask_store(
     """Initialise one video group of the store and return its labels array.
 
     The group holds one label image per frame (a single integer array
-    in which each crab's pixels carry that mask's own pixel value), and
+    in which each crab's pixels carry that crab's own pixel value), and
     `label_of`, the individual to pixel value mapping.
 
     The group is written with `compute=False`, so metadata, coordinates
@@ -305,8 +305,11 @@ def write_clip_masks_to_store(
     }
 
     # Initialise buffer: one shard of "label frames".
-    # We use buffers to keep memory bounded (only one shard of frames
-    # is held in memory at a time, not the full clip's label frames)
+    # Frames are written to the store a whole shard at a time, so zarr
+    # never has to read, modify and rewrite a shard file. It also keeps
+    # memory bounded: only one shard of label frames is held at a time,
+    # not the full clip's. With sharding disabled, the buffer is one
+    # frame, i.e. one chunk.
     height, width = labels_array.shape[2:]
     buffer_n_frames = n_frames_per_shard or 1
     buffer = np.zeros((buffer_n_frames, height, width), dtype=np.uint16)
@@ -475,7 +478,7 @@ def main(args: argparse.Namespace) -> None:
         for node in video_nodes
     }
 
-    # Initialise SAM2 predictos
+    # Initialise SAM2 predictor
     device = ACCELERATOR_TO_DEVICE.get(args.accelerator, args.accelerator)
     predictor = load_sam2_predictor(sam2_model_id, device)
 

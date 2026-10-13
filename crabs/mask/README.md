@@ -6,12 +6,9 @@
 SAM2 and its dependencies are in the opt-in `masks` extra. SAM2's build imports torch, so to use the torch version specified by `crabs` we install the package first and then the extra:
 
 ```bash
-uv sync
-uv sync --extra masks
-# or, with pip:
-pip install .
-pip install setuptools setuptools_scm  # needed below, as build isolation is off
-pip install --no-build-isolation ".[masks]"
+uv pip install .
+uv pip install setuptools  # needed below, as SAM2 is built without isolation
+uv pip install --no-build-isolation-package sam-2 ".[masks]"
 ```
 
 ## Segmentation
