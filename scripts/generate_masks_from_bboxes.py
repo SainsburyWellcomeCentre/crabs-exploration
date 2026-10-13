@@ -206,7 +206,12 @@ def create_dataset_store(path_to_zarr, ds_bboxes, image_shape, metadata_dict):
     through the returned zarr array, which has one frame per chunk.
     """
     image_h, image_w = image_shape
-    n_images = ds_bboxes.sizes["image_id"]
+    n_images, n_ids = ds_bboxes.sizes["image_id"], ds_bboxes.sizes["id"]
+    if n_ids > np.iinfo(np.uint16).max:
+        raise ValueError(
+            f"{n_ids} id slots do not fit in uint16 labels "
+            f"(max {np.iinfo(np.uint16).max})"
+        )
 
     # zarr 3 has no stable format for numpy's fixed-width strings,
     # so store the `space` coordinate as variable-length strings
@@ -225,7 +230,7 @@ def create_dataset_store(path_to_zarr, ds_bboxes, image_shape, metadata_dict):
         # label k + 1 is the mask of the box at position k along `id`
         label_of=(
             "id",
-            np.arange(1, ds_bboxes.sizes["id"] + 1, dtype=np.uint16),
+            np.arange(1, n_ids + 1, dtype=np.uint16),
         ),
     )
     ds.attrs = _attrs_for_zarr({**ds_bboxes.attrs, **metadata_dict})
