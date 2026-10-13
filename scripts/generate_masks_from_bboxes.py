@@ -23,7 +23,8 @@ with the following layout::
     ├── position, shape, category, ...  (image_id, [space,] id)  from ethology
     ├── labels                          (image_id, img_h, img_w) uint16,
     │                                   0 = background
-    ├── label_of                        (id,) uint16, label = id + 1
+    ├── label_of                        (id,) uint16, label = position
+    │                                   along id + 1
     ├── mask_centroid                   (image_id, space, id) float64
     └── mask_area, mask_area_to_convex_hull_area,
         mask_area_to_mask_bbox_area, ellipse_major_axis_length,
@@ -50,7 +51,8 @@ The ellipse is the one with the same second moments as the mask:
   x-axis towards the y-axis, in radians, in [0, pi). The image y-axis
   points down, so a positive angle looks clockwise on screen. It can be
   passed to matplotlib's ``Ellipse(..., angle=np.degrees(theta))``
-  directly on an image axis.
+  directly on an image axis. It is arbitrary for near-circular masks
+  (``ellipse_eccentricity`` close to 0).
 - ``ellipse_eccentricity``: 0 for a circle, towards 1 for an elongated
   ellipse.
 
@@ -315,7 +317,7 @@ def compute_mask_props(labels_zarr, ds_bboxes):
     - ``ellipse_major_axis_theta``: angle of the major axis from the image
       x-axis (columns) towards the y-axis (rows), in radians, in [0, pi).
       The image y-axis points down, so a positive angle looks clockwise
-      on screen.
+      on screen. It is arbitrary for near-circular masks.
     - ``ellipse_eccentricity``: 0 for a circle, towards 1 for an elongated
       ellipse.
     """
