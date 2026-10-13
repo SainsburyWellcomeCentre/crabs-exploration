@@ -290,7 +290,10 @@ def flatten_masks_smallest_wins(masks, labels):
 def compute_mask_props(labels_zarr, ds_bboxes):
     """Measure each mask and its fitted ellipse, per (image_id, id).
 
-    Masks are read from ``labels_zarr`` one frame at a time. The mask with
+    Masks are read from ``labels_zarr`` one frame at a time. Measuring the
+    stored masks, rather than the label images in memory during prediction,
+    is deliberate: the values can be reproduced from the store alone, and
+    this function can run on an existing store. The mask with
     label ``k + 1`` is measured and stored at position ``k`` along ``id``,
     so each value sits at the (image_id, id) of its bounding box.
 
