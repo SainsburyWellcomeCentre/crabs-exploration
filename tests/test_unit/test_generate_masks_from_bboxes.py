@@ -23,7 +23,7 @@ def ds_bboxes():
         },
         coords={
             "image_id": [5, 7],
-            "space": np.array(["x", "y"], dtype=object),  # as main casts it
+            "space": ["x", "y"],
             "id": range(3),
         },
         attrs={

@@ -208,7 +208,10 @@ def create_dataset_store(path_to_zarr, ds_bboxes, image_shape, metadata_dict):
     image_h, image_w = image_shape
     n_images = ds_bboxes.sizes["image_id"]
 
-    ds = ds_bboxes.assign(
+    # zarr 3 has no stable format for numpy's fixed-width strings,
+    # so store the `space` coordinate as variable-length strings
+    ds = ds_bboxes.assign_coords(space=ds_bboxes.space.astype(object))
+    ds = ds.assign(
         labels=(
             ("image_id", "img_h", "img_w"),
             # lazy zeros, so to_zarr writes no data;
@@ -454,9 +457,6 @@ def main(args):
         format="COCO",
         images_dirs=images_dir,
     )
-    # zarr 3 has no stable format for numpy's fixed-width strings,
-    # so store the `space` coordinate as variable-length strings
-    ds_bboxes = ds_bboxes.assign_coords(space=ds_bboxes.space.astype(object))
 
     # Load ground truth images as lazy array, aligned with
     # the image_id coordinate
