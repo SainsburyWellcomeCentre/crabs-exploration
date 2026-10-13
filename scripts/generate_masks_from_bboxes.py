@@ -125,9 +125,12 @@ class ImageArrayLazy:
         corresponds to the ``i``-th path.
         """
         self.img_paths = list(img_paths)
-        # add image shape, assuming all have same as
-        # first sample
-        sample = np.array(Image.open(img_paths[0]))  # H, W, C
+        # all images must have the same size, so that the masks fit in
+        # one array; check it from the file headers, before running SAM2
+        sizes = {Image.open(p).size for p in self.img_paths}  # (W, H)
+        if len(sizes) > 1:
+            raise ValueError(f"Images have different sizes (W, H): {sizes}")
+        sample = np.array(Image.open(self.img_paths[0]))  # H, W, C
         self.img_h, self.img_w, self.img_c = sample.shape
 
     def __len__(self):

@@ -3,9 +3,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
+from PIL import Image
 from skimage.draw import ellipse
 
 from scripts.generate_masks_from_bboxes import (
+    ImageArrayLazy,
     compute_mask_props,
     create_dataset_store,
     get_image_paths,
@@ -132,3 +134,12 @@ def test_get_image_paths_after_round_trip(tmp_path, ds_bboxes):
     ds = xr.open_zarr(store)
     assert get_image_paths(ds) == [tmp_path / "a.png", tmp_path / "b.png"]
     assert get_image_paths(ds) == get_image_paths(ds_bboxes)
+
+
+def test_image_array_lazy_different_sizes(tmp_path):
+    """Check images of different sizes raise before any is loaded."""
+    paths = [tmp_path / "a.png", tmp_path / "b.png"]
+    Image.new("RGB", (120, 100)).save(paths[0])
+    Image.new("RGB", (60, 100)).save(paths[1])
+    with pytest.raises(ValueError, match="different sizes"):
+        ImageArrayLazy(iter(paths))
