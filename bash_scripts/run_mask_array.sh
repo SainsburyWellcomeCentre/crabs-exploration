@@ -47,7 +47,7 @@ LOG_DIR=$MASK_ZARR_STORE_OUTPUT/logs
 mkdir -p $LOG_DIR  # create if it doesnt exist
 
 # Version of the codebase
-GIT_BRANCH=smg/mask-tracked-crabs
+GIT_BRANCH=main
 
 # --------------------
 # Check inputs
