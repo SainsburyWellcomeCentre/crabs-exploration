@@ -107,3 +107,14 @@ def test_create_dataset_store(tmp_path, ds_bboxes):
     assert ds.attrs["images_directories"] == "/data/frames"
     assert ds.attrs["map_image_id_to_filename"] == {"5": "a.png", "7": "b.png"}
     assert ds.attrs["occlusion_policy"] == "smallest_wins"
+
+
+def test_create_dataset_store_too_many_ids(tmp_path):
+    """Check more id slots than uint16 labels can hold raise an error."""
+    n_ids = np.iinfo(np.uint16).max + 1
+    ds_bboxes = xr.Dataset(
+        {"position": (("image_id", "id"), np.full((1, n_ids), np.nan))},
+        coords={"image_id": [0], "space": ["x", "y"], "id": range(n_ids)},
+    )
+    with pytest.raises(ValueError, match="do not fit in uint16"):
+        create_dataset_store(tmp_path / "s.zarr", ds_bboxes, (10, 10), {})
