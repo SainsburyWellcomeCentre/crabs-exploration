@@ -484,15 +484,13 @@ def main(args):
 
     # Create zarr store with the bboxes and an empty array
     # for the output ID-encoded masks
-    n_images, image_h, image_w = image_array.shape[:3]  # (T, H, W)
+    image_h, image_w = image_array.shape[1:3]
     metadata_dict = {
         "timestamp": timestamp,
         "sam2_model": model_id,
         "source_images_dir": str(images_dir),
         "annotations_file": str(annotations_file),
         "annotations_format": "COCO",
-        "n_images": n_images,
-        "image_shape": [image_h, image_w],
         "batch_size": batch_size,
         "multimask_output": False,
         "prompt_type": "bounding_box",
@@ -501,9 +499,6 @@ def main(args):
         "id_offset": 1,
         "occlusion_policy": "smallest_wins",
         "device": device,
-        # frame i in the zarr store corresponds to image_ids[i]
-        "image_ids": ds_bboxes.image_id.values.tolist(),
-        "image_filenames": [p.name for p in img_paths],
     }
     labels_zarr = create_dataset_store(
         output_zarr,
