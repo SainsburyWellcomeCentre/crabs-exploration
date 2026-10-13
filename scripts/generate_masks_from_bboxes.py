@@ -149,10 +149,15 @@ def get_image_paths(ds_bboxes):
     """Return image file paths in the order of the ``image_id`` coordinate.
 
     The ``i``-th path is the image of the ``i``-th element of
-    ``ds_bboxes.image_id``.
+    ``ds_bboxes.image_id``. Works on the dataset from ethology and on the
+    dataset read back from the zarr store, where zarr has turned the
+    ``int`` keys of ``map_image_id_to_filename`` into strings.
     """
     images_dir = Path(ds_bboxes.attrs["images_directories"])
-    map_id_to_filename = ds_bboxes.attrs["map_image_id_to_filename"]
+    map_id_to_filename = {
+        int(k): v
+        for k, v in ds_bboxes.attrs["map_image_id_to_filename"].items()
+    }
     img_paths = [
         images_dir / map_id_to_filename[img_id]
         for img_id in ds_bboxes.image_id.values
