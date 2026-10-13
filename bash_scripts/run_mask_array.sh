@@ -152,7 +152,7 @@ cat "$MASK_CONFIG_FILE"
 # command pick a timestamped name, so all jobs write into the same one.
 mask-tracked-crabs  \
     --boxes $BOXES_ZARR_STORE  \
-    --videos $CLIP_VIDEOS_DIR  \
+    --videos_dir $CLIP_VIDEOS_DIR  \
     --output_store $MASK_ZARR_STORE_OUTPUT  \
     --match "$VIDEO_ID"  \
     --mask_config_file $MASK_CONFIG_FILE  \

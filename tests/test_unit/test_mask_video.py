@@ -345,7 +345,7 @@ def run_main(
             [
                 "--boxes",
                 str(trajectories_store),
-                "--videos",
+                "--videos_dir",
                 str(trajectories_store.parent / "clips"),
                 "--output_dir",
                 str(output_dir),
@@ -411,7 +411,7 @@ def test_main(trajectories_store: Path, monkeypatch: pytest.MonkeyPatch):
         # PR 2 widens the accepted suffixes to include .csv
         (["--boxes", "tracks.csv"], ValueError, "must be a trajectories"),
         (["--match", "nope*"], ValueError, "selected no video group"),
-        (["--videos", "wrong_dir"], FileNotFoundError, "video-Loop00.mp4"),
+        (["--videos_dir", "wrong_dir"], FileNotFoundError, "video-Loop00.mp4"),
     ],
 )
 def test_main_fails_before_sam2_is_loaded(

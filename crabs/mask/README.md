@@ -19,14 +19,14 @@ Once installed, we can run SAM2 prediction as follows:
 ```bash
 mask-tracked-crabs \
     --boxes CrabTracks-slurm3012633.zarr \
-    --videos /path/to/loop-clips/ \
+    --videos_dir /path/to/loop-clips/ \
     --match "04.09.2023*" \
     --output_dir mask_output \
     --mask_config_file my_mask_config.yaml  # optional
 ```
 
 - `--boxes` is a trajectories zarr store written by `create-zarr-dataset`.
-- `--videos` is the directory holding the clip videos the boxes refer to. These are named `<video-id>-<clip-id>.mp4`, and are the files `extract-loop-clips` writes.
+- `--videos_dir` is the directory holding the clip videos the boxes refer to. These are named `<video-id>-<clip-id>.mp4`, and are the files `extract-loop-clips` writes.
 - `--match` is a glob over **video groups**, not clips. It allows us to select a subset of videos, but every clip of a selected video is masked.
 - `--mask_config_file` is optional: a YAML file with masking parameters that differ from the defaults (see [Parameters](#parameters)).
 - The output store name carries a timestamp, so re-masking does not overwrite the store.
