@@ -56,6 +56,39 @@ jobs:
           python-version: ${{ matrix.python-version }}
           secret-codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
+  # SAM2 is in the "masks" extra, which the test job does not install
+  # (its build needs torch installed first), so the SAM2 tests are
+  # skipped there. This job installs it and runs them.
+  test_sam2:
+    name: Run SAM2 tests
+    needs: [linting, manifest]
+    runs-on: ubuntu-latest
+    env:
+      # CPU-only torch wheels: much smaller than PyPI's default CUDA ones
+      UV_TORCH_BACKEND: cpu
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          activate-environment: true
+      # opencv needs these on Ubuntu, as in the test job
+      - name: Install OpenGL libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install libglapi-mesa libegl-mesa0 libegl1 libopengl0 libgl1
+      # as in bash_scripts/run_mask_array.sh: install torch (and setuptools)
+      # first, then build SAM2 against them without build isolation
+      - name: Install crabs, then SAM2
+        run: |
+          uv pip install -e ".[dev]" setuptools
+          uv pip install --no-build-isolation-package sam-2 -e ".[dev,masks]"
+      - name: Run SAM2 tests
+        run: |
+          # fail here, rather than skip the tests, if SAM2 did not install
+          python -c "import sam2"
+          pytest tests/test_unit/test_mask_video.py -k matches_sam2_predict
+
   build_sdist_wheels:
     name: Build source distribution
     needs: [test]
