@@ -174,7 +174,7 @@ def get_image_paths(ds_bboxes):
 
 
 def get_bboxes_mask_labels_per_frame(ds_bboxes):
-    """Build a dict mapping frame index to (boxes, mask labels).
+    """Build a dict mapping frame index to (boxes, labels).
 
     The frame index is the position along the ``image_id`` coordinate.
     ``boxes`` is an (N, 4) array of [x1, y1, x2, y2] corners.
@@ -189,8 +189,8 @@ def get_bboxes_mask_labels_per_frame(ds_bboxes):
     for idx in range(ds_bboxes.sizes["image_id"]):
         # (n_ids, 4), with one row per id slot, NaN for empty slots
         corners = np.c_[
-            x1y1.isel(image_id=idx).values.T,
-            x2y2.isel(image_id=idx).values.T,
+            x1y1.isel(image_id=idx).transpose("id", "space").values,
+            x2y2.isel(image_id=idx).transpose("id", "space").values,
         ]
         # select non-nan only
         non_nan = ~np.isnan(corners).all(axis=1)
