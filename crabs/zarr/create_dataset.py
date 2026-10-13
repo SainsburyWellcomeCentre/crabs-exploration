@@ -258,6 +258,21 @@ def _renumber_individuals(ds: xr.Dataset, width: int) -> xr.Dataset:
     return ds.assign_coords(individual=[f"id_{i:0{width}d}" for i in range(n)])
 
 
+def concat_clips(list_clip_ds: list[xr.Dataset]) -> xr.Dataset:
+    """Concatenate clip datasets along the `clip_id` dimension.
+
+    Clips are outer-joined, so every clip is padded with NaNs to the
+    longest time axis (and largest number of individuals) in the video.
+    """
+    return xr.concat(
+        list_clip_ds,
+        dim="clip_id",
+        join="outer",
+        coords="different",
+        compat="equals",
+    )
+
+
 def create_temp_zarr_store(
     temp_zarr_store: str,
     temp_zarr_mode_store: str,
@@ -376,12 +391,8 @@ def create_final_zarr_store(
         id_width = len(str(max_n_individuals - 1))
 
         # Concatenate all clip datasets along the clip_id dimension
-        ds_video = xr.concat(
-            [_renumber_individuals(ds, id_width) for ds in list_clip_ds],
-            dim="clip_id",
-            join="outer",
-            coords="different",
-            compat="equals",
+        ds_video = concat_clips(
+            [_renumber_individuals(ds, id_width) for ds in list_clip_ds]
         )
 
         # Add video attributes

@@ -2,7 +2,7 @@ import csv
 
 import numpy as np
 
-from crabs.tracker.utils.io import write_tracked_detections_to_csv
+from crabs.utils.io import write_tracked_detections_to_csv
 
 
 def test_write_tracked_detections_to_csv(tmp_path):

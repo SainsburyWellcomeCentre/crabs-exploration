@@ -6,7 +6,7 @@ import cv2
 import pooch
 import pytest
 
-from crabs.tracker.utils.io import open_video
+from crabs.utils.io import open_video
 
 
 @pytest.fixture()
