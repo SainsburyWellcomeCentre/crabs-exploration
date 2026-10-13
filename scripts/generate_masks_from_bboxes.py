@@ -529,6 +529,9 @@ def main(args):
         labels_zarr,
         batch_size,
     )
+    # labels attrs were written through zarr; make them visible to
+    # xr.open_zarr, which reads the consolidated metadata
+    zarr.consolidate_metadata(output_zarr)
 
     # Add mask and ellipse parameters per bbox, measured on the stored masks
     ds_props = compute_mask_props(labels_zarr, ds_bboxes)
