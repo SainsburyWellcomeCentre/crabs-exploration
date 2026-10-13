@@ -349,26 +349,32 @@ def test_write_clip_masks_to_store(
     assert not np.asarray(labels_array[1]).any()
 
 
-def run_main_with_fake_predictor(
-    trajectories_store: Path,
+def patch_sam2_loader(
     monkeypatch: pytest.MonkeyPatch,
-    predictor=None,
-    extra_args: list[str] | None = None,
-) -> Path:
-    """Run `mask-tracked-crabs` using the fake predictor rather than SAM2.
+    predictor: FakePredictor | None,
+) -> None:
+    """Make `main` use the given `predictor` instead of loading SAM2.
 
-    A None predictor makes loading one an error, which is how the tests
-    that must fail *before* SAM2 is loaded assert that they do.
+    If `predictor` is None, loading SAM2 makes the test fail.
     """
 
-    # Monkeypatch load_sam2_predictor
     def fake_load(model_id: str, device: str):
-        assert predictor is not None, "SAM2 should not have been loaded"
+        if predictor is None:
+            pytest.fail("SAM2 was loaded before the input checks")
         return predictor
 
     monkeypatch.setattr("crabs.mask.mask_video.load_sam2_predictor", fake_load)
 
-    # Run main and return output dir
+
+def run_main(
+    trajectories_store: Path, extra_args: list[str] | None = None
+) -> Path:
+    """Run `main` on the trajectories store and return the output dir.
+
+    The clip videos are read from the `clips` folder next to the store.
+    `extra_args` are appended after the defaults, so they can also
+    override them (argparse keeps the last value of a repeated option).
+    """
     output_dir = trajectories_store.parent / "mask_output"
     main(
         mask_parse_args(
@@ -397,55 +403,77 @@ def test_main(
     That comparison is the contract of this entry point: a frame-index
     error, a mis-assigned label and a dropped shard tail all fail it.
     """
-    output_dir = run_main_with_fake_predictor(
-        trajectories_store_and_clips,
-        monkeypatch,
-        FakePredictor(),
-    )
+    # Monkeypatch loader and run main
+    patch_sam2_loader(monkeypatch, FakePredictor())
+    output_dir = run_main(trajectories_store_and_clips)
 
+    # Check output file exists and is as expected
     stores = list(output_dir.glob("*_masks_*.zarr"))
     assert len(stores) == 1
     assert stores[0].name.startswith("CrabTracks_masks_")
 
+    # Inspect masks dataset
     masks = xr.open_datatree(stores[0], engine="zarr")["video"].to_dataset()
-    tracks = xr.open_datatree(trajectories_store_and_clips, engine="zarr")[
-        "video"
-    ].to_dataset()
 
-    # the coordinates are the trajectories store's own, so the two stores
-    # align 1:1 with no reindexing
-    assert list(masks.clip_id.values) == list(tracks.clip_id.values)
-    assert list(masks.individual.values) == list(tracks.individual.values)
     assert masks.labels.shape == (2, 3, *FRAME_SHAPE)
     assert masks.labels.dtype == np.uint16
     assert masks.attrs["boxes"]["source"] == "trajectories_zarr"
 
-    # decode pixel values back to individuals through `label_of`, never by
-    # position
-    inverse = np.empty(int(masks.label_of.max()) + 1, dtype=int)
-    inverse[masks.label_of.values] = np.arange(masks.sizes["individual"])
+    # Read input trajectory store and compare to masks store
+    tracks = xr.open_datatree(trajectories_store_and_clips, engine="zarr")[
+        "video"
+    ].to_dataset()
 
-    for clip_index, clip_id in enumerate(masks.clip_id.values):
+    # (the coordinates are the trajectories store's own, so the two stores
+    # align 1:1 with no reindexing)
+    assert list(masks.clip_id.values) == list(tracks.clip_id.values)
+    assert list(masks.individual.values) == list(tracks.individual.values)
+
+    # Build lookup from pixel value to individual by inverting `label_of`,
+    # which maps each individual to its pixel value. We read the mapping
+    # from the store rather than assume label = index + 1.
+    map_label_to_individual = dict(
+        zip(
+            masks.label_of.values.tolist(),
+            masks.individual.values,
+            strict=True,
+        )
+    )
+
+    # For every frame of every clip, check the individuals painted in the
+    # mask match the position data in the trajectories store.
+    # Only the clip's own frames are checked, not the padding after them.
+    for c_i, clip_id in enumerate(masks.clip_id.values):
         n_clip_frames = len(
             extract_bboxes_from_clip(tracks.sel(clip_id=clip_id))
         )
-        for time_index in range(n_clip_frames):
-            frame = masks.labels.values[clip_index, time_index]
-            in_masks = set(
-                masks.individual.values[inverse[np.unique(frame[frame > 0])]]
-            )
-            in_tracks = set(
-                tracks.position.isel(clip_id=clip_index, time=time_index)
+        for frame_i in range(n_clip_frames):
+            frame = masks.labels.values[c_i, frame_i]
+            labels_in_frame = np.unique(frame[frame > 0])
+
+            individuals_in_masks = {
+                map_label_to_individual[label]
+                for label in labels_in_frame.tolist()
+            }
+
+            individuals_in_tracks = set(
+                tracks.position.isel(clip_id=c_i, time=frame_i)
                 .dropna(dim="individual", how="all")
                 .individual.values
             )
-            assert in_masks == in_tracks, (clip_id, time_index)
+
+            # Check the same individuals are present for this clip and
+            # frame in the masks and trajs store
+            assert individuals_in_masks == individuals_in_tracks, (
+                f"Clip {clip_id}, frame {frame_i}: the masks hold "
+                f"{sorted(individuals_in_masks)} but the trajectories "
+                f"store has {sorted(individuals_in_tracks)}"
+            )
 
 
 @pytest.mark.parametrize(
     ("extra_args", "expected_error", "expected_message"),
     [
-        # PR 2 widens the accepted suffixes to include .csv
         (["--boxes", "tracks.csv"], ValueError, "must be a trajectories"),
         (["--match", "nope*"], ValueError, "selected no video group"),
         (["--videos_dir", "wrong_dir"], FileNotFoundError, "video-Loop00.mp4"),
@@ -458,40 +486,47 @@ def test_main_fails_before_sam2_is_loaded(
     expected_error: type[Exception],
     expected_message: str,
 ):
-    """A bad input costs a second, not a model download."""
+    """Check bad inputs raise before SAM2 is loaded.
+
+    The SAM2 loader is patched to fail the test if it is called, so the
+    test only passes if `main` validates the inputs before calling
+    SAM2 loader.
+    """
+    patch_sam2_loader(monkeypatch, predictor=None)
     with pytest.raises(expected_error, match=expected_message):
-        run_main_with_fake_predictor(
-            trajectories_store_and_clips,
-            monkeypatch,
-            extra_args=extra_args,
-        )
+        run_main(trajectories_store_and_clips, extra_args)
 
 
 def test_main_output_store_is_shared_across_runs(
     trajectories_store_and_clips: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """The array-job pattern: one run per video, all into one store.
+    """Check separate runs of `main` can write into a single mask store.
 
-    `--output_store` names the store exactly, so runs that would each
-    pick their own timestamp write into the same one instead.
+    This is the array-job pattern: each run masks one video (`--match`)
+    and all runs write to the same `--output_store` in append mode. The
+    store must end up holding a group for each video.
     """
-    # add a second video group, and the clip videos it names
+    # Add a second video to the trajectories store, as a copy of the first
     tracks = xr.open_datatree(trajectories_store_and_clips, engine="zarr")[
         "video"
     ].to_dataset()
     tracks.to_zarr(trajectories_store_and_clips, group="video2")
+
+    # Copy the clip files for the second video
+    # (`main` expects them at `<videos_dir>/<video_id>-<clip_id>.mp4`)
     clips = trajectories_store_and_clips.parent / "clips"
     for clip_video in sorted(clips.glob("video-*.mp4")):
         shutil.copy(
-            clip_video, clips / clip_video.name.replace("video-", "video2-")
+            clip_video,
+            clips / clip_video.name.replace("video-", "video2-"),
         )
 
+    # Run `main` once per video, all writing to the same output store
     store_path = trajectories_store_and_clips.parent / "CrabMasks-slurm42.zarr"
+    patch_sam2_loader(monkeypatch, FakePredictor())
     for video_id in ["video", "video2"]:
-        run_main_with_fake_predictor(
+        run_main(
             trajectories_store_and_clips,
-            monkeypatch,
-            FakePredictor(),
             extra_args=[
                 "--output_store",
                 str(store_path),
@@ -502,7 +537,17 @@ def test_main_output_store_is_shared_across_runs(
             ],
         )
 
+    # Check the store holds both videos (the second run did not overwrite
+    # the first) and
     masks = xr.open_datatree(store_path, engine="zarr")
     assert sorted(node.name for node in masks.leaves) == ["video", "video2"]
-    for video_id in ["video", "video2"]:
-        assert masks[video_id].labels.values.any()
+
+    # check `video` has mask data (not all background)
+    assert masks["video"].labels.values.any()
+
+    # check the masks of `video2` match those of `video`
+    # (they are copies)
+    np.testing.assert_array_equal(
+        masks["video2"].labels.values,
+        masks["video"].labels.values,
+    )
