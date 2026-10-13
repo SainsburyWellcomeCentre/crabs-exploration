@@ -11,6 +11,7 @@ from scripts.generate_masks_from_bboxes import (
     compute_mask_props,
     create_dataset_store,
     flatten_masks_smallest_wins,
+    get_bboxes_mask_labels_per_frame,
     get_image_paths,
 )
 
@@ -180,3 +181,33 @@ def test_flatten_masks_equal_areas():
     masks[1, :, 4:] = True
     label_frame = flatten_masks_smallest_wins(masks, [1, 2])
     assert (label_frame[:, 4:6] == 2).all()
+
+
+@pytest.mark.parametrize(
+    "dims",
+    [("image_id", "space", "id"), ("image_id", "id", "space")],
+)
+def test_get_bboxes_mask_labels_per_frame(dims):
+    """Check boxes and labels per frame, whatever the dimension order."""
+    position = np.full((2, 2, 3), np.nan)  # image_id, space, id
+    shape = np.full((2, 2, 3), np.nan)
+    position[0, :, 0], shape[0, :, 0] = [10, 20], [4, 6]
+    position[0, :, 2], shape[0, :, 2] = [50, 60], [10, 8]
+    ds_bboxes = xr.Dataset(
+        {
+            "position": (("image_id", "space", "id"), position),
+            "shape": (("image_id", "space", "id"), shape),
+        },
+        coords={"image_id": [5, 7], "space": ["x", "y"], "id": range(3)},
+    ).transpose(*dims)
+
+    boxes_and_labels = get_bboxes_mask_labels_per_frame(ds_bboxes)
+
+    # frame 0: slots 0 and 2 filled, as [x1, y1, x2, y2]
+    boxes, labels = boxes_and_labels[0]
+    np.testing.assert_array_equal(boxes, [[8, 17, 12, 23], [45, 56, 55, 64]])
+    np.testing.assert_array_equal(labels, [1, 3])
+    # frame 1: no boxes
+    boxes, labels = boxes_and_labels[1]
+    assert boxes.shape == (0, 4)
+    assert labels.shape == (0,)
