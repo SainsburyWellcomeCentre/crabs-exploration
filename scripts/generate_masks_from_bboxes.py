@@ -61,10 +61,11 @@ The bbox format for SAM is a (N, 4) float array of
 y = row (height axis), 1 is the xmin, ymin corner and 2 is the
 xmax ymax corner.
 
-Usage (dependencies are auto-installed via uv):
-    uv run generate_masks_from_bboxes.py /path/to/data_dir
-    uv run generate_masks_from_bboxes.py /path/to/data_dir --batch-size 8
-    uv run generate_masks_from_bboxes.py /path/to/data_dir \
+Usage (dependencies are auto-installed via uv). From the repo root:
+    uv run scripts/generate_masks_from_bboxes.py /path/to/data_dir
+    uv run scripts/generate_masks_from_bboxes.py /path/to/data_dir \
+        --batch-size 8
+    uv run scripts/generate_masks_from_bboxes.py /path/to/data_dir \
         --model facebook/sam2.1-hiera-large
 """
 
