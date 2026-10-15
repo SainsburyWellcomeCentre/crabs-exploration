@@ -90,7 +90,8 @@ def test_store_round_trip(tmp_path, ds_bboxes, labels):
     store = tmp_path / "bboxes_and_masks.zarr"
     labels_zarr = create_dataset_store(store, ds_bboxes, (100, 120), {})
     labels_zarr[:] = labels  # what predict_masks_across_images does
-    compute_mask_props(labels_zarr, ds_bboxes).to_zarr(store, mode="a")
+    ds_props = compute_mask_props(labels_zarr, ds_bboxes)
+    ds_props.drop_vars(list(ds_props.coords)).to_zarr(store, mode="a")
 
     ds = xr.open_zarr(store)
     mask = ds.labels.sel(image_id=7) == ds.label_of.sel(id=2)
