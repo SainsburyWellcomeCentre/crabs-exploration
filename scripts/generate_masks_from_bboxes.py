@@ -536,7 +536,12 @@ def main(args):
 
     # Add mask and ellipse parameters per bbox, measured on the stored masks
     ds_props = compute_mask_props(labels_zarr, ds_bboxes)
-    ds_props.to_zarr(output_zarr, mode="a")
+    # append only the data variables: the coordinates are already in the
+    # store, and xarray checks that rewritten variables keep their stored
+    # dtype. `space` is <U1 here, but reads back from the store as a
+    # variable-length string dtype (StringDType in recent xarray/zarr),
+    # so appending it would raise a dtype mismatch
+    ds_props.drop_vars(list(ds_props.coords)).to_zarr(output_zarr, mode="a")
 
     print(f"Saved bboxes, masks and mask parameters to {output_zarr}")
 
