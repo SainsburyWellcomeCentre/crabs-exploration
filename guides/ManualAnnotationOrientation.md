@@ -53,11 +53,12 @@
     - I think the input uses `time` axis (movement-like) rather than `image_id` axis (ethology-like). Should I change that?
         - See https://ethology.neuroinformatics.dev/latest/examples/coco_bbox_ethology_and_movement.html#transform-dataset-to-a-movement-like-dataset
 
-- pre-computed subset of frames
-    - we have 27 videos, but only a subset of them is present in the annotated data
+- pre-computed subset of frames to label
+    - we would like to label the crabs' orientation on a subset of the frames for which we have bounding box annotations.
+    - we have 27 videos, but only a subset of them is present in the bbox annotated data.
 		- In the Sept annotations, we have frames from 14 'right' videos and 14 'left' videos. We don't have annotations from 8 'right' videos and 8 'left' videos.
 		- In the Aug annotations, we have frames from 5 'right' videos and 6 'left' videos. That covers the full set of August videos.
-    - So we can ask users to label orientation from a subset of 'right' video frames in the annotation set
+    - So we can ask users to label orientation from a subset of 'right' video frames in the bbox annotation set
 		- 'right' because those are the only ones we run inference on, so we can ignore 'left' videos for now. That is a pool of 14+5 = 19 videos.
 		- We can select 2 annotated frames at random per video ---> 19*2 = 38 frames
 
@@ -71,7 +72,7 @@
 	- The selection of frames should be saved in the zarr output too
         - I think it is enough if this info is saved as a coordinate?
 
-- bboxes napari layer
+- Bboxes napari 'Shapes' layer
     - it is read from the input 'extended' zarr
         - (generated from the script at smg/gt-ellipses-prediction)
     - it shows the 'individual' per bbox as a `display text`
@@ -81,12 +82,12 @@
         - `layer.editable = False`
         - but we should allow toggle visibility
 
-- data saving while labelling
+- Data saving while labelling
     - we should have an autosave feature
 	- we should have a resume session feature
     - check how the saving was done for manual selection of burrow masks (see `scripts/burrows/annotate_burrow_prompts_manual.py`, `_autosave_napari_points()`)
 
-- how to associated Lines (segments) to bboxes?
+- How to associate Lines (segments) to bboxes?
     - I use Line to refer to the segments the user draws because that is the name used by napari (but note these are not geometric lines but segments)
     - We can associate Lines to bboxes by overlap between line and box. So by placement: a line is associated with the box it mostly **intersects** with
     - We should add lines that are not correctly linked to a single bbox to a log file
