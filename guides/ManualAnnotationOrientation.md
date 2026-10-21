@@ -1,16 +1,17 @@
 # Steps
 
 1. Install uv
-    - Follow the installation instructions [here](https://docs.astral.sh/uv/getting-started/installation/#__tabbed_1_2)
+    - Follow the installation instructions [here](https://docs.astral.sh/uv/getting-started/installation/#__tabbed_1_2) depending on your platform.
+        - Note: the user may not have Python installed. They probably have a windows machine.
 
 
 2. Download the orientation labelling script from the crabs-exploration GitHub repository
-    - Run `curl ..... https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/refs/heads/main/scripts/burrows/annotate_crabs_orientation_manual.py` -- check this URL
+    - Run `curl ..... https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/refs/heads/main/scripts/burrows/annotate_crabs_orientation_manual.py` -- (or something like this)
 
 
 3. Download annotation frames locally from ceph
-    - From G-Node GIN, download zip (they need password), OR
     - Copy zarr stores with bboxes (& masks) from ceph to a local destination in your computer
+        - these zarr stores are the result of running `scripts/generate_masks_from_bboxes.py` as written in PR `smg/gt-ellipses-prediction`
     - Ceph location:
         - /ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/aug2023-full/bboxes_and_masks_20261015_194318.zarr
         - /ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/sep2023-full/bboxes_and_masks_20261015_200236.zarr
@@ -20,18 +21,19 @@
     ```
     uv run /path/to/downloaded/script
     ```
-    It will launch an interactive napari viewer with the following layers:
-    - an image layer with a subset of the frames for aug and sept
-    - a shapes layer with the bboxes annotations per frame **showing their ID as text labels** (read from zarr)
-    - a shapes layer with pre-selected shape Line, which the user will use to annotate orientation
+    It will create an ephemeral virtual environment with the required dependencies and launch an interactive napari viewer with the following layers:
+    - an image layer with a subset of the frames for Aug and Sept
+    - a shapes layer with the bboxes annotations per frame **showing their ID (individual) as display text** (as read from zarr)
+    - a shapes layer with pre-selected shape Line, which the user will use to draw line segments and annotate each crabs' orientation
 
 
-4. Label orientation
+4. Label crabs orientation
     - For every bbox per frame, draw a line that is parallel to the "long axis" of the crab (medial-lateral axis)
         - To draw a line: hold-click and drag
-        - We don't need for the centre of the line to be at the centre of the box, or for the line length to represent the width of the animal.
+        - We don't need for the centre of the line to be at the centre of the box, or for the line length to represent the width of the animal. We will only use the orientation of the line (i.e. its angle with the top edge of the image, aka the x-axis in pixel coordinates).
         - Each line should fall within a box. Lines outside all boxes will be discarded.
-        - Ideally each line will intersect one box only. If there are overlapping boxes.... ?
+        - Ideally each line will intersect one box only.
+            - We explain below how we deal with lines that don't overlap with any boxes or that overlap with multiple boxes. This should be included in the user guide so that labellers are aware.
         - If it is helps the labelling, once you locate the box you can toggle the visibility of the bboxes layer with one of these shortcuts:
             • Toggle selected layer visibility: V
             • Toggle unselected layers visibility: Shift + V
@@ -40,22 +42,23 @@
 
 
 5. Saving the data
-    - The output format follows the one for the input zarr data (same coordinates, but only with the theta variable?)
+    - The output format follows the one for the input zarr data: also a zarr store, that inherits the same coordinates where relevant, but only with the theta variable (ok?)
     - During labelling, we have Autosaving (like in https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/scripts/burrows/annotate_burrow_prompts_manual.py) to ensure no data is lost if the program crashes
     - We can also restart an unfinished session
 
 
 
 # Questions / points to discuss
-- output format
-    - sth as close as possible to the input zarr, so that we can easily compute the error in theta
+- Output format
+    - sth as close as possible to the input zarr, so that we can easily compute the error in theta by comparing them
         - same coordinates, but only with the theta variable?
     - I think the input uses `time` axis (movement-like) rather than `image_id` axis (ethology-like). Should I change that?
         - See https://ethology.neuroinformatics.dev/latest/examples/coco_bbox_ethology_and_movement.html#transform-dataset-to-a-movement-like-dataset
+        - This could be in a follow up PR that addresses changes in `scripts/generate_masks_from_bboxes.py` and in this script.
 
-- pre-computed subset of frames to label
-    - we would like to label the crabs' orientation on a subset of the frames for which we have bounding box annotations.
-    - we have 27 videos, but only a subset of them is present in the bbox annotated data.
+- Pre-computed subset of frames to label
+    - We would like to label the crabs' orientation on a subset of the frames for which we have bounding box annotations.
+    - We have 27 videos, but only a subset of them is present in the bbox annotated data.
 		- In the Sept annotations, we have frames from 14 'right' videos and 14 'left' videos. We don't have annotations from 8 'right' videos and 8 'left' videos.
 		- In the Aug annotations, we have frames from 5 'right' videos and 6 'left' videos. That covers the full set of August videos.
     - So we can ask users to label orientation from a subset of 'right' video frames in the bbox annotation set
@@ -63,7 +66,7 @@
 		- We can select 2 annotated frames at random per video ---> 19*2 = 38 frames
 
     - Some other thoughts
-		- can I use ethology (https://ethology.neuroinformatics.dev/latest/api_index.html) for this? would it be useful or overkill? (I prefer simplicity)
+		- Can I use ethology (https://ethology.neuroinformatics.dev/latest/api_index.html) for this? would it be useful or overkill? (I prefer simplicity)
         - I think this will be a separate script, that we run before the labelling.
             - Then its output (a csv?) is passed as input to the labelling script
             - Is there a simpler way?
@@ -85,23 +88,26 @@
 - Data saving while labelling
     - we should have an autosave feature
 	- we should have a resume session feature
-    - check how the saving was done for manual selection of burrow masks (see `scripts/burrows/annotate_burrow_prompts_manual.py`, `_autosave_napari_points()`)
+    - check how the saving was done for manual selection of burrow masks (see `scripts/burrows/annotate_burrow_prompts_manual.py`, specifically `_autosave_napari_points()`)
 
 - How to associate Lines (segments) to bboxes?
-    - I use Line to refer to the segments the user draws because that is the name used by napari (but note these are not geometric lines but segments)
-    - We can associate Lines to bboxes by overlap between line and box. So by placement: a line is associated with the box it mostly **intersects** with
-    - We should add lines that are not correctly linked to a single bbox to a log file
+    - I use Line to refer to the segments the user draws because that is the name used by napari (but note these are not geometric lines but segments).
+    - We can associate Lines to bboxes by checking the overlap between line and box. So we link them by placement: a line is associated with the box it mostly **intersects** with.
+    - We should add lines that are not correctly linked to a single bbox to a log file for traceability.
 
 - How to deal with lines that overlap with multiple boxes?
     - Since we dont care about the location of the line in the pixel space (meaning, we will only use the orientation aka theta of the line to compute the error), we can ask users to try to place the lines so that each line intersects only one box.
     - That may not be possible in all cases. So to deal with ambiguous cases:
-        - We can use colours to highlight per frame the lines that are associated to a single box (green), ignored (red) or associated to multiple boxes (yellow).
+        - We can use colours to highlight the lines that are associated to a single box (green), none (red) or associated to multiple boxes (yellow).
         - Once added, lines can have a 'display text' label showing the 'individual' they are linked to.
-        - We set the individual by guessing first: we guess the individual for each line based on the bbox they overlap most with
+        - We set the individual by guessing first:
+            - we guess the individual for each line based on the bbox they overlap most with
             - if there is only one box, the line turns green and shows the relevant `individual` label
-            - if there are no boxes, `individual` is set to a placeholder value and the line turns red. A warning is shown to prompt the user to edit the individual label. If the individual is set to a value of a box the line does not intersect with, the line remains red.
-            - if there are multiple boxes that intersect with the line, `individual` is set to a placeholder value and the line turns yellow. A warning is shown to prompt the user to edit the individual label. If the individual is set to a value of a box the line does not intersect with, the line turns red.
+            - if there are no boxes, `individual` is set to a placeholder value and the line turns red. A warning is shown to indicate the user that that line will not be added to the output (it will be ignored).
+            - if there are multiple boxes that intersect with the line, `individual` is set to a placeholder value and the line turns yellow. A warning is shown to prompt the user to edit the individual label.
         - For 'red' or 'yellow' conflicts, maybe the simplest way is for users to edit the 'display text' associated to the line, which would be the `individual`
-            - We can do this using the "Features table widget" plugin.
+            - We can do this using the "Features table widget" napari native plugin.
             - We should enable this plugin when launching napari (so that the user doesn't have to click around)
             - We could expose 'individual' as a feature in the table, and the user can use the plugin to review and edit their values
+            - If the individual is set to a value of a box the line does not intersect with, the line turns/remains red.
+            - Any red or yellow lines should be logged to a separate file.
