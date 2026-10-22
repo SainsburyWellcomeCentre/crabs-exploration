@@ -353,11 +353,17 @@ def compute_mask_props(labels_zarr, ds_bboxes):
 def append_mask_props(path_to_zarr, ds_props):
     """Append the data variables of ``ds_props`` to the store.
 
-    Only the data variables are appended: the coordinates are already in
-    the store, and xarray checks that rewritten variables keep their stored
-    dtype. `space` is <U1 here, but reads back from the store as a
-    variable-length string dtype (StringDType in recent xarray/zarr), so
-    appending it would raise a dtype mismatch.
+    Only the data variables are appended. The coordinates are already in
+    the store, so rewriting them gains nothing, and xarray checks that
+    rewritten variables keep their stored dtype. `space` is <U1 here, but
+    reads back from the store as a variable-length string dtype
+    (StringDType in recent xarray/zarr), so appending it would raise a
+    dtype mismatch.
+
+    Without coordinates, the data variables attach to the stored dims by
+    name and are written by position, with no alignment check. ``ds_props``
+    must therefore follow the store's ``image_id`` and ``id`` order, as it
+    does when built by ``compute_mask_props`` from the same ``ds_bboxes``.
 
     ``to_zarr(mode="a")`` replaces the store's root attributes with those of
     the appended dataset, so the stored attributes are copied onto it first.
