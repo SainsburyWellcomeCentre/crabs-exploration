@@ -350,6 +350,23 @@ def compute_mask_props(labels_zarr, ds_bboxes):
     )
 
 
+def append_mask_props(path_to_zarr, ds_props):
+    """Append the data variables of ``ds_props`` to the store.
+
+    Only the data variables are appended: the coordinates are already in
+    the store, and xarray checks that rewritten variables keep their stored
+    dtype. `space` is <U1 here, but reads back from the store as a
+    variable-length string dtype (StringDType in recent xarray/zarr), so
+    appending it would raise a dtype mismatch.
+
+    ``to_zarr(mode="a")`` replaces the store's root attributes with those of
+    the appended dataset, so the stored attributes are copied onto it first.
+    """
+    ds_props = ds_props.drop_vars(list(ds_props.coords))
+    ds_props.attrs = dict(zarr.open_group(path_to_zarr).attrs)
+    ds_props.to_zarr(path_to_zarr, mode="a")
+
+
 def predict_masks_across_images(
     model,
     image_array,
@@ -536,12 +553,7 @@ def main(args):
 
     # Add mask and ellipse parameters per bbox, measured on the stored masks
     ds_props = compute_mask_props(labels_zarr, ds_bboxes)
-    # append only the data variables: the coordinates are already in the
-    # store, and xarray checks that rewritten variables keep their stored
-    # dtype. `space` is <U1 here, but reads back from the store as a
-    # variable-length string dtype (StringDType in recent xarray/zarr),
-    # so appending it would raise a dtype mismatch
-    ds_props.drop_vars(list(ds_props.coords)).to_zarr(output_zarr, mode="a")
+    append_mask_props(output_zarr, ds_props)
 
     print(f"Saved bboxes, masks and mask parameters to {output_zarr}")
 

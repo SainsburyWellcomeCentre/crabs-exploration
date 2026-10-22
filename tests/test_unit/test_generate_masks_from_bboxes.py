@@ -8,6 +8,7 @@ from skimage.draw import ellipse
 
 from scripts.generate_masks_from_bboxes import (
     ImageArrayLazy,
+    append_mask_props,
     compute_mask_props,
     create_dataset_store,
     flatten_masks_smallest_wins,
@@ -88,15 +89,20 @@ def test_compute_mask_props(labels, ds_bboxes):
 def test_store_round_trip(tmp_path, ds_bboxes, labels):
     """Run the three passes of main, without SAM2."""
     store = tmp_path / "bboxes_and_masks.zarr"
-    labels_zarr = create_dataset_store(store, ds_bboxes, (100, 120), {})
+    labels_zarr = create_dataset_store(
+        store, ds_bboxes, (100, 120), {"occlusion_policy": "smallest_wins"}
+    )
     labels_zarr[:] = labels  # what predict_masks_across_images does
     ds_props = compute_mask_props(labels_zarr, ds_bboxes)
-    ds_props.drop_vars(list(ds_props.coords)).to_zarr(store, mode="a")
+    append_mask_props(store, ds_props)
 
     ds = xr.open_zarr(store)
     mask = ds.labels.sel(image_id=7) == ds.label_of.sel(id=2)
     assert int(mask.sum()) == ds.mask_area.sel(image_id=7, id=2)
     np.testing.assert_array_equal(ds.labels.values, labels)
+    # root attributes survive the append
+    assert ds.attrs["map_image_id_to_filename"] == {"5": "a.png", "7": "b.png"}
+    assert ds.attrs["occlusion_policy"] == "smallest_wins"
 
 
 def test_create_dataset_store(tmp_path, ds_bboxes):
