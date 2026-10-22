@@ -363,6 +363,7 @@ def append_mask_props(path_to_zarr, ds_props):
     the appended dataset, so the stored attributes are copied onto it first.
     """
     ds_props = ds_props.drop_vars(list(ds_props.coords))
+    # only reads root metadata file
     ds_props.attrs = dict(zarr.open_group(path_to_zarr).attrs)
     ds_props.to_zarr(path_to_zarr, mode="a")
 
