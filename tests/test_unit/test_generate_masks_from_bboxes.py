@@ -10,7 +10,7 @@ from skimage.draw import ellipse
 from scripts.generate_masks_from_bboxes import (
     ImageArrayLazy,
     append_mask_props,
-    compute_mask_props,
+    compute_mask_props_dataset,
     create_dataset_store,
     flatten_masks_smallest_wins,
     get_bboxes_and_labels_per_frame,
@@ -71,7 +71,7 @@ def labels():
 
 def test_compute_mask_props(labels, ds_bboxes):
     """Check values land at the right (image_id, id) and are correct."""
-    ds = compute_mask_props(labels, ds_bboxes)
+    ds = compute_mask_props_dataset(labels, ds_bboxes)
 
     first = ds.sel(image_id=5, id=0)
     assert first.mask_area == (labels[0] == 1).sum()
@@ -122,7 +122,7 @@ def test_store_round_trip(tmp_path, ds_bboxes, labels, space_dtype):
     )
     labels_zarr = zarr.open_group(store)["labels"]
     labels_zarr[:] = labels  # what predict_masks_across_images does
-    ds_props = compute_mask_props(labels_zarr, ds_bboxes)
+    ds_props = compute_mask_props_dataset(labels_zarr, ds_bboxes)
     append_mask_props(store, ds_props)
 
     ds = xr.open_zarr(store)

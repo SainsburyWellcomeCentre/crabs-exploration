@@ -111,6 +111,10 @@ from skimage.measure import regionprops_table
 # Map frame index to (N, 4) boxes and (N,) mask labels
 BoxesAndLabels = dict[int, tuple[np.ndarray, np.ndarray]]
 
+# Label of the mask of the box at position k along `id` is k + LABEL_OFFSET;
+# label 0 is background
+LABEL_OFFSET = 1
+
 # Map regionprops_table property to data variable
 PROPS_TO_VARS = {
     "area": "mask_area",
@@ -211,8 +215,9 @@ def get_bboxes_and_labels_per_frame(
         non_nan = ~np.isnan(corners).all(axis=1)
         boxes_and_labels[idx] = (
             corners[non_nan],
-            np.flatnonzero(non_nan).astype(np.uint16) + 1,
-            # label = box's position along `id` (before dropping NaNs) + 1
+            np.flatnonzero(non_nan).astype(np.uint16) + LABEL_OFFSET,
+            # label = box's position along `id` (before dropping NaNs)
+            # + LABEL_OFFSET
         )
     return boxes_and_labels
 
@@ -240,7 +245,8 @@ def create_dataset_store(
     # Get dimension sizes
     image_h, image_w = image_shape
     n_images, n_ids = ds_bboxes.sizes["image_id"], ds_bboxes.sizes["id"]
-    if n_ids > np.iinfo(np.uint16).max:
+    # the largest label is n_ids - 1 + LABEL_OFFSET
+    if n_ids - 1 + LABEL_OFFSET > np.iinfo(np.uint16).max:
         raise ValueError(
             f"{n_ids} id slots do not fit in uint16 labels "
             f"(max {np.iinfo(np.uint16).max})"
@@ -263,10 +269,11 @@ def create_dataset_store(
                 dtype=np.uint16,
             ),
         ),
-        # label k + 1 is the mask of the box at position k along `id`
+        # label k + LABEL_OFFSET is the mask of the box at position k
+        # along `id`
         label_of=(
             "id",
-            np.arange(1, n_ids + 1, dtype=np.uint16),
+            np.arange(n_ids, dtype=np.uint16) + LABEL_OFFSET,
         ),
     )
     ds.attrs = _attrs_for_zarr({**ds_bboxes.attrs, **metadata_dict})
@@ -310,21 +317,25 @@ def predict_masks_across_images(
 
     ``model`` is a ``sam2.sam2_image_predictor.SAM2ImagePredictor``.
     """
+    # Get dimensions
     n_frames = output_zarr.shape[0]  # len(ds_bboxes.image_id)
     img_h, img_w = output_zarr.shape[
         1:3
     ]  # ds_bboxes.attrs["image_array"].shape[1:3]
 
+    # Loop in batches
     for batch_start in range(0, n_frames, img_batch_size):
+        # Get batch size
         actual_batch_size = min(img_batch_size, n_frames - batch_start)
 
-        # Integer array (B, H, W):
-        # 0 = background, 1+ = object instance IDs
+        # Get label arrays (B, H, W)
+        # label 0 = background
         label_mask_batch = np.zeros(
-            (actual_batch_size, img_h, img_w), dtype=np.uint16
+            (actual_batch_size, img_h, img_w),
+            dtype=np.uint16,
         )
 
-        # Lists of (N_i, 4) boxes and (N_i,) labels, one per image
+        # Get lists of (N_i, 4) boxes and (N_i,) labels, one per image
         frame_idcs = range(batch_start, batch_start + actual_batch_size)
         boxes_batch, labels_batch = zip(
             *(boxes_and_labels_per_frame_idx[f_i] for f_i in frame_idcs),
@@ -401,7 +412,8 @@ def predict_masks_across_images(
 
 
 def flatten_masks_smallest_wins(
-    masks: np.ndarray, labels: np.ndarray
+    masks: np.ndarray,
+    labels: np.ndarray,
 ) -> np.ndarray:
     """Flatten (N, H, W) masks of one frame into an (H, W) label image.
 
@@ -418,17 +430,20 @@ def flatten_masks_smallest_wins(
     return label_frame
 
 
-def compute_mask_props(
-    labels_zarr: zarr.Array | np.ndarray, ds_bboxes: xr.Dataset
+def compute_mask_props_dataset(
+    labels_zarr: zarr.Array | np.ndarray,
+    ds_bboxes: xr.Dataset,
 ) -> xr.Dataset:
-    """Measure each mask and its fitted ellipse, per (image_id, id).
+    """Compute mask properties dataset.
 
     Masks are read from ``labels_zarr`` one frame at a time. Measuring the
     stored masks, rather than the label images in memory during prediction,
     is deliberate: the values can be reproduced from the store alone, and
-    this function can run on an existing store. The mask with
-    label ``k + 1`` is measured and stored at position ``k`` along ``id``,
-    so each value sits at the (image_id, id) of its bounding box.
+    this function can run on an existing store.
+
+    The mask with label ``k + 1`` is measured and stored at position
+    ``k`` along ``id``, so each value sits at the (image_id, id) of its
+    bounding box.
 
     The ellipse is the one with the same second moments as the mask, as
     defined by scikit-image. The returned dataset has these data variables,
@@ -452,33 +467,50 @@ def compute_mask_props(
     - ``ellipse_eccentricity``: 0 for a circle, towards 1 for an elongated
       ellipse.
     """
+    # Get n images and max n annotations from ds_bboxes
     n_images, n_ids = ds_bboxes.sizes["image_id"], ds_bboxes.sizes["id"]
-    names = [*PROPS_TO_VARS.values(), "ellipse_major_axis_theta"]
-    out = {name: np.full((n_images, n_ids), np.nan) for name in names}
-    centroid = np.full((n_images, 2, n_ids), np.nan)  # space = ["x", "y"]
 
+    # Initialise one (image_id, id) array per scalar variable, and an
+    # (image_id, space, id) array for the centroid; NaN where no mask
+    scalar_var_names = [*PROPS_TO_VARS.values(), "ellipse_major_axis_theta"]
+    scalar_var_arrays = {
+        name: np.full((n_images, n_ids), np.nan) for name in scalar_var_names
+    }
+    centroid_array = np.full((n_images, 2, n_ids), np.nan)  # 2 for space dim
+
+    # Loop thru images
     for f in range(n_images):
+        # Compute geom properties
         table = regionprops_table(
             np.asarray(labels_zarr[f]),
             properties=["label", "centroid", "orientation", *PROPS_TO_VARS],
         )
-        # label k + 1 is the mask of the box at position k along `id`
-        idx = table["label"] - 1
-        for prop, name in PROPS_TO_VARS.items():
-            out[name][f, idx] = table[prop]
-        # scikit-image measures from the row axis; convert to the x-axis
-        out["ellipse_major_axis_theta"][f, idx] = np.mod(
+
+        # Fill in scalar variable arrays
+        idx = table["label"] - LABEL_OFFSET
+        for prop_name, var_name in PROPS_TO_VARS.items():
+            scalar_var_arrays[var_name][f, idx] = table[prop_name]
+
+        # Convert geometric properties to the x-axis
+        # (scikit-image measures from the row axis)
+        scalar_var_arrays["ellipse_major_axis_theta"][f, idx] = np.mod(
             np.pi / 2 - table["orientation"], np.pi
         )
-        centroid[f, 0, idx] = table["centroid-1"]  # x = column
-        centroid[f, 1, idx] = table["centroid-0"]  # y = row
+        centroid_array[f, 0, idx] = table["centroid-1"]  # x = column
+        centroid_array[f, 1, idx] = table["centroid-0"]  # y = row
 
-    data_vars: dict[str, tuple[tuple[str, ...], np.ndarray]] = {
-        name: (("image_id", "id"), arr) for name, arr in out.items()
-    }
-    data_vars["mask_centroid"] = (("image_id", "space", "id"), centroid)
     return xr.Dataset(
-        data_vars, coords=ds_bboxes[["image_id", "space", "id"]].coords
+        {
+            **{
+                name: (("image_id", "id"), arr)
+                for name, arr in scalar_var_arrays.items()
+            },
+            "mask_centroid": (
+                ("image_id", "space", "id"),
+                centroid_array,
+            ),
+        },
+        coords=ds_bboxes[["image_id", "space", "id"]].coords,
     )
 
 
@@ -493,9 +525,11 @@ def append_mask_props(path_to_zarr: str | Path, ds_props: xr.Dataset) -> None:
     # drop coordinates from ds_props before appending, to not
     # overwrite coordinates of the zarr store
     ds_props = ds_props.drop_vars(list(ds_props.coords))
+
     # copy attrs from store
     # (fast, it only reads root metadata file)
     ds_props.attrs = dict(zarr.open_group(path_to_zarr).attrs)
+
     # append ds_props to zarr store
     # (to_zarr(mode="a") replaces the store's root attrs)
     ds_props.to_zarr(path_to_zarr, mode="a")
@@ -503,7 +537,7 @@ def append_mask_props(path_to_zarr: str | Path, ds_props: xr.Dataset) -> None:
 
 def main(args: argparse.Namespace) -> None:
     """Generate masks from bbox annotations using SAM2."""
-    # imported here, so that tests can import this module without them
+    # Imports not needed for tests
     from ethology.io.annotations import load_bboxes
     from sam2.sam2_image_predictor import SAM2ImagePredictor
 
@@ -513,7 +547,7 @@ def main(args: argparse.Namespace) -> None:
     annotations_dir = data_dir / "annotations"
     annotations_file = annotations_dir / "VIA_JSON_combined_coco_gen.json"
     batch_size = args.batch_size
-    model_id = args.model
+    model_name = args.model
 
     # Set device
     if torch.cuda.is_available():
@@ -524,34 +558,34 @@ def main(args: argparse.Namespace) -> None:
         device = "cpu"
     print(f"Using device: {device}")
 
-    # Output zarr store, holding bboxes, masks and mask parameters
+    # Define output zarr store, holding bboxes, masks and mask parameters
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_zarr = annotations_dir / f"bboxes_and_masks_{timestamp}.zarr"
 
-    # Read groundtruth as ethology annotation dataset
+    # Read groundtruth as an ethology annotation dataset
     ds_bboxes = load_bboxes.from_files(
         annotations_file,
         format="COCO",
         images_dirs=images_dir,
     )
 
-    # Load ground truth images as lazy array, aligned with
-    # the image_id coordinate
+    # Load ground truth images as a lazy array
+    # (aligned with the image_id coordinate in ds_bboxes)
     img_paths = get_image_paths(ds_bboxes)
     image_array = ImageArrayLazy(img_paths)
 
     # Load SAM2 predictor on device
     image_predictor = SAM2ImagePredictor.from_pretrained(
-        model_id=model_id,
+        model_id=model_name,
         device=device,
     )
 
-    # Create zarr store with the bboxes and an empty array
+    # Create zarr store with the bboxes, and an empty array
     # for the output ID-encoded masks
     image_h, image_w = image_array.shape[1:3]
     metadata_dict = {
         "timestamp": timestamp,
-        "sam2_model": model_id,
+        "sam2_model": model_name,
         "source_images_dir": str(images_dir),
         "annotations_file": str(annotations_file),
         "annotations_format": "COCO",
@@ -560,7 +594,7 @@ def main(args: argparse.Namespace) -> None:
         "prompt_type": "bounding_box",
         "mask_encoding": "instance_id",
         "background_label": 0,
-        "id_offset": 1,
+        "id_offset": LABEL_OFFSET,
         "occlusion_policy": "smallest_wins",
         "device": device,
     }
@@ -571,11 +605,11 @@ def main(args: argparse.Namespace) -> None:
         metadata_dict=metadata_dict,
     )
 
-    # Get zarr array to write the masks to
+    # Get labels zarr array
     # (one frame per chunk)
     labels_zarr = zarr.open_array(output_zarr, path="labels")
 
-    # Compute bbox prompts per frame,
+    # Extract bbox prompts and labels per frame,
     # as dict mapping frame index to a tuple of
     # (N, 4) bbox arrays in [x1, y1, x2, y2] format
     # and (N,) arrays with the mask label associated to each box
@@ -596,8 +630,8 @@ def main(args: argparse.Namespace) -> None:
     # xr.open_zarr, which reads the consolidated metadata
     zarr.consolidate_metadata(output_zarr)
 
-    # Add mask and ellipse parameters per bbox, measured on the stored masks
-    ds_props = compute_mask_props(labels_zarr, ds_bboxes)
+    # Add geom parameters per bbox to zarr store
+    ds_props = compute_mask_props_dataset(labels_zarr, ds_bboxes)
     append_mask_props(output_zarr, ds_props)
 
     print(f"Saved bboxes, masks and mask parameters to {output_zarr}")
