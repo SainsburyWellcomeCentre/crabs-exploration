@@ -81,7 +81,7 @@ Usage (dependencies are auto-installed via uv). From the repo root:
 #   "torchvision>=0.20.1",
 #   "sam-2 @ git+https://github.com/facebookresearch/sam2.git",
 #   "huggingface_hub",
-#   "ethology",
+#   "ethology>=0.1.4", # after stable ID assignment (PR 164)
 # ]
 #
 # [tool.uv.sources]
@@ -224,8 +224,10 @@ def create_dataset_store(path_to_zarr, ds_bboxes, image_shape, metadata_dict):
             f"(max {np.iinfo(np.uint16).max})"
         )
 
-    # zarr 3 has no stable format for numpy's fixed-width strings,
-    # so store the `space` coordinate as variable-length strings
+    # zarr 3 has no stable format for numpy's fixed-width strings, so store
+    # the `space` coordinate as an object. ethology >= 0.1.4
+    # already returns it as object; the cast covers datasets built
+    # before then or 'manually', where ["x", "y"] becomes <U1
     ds = ds_bboxes.assign_coords(space=ds_bboxes.space.astype(object))
     ds = ds.assign(
         labels=(
@@ -351,26 +353,21 @@ def compute_mask_props(labels_zarr, ds_bboxes):
 
 
 def append_mask_props(path_to_zarr, ds_props):
-    """Append the data variables of ``ds_props`` to the store.
+    """Add the data variables of ``ds_props`` to an existing store.
 
-    Only the data variables are appended. The coordinates are already in
-    the store, so rewriting them gains nothing, and xarray checks that
-    rewritten variables keep their stored dtype. `space` is <U1 here, but
-    reads back from the store as a variable-length string dtype
-    (StringDType in recent xarray/zarr), so appending it would raise a
-    dtype mismatch.
-
-    Without coordinates, the data variables attach to the stored dims by
-    name and are written by position, with no alignment check. ``ds_props``
-    must therefore follow the store's ``image_id`` and ``id`` order, as it
-    does when built by ``compute_mask_props`` from the same ``ds_bboxes``.
-
-    ``to_zarr(mode="a")`` replaces the store's root attributes with those of
-    the appended dataset, so the stored attributes are copied onto it first.
+    ``to_zarr`` writes values by position, without aligning them to the
+    stored coordinates, so ``ds_props`` must follow the store's
+    ``image_id`` and ``id`` order (it does when built by
+    ``compute_mask_props`` from the same ``ds_bboxes``).
     """
+    # drop coordinates from ds_props before appending, to not
+    # overwrite coordinates of the zarr store
     ds_props = ds_props.drop_vars(list(ds_props.coords))
-    # only reads root metadata file
+    # copy attrs from store
+    # (fast, it only reads root metadata file)
     ds_props.attrs = dict(zarr.open_group(path_to_zarr).attrs)
+    # append ds_props to zarr store
+    # (to_zarr(mode="a") replaces the store's root attrs)
     ds_props.to_zarr(path_to_zarr, mode="a")
 
 

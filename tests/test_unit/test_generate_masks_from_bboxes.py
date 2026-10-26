@@ -19,21 +19,39 @@ from scripts.generate_masks_from_bboxes import (
 
 @pytest.fixture
 def ds_bboxes():
-    """Two images, three id slots, with attributes as ethology sets them."""
+    """Two images, three id slots, as ethology >= 0.1.4 returns them.
+
+    ethology's ``image_id`` is the image's index in the sorted list of all
+    images in the annotation file, so images without annotations leave gaps.
+    "image_id": [5, 7] mimics that, and make a mix-up between image ID and
+    position along ``image_id``.
+    """
     return xr.Dataset(
         {
             "position": (
                 ("image_id", "space", "id"),
                 np.full((2, 2, 3), np.nan),
-            )
+            ),
+            "shape": (
+                ("image_id", "space", "id"),
+                np.full((2, 2, 3), np.nan),
+            ),
+            "image_shape": (
+                ("image_id", "space"),
+                np.full((2, 2), [120, 100]),
+            ),
+            "category": (("image_id", "id"), np.full((2, 3), -1)),
         },
         coords={
             "image_id": [5, 7],
-            "space": ["x", "y"],
+            "space": np.array(["x", "y"], dtype=object),
             "id": range(3),
         },
         attrs={
+            "annotation_files": Path("/data/annotations/coco.json"),
+            "annotation_format": "COCO",
             "images_directories": Path("/data/frames"),
+            "map_category_to_str": {1: "crab"},
             "map_image_id_to_filename": {5: "a.png", 7: "b.png"},
         },
     )
@@ -86,8 +104,18 @@ def test_compute_mask_props(labels, ds_bboxes):
         )
 
 
-def test_store_round_trip(tmp_path, ds_bboxes, labels):
+@pytest.mark.parametrize(
+    "space_dtype",
+    [
+        object,  # as from ethology >= 0.1.4
+        "<U1",  # as built e.g. coords={"space": ["x", "y"]}
+    ],
+)
+def test_store_round_trip(tmp_path, ds_bboxes, labels, space_dtype):
     """Run the three passes of main, without SAM2."""
+    ds_bboxes = ds_bboxes.assign_coords(
+        space=ds_bboxes.space.astype(space_dtype)
+    )
     store = tmp_path / "bboxes_and_masks.zarr"
     labels_zarr = create_dataset_store(
         store, ds_bboxes, (100, 120), {"occlusion_policy": "smallest_wins"}
