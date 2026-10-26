@@ -1,7 +1,6 @@
 """A notebook to visualise masks in annotations dataset."""
 
 # %%
-import sys
 from pathlib import Path
 
 import dask
@@ -12,13 +11,6 @@ import numpy as np
 import xarray as xr
 from matplotlib.patches import Ellipse
 from PIL import Image
-
-# make scripts/ importable, whether this runs from notebooks/ or the repo root
-REPO_ROOT = next(
-    p for p in [Path.cwd(), *Path.cwd().parents] if (p / "scripts").is_dir()
-)
-sys.path.insert(0, str(REPO_ROOT))
-from scripts.generate_masks_from_bboxes import get_image_paths  # noqa: E402
 
 # %%
 # %matplotlib widget
@@ -109,9 +101,17 @@ if "mask_area" not in ds:
     )
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-# Load ground truth images as lazy dask array
-# image files aligned with the image_id coordinate, as in the script
-img_paths = get_image_paths(ds)
+# Load ground truth images as a lazy dask array
+# - image files aligned with the image_id coordinate, as in the script;
+# - zarr stores attrs as JSON, so the image_id keys read back as str, 
+#   which we need to cast to int here
+images_dir = Path(ds.attrs["images_directories"])
+map_id_to_filename = {
+    int(k): v for k, v in ds.attrs["map_image_id_to_filename"].items()
+}
+img_paths = [
+    images_dir / map_id_to_filename[img_id] for img_id in ds.image_id.values
+]
 
 # assume all images have the same shape and dtype as the first one
 sample = _read_image(img_paths[0])  # H, W, C

@@ -13,7 +13,6 @@ from scripts.generate_masks_from_bboxes import (
     create_dataset_store,
     flatten_masks_smallest_wins,
     get_bboxes_mask_labels_per_frame,
-    get_image_paths,
 )
 
 
@@ -170,19 +169,6 @@ def test_create_dataset_store_too_many_ids(tmp_path):
     )
     with pytest.raises(ValueError, match="do not fit in uint16"):
         create_dataset_store(tmp_path / "s.zarr", ds_bboxes, (10, 10), {})
-
-
-def test_get_image_paths_after_round_trip(tmp_path, ds_bboxes):
-    """Check image paths can be read from the store, with str dict keys."""
-    for name in ["a.png", "b.png"]:
-        (tmp_path / name).touch()
-    ds_bboxes.attrs["images_directories"] = tmp_path
-    store = tmp_path / "bboxes_and_masks.zarr"
-    create_dataset_store(store, ds_bboxes, (100, 120), {})
-
-    ds = xr.open_zarr(store)
-    assert get_image_paths(ds) == [tmp_path / "a.png", tmp_path / "b.png"]
-    assert get_image_paths(ds) == get_image_paths(ds_bboxes)
 
 
 def test_image_array_lazy_different_sizes(tmp_path):

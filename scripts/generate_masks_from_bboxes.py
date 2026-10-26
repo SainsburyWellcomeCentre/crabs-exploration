@@ -158,18 +158,14 @@ def get_image_paths(ds_bboxes):
     The ``i``-th path corresponds to the ``i``-th element of
     ``ds_bboxes.image_id``.
     """
+    # Build full paths to images
     images_dir = Path(ds_bboxes.attrs["images_directories"])
-
-    # if ds_bboxes is read with xr.open_zarr and not via
-    # ethology
-    map_integer_id_to_filename = {
-        int(k): v
-        for k, v in ds_bboxes.attrs["map_image_id_to_filename"].items()
-    }
     img_paths = [
-        images_dir / map_integer_id_to_filename[img_id]
+        images_dir / ds_bboxes.attrs["map_image_id_to_filename"][img_id]
         for img_id in ds_bboxes.image_id.values
     ]
+
+    # Check if a file is missing
     missing = [p for p in img_paths if not p.is_file()]
     if missing:
         raise FileNotFoundError(
