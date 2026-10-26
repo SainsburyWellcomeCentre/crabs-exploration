@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
+import zarr
 from PIL import Image
 from skimage.draw import ellipse
 
@@ -12,7 +13,7 @@ from scripts.generate_masks_from_bboxes import (
     compute_mask_props,
     create_dataset_store,
     flatten_masks_smallest_wins,
-    get_bboxes_mask_labels_per_frame,
+    get_bboxes_and_labels_per_frame,
 )
 
 
@@ -116,9 +117,10 @@ def test_store_round_trip(tmp_path, ds_bboxes, labels, space_dtype):
         space=ds_bboxes.space.astype(space_dtype)
     )
     store = tmp_path / "bboxes_and_masks.zarr"
-    labels_zarr = create_dataset_store(
+    create_dataset_store(
         store, ds_bboxes, (100, 120), {"occlusion_policy": "smallest_wins"}
     )
+    labels_zarr = zarr.open_group(store)["labels"]
     labels_zarr[:] = labels  # what predict_masks_across_images does
     ds_props = compute_mask_props(labels_zarr, ds_bboxes)
     append_mask_props(store, ds_props)
@@ -135,14 +137,15 @@ def test_store_round_trip(tmp_path, ds_bboxes, labels, space_dtype):
 def test_create_dataset_store(tmp_path, ds_bboxes):
     """Check the template has zero labels, label_of and zarr-safe attrs."""
     store = tmp_path / "bboxes_and_masks.zarr"
-    labels_zarr = create_dataset_store(
+    create_dataset_store(
         store,
         ds_bboxes,
         (100, 120),
         {"occlusion_policy": "smallest_wins"},
     )
 
-    # returned array is the labels array, one frame per chunk
+    # labels array has one frame per chunk
+    labels_zarr = zarr.open_group(store)["labels"]
     assert labels_zarr.shape == (2, 100, 120)
     assert labels_zarr.chunks == (1, 100, 120)
 
@@ -222,7 +225,7 @@ def test_get_bboxes_mask_labels_per_frame(dims):
         coords={"image_id": [5, 7], "space": ["x", "y"], "id": range(3)},
     ).transpose(*dims)
 
-    boxes_and_labels = get_bboxes_mask_labels_per_frame(ds_bboxes)
+    boxes_and_labels = get_bboxes_and_labels_per_frame(ds_bboxes)
 
     # frame 0: slots 0 and 2 filled, as [x1, y1, x2, y2]
     boxes, labels = boxes_and_labels[0]
