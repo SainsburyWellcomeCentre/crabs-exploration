@@ -95,8 +95,10 @@ torch is installed from the CUDA 12.8 index (Linux/Windows).
 
 import argparse
 import sys
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
+from typing import Any, cast
 
 import dask.array as da
 import numpy as np
@@ -105,6 +107,9 @@ import xarray as xr
 import zarr
 from PIL import Image
 from skimage.measure import regionprops_table
+
+# Map frame index to (N, 4) boxes and (N,) mask labels
+BoxesAndLabels = dict[int, tuple[np.ndarray, np.ndarray]]
 
 # Map regionprops_table property to data variable
 PROPS_TO_VARS = {
@@ -120,7 +125,7 @@ PROPS_TO_VARS = {
 class ImageArrayLazy:
     """A lazy array for images in a list."""
 
-    def __init__(self, img_paths):
+    def __init__(self, img_paths: Iterable[Path]) -> None:
         """Initialise with a list of image file paths.
 
         The order of ``img_paths`` is preserved, so that index ``i``
@@ -137,22 +142,22 @@ class ImageArrayLazy:
         sample = np.array(Image.open(self.img_paths[0]))  # H, W, C
         self.img_h, self.img_w, self.img_c = sample.shape
 
-    def __len__(self):
+    def __len__(self) -> int:
         """Return the number of images."""
         return len(self.img_paths)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> np.ndarray:
         """Load and return image at the given index as a numpy array."""
         return np.array(Image.open(self.img_paths[idx]))
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int, int, int, int]:
         """Return the shape ``(n_images, height, width, channels)``."""
         return (len(self.img_paths), self.img_h, self.img_w, self.img_c)
         # B, H, W, C
 
 
-def get_image_paths(ds_bboxes):
+def get_image_paths(ds_bboxes: xr.Dataset) -> list[Path]:
     """Return image file paths in the order of the ``image_id`` coordinate.
 
     The ``i``-th path corresponds to the ``i``-th element of
@@ -174,7 +179,9 @@ def get_image_paths(ds_bboxes):
     return img_paths
 
 
-def get_bboxes_and_labels_per_frame(ds_bboxes):
+def get_bboxes_and_labels_per_frame(
+    ds_bboxes: xr.Dataset,
+) -> BoxesAndLabels:
     """Build a dict mapping frame index to ``boxes`` and ``labels``.
 
     The frame index is the position along the ``image_id`` coordinate.
@@ -193,7 +200,7 @@ def get_bboxes_and_labels_per_frame(ds_bboxes):
     x2y2 = ds_bboxes.position + ds_bboxes.shape / 2
 
     # Loop thru images
-    boxes_and_labels = {}
+    boxes_and_labels: BoxesAndLabels = {}
     for idx in range(ds_bboxes.sizes["image_id"]):
         # (n_ids, 4), with one row per id slot, NaN for empty slots
         corners = np.c_[
@@ -210,7 +217,12 @@ def get_bboxes_and_labels_per_frame(ds_bboxes):
     return boxes_and_labels
 
 
-def create_dataset_store(path_to_zarr, ds_bboxes, image_shape, metadata_dict):
+def create_dataset_store(
+    path_to_zarr: str | Path,
+    ds_bboxes: xr.Dataset,
+    image_shape: tuple[int, int],
+    metadata_dict: dict[str, Any],
+) -> None:
     """Initialise output zarr store.
 
     Writes ds_bboxes, empty ``labels`` and ``label_of``.
@@ -225,6 +237,7 @@ def create_dataset_store(path_to_zarr, ds_bboxes, image_shape, metadata_dict):
     metadata and the bbox variables go to disk, but no ``labels`` chunk does.
     Unwritten chunks read back as the fill value, 0.
     """
+    # Get dimension sizes
     image_h, image_w = image_shape
     n_images, n_ids = ds_bboxes.sizes["image_id"], ds_bboxes.sizes["id"]
     if n_ids > np.iinfo(np.uint16).max:
@@ -233,6 +246,7 @@ def create_dataset_store(path_to_zarr, ds_bboxes, image_shape, metadata_dict):
             f"(max {np.iinfo(np.uint16).max})"
         )
 
+    # Define dataset structure
     # zarr 3 has no stable format for numpy's fixed-width strings, so store
     # the `space` coordinate as an object. ethology >= 0.1.4
     # already returns it as object; the cast covers datasets built
@@ -257,6 +271,7 @@ def create_dataset_store(path_to_zarr, ds_bboxes, image_shape, metadata_dict):
     )
     ds.attrs = _attrs_for_zarr({**ds_bboxes.attrs, **metadata_dict})
 
+    # Write dataset to zarr
     ds.to_zarr(
         path_to_zarr,
         mode="w",
@@ -266,14 +281,13 @@ def create_dataset_store(path_to_zarr, ds_bboxes, image_shape, metadata_dict):
     )
 
 
-def _attrs_for_zarr(attrs):
+def _attrs_for_zarr(attrs: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of ``attrs`` with every ``Path`` turned into ``str``.
 
-    zarr cannot store ``Path`` attributes. Dict keys are left unchanged:
-    zarr writes ``int`` keys as strings, so readers convert them back.
+    zarr cannot store ``Path`` attributes. Dict keys are left unchanged.
     """
 
-    def fix(value):
+    def fix(value: Any) -> Any:
         if isinstance(value, Path):
             return str(value)
         if isinstance(value, dict):
@@ -286,13 +300,16 @@ def _attrs_for_zarr(attrs):
 
 
 def predict_masks_across_images(
-    model,
-    image_array,
-    boxes_and_labels_per_frame_idx,
-    output_zarr,
-    img_batch_size=4,
-):
-    """Predict masks in batches and write to zarr store."""
+    model: Any,
+    image_array: ImageArrayLazy,
+    boxes_and_labels_per_frame_idx: BoxesAndLabels,
+    output_zarr: zarr.Array,
+    img_batch_size: int = 4,
+) -> None:
+    """Predict masks in batches and write to zarr store.
+
+    ``model`` is a ``sam2.sam2_image_predictor.SAM2ImagePredictor``.
+    """
     n_frames = output_zarr.shape[0]  # len(ds_bboxes.image_id)
     img_h, img_w = output_zarr.shape[
         1:3
@@ -317,7 +334,7 @@ def predict_masks_across_images(
         # Only pass frames with at least one box to SAM2;
         # frames without boxes are left as background (0)
         # idcs_rel = indices within the batch
-        idcs_rel_with_boxes = []
+        idcs_rel_with_boxes: list[int] = []
         for i, boxes in enumerate(boxes_batch):
             if len(boxes):
                 idcs_rel_with_boxes.append(i)
@@ -373,12 +390,19 @@ def predict_masks_across_images(
         )
 
         # Mark frames as annotated in zarr store attributes
-        annotated = set(output_zarr.attrs.get("annotated_frames", []))
+        annotated = set(
+            cast(
+                list[int],
+                output_zarr.attrs.get("annotated_frames", []),
+            )
+        )
         annotated.update(range(batch_start, batch_start + actual_batch_size))
         output_zarr.attrs["annotated_frames"] = sorted(annotated)
 
 
-def flatten_masks_smallest_wins(masks, labels):
+def flatten_masks_smallest_wins(
+    masks: np.ndarray, labels: np.ndarray
+) -> np.ndarray:
     """Flatten (N, H, W) masks of one frame into an (H, W) label image.
 
     The pixels of mask ``i`` take the value ``labels[i]``, and 0 is
@@ -394,7 +418,9 @@ def flatten_masks_smallest_wins(masks, labels):
     return label_frame
 
 
-def compute_mask_props(labels_zarr, ds_bboxes):
+def compute_mask_props(
+    labels_zarr: zarr.Array | np.ndarray, ds_bboxes: xr.Dataset
+) -> xr.Dataset:
     """Measure each mask and its fitted ellipse, per (image_id, id).
 
     Masks are read from ``labels_zarr`` one frame at a time. Measuring the
@@ -447,14 +473,16 @@ def compute_mask_props(labels_zarr, ds_bboxes):
         centroid[f, 0, idx] = table["centroid-1"]  # x = column
         centroid[f, 1, idx] = table["centroid-0"]  # y = row
 
-    data_vars = {name: (("image_id", "id"), arr) for name, arr in out.items()}
+    data_vars: dict[str, tuple[tuple[str, ...], np.ndarray]] = {
+        name: (("image_id", "id"), arr) for name, arr in out.items()
+    }
     data_vars["mask_centroid"] = (("image_id", "space", "id"), centroid)
     return xr.Dataset(
         data_vars, coords=ds_bboxes[["image_id", "space", "id"]].coords
     )
 
 
-def append_mask_props(path_to_zarr, ds_props):
+def append_mask_props(path_to_zarr: str | Path, ds_props: xr.Dataset) -> None:
     """Add the data variables of ``ds_props`` to an existing store.
 
     ``to_zarr`` writes values by position, without aligning them to the
@@ -473,7 +501,7 @@ def append_mask_props(path_to_zarr, ds_props):
     ds_props.to_zarr(path_to_zarr, mode="a")
 
 
-def main(args):
+def main(args: argparse.Namespace) -> None:
     """Generate masks from bbox annotations using SAM2."""
     # imported here, so that tests can import this module without them
     from ethology.io.annotations import load_bboxes
@@ -545,7 +573,7 @@ def main(args):
 
     # Get zarr array to write the masks to
     # (one frame per chunk)
-    labels_zarr = zarr.open_group(output_zarr)["labels"]
+    labels_zarr = zarr.open_array(output_zarr, path="labels")
 
     # Compute bbox prompts per frame,
     # as dict mapping frame index to a tuple of
