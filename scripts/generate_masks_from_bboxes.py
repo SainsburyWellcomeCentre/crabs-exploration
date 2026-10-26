@@ -56,17 +56,16 @@ The ellipse is the one with the same second moments as the mask:
 - ``ellipse_eccentricity``: 0 for a circle, towards 1 for an elongated
   ellipse.
 
-The bbox format for SAM is a (N, 4) float array of
-[x1, y1, x2, y2] in pixel coordinates, where x = column (width axis),
-y = row (height axis), 1 is the xmin, ymin corner and 2 is the
-xmax ymax corner.
-
-Usage (dependencies are auto-installed via uv). From the repo root:
+Usage
+From the repo root:
     uv run scripts/generate_masks_from_bboxes.py /path/to/data_dir
     uv run scripts/generate_masks_from_bboxes.py /path/to/data_dir \
         --batch-size 8
     uv run scripts/generate_masks_from_bboxes.py /path/to/data_dir \
         --model facebook/sam2.1-hiera-large
+
+Dependencies are auto-installed in an ephemeral environment via uv.
+torch is installed from the CUDA 12.8 index (Linux/Windows).
 """
 
 # /// script
@@ -125,14 +124,16 @@ class ImageArrayLazy:
         """Initialise with a list of image file paths.
 
         The order of ``img_paths`` is preserved, so that index ``i``
-        corresponds to the ``i``-th path.
+        corresponds to the ``i``-th path in the list.
         """
         self.img_paths = list(img_paths)
+
         # all images must have the same size, so that the masks fit in
         # one array; check it from the file headers, before running SAM2
         sizes = {Image.open(p).size for p in self.img_paths}  # (W, H)
         if len(sizes) > 1:
             raise ValueError(f"Images have different sizes (W, H): {sizes}")
+
         sample = np.array(Image.open(self.img_paths[0]))  # H, W, C
         self.img_h, self.img_w, self.img_c = sample.shape
 
@@ -154,18 +155,19 @@ class ImageArrayLazy:
 def get_image_paths(ds_bboxes):
     """Return image file paths in the order of the ``image_id`` coordinate.
 
-    The ``i``-th path is the image of the ``i``-th element of
-    ``ds_bboxes.image_id``. Works on the dataset from ethology and on the
-    dataset read back from the zarr store, where zarr has turned the
-    ``int`` keys of ``map_image_id_to_filename`` into strings.
+    The ``i``-th path corresponds to the ``i``-th element of
+    ``ds_bboxes.image_id``.
     """
     images_dir = Path(ds_bboxes.attrs["images_directories"])
-    map_id_to_filename = {
+
+    # if ds_bboxes is read with xr.open_zarr and not via
+    # ethology
+    map_integer_id_to_filename = {
         int(k): v
         for k, v in ds_bboxes.attrs["map_image_id_to_filename"].items()
     }
     img_paths = [
-        images_dir / map_id_to_filename[img_id]
+        images_dir / map_integer_id_to_filename[img_id]
         for img_id in ds_bboxes.image_id.values
     ]
     missing = [p for p in img_paths if not p.is_file()]
@@ -180,7 +182,12 @@ def get_bboxes_mask_labels_per_frame(ds_bboxes):
     """Build a dict mapping frame index to (boxes, labels).
 
     The frame index is the position along the ``image_id`` coordinate.
-    ``boxes`` is an (N, 4) array of [x1, y1, x2, y2] corners.
+
+    ``boxes`` is an (N, 4) float array of [x1, y1, x2, y2] in pixel
+    coordinates, as expected by SAM2: (x1, y1) is the top-left
+    (xmin, ymin) corner and (x2, y2) the bottom-right (xmax, ymax)
+    corner, with x = column and y = row.
+
     ``labels`` is an (N,) array with the label (id) used to paint the
     mask associated to each box. The label matches the box's position
     along the ``id`` dimension + 1.
