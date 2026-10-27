@@ -116,7 +116,10 @@ exclude = ["tests"]
 addopts = "--cov=crabs"
 # repo root on sys.path so tests can import the standalone scripts/ modules
 pythonpath = ["."]
-markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "gui: napari GUI tests, run in the test_gui CI job (select with '-m gui')",
+]
 
 [tool.mypy]
 # scripts/ holds standalone (PEP 723) modules that tests import as
@@ -134,6 +137,7 @@ ignore = [
     "tests/",
     "tests/test_unit/",
     "tests/test_integration/",
+    "tests/test_gui/",
 ]
 
 [tool.ruff]
