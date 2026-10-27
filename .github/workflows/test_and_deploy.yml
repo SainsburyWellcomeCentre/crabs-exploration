@@ -49,7 +49,7 @@ jobs:
         shell: bash -l {0}
         run: |
           sudo apt-get update
-          sudo apt-get install libglapi-mesa libegl-mesa0 libegl1 libopengl0 libgl1
+          sudo apt-get install libegl-mesa0 libegl1 libopengl0 libgl1
       - name: Run all tests
         uses: neuroinformatics-unit/actions/test@v3
         with:
@@ -76,7 +76,7 @@ jobs:
       - name: Install OpenGL libraries
         run: |
           sudo apt-get update
-          sudo apt-get install libglapi-mesa libegl-mesa0 libegl1 libopengl0 libgl1
+          sudo apt-get install libegl-mesa0 libegl1 libopengl0 libgl1
       # as in bash_scripts/run_mask_array.sh: install torch (and setuptools)
       # first, then build SAM2 against them without build isolation
       - name: Install crabs, then SAM2
