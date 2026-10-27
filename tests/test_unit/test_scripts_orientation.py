@@ -1,10 +1,16 @@
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 from PIL import Image
 
+from scripts.orientation.annotate_crabs_orientation_manual import (
+    boxes_containing,
+    segment_theta,
+    write_orientation_zarrs,
+)
 from scripts.orientation.select_orientation_frames import (
     BBOX_VARS,
     ETHOLOGY_ATTRS,
@@ -208,3 +214,113 @@ def test_exclude_earlier_packages(input_store, tmp_path, capsys):
     ds.attrs["annotation_files"] = "/another/coco.json"
     with pytest.raises(ValueError, match="may name other frames"):
         excluded_image_ids([first], ds, "jan2023-full")
+
+
+# -------- tests for annotate_crabs_orientation_manual --------------
+
+
+@pytest.fixture
+def package_slice() -> xr.Dataset:
+    """Get a package slice with sparse ``image_id``s and overlapping boxes.
+
+    ``image_id`` is [5, 7], so a mix-up between ``image_id`` and position
+    along ``image_id`` fails. In image 5, boxes 0 and 1 overlap for
+    9 <= x <= 15, and ``id`` 2 has no box. Image 7 has one box.
+    """
+    position = np.full((2, 2, 3), np.nan)  # (image_id, space, id)
+    shape = np.full((2, 2, 3), np.nan)
+    position[0, :, 0], shape[0, :, 0] = [10, 10], [10, 10]  # x: 5 to 15
+    position[0, :, 1], shape[0, :, 1] = [14, 10], [10, 10]  # x: 9 to 19
+    position[1, :, 0], shape[1, :, 0] = [50, 50], [20, 20]
+    return xr.Dataset(
+        {
+            "position": (("image_id", "space", "id"), position),
+            "shape": (("image_id", "space", "id"), shape),
+            "category": (("image_id", "id"), np.ones((2, 3))),
+        },
+        coords={
+            "image_id": [5, 7],
+            "space": np.array(["x", "y"], dtype=object),
+            "id": range(3),
+        },
+        attrs={"map_image_id_to_filename": {"5": "a.png", "7": "b.png"}},
+    )
+
+
+@pytest.mark.parametrize(
+    "image_id, x, y, expected_ids",
+    [
+        (5, 6, 10, [0]),  # one box
+        (5, 12, 10, [0, 1]),  # two overlapping boxes
+        (5, 30, 30, []),  # no box
+        (7, 6, 10, []),  # image 5's box, on image 7
+        (7, 45, 55, [0]),
+    ],
+)
+def test_boxes_containing(package_slice, image_id, x, y, expected_ids):
+    """Check the boxes containing a point are found on the right image."""
+    np.testing.assert_array_equal(
+        boxes_containing(package_slice, image_id, x, y), expected_ids
+    )
+
+
+@pytest.mark.parametrize(
+    "x0, y0, x1, y1, expected_theta",
+    [
+        (0, 0, 10, 0, 0),  # horizontal
+        (10, 0, 0, 0, 0),  # horizontal, reversed
+        (0, 0, 10, 10, np.pi / 4),  # down-right on screen
+        (10, 10, 0, 0, np.pi / 4),  # down-right, reversed
+        (0, 0, 0, 10, np.pi / 2),  # vertical
+        (0, 10, 10, 0, 3 * np.pi / 4),  # up-right on screen
+    ],
+)
+def test_segment_theta(x0, y0, x1, y1, expected_theta):
+    """Check the angle convention matches ``ellipse_major_axis_theta``.
+
+    The angle is in [0, pi), and does not depend on the line's direction.
+    """
+    assert segment_theta(x0, y0, x1, y1) == pytest.approx(expected_theta)
+
+
+def test_write_orientation_zarrs(package_slice, tmp_path):
+    """Check green rows land at their (image_id, id), and only them.
+
+    Yellow and red rows are not written, other cells are NaN, and a
+    dataset with no green rows has its store from an earlier session
+    removed.
+    """
+    packages = {"aug": package_slice, "sep": package_slice}
+    rows = [
+        ("sep", 7, 0, 0.5, "linked"),
+        ("sep", 5, 1, 0.2, "linked"),
+        ("sep", 5, -1, 0.9, "ambiguous"),
+        ("sep", 5, 0, 1.1, "unlinked"),
+        ("aug", 5, 0, 1.3, "unlinked"),
+    ]
+    df = pd.DataFrame(
+        rows, columns=["dataset", "image_id", "id", "segment_theta", "status"]
+    )
+    store_name = "orientation_alice_20260101_000000.zarr"
+    stale_store = tmp_path / "aug" / store_name
+    package_slice.to_zarr(stale_store)
+
+    written = write_orientation_zarrs(
+        df, packages, tmp_path, store_name, {"annotator": "alice"}
+    )
+
+    assert written == [tmp_path / "sep" / store_name]
+    assert not stale_store.exists()
+
+    out = xr.open_zarr(written[0])
+    expected = np.full((2, 3), np.nan)
+    expected[1, 0] = 0.5  # image_id 7, id 0
+    expected[0, 1] = 0.2  # image_id 5, id 1
+    np.testing.assert_array_equal(out["segment_theta"], expected)
+    np.testing.assert_array_equal(out.image_id, [5, 7])
+    xr.testing.assert_equal(out["position"], package_slice["position"])
+    assert out.attrs["labelling_session"] == {"annotator": "alice"}
+    assert out.attrs["map_image_id_to_filename"] == {
+        "5": "a.png",
+        "7": "b.png",
+    }
