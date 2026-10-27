@@ -1,113 +1,220 @@
-# Steps
+# Manual labelling of crab orientation
 
-1. Install uv
-    - Follow the installation instructions [here](https://docs.astral.sh/uv/getting-started/installation/#__tabbed_1_2) depending on your platform.
-        - Note: the user may not have Python installed. They probably have a windows machine.
+In this task you draw one line over each annotated crab, along its long axis
+(left to right across its body). We use the angle of each line to check
+the orientation we compute automatically for each crab.
 
+You need about 1 GB of disk space, and no Python installation. The steps
+below are for Windows, but the same commands work on macOS and Linux in a
+terminal.
 
-2. Download the orientation labelling script from the crabs-exploration GitHub repository
-    - Run `curl ..... https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/refs/heads/main/scripts/burrows/annotate_crabs_orientation_manual.py` -- (or something like this)
+## 1. Install uv
 
+`uv` runs the labelling tool, and downloads everything it needs, Python
+included. Open **PowerShell** and run:
 
-3. Download annotation frames locally from ceph
-    - Copy zarr stores with bboxes (& masks) from ceph to a local destination in your computer
-        - these zarr stores are the result of running `scripts/generate_masks_from_bboxes.py` as written in PR `smg/gt-ellipses-prediction`
-    - Ceph location:
-        - /ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/aug2023-full/bboxes_and_masks_20261015_194318.zarr
-        - /ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/sep2023-full/bboxes_and_masks_20261015_200236.zarr
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
 
+Then close PowerShell and open it again, so it finds `uv`. To check it
+worked, run `uv --version`.
 
-3. Run script via `uv run`
-    ```
-    uv run /path/to/downloaded/script
-    ```
-    It will create an ephemeral virtual environment with the required dependencies and launch an interactive napari viewer with the following layers:
-    - an image layer with a subset of the frames for Aug and Sept
-    - a shapes layer with the bboxes annotations per frame **showing their ID (individual) as display text** (as read from zarr)
-    - a shapes layer with pre-selected shape Line, which the user will use to draw line segments and annotate each crabs' orientation
+If `uv` is too old for the tool, the tool stops with a message asking you
+to run `uv self update`. Run it, then try again.
 
+## 2. Copy the labelling package
 
-4. Label crabs orientation
-    - For every bbox per frame, draw a line that is parallel to the "long axis" of the crab (medial-lateral axis)
-        - To draw a line: hold-click and drag
-        - We don't need for the centre of the line to be at the centre of the box, or for the line length to represent the width of the animal. We will only use the orientation of the line (i.e. its angle with the top edge of the image, aka the x-axis in pixel coordinates).
-        - Each line should fall within a box. Lines outside all boxes will be discarded.
-        - Ideally each line will intersect one box only.
-            - We explain below how we deal with lines that don't overlap with any boxes or that overlap with multiple boxes. This should be included in the user guide so that labellers are aware.
-        - If it is helps the labelling, once you locate the box you can toggle the visibility of the bboxes layer with one of these shortcuts:
-            • Toggle selected layer visibility: V
-            • Toggle unselected layers visibility: Shift + V
-            • Show only the layer above (cycle/isolate): Shift + Alt + Up
-            • Show only the layer below (cycle/isolate): Shift + Alt + Down
+Copy the labelling package folder from ceph to your computer, for example
+into your `Documents` folder. We will tell you its location on ceph. It is
+called `orientation_labelling_<timestamp>` and is about 0.6 GB.
 
+It holds two subfolders, `sep2023-full` and `aug2023-full`, each with the
+frames to label and the boxes drawn on them. Do not change anything inside
+it.
 
-5. Saving the data
-    - The output format follows the one for the input zarr data: also a zarr store, that inherits the same coordinates where relevant, but only with the theta variable (ok?)
-    - During labelling, we have Autosaving (like in https://github.com/SainsburyWellcomeCentre/crabs-exploration/blob/main/scripts/burrows/annotate_burrow_prompts_manual.py) to ensure no data is lost if the program crashes
-    - We can also restart an unfinished session
+## 3. Start the labelling tool
 
+In PowerShell, run the command below, with:
 
+- the path to your copy of the package, in place of `<package>` (in File
+  Explorer, Shift + right-click the folder and choose **Copy as path**);
+- your name in place of `<name>`, with letters, digits and `-` only (no
+  spaces or `_`), for example `jane-doe`. **Use the same name every time.**
 
-# Questions / points to discuss
-- Output format
-    - sth as close as possible to the input zarr, so that we can easily compute the error in theta by comparing them
-        - same coordinates, but only with the theta variable?
-    - I think the input uses `time` axis (movement-like) rather than `image_id` axis (ethology-like). Should I change that?
-        - See https://ethology.neuroinformatics.dev/latest/examples/coco_bbox_ethology_and_movement.html#transform-dataset-to-a-movement-like-dataset
-        - This could be in a follow up PR that addresses changes in `scripts/generate_masks_from_bboxes.py` and in this script.
+```powershell
+uv run https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/orientation-labelling-v1/scripts/orientation/annotate_crabs_orientation_manual.py <package> --annotator <name>
+```
 
-- Pre-computed subset of frames to label
-    - We would like to label the crabs' orientation on a subset of the frames for which we have bounding box annotations.
-    - We have 27 videos, but only a subset of them is present in the bbox annotated data.
-		- In the Sept annotations, we have frames from 14 'right' videos and 14 'left' videos. We don't have annotations from 8 'right' videos and 8 'left' videos.
-		- In the Aug annotations, we have frames from 5 'right' videos and 6 'left' videos. That covers the full set of August videos.
-    - So we can ask users to label orientation from a subset of 'right' video frames in the bbox annotation set
-		- 'right' because those are the only ones we run inference on, so we can ignore 'left' videos for now. That is a pool of 14+5 = 19 videos.
-		- We can select 2 annotated frames at random per video ---> 19*2 = 38 frames
+Copy the command exactly as given: it points to a fixed version of the tool
+(`orientation-labelling-v1`), so everybody labels with the same code.
 
-    - Some other thoughts
-		- Can I use ethology (https://ethology.neuroinformatics.dev/latest/api_index.html) for this? would it be useful or overkill? (I prefer simplicity)
-        - I think this will be a separate script, that we run before the labelling.
-            - Then its output (a csv?) is passed as input to the labelling script
-            - Is there a simpler way?
-            - We could do the sampling of the frames in the labelling script and make it deterministic with a seed... is that better?
-            - We may have to label more frames going forward. How can we make it simple but flexible? Could we maybe accept an input csv file with frames to exclude from the selection (because they have already been labelled)? I prefer simplicity above all for now, so if this becomes cumbersome we can make a note for the future on how to extend it and keep it very simple for now.
-	- The selection of frames should be saved in the zarr output too
-        - I think it is enough if this info is saved as a coordinate?
+The first run takes a few minutes, while `uv` downloads what the tool
+needs. Later runs start in seconds.
 
-- Bboxes napari 'Shapes' layer
-    - it is read from the input 'extended' zarr
-        - (generated from the script at smg/gt-ellipses-prediction)
-    - it shows the 'individual' per bbox as a `display text`
-        - (this is so that the manual annotator can solve ambiguities re linking lines to bboxes)
-        - `individual` would be a feature in the feature table, but this feature should not be editable
-    - we should lock the bboxes layer so that the bbox annotations are not edited by mistake
-        - `layer.editable = False`
-        - but we should allow toggle visibility
+A napari window opens with:
 
-- Data saving while labelling
-    - we should have an autosave feature
-	- we should have a resume session feature
-    - check how the saving was done for manual selection of burrow masks (see `scripts/burrows/annotate_burrow_prompts_manual.py`, specifically `_autosave_napari_points()`)
+- the frames of both datasets, one after the other. Move between frames with
+  the slider under the image;
+- the boxes, in cyan, each with its `id` in the top-left corner. You cannot
+  edit them;
+- an empty `orientation lines` layer, ready to draw lines;
+- the **features table**, on the right, listing the lines you draw.
 
-- How to associate Lines (segments) to bboxes?
-    - I use Line to refer to the segments the user draws because that is the name used by napari (but note these are not geometric lines but segments).
-    - We can associate Lines to bboxes by checking the overlap between line and box. So we link them by placement: a line is associated with the box it mostly **intersects** with.
-    - We should add lines that are not correctly linked to a single bbox to a log file for traceability.
+## 4. Label
 
-- How to deal with lines that overlap with multiple boxes?
-    - Since we dont care about the location of the line in the pixel space (meaning, we will only use the orientation aka theta of the line to compute the error), we can ask users to try to place the lines so that each line intersects only one box.
-    - That may not be possible in all cases. So to deal with ambiguous cases:
-        - We can use colours to highlight the lines that are associated to a single box (green), none (red) or associated to multiple boxes (yellow).
-        - Once added, lines can have a 'display text' label showing the 'individual' they are linked to.
-        - We set the individual by guessing first:
-            - we guess the individual for each line based on the bbox they overlap most with
-            - if there is only one box, the line turns green and shows the relevant `individual` label
-            - if there are no boxes, `individual` is set to a placeholder value and the line turns red. A warning is shown to indicate the user that that line will not be added to the output (it will be ignored).
-            - if there are multiple boxes that intersect with the line, `individual` is set to a placeholder value and the line turns yellow. A warning is shown to prompt the user to edit the individual label.
-        - For 'red' or 'yellow' conflicts, maybe the simplest way is for users to edit the 'display text' associated to the line, which would be the `individual`
-            - We can do this using the "Features table widget" napari native plugin.
-            - We should enable this plugin when launching napari (so that the user doesn't have to click around)
-            - We could expose 'individual' as a feature in the table, and the user can use the plugin to review and edit their values
-            - If the individual is set to a value of a box the line does not intersect with, the line turns/remains red.
-            - Any red or yellow lines should be logged to a separate file.
+For every box on every frame, draw one line **parallel to the long axis of
+the crab**. To draw a line, press and drag over the crab, then release.
+
+- Only the line's angle is used: it does not need to be centred on the crab,
+  or as long as the crab.
+- A line belongs to the box that contains **its midpoint**. So draw it
+  over the crab, with its middle on the crab.
+- Zoom with the mouse wheel. To move around the image while drawing, hold
+  `Space` and drag.
+- To see a crab better, hide the boxes: select the `bboxes` layer in the
+  layer list and press `V`; press `V` again to show them. `Shift + V` hides
+  all the other layers instead. Select `orientation lines` again before you
+  draw.
+
+Each line shows its `id` and is coloured by its status:
+
+| Colour | Meaning | What to do |
+|---|---|---|
+| green | the line is linked to the box with the `id` shown | nothing |
+| yellow | the midpoint is inside 2 or more boxes, so the `id` is `-1`; or another line on the frame has the same `id` | type the right `id` in the features table, or move the line |
+| red | the midpoint is inside no box, or the `id` typed is a box that does not contain the midpoint | move the line into the box |
+
+A message appears in the bottom-right corner when a new line is yellow or
+red.
+
+**Only green lines are saved as results.** Before you finish, check that
+every line is green.
+
+### Fix a yellow line in the features table
+
+1. Make sure the `orientation lines` layer is selected in the layer list.
+2. In the features table, find the line's row. The `Index` column is the
+   line number given in the message.
+3. Double-click its `id` cell, type the `id` of the right box, and press
+   `Enter`.
+
+The line turns green. Editing the boxes' `id`s in the table has no effect:
+they always come back to their original values.
+
+### Move or delete a line
+
+- Press `S` (select mode), click the line and drag it. Press `L` to go back
+  to drawing lines.
+- **Moving a line guesses its `id` again** from its new position, and
+  replaces any `id` you typed. Type it again if needed.
+- To delete a line, select it and press `Delete`.
+
+## 5. Your files
+
+Your work is saved automatically after every change, in a `labels` folder
+inside the package:
+
+```text
+<package>/labels/
+├── orientation_lines_<name>_<timestamp>.csv
+├── orientation_lines_<name>_<timestamp>.csv.bak    (only after a resume)
+├── sep2023-full/orientation_<name>_<timestamp>.zarr
+└── aug2023-full/orientation_<name>_<timestamp>.zarr
+```
+
+- `orientation_lines_<name>_<timestamp>.csv`: your work in progress. It is
+  saved after every change, and holds all your lines, red and yellow ones
+  included. This is the file you pass to `--resume` (step 6).
+- `orientation_lines_<name>_<timestamp>.csv.bak`: a copy of the CSV from
+  before your last resume, in case lines were deleted by mistake.
+- `sep2023-full/…zarr` and `aug2023-full/…zarr`: the results, from green
+  lines only. They are written when you close the napari window, and are
+  rebuilt from the CSV each time. If one is missing or looks wrong, resume
+  and close the window again.
+
+Do not edit, rename or move these files.
+
+You never need napari's **File > Save** (`Ctrl + S`): your work is saved
+automatically. That menu exports layers in napari's own format, which is
+not what we need.
+
+## 6. Stop and resume
+
+To stop, close the napari window. This writes the results.
+
+To continue later, or after a crash, run the same command as in step 3, with
+`--resume` and the path to your CSV at the end:
+
+```powershell
+uv run https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/orientation-labelling-v1/scripts/orientation/annotate_crabs_orientation_manual.py <package> --annotator <name> --resume <package>\labels\orientation_lines_<name>_<timestamp>.csv
+```
+
+Your lines come back, and the same files are updated: no new ones are
+made.
+
+## 7. Send back your labels
+
+When every line is green, close the window, and send us the whole `labels`
+folder, CSV included. The CSV keeps the red and yellow lines, which the
+results do not.
+
+## For the maintainer
+
+The labelling package is built from the `bboxes_and_masks_<timestamp>.zarr`
+stores written by
+[generate_masks_from_bboxes.py](../scripts/orientation/generate_masks_from_bboxes.py).
+Use stores written on `main` after PR #298: older stores have empty root
+attributes, and the selection script stops with an error on them.
+
+### Build a labelling package
+
+From the repo root, on ceph:
+
+```bash
+uv run scripts/orientation/select_orientation_frames.py \
+    /ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/sep2023-full/annotations/bboxes_and_masks_<timestamp>.zarr \
+    /ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/aug2023-full/annotations/bboxes_and_masks_<timestamp>.zarr \
+    --output-dir /ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels
+```
+
+By default, it samples 2 frames per `Right` video with seed 42
+(`--frames-per-video`, `--camera`, `--seed`): 28 frames from 14 videos in
+`sep2023-full`, and 10 frames from 5 videos in `aug2023-full`. It writes
+`orientation_labelling_<timestamp>/`, with one subfolder per store holding
+the selected frames and a slice of the store with the boxes only. The
+`labelling_package` attribute of each `bboxes.zarr` records the source
+store and the sampling settings.
+
+### Label more frames later
+
+To build a later round's package with new frames only, pass each earlier
+package with `--exclude-package`:
+
+```bash
+uv run scripts/orientation/select_orientation_frames.py <sep store> <aug store> \
+    --output-dir <output dir> \
+    --exclude-package <first package> \
+    --exclude-package <second package>
+```
+
+A video with fewer frames left than `--frames-per-video` gives what is
+left, and is reported.
+
+### Pin the labellers' version
+
+The labellers' command runs the script from a raw GitHub URL pinned to a
+tag, so everybody, in every session, runs the same code even if `main`
+changes. Before sending this guide out, create the tag on the merged commit
+and push it:
+
+```bash
+git tag orientation-labelling-v1 <merged commit>
+git push origin orientation-labelling-v1
+```
+
+If the script needs a fix during labelling, create a new tag (for example
+`orientation-labelling-v2`) and update the commands in this guide.
+
+The napari version is pinned in the script's `uv` header, and in the
+`test_gui` CI job: change both together.
