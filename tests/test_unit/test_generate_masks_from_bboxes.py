@@ -14,7 +14,7 @@ from scripts.generate_masks_from_bboxes import (
     compute_mask_props_dataset,
     create_dataset_store,
     flatten_masks_smallest_wins,
-    get_bboxes_and_labels_per_frame,
+    get_bboxes_and_label_ids_per_frame,
 )
 
 
@@ -221,11 +221,11 @@ def test_create_dataset_store_too_many_ids(tmp_path):
         ("image_id", "id", "space"),
     ],
 )
-def test_get_bboxes_and_labels_per_frame(dims):
-    """Check the SAM2 box prompts and mask labels for each frame.
+def test_get_bboxes_and_label_ids_per_frame(dims):
+    """Check the SAM2 box prompts and mask label IDs for each frame.
 
     Boxes go from centre and size to [x1, y1, x2, y2] corners, and each
-    box's label is its id + 1. Frames are keyed by their position along
+    box's label ID is its id + 1. Frames are keyed by their position along
     ``image_id`` (0, 1), not by their image_id value (5, 7).
 
     Parametrised over the dimension order, which must not change the
@@ -256,16 +256,16 @@ def test_get_bboxes_and_labels_per_frame(dims):
         },
     ).transpose(*dims)
 
-    # Get boxes and labels per frame
-    boxes_and_labels = get_bboxes_and_labels_per_frame(ds_bboxes)
+    # Get boxes and label IDs per frame
+    boxes_and_label_ids = get_bboxes_and_label_ids_per_frame(ds_bboxes)
 
     # check frames are keyed by position along image_id
-    assert list(boxes_and_labels) == [0, 1]
+    assert list(boxes_and_label_ids) == [0, 1]
 
     # check first frame has both boxes, as
     # [x1, y1, x2, y2] = [x - w/2, y - h/2, x + w/2, y + h/2],
-    # with labels id + 1
-    boxes, labels = boxes_and_labels[0]
+    # with label IDs id + 1
+    boxes, label_ids = boxes_and_label_ids[0]
     np.testing.assert_array_equal(
         boxes,
         [
@@ -273,12 +273,12 @@ def test_get_bboxes_and_labels_per_frame(dims):
             [45, 56, 55, 64],  # id 2
         ],
     )
-    np.testing.assert_array_equal(labels, [1, 3])
+    np.testing.assert_array_equal(label_ids, [1, 3])
 
     # check second frame has no boxes, as empty arrays of the right shape
-    boxes, labels = boxes_and_labels[1]
+    boxes, label_ids = boxes_and_label_ids[1]
     assert boxes.shape == (0, 4)
-    assert labels.shape == (0,)
+    assert label_ids.shape == (0,)
 
 
 def test_compute_mask_props(ellipse_labels, ds_bboxes_annotations):

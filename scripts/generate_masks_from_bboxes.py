@@ -108,8 +108,9 @@ import zarr
 from PIL import Image
 from skimage.measure import regionprops_table
 
-# Map frame index to (N, 4) boxes and (N,) mask labels
-BoxesAndLabels = dict[int, tuple[np.ndarray, np.ndarray]]
+# Map frame index to (N, 4) boxes and (N,) mask label IDs
+# (label IDs are the mask label actual values)
+BoxesAndLabelIDs = dict[int, tuple[np.ndarray, np.ndarray]]
 
 # Label of the mask of the box at position k along `id` is k + LABEL_OFFSET;
 # label 0 is background
@@ -183,10 +184,10 @@ def get_image_paths(ds_bboxes: xr.Dataset) -> list[Path]:
     return img_paths
 
 
-def get_bboxes_and_labels_per_frame(
+def get_bboxes_and_label_ids_per_frame(
     ds_bboxes: xr.Dataset,
-) -> BoxesAndLabels:
-    """Build a dict mapping frame index to ``boxes`` and ``labels``.
+) -> BoxesAndLabelIDs:
+    """Build a dict mapping frame index to ``boxes`` and ``label_ids``.
 
     The frame index is the position along the ``image_id`` coordinate.
 
@@ -195,16 +196,16 @@ def get_bboxes_and_labels_per_frame(
     (xmin, ymin) corner and (x2, y2) the bottom-right (xmax, ymax)
     corner, with x = column and y = row.
 
-    ``labels`` is an (N,) array with the label (id) used to paint the
-    mask associated to each box. The label matches the box's position
-    along the ``id`` dimension + 1.
+    ``label_ids`` is an (N,) array with the label ID used to paint the
+    mask associated to each box in the label image. The label ID is the
+    box's position along the ``id`` dimension + 1 (0 is background).
     """
     # Get corners for all images
     x1y1 = ds_bboxes.position - ds_bboxes.shape / 2
     x2y2 = ds_bboxes.position + ds_bboxes.shape / 2
 
     # Loop thru images
-    boxes_and_labels: BoxesAndLabels = {}
+    boxes_and_label_ids: BoxesAndLabelIDs = {}
     for idx in range(ds_bboxes.sizes["image_id"]):
         # (n_ids, 4), with one row per id slot, NaN for empty slots
         corners = np.c_[
@@ -213,13 +214,13 @@ def get_bboxes_and_labels_per_frame(
         ]
         # select non-nan only
         non_nan = ~np.isnan(corners).all(axis=1)
-        boxes_and_labels[idx] = (
+        boxes_and_label_ids[idx] = (
             corners[non_nan],
             np.flatnonzero(non_nan).astype(np.uint16) + LABEL_OFFSET,
-            # label = box's position along `id` (before dropping NaNs)
+            # label ID = box's position along `id` (before dropping NaNs)
             # + LABEL_OFFSET
         )
-    return boxes_and_labels
+    return boxes_and_label_ids
 
 
 def create_dataset_store(
@@ -309,7 +310,7 @@ def _attrs_for_zarr(attrs: dict[str, Any]) -> dict[str, Any]:
 def predict_masks_across_images(
     model: Any,
     image_array: ImageArrayLazy,
-    boxes_and_labels_per_frame_idx: BoxesAndLabels,
+    boxes_and_label_ids_per_frame_idx: BoxesAndLabelIDs,
     output_zarr: zarr.Array,
     img_batch_size: int = 4,
 ) -> None:
@@ -335,10 +336,10 @@ def predict_masks_across_images(
             dtype=np.uint16,
         )
 
-        # Get lists of (N_i, 4) boxes and (N_i,) labels, one per image
+        # Get lists of (N_i, 4) boxes and (N_i,) label IDs, one per image
         frame_idcs = range(batch_start, batch_start + actual_batch_size)
-        boxes_batch, labels_batch = zip(
-            *(boxes_and_labels_per_frame_idx[f_i] for f_i in frame_idcs),
+        boxes_batch, label_ids_batch = zip(
+            *(boxes_and_label_ids_per_frame_idx[f_i] for f_i in frame_idcs),
             strict=True,
         )
 
@@ -384,7 +385,7 @@ def predict_masks_across_images(
 
                 # Add results to batch array (B,H,W)
                 label_mask_batch[idx_rel_batch] = flatten_masks_smallest_wins(
-                    masks_one_frame, labels_batch[idx_rel_batch]
+                    masks_one_frame, label_ids_batch[idx_rel_batch]
                 )
 
                 # log
@@ -413,11 +414,11 @@ def predict_masks_across_images(
 
 def flatten_masks_smallest_wins(
     masks: np.ndarray,
-    labels: np.ndarray,
+    label_ids: np.ndarray,
 ) -> np.ndarray:
     """Flatten (N, H, W) masks of one frame into an (H, W) label image.
 
-    The pixels of mask ``i`` take the value ``labels[i]``, and 0 is
+    The pixels of mask ``i`` take the value ``label_ids[i]``, and 0 is
     background. Masks are painted from largest to smallest area, so
     where two masks overlap the smaller one keeps the shared pixels
     ("smallest_wins" occlusion policy).
@@ -426,7 +427,7 @@ def flatten_masks_smallest_wins(
     label_frame = np.zeros(masks.shape[1:], dtype=np.uint16)
     areas = masks.reshape(len(masks), -1).sum(axis=1)
     for i in np.argsort(-areas, kind="stable"):
-        label_frame[masks[i]] = labels[i]
+        label_frame[masks[i]] = label_ids[i]
     return label_frame
 
 
@@ -609,11 +610,11 @@ def main(args: argparse.Namespace) -> None:
     # (one frame per chunk)
     labels_zarr = zarr.open_array(output_zarr, path="labels")
 
-    # Extract bbox prompts and labels per frame,
+    # Extract bbox prompts and label IDs per frame,
     # as dict mapping frame index to a tuple of
     # (N, 4) bbox arrays in [x1, y1, x2, y2] format
-    # and (N,) arrays with the mask label associated to each box
-    map_frame_idx_to_boxes_and_labels = get_bboxes_and_labels_per_frame(
+    # and (N,) arrays with the mask label ID associated to each box
+    map_frame_idx_to_boxes_and_label_ids = get_bboxes_and_label_ids_per_frame(
         ds_bboxes
     )
 
@@ -622,7 +623,7 @@ def main(args: argparse.Namespace) -> None:
     predict_masks_across_images(
         image_predictor,
         image_array,
-        map_frame_idx_to_boxes_and_labels,
+        map_frame_idx_to_boxes_and_label_ids,
         labels_zarr,
         batch_size,
     )
