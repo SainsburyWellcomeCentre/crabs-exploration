@@ -222,27 +222,32 @@ def test_create_dataset_store_too_many_ids(tmp_path):
     ],
 )
 def test_get_bboxes_and_label_ids_per_frame(dims):
-    """Check the SAM2 box prompts and mask label IDs for each frame.
+    """Test output of get_bboxes_and_label_ids_per_frame.
 
-    Boxes go from centre and size to [x1, y1, x2, y2] corners, and each
+    The output is a dict mapping position allong image_id to
+    boxes and label IDs.
+
+    Boxes go from centre and size to [x1, y1, x2, y2] corners. Each
     box's label ID is its id + 1. Frames are keyed by their position along
     ``image_id`` (0, 1), not by their image_id value (5, 7).
 
     Parametrised over the dimension order, which must not change the
     result.
     """
-    # Define two boxes in the first image, at id slots 0 and 2
+    # Define two boxes in the first image, at id slots 0 and 2,
+    # as {id: (centre (x, y), size (width, height))}
     # (id slot 1 and the second image have no boxes, so are NaN)
+    boxes_first_image = {
+        0: ([10, 20], [4, 6]),
+        2: ([50, 60], [10, 8]),
+    }
+
+    # Build dataset with these boxes
     position = np.full((2, 2, 3), np.nan)  # (image_id, space, id)
     shape = np.full((2, 2, 3), np.nan)
-
-    # first image slot 0
-    position[0, :, 0] = [10, 20]  # centre (x, y)
-    shape[0, :, 0] = [4, 6]  # (width, height)
-
-    # first image slot 2
-    position[0, :, 2] = [50, 60]
-    shape[0, :, 2] = [10, 8]
+    for id_slot, (centre, size) in boxes_first_image.items():
+        position[0, :, id_slot] = centre
+        shape[0, :, id_slot] = size
 
     ds_bboxes = xr.Dataset(
         {
@@ -256,15 +261,15 @@ def test_get_bboxes_and_label_ids_per_frame(dims):
         },
     ).transpose(*dims)
 
-    # Get boxes and label IDs per frame
+    # Compute boxes and label IDs per frame
     boxes_and_label_ids = get_bboxes_and_label_ids_per_frame(ds_bboxes)
 
-    # check frames are keyed by position along image_id
-    assert list(boxes_and_label_ids) == [0, 1]
+    # Check keys are the position along image_id
+    assert list(boxes_and_label_ids.keys()) == [0, 1]
 
-    # check first frame has both boxes, as
+    # Check boxes in first frame
+    # corners as:
     # [x1, y1, x2, y2] = [x - w/2, y - h/2, x + w/2, y + h/2],
-    # with label IDs id + 1
     boxes, label_ids = boxes_and_label_ids[0]
     np.testing.assert_array_equal(
         boxes,
@@ -273,9 +278,13 @@ def test_get_bboxes_and_label_ids_per_frame(dims):
             [45, 56, 55, 64],  # id 2
         ],
     )
-    np.testing.assert_array_equal(label_ids, [1, 3])
+    # with label IDs id + 1
+    np.testing.assert_array_equal(
+        label_ids,
+        [id_slot + 1 for id_slot in boxes_first_image],
+    )
 
-    # check second frame has no boxes, as empty arrays of the right shape
+    # check second frame has no boxes
     boxes, label_ids = boxes_and_label_ids[1]
     assert boxes.shape == (0, 4)
     assert label_ids.shape == (0,)
@@ -427,35 +436,62 @@ def test_append_mask_props(
     )
 
 
-# --------
 def test_image_array_lazy_different_sizes(tmp_path):
-    """Check images of different sizes raise before any is loaded."""
-    paths = [tmp_path / "a.png", tmp_path / "b.png"]
-    Image.new("RGB", (120, 100)).save(paths[0])
-    Image.new("RGB", (60, 100)).save(paths[1])
+    """Check images of different sizes raise an error."""
+    image_paths = [
+        tmp_path / "a.png",
+        tmp_path / "b.png",
+    ]
+    # Create mock images at those paths with different sizes
+    Image.new("RGB", (120, 100)).save(image_paths[0])
+    Image.new("RGB", (60, 100)).save(image_paths[1])
+
+    # Check that defining an image lazy array raises
     with pytest.raises(ValueError, match="different sizes"):
-        ImageArrayLazy(iter(paths))
+        ImageArrayLazy(iter(image_paths))
 
 
 def test_flatten_masks_smallest_wins():
     """Check overlapping pixels take the label of the smaller mask."""
+    # Define an array with overlapping masks
     masks = np.zeros((3, 10, 10), bool)
-    masks[0, 2:8, 2:8] = True  # small, 36 pixels
+    masks[0, 2:8, 2:8] = True  # small, 36 pixels, wins in overlap
     masks[1, :, :6] = True  # large, 60 pixels, overlaps mask 0
     masks[2, 8:, 6:] = True  # 8 pixels, no overlap
-    label_frame = flatten_masks_smallest_wins(masks, [4, 7, 9])
 
+    # Define arbitrary label IDs (not 1, 2, 3), to check masks are
+    # painted with the given label IDs, not by their position
+    label_ids = [4, 7, 9]
+
+    # Apply mask flattening (smallest wins)
+    label_frame = flatten_masks_smallest_wins(masks, label_ids)
+
+    # check output type
     assert label_frame.dtype == np.uint16
-    assert (label_frame[masks[0]] == 4).all()
-    assert (label_frame[masks[1] & ~masks[0]] == 7).all()
-    assert (label_frame[masks[2]] == 9).all()
+
+    # check each mask region has its label ID
+    assert (label_frame[masks[0]] == label_ids[0]).all()
+    # mask 1 keeps its area minus the overlap with mask 0
+    assert (label_frame[masks[1] & ~masks[0]] == label_ids[1]).all()
+    assert (label_frame[masks[2]] == label_ids[2]).all()
+
+    # check background is 0
     assert (label_frame[~masks.any(axis=0)] == 0).all()
 
 
-def test_flatten_masks_equal_areas():
+def test_flatten_masks_smallest_wins_equal_areas():
     """Check equal-area masks are painted in input order: last one wins."""
+    # Define an array with overlapping masks of same area
     masks = np.zeros((2, 10, 10), bool)
-    masks[0, :, :6] = True
-    masks[1, :, 4:] = True
-    label_frame = flatten_masks_smallest_wins(masks, [1, 2])
-    assert (label_frame[:, 4:6] == 2).all()
+    masks[0, :, :6] = True  # columns 0-5, 60 pixels
+    masks[1, :, 4:] = True  # columns 4-9, 60 pixels, overlaps mask 0
+
+    # Apply flattening
+    label_ids = [1, 2]
+    label_frame = flatten_masks_smallest_wins(masks, label_ids)
+
+    # columns 4 and 5 overlap: they take the label ID of the last mask
+    expected = np.zeros((10, 10), np.uint16)
+    expected[:, :4] = label_ids[0]
+    expected[:, 4:] = label_ids[1]
+    np.testing.assert_array_equal(label_frame, expected)
