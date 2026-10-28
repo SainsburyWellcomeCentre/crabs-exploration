@@ -114,11 +114,15 @@ jobs:
       # scripts/orientation/annotate_crabs_orientation_manual.py:
       # change both together
       - name: Install crabs, napari and pytest-qt
-        run: uv pip install -e ".[dev]" "napari[pyqt5]==0.9.2" pytest-qt
+        run: uv pip install -e ".[dev]" "napari[pyqt6]==0.9.2" pytest-qt
       - name: Run GUI tests
+        # crabs depends on sleap, which installs PySide6: make qtpy use
+        # PyQt6, as the labellers' environment does
+        env:
+          QT_API: pyqt6
         run: |
           # fail here, rather than skip the tests, if napari did not install
-          python -c "import napari, pytestqt"
+          python -c "import napari, pytestqt, qtpy; assert qtpy.API == 'pyqt6'"
           xvfb-run -a pytest -m gui tests/test_gui
 
   build_sdist_wheels:

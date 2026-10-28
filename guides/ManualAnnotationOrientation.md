@@ -216,5 +216,6 @@ git push origin orientation-labelling-v1
 If the script needs a fix during labelling, create a new tag (for example
 `orientation-labelling-v2`) and update the commands in this guide.
 
-The napari version is pinned in the script's `uv` header, and in the
-`test_gui` CI job: change both together.
+The napari version, and its Qt backend (PyQt6: napari deprecates PyQt5),
+are pinned in the script's `uv` header and in the `test_gui` CI job:
+change both together.
