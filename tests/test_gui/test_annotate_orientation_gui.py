@@ -356,7 +356,11 @@ def test_show_panel_and_progress(make_napari_viewer, package_dir):
     session.show["linked"].setChecked(False)
     np.testing.assert_array_equal(session.lines.edge_color[:, 3], [0, 1])
 
-    # Only box 0 of sep2023 image 5 has a green line
-    session.show["to do"].setChecked(False)
+    # Only box 0 of sep2023 image 5 has a green line, so by default only
+    # it is hidden
     box_0 = (session.box_frames == frame) & (session.box_ids == 0)
+    np.testing.assert_array_equal(session.bboxes.edge_color[:, 3], ~box_0)
+
+    session.show["done"].setChecked(True)
+    session.show["to do"].setChecked(False)
     np.testing.assert_array_equal(session.bboxes.edge_color[:, 3], box_0)
