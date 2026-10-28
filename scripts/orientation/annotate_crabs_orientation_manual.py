@@ -118,8 +118,7 @@ if TYPE_CHECKING:
 # Colour of a line per status
 STATUS_COLORS = {"linked": "lime", "ambiguous": "yellow", "unlinked": "red"}
 
-# Colour of the boxes: cyan has little contrast with the frames, and
-# orange is too close to the yellow and red of the lines left to fix
+# Colour of the boxes
 BOX_COLOR = "magenta"
 
 # Options of the "show" panel: line statuses, and boxes with ("done") or
@@ -226,8 +225,11 @@ def load_package(
 def labels_dir_of(package_dir: Path) -> Path:
     """Return the labels directory of a package, next to it.
 
-    ``labelling_package_<timestamp>`` gets ``manual_labels_<timestamp>``.
-    A package directory with another name gets ``manual_labels_<name>``.
+    Its name is ``manual_labels_`` followed by the package directory's
+    name, without the ``labelling_package_`` prefix. So
+    ``labelling_package_<timestamp>`` gets ``manual_labels_<timestamp>``,
+    and a package directory named otherwise, e.g. ``my_crabs``, gets
+    ``manual_labels_my_crabs``.
     """
     suffix = package_dir.name.removeprefix(PACKAGE_PREFIX)
     return package_dir.parent / f"{LABELS_PREFIX}{suffix}"
@@ -941,10 +943,10 @@ def main(args: argparse.Namespace) -> None:
     from qtpy.QtCore import QTimer
 
     session = build_session(args.package_dir, args.annotator, args.resume)
-    # once the window is up, in case it changed the mode (one labeller's
-    # first run started in "add path" mode)
+    # once the window is up, in case it changed the mode
     QTimer.singleShot(0, lambda: _start_drawing(session.viewer, session.lines))
     napari.run()  # blocks until the window is closed
+
     written = finish_session(session)
     for store in written:
         print(f"Saved orientation labels to {store}")
