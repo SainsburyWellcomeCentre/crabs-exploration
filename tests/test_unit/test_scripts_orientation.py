@@ -394,4 +394,4 @@ def test_progress_text():
         box_frames=np.array([0, 0, 2, 2, 2]),
         done=np.array([True, True, True, False, False]),
     )
-    assert text == "Frame 3 / 3 (sep, image_id 5)\n1 / 3 boxes labelled\n"
+    assert text == "Frame 3 / 3 (sep, image_id 5)\n1 / 3 boxes labelled"
