@@ -16,6 +16,8 @@ from scripts.orientation.create_labelling_package import (
     ETHOLOGY_ATTRS,
     excluded_image_ids,
     load_store,
+    main,
+    parse_args,
     select_frames,
     write_package_subdir,
 )
@@ -173,6 +175,27 @@ def test_load_store_without_attrs(input_store):
     ds.to_zarr(input_store, mode="w")
     with pytest.raises(ValueError, match="no root attributes"):
         load_store(input_store)
+
+
+@pytest.mark.parametrize("not_store", ["output_dir", "missing.zarr"])
+def test_main_rejects_non_store_paths(input_store, tmp_path, not_store):
+    """Check a path that is not a zarr store fails before writing anything.
+
+    A directory is what is passed when ``--output-dir`` is forgotten.
+    """
+    (tmp_path / "output_dir").mkdir()
+    output_dir = tmp_path / "out"
+    args = parse_args(
+        [
+            str(input_store),
+            str(tmp_path / not_store),
+            "--output-dir",
+            str(output_dir),
+        ]
+    )
+    with pytest.raises(ValueError, match="Not zarr stores"):
+        main(args)
+    assert not output_dir.exists()
 
 
 def test_exclude_earlier_packages(input_store, tmp_path, capsys):

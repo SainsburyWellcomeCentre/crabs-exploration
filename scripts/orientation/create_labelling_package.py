@@ -243,7 +243,17 @@ def write_package_subdir(
 
 def main(args: argparse.Namespace) -> None:
     """Build a labelling package from the input stores."""
-    # Check the subdirectory names before writing anything
+    # Check the input stores and subdirectory names before writing anything
+    not_stores = [
+        str(store)
+        for store in args.stores
+        if Path(store).suffix != ".zarr" or not Path(store).is_dir()
+    ]
+    if not_stores:
+        raise ValueError(
+            f"Not zarr stores: {not_stores}. Pass the output directory "
+            "with --output-dir."
+        )
     datasets = [Path(store).parent.parent.name for store in args.stores]
     if len(set(datasets)) < len(datasets):
         raise ValueError(
