@@ -12,7 +12,7 @@ with the following layers:
 It also docks the features table, listing the lines on the current frame
 (and no boxes), and a ``show`` panel, to hide lines by status
 and boxes by whether they have a green line. The labeller's progress
-(boxes with a green line, on the frame and overall) is shown in the
+(boxes with a green line on the current frame) is shown in the
 top-left corner of the canvas.
 
 A line is linked to the box whose rectangle contains its midpoint. Its
@@ -521,22 +521,14 @@ def progress_text(
     box_frames: np.ndarray,
     done: np.ndarray,
 ) -> str:
-    """Describe the boxes with a green line, on a frame and overall.
-
-    A frame is done when all its boxes have a green line.
-    """
+    """Describe the boxes with a green line on a frame."""
     on_frame = box_frames == frame_idx
-    n_frames_done = sum(
-        done[box_frames == frame].all() for frame in range(len(frames))
-    )
     dataset, image_id = frames.iloc[frame_idx][["dataset", "image_id"]]
     return (
-        f"Frame {frame_idx + 1} of {len(frames)} "
+        f"Frame {frame_idx + 1} / {len(frames)} "
         f"({dataset}, image_id {image_id})\n"
-        f"This frame: {done[on_frame].sum()} of {on_frame.sum()} boxes "
-        "have a green line\n"
-        f"All frames: {done.sum()} of {len(done)} boxes, "
-        f"{n_frames_done} of {len(frames)} frames done"
+        f"{done[on_frame].sum()} / {on_frame.sum()} boxes "
+        "labelled\n"
     )
 
 
