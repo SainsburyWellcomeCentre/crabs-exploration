@@ -11,9 +11,9 @@ with the following layers:
 
 It also docks the features table, listing the lines on the current frame
 (and no boxes), and a ``show`` panel, to hide lines by status
-and boxes by whether they have a green line. The labeller's progress
-(boxes with a green line on the current frame) is shown in the
-top-left corner of the canvas.
+and boxes by whether they have a green line (boxes with one start
+hidden). The labeller's progress (boxes with a green line on the
+current frame) is shown in the top-left corner of the canvas.
 
 A line is linked to the box whose rectangle contains its midpoint. Its
 ``id`` is guessed when the line is drawn or moved, and can be typed in
@@ -127,8 +127,8 @@ SHOW_LABELS = {
     "linked": "green lines",
     "ambiguous": "yellow lines",
     "unlinked": "red lines",
-    "done": "boxes with a green line",
-    "to do": "boxes without a green line",
+    "done": "labelled boxes",  # boxes with a green line
+    "to do": "remaining boxes",  # boxes without a green line
 }
 
 # `id` of a line not linked to a box
@@ -697,7 +697,10 @@ def refresh_lines(session: Session) -> None:
 
 
 def _add_show_panel(viewer: napari.Viewer) -> dict[str, QCheckBox]:
-    """Dock the "show" panel: a ticked checkbox per SHOW_LABELS key."""
+    """Dock the "show" panel: a checkbox per SHOW_LABELS key.
+
+    All are ticked but "done", so boxes with a green line start hidden.
+    """
     from qtpy.QtWidgets import QCheckBox, QVBoxLayout, QWidget
 
     panel = QWidget()
@@ -705,7 +708,10 @@ def _add_show_panel(viewer: napari.Viewer) -> dict[str, QCheckBox]:
     show = {}
     for key, label in SHOW_LABELS.items():
         show[key] = QCheckBox(label)
-        show[key].setChecked(True)
+        if key == "done":
+            show[key].setChecked(False)  # labelled boxes 'disappear'
+        else:
+            show[key].setChecked(True)
         layout.addWidget(show[key])
     layout.addStretch()
     viewer.window.add_dock_widget(panel, name="show", area="right")

@@ -126,10 +126,12 @@ and how many of its boxes have a green line ("labelled"). Boxes you leave
 without a line on purpose are not counted as labelled, so the count may
 not reach the total.
 
-To see what is left, untick options in the **show** panel:
+The **show** panel hides lines and boxes:
 
-- untick **green lines** to see only the lines left to fix;
-- untick **boxes with a green line** to see only the boxes left to label.
+- **labelled boxes** starts unticked, so a box disappears once it has a
+  green line, and you see only the boxes left to label. Tick it to see
+  them again;
+- untick **green lines** to see only the lines left to fix.
 
 Hidden lines can still be selected and moved, so tick them again before
 you edit lines near them.
