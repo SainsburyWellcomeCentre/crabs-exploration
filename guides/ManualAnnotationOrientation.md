@@ -56,8 +56,8 @@ A napari window opens with:
 
 - the frames of both datasets, one after the other. Move between frames with
   the slider under the image;
-- the boxes, in cyan, each with its `id` in the top-left corner. You cannot
-  edit them;
+- the boxes, in magenta, each with its `id` in the top-left corner. You
+  cannot edit them;
 - an empty `orientation lines` layer, ready to draw lines;
 - the **features table**, on the right, listing the lines you draw.
 
