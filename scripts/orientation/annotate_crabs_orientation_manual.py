@@ -331,8 +331,8 @@ def guess_ids(
             )
         elif len(ids) > 1:
             show_warning(
-                f"Line {i} is in boxes {list(ids)}: type the right id "
-                "in the features table."
+                f"Line {i} is in boxes {[int(box) for box in ids]}: type "
+                "the right id in the features table."
             )
     # the setter emits events.features, so the features table redraws
     features = layer.features.copy()
