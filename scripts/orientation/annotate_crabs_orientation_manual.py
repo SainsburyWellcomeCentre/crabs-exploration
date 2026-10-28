@@ -1,6 +1,6 @@
 """Manually label crab orientation in napari, one line per bounding box.
 
-Opens a labelling package written by ``select_orientation_frames.py``,
+Opens a labelling package written by ``create_labelling_package.py``,
 and shows the frames of all its subdirectories as one stack in napari,
 with the following layers:
 
@@ -153,7 +153,7 @@ def load_package(
     if not subdirs:
         raise FileNotFoundError(
             f"No <subdirectory>/bboxes.zarr found in {package_dir}. "
-            "Is it a package written by select_orientation_frames.py?"
+            "Is it a package written by create_labelling_package.py?"
         )
     packages = {
         sub.name: xr.open_zarr(sub / "bboxes.zarr").load() for sub in subdirs
@@ -725,7 +725,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         type=Path,
         help=(
             "Labelling package directory (orientation_labelling_"
-            "<timestamp>), written by select_orientation_frames.py. "
+            "<timestamp>), written by create_labelling_package.py. "
             "Outputs are written to its labels/ subdirectory."
         ),
     )

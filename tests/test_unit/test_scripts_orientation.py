@@ -11,7 +11,7 @@ from scripts.orientation.annotate_crabs_orientation_manual import (
     segment_theta,
     write_orientation_zarrs,
 )
-from scripts.orientation.select_orientation_frames import (
+from scripts.orientation.create_labelling_package import (
     BBOX_VARS,
     ETHOLOGY_ATTRS,
     excluded_image_ids,
@@ -20,7 +20,7 @@ from scripts.orientation.select_orientation_frames import (
     write_package_subdir,
 )
 
-# -------- tests for select_orientation_frames --------------
+# -------- tests for create_labelling_package --------------
 
 # Number of annotated frames per video in the synthetic store
 FRAMES_PER_VIDEO_IN_STORE = {
