@@ -172,7 +172,7 @@ attributes, and the selection script stops with an error on them.
 From the repo root, on ceph:
 
 ```bash
-uv run scripts/orientation/select_orientation_frames.py \
+uv run scripts/orientation/create_labelling_package.py \
     /ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/sep2023-full/annotations/bboxes_and_masks_<timestamp>.zarr \
     /ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels/aug2023-full/annotations/bboxes_and_masks_<timestamp>.zarr \
     --output-dir /ceph/zoo/processed/CrabField/ramalhete_2023/CrabLabels
@@ -192,7 +192,7 @@ To build a later round's package with new frames only, pass each earlier
 package with `--exclude-package`:
 
 ```bash
-uv run scripts/orientation/select_orientation_frames.py <sep store> <aug store> \
+uv run scripts/orientation/create_labelling_package.py <sep store> <aug store> \
     --output-dir <output dir> \
     --exclude-package <first package> \
     --exclude-package <second package>

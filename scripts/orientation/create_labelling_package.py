@@ -5,7 +5,7 @@ and pack them, with a slice of each store, into a labelling package that
 ``annotate_crabs_orientation_manual.py`` opens.
 
 Each input store is a ``bboxes_and_masks_<timestamp>.zarr`` written by
-``generate_masks_from_bboxes.py``, in the layout it expects::
+``generate_masks_from_bboxes.py``, in the layout it expects:
 
     <data_dir>/
         frames/                                 # image files (*.png)
@@ -13,7 +13,7 @@ Each input store is a ``bboxes_and_masks_<timestamp>.zarr`` written by
             bboxes_and_masks_<timestamp>.zarr   # input store
 
 Output is one subdirectory per input store, named after its data
-directory::
+directory:
 
     <output_dir>/orientation_labelling_<timestamp>/
     ├── sep2023-full/
@@ -33,20 +33,21 @@ values, and no masks, ellipses or SAM2 metadata. Its
 (``source_store``, ``seed``, ``camera``, ``frames_per_video`` and
 ``excluded_packages``).
 
-Frames are sampled per video, after keeping only the videos of one camera.
-Frames used by earlier packages can be excluded with ``--exclude-package``,
-to label new frames in a later round. A video with fewer frames left than
-``--frames-per-video`` gives what is left, and is reported.
+Frames are sampled per video, after keeping only the videos of one camera
+('Right' or 'Left'). Frames used by earlier packages can be excluded with
+``--exclude-package``, to label new frames in a later round. A video with
+fewer frames left than ``--frames-per-video`` gives what is left, and is
+reported.
 
 Usage
 From the repo root:
-    uv run scripts/orientation/select_orientation_frames.py \
+    uv run scripts/orientation/create_labelling_package.py \
         /path/to/sep2023-full/annotations/bboxes_and_masks_<ts>.zarr \
         /path/to/aug2023-full/annotations/bboxes_and_masks_<ts>.zarr \
         --output-dir /path/to/output_dir
 
     # a later round, skipping the frames of an earlier package
-    uv run scripts/orientation/select_orientation_frames.py \
+    uv run scripts/orientation/create_labelling_package.py \
         /path/to/sep2023-full/annotations/bboxes_and_masks_<ts>.zarr \
         /path/to/aug2023-full/annotations/bboxes_and_masks_<ts>.zarr \
         --output-dir /path/to/output_dir \
