@@ -26,7 +26,8 @@ the features table. Each line is coloured by its status:
 * red (``unlinked``): its midpoint is in no box, or its ``id`` is a box
   that does not contain its midpoint.
 
-Only green lines are saved as results.
+Only green lines are saved as results. A box with no green line gets
+NaN as its angle.
 
 Outputs, in ``manual_labels_<package timestamp>/``, next to the package
 directory ``labelling_package_<package timestamp>/``. ``<timestamp>``

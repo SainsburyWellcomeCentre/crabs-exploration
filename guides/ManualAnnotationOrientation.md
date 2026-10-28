@@ -75,6 +75,9 @@ the crab**. To draw a line, press and drag over the crab, then release.
 
 - Only the line's angle is used: it does not need to be centred on the crab,
   or as long as the crab.
+- If you cannot tell a crab's orientation (it is blurry, hidden or cut by
+  the image edge), leave its box without a line. No label is better than
+  a wrong one.
 - A line belongs to the box that contains **its midpoint**. So draw it
   over the crab, with its middle on the crab.
 - Zoom with the mouse wheel. To move around the image while drawing, hold
@@ -156,9 +159,10 @@ manual_labels_<timestamp>/
 - `orientation_lines_<name>_<timestamp>.csv.bak`: a copy of the CSV from
   before your last resume, in case lines were deleted by mistake.
 - `sep2023-full/…zarr` and `aug2023-full/…zarr`: the results, from green
-  lines only. They are written when you close the napari window, and are
-  rebuilt from the CSV each time. If one is missing or looks wrong, resume
-  and close the window again.
+  lines only. Boxes left without a green line are kept, with no angle. They
+  are written when you close the napari window, and are rebuilt from the
+  CSV each time. If one is missing or looks wrong, resume and close the
+  window again.
 
 Do not edit, rename or move these files.
 
