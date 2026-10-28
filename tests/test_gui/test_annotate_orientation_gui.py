@@ -17,6 +17,7 @@ from scripts.orientation.annotate_crabs_orientation_manual import (
     STATUS_COLORS,
     build_session,
     finish_session,
+    script_sha256,
 )
 
 pytest.importorskip("napari")
@@ -319,6 +320,7 @@ def test_results_on_close(make_napari_viewer, package_dir):
         np.pi / 4
     )
     assert sep.attrs["labelling_session"]["annotator"] == "alice"
+    assert sep.attrs["labelling_session"]["script_sha256"] == script_sha256()
     assert xr.open_zarr(aug_store)["segment_theta"].sel(
         image_id=3, id=0
     ) == pytest.approx(0)

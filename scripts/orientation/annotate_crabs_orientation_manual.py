@@ -94,6 +94,7 @@ Dependencies are auto-installed in an ephemeral environment via uv.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import re
 import shutil
@@ -547,6 +548,16 @@ def progress_text(
 
 
 # ---------- results -----------------
+def script_sha256() -> str:
+    """Return the SHA-256 hash of this script's source.
+
+    Run from a raw GitHub URL, the script cannot know its tag: the hash
+    identifies the code instead, and can be checked against a tag with
+    ``git show <tag>:<path to this script> | shasum -a 256``.
+    """
+    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
 def write_orientation_zarrs(
     df: pd.DataFrame,
     packages: dict[str, xr.Dataset],
@@ -948,6 +959,7 @@ def finish_session(session: Session) -> list[Path]:
         "package_dir": str(session.package_dir),
         "lines_csv": str(session.autosave_csv),
         "napari_version": napari.__version__,
+        "script_sha256": script_sha256(),
     }
     return write_orientation_zarrs(
         pd.read_csv(session.autosave_csv),
@@ -963,6 +975,7 @@ def main(args: argparse.Namespace) -> None:
     import napari
     from qtpy.QtCore import QTimer
 
+    print(f"Script SHA-256: {script_sha256()}")
     session = build_session(args.package_dir, args.annotator, args.resume)
     # once the window is up, in case it changed the mode
     QTimer.singleShot(0, lambda: _start_drawing(session.viewer, session.lines))
