@@ -29,6 +29,7 @@ Outputs, in ``<package_dir>/labels/``:
   status, autosaved on every edit. Columns: ``dataset``, ``image_id``,
   ``id``, ``x0``, ``y0``, ``x1``, ``y1``, ``segment_theta``, ``status``.
   This is the file passed to ``--resume``.
+
 * ``<dataset>/orientation_<annotator>_<timestamp>.zarr``: one store per
   package subdirectory with at least one green line, written when the
   napari window is closed. Each is the subdirectory's ``bboxes.zarr``
@@ -45,11 +46,12 @@ autosaving into it (after copying it to ``<csv>.bak``), and overwrites
 that session's zarr stores when the window is closed.
 
 Usage
-    uv run annotate_crabs_orientation_manual.py \
+From the repo root:
+    uv run scripts/orientation/annotate_crabs_orientation_manual.py \
         /path/to/orientation_labelling_<timestamp> --annotator <name>
 
-    # continue a previous session
-    uv run annotate_crabs_orientation_manual.py \
+To continue a previous session:
+    uv run scripts/orientation/annotate_crabs_orientation_manual.py \
         /path/to/orientation_labelling_<timestamp> --annotator <name> \
         --resume /path/to/labels/orientation_lines_<name>_<timestamp>.csv
 
