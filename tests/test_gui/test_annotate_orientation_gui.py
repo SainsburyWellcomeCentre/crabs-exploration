@@ -205,6 +205,34 @@ def test_line_statuses(make_napari_viewer, package_dir, monkeypatch):
     assert warnings[2].startswith("Line 3 is in box 0, as are lines [0]")
 
 
+def test_new_line_is_white_and_unlinked(make_napari_viewer, package_dir):
+    """Check a new line does not copy the selected line's colour and id.
+
+    Also checks its id is not shown until it is guessed.
+    """
+    session = build_session(package_dir, "alice", viewer=make_napari_viewer())
+    frame = _frame(session, "sep2023", 5)
+    session.lines.add_lines([_line(frame, 12, 20, 18, 22)])  # in box 0
+    session.lines.selected_data = {0}  # as napari does after drawing
+
+    # record the new line before its id is guessed and it is recoloured
+    drawn = {}
+
+    def on_added(event):
+        if event.action == "added":
+            drawn["color"] = session.lines.edge_color[-1].copy()
+            drawn["id"] = session.lines.features["id"].iloc[-1]
+            text = session.lines.text.color(session.lines.features)
+            drawn["text_alpha"] = text[-1, 3]
+
+    session.lines.events.data.connect(on_added, position="first")
+    session.lines.add_lines([_line(frame, 50, 55, 60, 60)])
+
+    np.testing.assert_allclose(drawn["color"], transform_color("white")[0])
+    assert drawn["id"] == -1
+    assert drawn["text_alpha"] == 0  # no id shown while drawing
+
+
 def test_table_edits(make_napari_viewer, package_dir):
     """Check typing a line's id relinks it, and box ids cannot change."""
     session = build_session(package_dir, "alice", viewer=make_napari_viewer())
