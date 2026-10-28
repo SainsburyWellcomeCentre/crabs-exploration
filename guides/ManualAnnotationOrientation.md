@@ -60,7 +60,13 @@ A napari window opens with:
 - the boxes, in magenta, each with its `id` in the top-left corner. You
   cannot edit them;
 - an empty `orientation lines` layer, selected and ready to draw lines;
-- the **features table**, on the right, listing the lines you draw.
+- your progress, in the top-left corner of the image: how many boxes of
+  this frame, and of all frames, have a green line;
+- the **features table**, on the right, listing the lines of the frame you
+  are on;
+- the **show** panel, on the right, to hide lines and boxes.
+
+Both are explained in [Find the work left](#find-the-work-left).
 
 ## 4. Label
 
@@ -92,16 +98,33 @@ red.
 **Only green lines are saved as results.** Before you finish, check that
 every line is green.
 
+### Find the work left
+
+The text in the top-left corner of the image shows, for the frame you are
+on and for all frames, how many boxes have a green line, and how many
+frames are done (all their boxes have a green line). Boxes you leave
+without a line on purpose are counted as not done, so the counts may not
+reach the totals.
+
+To see what is left, untick options in the **show** panel:
+
+- untick **green lines** to see only the lines left to fix;
+- untick **boxes with a green line** to see only the boxes left to label.
+
+Hidden lines can still be selected and moved, so tick them again before
+you edit lines near them.
+
 ### Fix a yellow line in the features table
 
 1. Make sure the `orientation lines` layer is selected in the layer list.
-2. In the features table, find the line's row. The `Index` column is the
-   line number given in the message.
+2. In the features table, find the line's row. The table only lists the
+   lines of the frame you are on. The `Index` column is the line number
+   given in the message.
 3. Double-click its `id` cell, type the `id` of the right box, and press
    `Enter`.
 
-The line turns green. Editing the boxes' `id`s in the table has no effect:
-they always come back to their original values.
+The line turns green. The table lists no boxes when the `bboxes` layer is
+selected: box `id`s cannot be edited.
 
 ### Move or delete a line
 

@@ -9,10 +9,15 @@ with the following layers:
 * ``orientation lines``: the lines the labeller draws, one per box,
   parallel to the crab's long axis.
 
+It also docks the features table, listing the lines on the current frame
+(and no boxes), and a ``show`` panel, to hide lines by status
+and boxes by whether they have a green line. The labeller's progress
+(boxes with a green line, on the frame and overall) is shown in the
+top-left corner of the canvas.
+
 A line is linked to the box whose rectangle contains its midpoint. Its
 ``id`` is guessed when the line is drawn or moved, and can be typed in
-the features table, which opens on start-up. Each line is coloured by
-its status:
+the features table. Each line is coloured by its status:
 
 * green (``linked``): its ``id`` is a box containing its midpoint, and no
   other line on the frame has the same ``id``;
@@ -107,7 +112,7 @@ from PIL import Image
 if TYPE_CHECKING:
     import napari
     from napari.layers import Shapes
-    from qtpy.QtWidgets import QWidget
+    from qtpy.QtWidgets import QCheckBox, QWidget
 
 # Colour of a line per status
 STATUS_COLORS = {"linked": "lime", "ambiguous": "yellow", "unlinked": "red"}
@@ -115,6 +120,16 @@ STATUS_COLORS = {"linked": "lime", "ambiguous": "yellow", "unlinked": "red"}
 # Colour of the boxes: cyan has little contrast with the frames, and
 # orange is too close to the yellow and red of the lines left to fix
 BOX_COLOR = "magenta"
+
+# Options of the "show" panel: line statuses, and boxes with ("done") or
+# without ("to do") a green line
+SHOW_LABELS = {
+    "linked": "green lines",
+    "ambiguous": "yellow lines",
+    "unlinked": "red lines",
+    "done": "boxes with a green line",
+    "to do": "boxes without a green line",
+}
 
 # `id` of a line not linked to a box
 UNLINKED_ID = -1
@@ -462,18 +477,64 @@ def _autosave_lines(
     os.replace(tmp_path, autosave_csv)
 
 
-def refresh_lines(
-    layer: Shapes,
-    packages: dict[str, xr.Dataset],
+# ---------- progress -----------------
+def shape_frames(layer: Shapes) -> np.ndarray:
+    """Return the napari frame of each shape of a layer."""
+    return np.array(
+        [int(round(shape[0, 0])) for shape in layer.data], dtype=int
+    )
+
+
+def boxes_done(
+    box_frames: np.ndarray,
+    box_ids: np.ndarray,
+    line_frames: np.ndarray,
+    line_ids: np.ndarray,
+    status: np.ndarray,
+) -> np.ndarray:
+    """Return whether each box has a green line on its frame."""
+    linked = status == "linked"
+    done = set(
+        zip(
+            line_frames[linked].tolist(),
+            line_ids[linked].tolist(),
+            strict=True,
+        )
+    )
+    return np.array(
+        [
+            (frame, box_id) in done
+            for frame, box_id in zip(
+                box_frames.tolist(), box_ids.tolist(), strict=True
+            )
+        ],
+        dtype=bool,
+    )
+
+
+def progress_text(
+    frame_idx: int,
     frames: pd.DataFrame,
-    autosave_csv: Path,
-) -> None:
-    """Colour the lines by status, refresh their text and autosave."""
-    status = line_status(layer, packages, frames)
-    if len(status):
-        layer.edge_color = [STATUS_COLORS[s] for s in status]
-    layer.refresh_text()
-    _autosave_lines(layer, status, frames, autosave_csv)
+    box_frames: np.ndarray,
+    done: np.ndarray,
+) -> str:
+    """Describe the boxes with a green line, on a frame and overall.
+
+    A frame is done when all its boxes have a green line.
+    """
+    on_frame = box_frames == frame_idx
+    n_frames_done = sum(
+        done[box_frames == frame].all() for frame in range(len(frames))
+    )
+    dataset, image_id = frames.iloc[frame_idx][["dataset", "image_id"]]
+    return (
+        f"Frame {frame_idx + 1} of {len(frames)} "
+        f"({dataset}, image_id {image_id})\n"
+        f"This frame: {done[on_frame].sum()} of {on_frame.sum()} boxes "
+        "have a green line\n"
+        f"All frames: {done.sum()} of {len(done)} boxes, "
+        f"{n_frames_done} of {len(frames)} frames done"
+    )
 
 
 # ---------- results -----------------
@@ -531,14 +592,129 @@ class Session:
     lines: Shapes  # the "orientation lines" layer
     bboxes: Shapes
     table: QWidget  # the features table widget
+    show: dict[str, QCheckBox]  # the "show" panel, by SHOW_LABELS key
     packages: dict[str, xr.Dataset]
     frames: pd.DataFrame  # the frame table
     box_ids: np.ndarray  # original bboxes "id" feature, to undo table edits
+    box_frames: np.ndarray  # napari frame of each box
     annotator: str
     timestamp: str  # new, or reused from the resumed CSV's name
     package_dir: Path
     autosave_csv: Path
     labels_dir: Path
+    status: np.ndarray  # of each line, as of the last refresh_lines
+
+
+def _colors(colors: list[str], shown: np.ndarray) -> np.ndarray:
+    """Return colours as RGBA, transparent where not ``shown``."""
+    from napari.utils.colormaps.standardize_color import transform_color
+
+    rgba = transform_color(colors) if colors else np.zeros((0, 4))
+    rgba[~shown, 3] = 0
+    return rgba
+
+
+def _shapes_colors(layer: Shapes, rgba: np.ndarray) -> None:
+    """Colour the edges and text of a layer's shapes, one RGBA each."""
+    from napari.layers.utils.color_encoding import ManualColorEncoding
+
+    if len(rgba):
+        layer.edge_color = rgba
+    layer.text.color = ManualColorEncoding(array=rgba, default="white")
+    layer.refresh_text()
+
+
+def _filter_table(session: Session) -> None:
+    """Show only the current frame's lines in the features table.
+
+    Filters the table's sort/filter proxy on its ``Index`` column, the
+    first one when a single layer is selected. With the boxes selected the
+    table shows no rows, and with other selections every row.
+    """
+    proxy = session.table.table.model()
+    selected = list(session.viewer.layers.selection)
+    layer = selected[0] if len(selected) == 1 else None
+    if layer is session.lines:
+        frame = session.viewer.dims.current_step[0]
+        on_frame = layer.features.index[shape_frames(layer) == frame]
+        # with no lines on the frame, "^()$" matches no index
+        pattern = "^(" + "|".join(str(i) for i in on_frame) + ")$"
+    elif layer is session.bboxes:
+        pattern = "^()$"  # the labeller has no box features to edit
+    else:
+        pattern = ""
+    proxy.setFilterKeyColumn(0)
+    # filtering again would redo the rows mid-edit, after a table edit
+    if proxy.filterRegularExpression().pattern() != pattern:
+        proxy.setFilterRegularExpression(pattern)
+
+
+def refresh_display(session: Session) -> None:
+    """Redraw the lines and boxes, the progress text and the table.
+
+    Lines and boxes unticked in the "show" panel are made transparent.
+    Does nothing mid-edit, when the status is stale: ``refresh_lines``
+    redraws once the edit is done.
+    """
+    if len(session.status) != len(session.lines.data):
+        return
+    shown = {key: box.isChecked() for key, box in session.show.items()}
+    lines = session.lines
+    _shapes_colors(
+        lines,
+        _colors(
+            [STATUS_COLORS[s] for s in session.status],
+            np.array([shown[s] for s in session.status], dtype=bool),
+        ),
+    )
+    done = boxes_done(
+        session.box_frames,
+        session.box_ids,
+        shape_frames(lines),
+        lines.features["id"].to_numpy(),
+        session.status,
+    )
+    _shapes_colors(
+        session.bboxes,
+        _colors(
+            [BOX_COLOR] * len(done),
+            np.where(done, shown["done"], shown["to do"]),
+        ),
+    )
+    session.viewer.canvas.overlays.text.text = progress_text(
+        session.viewer.dims.current_step[0],
+        session.frames,
+        session.box_frames,
+        done,
+    )
+    _filter_table(session)
+
+
+def refresh_lines(session: Session) -> None:
+    """Update the lines' status, redraw and autosave."""
+    session.status = line_status(
+        session.lines, session.packages, session.frames
+    )
+    refresh_display(session)
+    _autosave_lines(
+        session.lines, session.status, session.frames, session.autosave_csv
+    )
+
+
+def _add_show_panel(viewer: napari.Viewer) -> dict[str, QCheckBox]:
+    """Dock the "show" panel: a ticked checkbox per SHOW_LABELS key."""
+    from qtpy.QtWidgets import QCheckBox, QVBoxLayout, QWidget
+
+    panel = QWidget()
+    layout = QVBoxLayout(panel)
+    show = {}
+    for key, label in SHOW_LABELS.items():
+        show[key] = QCheckBox(label)
+        show[key].setChecked(True)
+        layout.addWidget(show[key])
+    layout.addStretch()
+    viewer.window.add_dock_widget(panel, name="show", area="right")
+    return show
 
 
 def _check_annotator(annotator: str) -> str:
@@ -571,6 +747,56 @@ def _start_drawing(viewer: napari.Viewer, lines: Shapes) -> None:
     lines.mode = "add_line"
 
 
+def _connect_handlers(session: Session) -> None:
+    """Connect the event handlers that relink, redraw and autosave."""
+    # Number of lines before the last addition: drawing a line, or adding
+    # several in code, emits a single ADDED event for all of them
+    n_lines_before_adding = len(session.lines.data)
+
+    def on_lines_data(event):
+        nonlocal n_lines_before_adding
+        if event.action == "adding":
+            n_lines_before_adding = len(session.lines.data)
+            return
+        if event.action == "added":
+            new = range(n_lines_before_adding, len(session.lines.data))
+            guess_ids(
+                session.lines, list(new), session.packages, session.frames
+            )
+        elif event.action == "changed":
+            guess_ids(
+                session.lines,
+                list(event.data_indices),
+                session.packages,
+                session.frames,
+            )
+        elif event.action != "removed":
+            return  # skip the "changing" and "removing" events
+        refresh_lines(session)
+
+    def on_table_edit(*_):
+        # editing the table updates layer.features but emits no layer
+        # event, so listen to the table itself. Undo edits to box ids.
+        if not np.array_equal(session.bboxes.features["id"], session.box_ids):
+            session.bboxes.features = {"id": session.box_ids}
+            session.bboxes.refresh_text()
+        refresh_lines(session)
+
+    def on_view_change(*_):
+        refresh_display(session)
+
+    session.lines.events.data.connect(on_lines_data)
+    # connected after the table's own handler, which writes the edit to
+    # layer.features, so the features are up to date when this one runs
+    session.table.table.model().sourceModel().dataChanged.connect(
+        on_table_edit
+    )
+    session.viewer.dims.events.current_step.connect(on_view_change)
+    session.viewer.layers.selection.events.changed.connect(on_view_change)
+    for checkbox in session.show.values():
+        checkbox.toggled.connect(on_view_change)
+
+
 def build_session(
     package_dir: Path,
     annotator: str,
@@ -580,7 +806,7 @@ def build_session(
     """Set up a labelling session in napari, without the event loop.
 
     Load the package, add the layers, add the resumed lines, open the
-    features table and connect the event handlers.
+    features table and the "show" panel, and connect the event handlers.
     """
     import napari
 
@@ -638,11 +864,20 @@ def build_session(
     )
     viewer.dims.set_current_step(0, 0)
 
-    # Open the features table, with editing switched on
+    # Open the features table, with editing switched on, and the "show"
+    # panel
     _, table = viewer.window.add_plugin_dock_widget(
         "napari", "Features table widget"
     )
     table.toggle.setChecked(True)  # the "editable" switch
+    show = _add_show_panel(viewer)
+
+    # Progress text, in the canvas
+    progress = viewer.canvas.overlays.text
+    progress.visible = True
+    progress.position = "top_left"
+    progress.font_size = 12
+    progress.box = True
 
     # Draw lines, once the widgets are added
     _start_drawing(viewer, lines)
@@ -652,53 +887,23 @@ def build_session(
         lines=lines,
         bboxes=bboxes,
         table=table,
+        show=show,
         packages=packages,
         frames=frames,
         box_ids=box_ids,
+        box_frames=shape_frames(bboxes),
         annotator=annotator,
         timestamp=timestamp,
         package_dir=package_dir,
         autosave_csv=autosave_csv,
         labels_dir=labels_dir,
+        status=np.array([], dtype=object),
     )
 
-    # Number of lines before the last addition: drawing a line, or adding
-    # several in code, emits a single ADDED event for all of them
-    n_lines_before_adding = len(lines.data)
-
-    def on_lines_data(event):
-        nonlocal n_lines_before_adding
-        if event.action == "adding":
-            n_lines_before_adding = len(session.lines.data)
-            return
-        if event.action == "added":
-            new = range(n_lines_before_adding, len(session.lines.data))
-            guess_ids(session.lines, list(new), packages, frames)
-        elif event.action == "changed":
-            guess_ids(
-                session.lines, list(event.data_indices), packages, frames
-            )
-        elif event.action != "removed":
-            return  # skip the "changing" and "removing" events
-        refresh_lines(session.lines, packages, frames, session.autosave_csv)
-
-    def on_table_edit(*_):
-        # editing the table updates layer.features but emits no layer
-        # event, so listen to the table itself. Undo edits to box ids.
-        if not np.array_equal(session.bboxes.features["id"], session.box_ids):
-            session.bboxes.features = {"id": session.box_ids}
-            session.bboxes.refresh_text()
-        refresh_lines(session.lines, packages, frames, session.autosave_csv)
-
-    session.lines.events.data.connect(on_lines_data)
-    # connected after the table's own handler, which writes the edit to
-    # layer.features, so the features are up to date when this one runs
-    session.table.table.model().sourceModel().dataChanged.connect(
-        on_table_edit
-    )
+    _connect_handlers(session)
 
     # colour resumed lines, and write the first autosave
-    refresh_lines(lines, packages, frames, autosave_csv)
+    refresh_lines(session)
     print(f"Autosaving orientation lines to {autosave_csv}")
     return session
 
