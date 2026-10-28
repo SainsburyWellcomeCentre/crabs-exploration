@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +12,7 @@ from scripts.orientation.annotate_crabs_orientation_manual import (
     boxes_done,
     labels_dir_of,
     progress_text,
+    script_sha256,
     segment_theta,
     write_orientation_zarrs,
 )
@@ -395,3 +397,12 @@ def test_progress_text():
         done=np.array([True, True, True, False, False]),
     )
     assert text == "Frame 3 / 3 (sep, image_id 5)\n1 / 3 boxes labelled"
+
+
+def test_script_sha256():
+    """Check the hash is the SHA-256 of the script's source."""
+    script = (
+        Path(__file__).parents[2]
+        / "scripts/orientation/annotate_crabs_orientation_manual.py"
+    )
+    assert script_sha256() == hashlib.sha256(script.read_bytes()).hexdigest()

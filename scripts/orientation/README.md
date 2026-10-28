@@ -58,6 +58,15 @@ git push origin orientation-labelling-v1
 If the script needs a fix during labelling, create a new tag (for example
 `orientation-labelling-v2`) and update the commands in this guide.
 
+The script cannot know which tag it runs from, so it prints the SHA-256 of
+its source at startup and records it as `script_sha256` in the
+`labelling_session` attribute of each results store. To check which tag
+produced a store, compare it with:
+
+```bash
+git show orientation-labelling-v1:scripts/orientation/annotate_crabs_orientation_manual.py | shasum -a 256
+```
+
 The napari version, and its Qt backend (PyQt6: napari deprecates PyQt5),
 are pinned in the script's `uv` header and in the `test_gui` CI job:
 change both together.
