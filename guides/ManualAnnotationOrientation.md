@@ -13,7 +13,7 @@ terminal.
 
 ## Labelling procedure
 
-Below we describe the steps to follow to label the ground truth data/
+Below we describe the steps to follow to label the ground truth data.
 
 ## 1. Install uv
 
@@ -36,7 +36,12 @@ See the [uv documentation](https://docs.astral.sh/uv/getting-started/installatio
 Copy the labelling package folder from ceph to your computer.
 
 The name of the labelling package is in the format `labelling_package_<timestamp>`
-and is about 0.6 GB. It has two subfolders, `sep2023-full` and `aug2023-full`. Each subfolder holds a
+and is about 0.6 GB. It has two subfolders:
+
+* `sep2023-full`
+* `aug2023-full`
+
+Each subfolder holds a
 set of frames to label and the boxes manually drawn on them. Do not change anything inside
 the labelling package.
 
