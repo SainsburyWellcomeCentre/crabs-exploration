@@ -59,7 +59,7 @@ A napari window opens with:
   the slider under the image;
 - the boxes, in magenta, each with its `id` in the top-left corner. You
   cannot edit them;
-- an empty `orientation lines` layer, ready to draw lines;
+- an empty `orientation lines` layer, selected and ready to draw lines;
 - the **features table**, on the right, listing the lines you draw.
 
 ## 4. Label

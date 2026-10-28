@@ -565,6 +565,12 @@ def _resumed_timestamp(resume_csv: Path, annotator: str) -> str:
     return match.group(1)
 
 
+def _start_drawing(viewer: napari.Viewer, lines: Shapes) -> None:
+    """Select the lines layer, in "add line" mode."""
+    viewer.layers.selection.active = lines
+    lines.mode = "add_line"
+
+
 def build_session(
     package_dir: Path,
     annotator: str,
@@ -630,8 +636,6 @@ def build_session(
         text={"string": "{id}", "color": "white", "anchor": "center"},
         name="orientation lines",
     )
-    viewer.layers.selection.active = lines
-    lines.mode = "add_line"
     viewer.dims.set_current_step(0, 0)
 
     # Open the features table, with editing switched on
@@ -639,6 +643,9 @@ def build_session(
         "napari", "Features table widget"
     )
     table.toggle.setChecked(True)  # the "editable" switch
+
+    # Draw lines, once the widgets are added
+    _start_drawing(viewer, lines)
 
     session = Session(
         viewer=viewer,
@@ -725,8 +732,12 @@ def finish_session(session: Session) -> list[Path]:
 def main(args: argparse.Namespace) -> None:
     """Launch napari to label crab orientation, then write the results."""
     import napari
+    from qtpy.QtCore import QTimer
 
     session = build_session(args.package_dir, args.annotator, args.resume)
+    # once the window is up, in case it changed the mode (one labeller's
+    # first run started in "add path" mode)
+    QTimer.singleShot(0, lambda: _start_drawing(session.viewer, session.lines))
     napari.run()  # blocks until the window is closed
     written = finish_session(session)
     for store in written:
