@@ -87,6 +87,24 @@ the crab**. To draw a line, press and drag over the crab, then release.
   all the other layers instead. Select `orientation lines` again before you
   draw.
 
+### Shortcuts
+
+The `S`, `L` and `Delete` keys only work when the `orientation lines` layer
+is selected in the layer list.
+
+| Key | What it does |
+|---|---|
+| hold `Space` and drag | move around the image |
+| mouse wheel | zoom |
+| `L` | draw lines ("add line" mode) |
+| `S` | select and move lines ("select" mode) |
+| `Delete` | delete the selected line |
+| `V` | hide or show the selected layer |
+| `Shift + V` | hide or show all the other layers |
+
+To hide the `id` numbers of the lines or of the boxes, select the layer and
+untick **display text** in the layer controls, at the top left.
+
 Each line shows its `id` and is coloured by its status:
 
 | Colour | Meaning | What to do |
