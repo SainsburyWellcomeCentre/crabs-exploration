@@ -301,3 +301,10 @@ def test_results_on_close(make_napari_viewer, package_dir):
     second.lines.remove_selected()
     assert finish_session(second) == [sep_store]
     assert not aug_store.exists()
+
+
+def test_starts_drawing_lines(make_napari_viewer, package_dir):
+    """Check the session starts on the lines layer, in add line mode."""
+    session = build_session(package_dir, "alice", viewer=make_napari_viewer())
+    assert session.viewer.layers.selection.active is session.lines
+    assert session.lines.mode == "add_line"
