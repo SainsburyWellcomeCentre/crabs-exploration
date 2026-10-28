@@ -65,7 +65,8 @@ Dependencies are auto-installed in an ephemeral environment via uv.
 #   # `dataChanged` signal used below are internal to napari_builtins, and
 #   # were checked in this version only. Change it together with the pin
 #   # in the test_gui job of .github/workflows/test_and_deploy.yml
-#   "napari[pyqt5]==0.9.2",
+#   # PyQt6, as napari deprecates PyQt5 (to be removed in fall 2026)
+#   "napari[pyqt6]==0.9.2",
 #   "numpy",
 #   "pandas",
 #   "xarray",
