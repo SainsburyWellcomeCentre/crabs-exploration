@@ -624,12 +624,16 @@ def _colors(colors: list[str], shown: np.ndarray) -> np.ndarray:
 
 
 def _shapes_colors(layer: Shapes, rgba: np.ndarray) -> None:
-    """Colour the edges and text of a layer's shapes, one RGBA each."""
+    """Colour the edges and text of a layer's shapes, one RGBA each.
+
+    The text of new shapes is transparent, so a line being drawn shows no
+    ``id`` until it is guessed and the line is recoloured.
+    """
     from napari.layers.utils.color_encoding import ManualColorEncoding
 
     if len(rgba):
         layer.edge_color = rgba
-    layer.text.color = ManualColorEncoding(array=rgba, default="white")
+    layer.text.color = ManualColorEncoding(array=rgba, default="transparent")
     layer.refresh_text()
 
 
@@ -772,6 +776,11 @@ def _connect_handlers(session: Session) -> None:
         nonlocal n_lines_before_adding
         if event.action == "adding":
             n_lines_before_adding = len(session.lines.data)
+            # selecting a line copies its colour and id to the next new
+            # one: draw new lines white and unlinked until guessed
+            with session.lines.block_update_properties():
+                session.lines.current_edge_color = "white"
+            session.lines.feature_defaults = {"id": UNLINKED_ID}
             return
         if event.action == "added":
             new = range(n_lines_before_adding, len(session.lines.data))
