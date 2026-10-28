@@ -51,7 +51,7 @@ def package_dir(tmp_path):
     ``image_id``s are sparse, and differ between datasets, so a mix-up
     between napari's frame index and ``image_id`` fails.
     """
-    package_dir = tmp_path / "orientation_labelling_20260101_000000"
+    package_dir = tmp_path / "labelling_package_20260101_000000"
     for dataset, boxes_per_image in BOXES.items():
         image_ids = sorted(boxes_per_image)
         n_ids = len(boxes_per_image[image_ids[0]])
@@ -267,8 +267,11 @@ def test_results_on_close(make_napari_viewer, package_dir):
     )
     stores = finish_session(first)
     store_name = f"orientation_alice_{first.timestamp}.zarr"
-    sep_store = package_dir / "labels" / "sep2023" / store_name
-    aug_store = package_dir / "labels" / "aug2023" / store_name
+    # the labels directory is next to the package, with its timestamp
+    labels_dir = package_dir.parent / "manual_labels_20260101_000000"
+    assert first.autosave_csv.parent == labels_dir
+    sep_store = labels_dir / "sep2023" / store_name
+    aug_store = labels_dir / "aug2023" / store_name
     assert sorted(stores) == sorted([sep_store, aug_store])
     sep = xr.open_zarr(sep_store)
     assert int(sep["segment_theta"].notnull().sum()) == 1

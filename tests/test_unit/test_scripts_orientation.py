@@ -8,6 +8,7 @@ from PIL import Image
 
 from scripts.orientation.annotate_crabs_orientation_manual import (
     boxes_containing,
+    labels_dir_of,
     segment_theta,
     write_orientation_zarrs,
 )
@@ -347,3 +348,17 @@ def test_write_orientation_zarrs(package_slice, tmp_path):
         "5": "a.png",
         "7": "b.png",
     }
+
+
+@pytest.mark.parametrize(
+    "package_name, expected_labels_name",
+    [
+        ("labelling_package_20260101_000000", "manual_labels_20260101_000000"),
+        ("my_package", "manual_labels_my_package"),  # renamed package
+    ],
+)
+def test_labels_dir_of(tmp_path, package_name, expected_labels_name):
+    """Check the labels directory is next to the package."""
+    assert labels_dir_of(tmp_path / package_name) == (
+        tmp_path / expected_labels_name
+    )
