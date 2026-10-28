@@ -163,8 +163,15 @@ def test_boxes_on_right_frames(make_napari_viewer, package_dir, tmp_path):
         assert (tmp_path / f"{dataset}.png").exists()
 
 
-def test_line_statuses(make_napari_viewer, package_dir):
-    """Check lines are linked, coloured and saved by their midpoint."""
+def test_line_statuses(make_napari_viewer, package_dir, monkeypatch):
+    """Check lines are linked, coloured and saved by their midpoint.
+
+    Also checks napari warns about the ambiguous and unlinked lines.
+    """
+    warnings = []
+    monkeypatch.setattr(
+        "napari.utils.notifications.show_warning", warnings.append
+    )
     session = build_session(package_dir, "alice", viewer=make_napari_viewer())
     frame = _frame(session, "sep2023", 5)
     session.lines.add_lines(
@@ -184,6 +191,9 @@ def test_line_statuses(make_napari_viewer, package_dir):
     assert df["status"].tolist() == ["linked", "ambiguous", "unlinked"]
     assert df["dataset"].tolist() == ["sep2023"] * 3
     assert df["image_id"].tolist() == [5] * 3
+    assert len(warnings) == 2
+    assert warnings[0].startswith("Line 1 is in boxes [0, 1]")
+    assert warnings[1].startswith("Line 2 is in no box")
 
     # A second line for box 0 makes both ambiguous
     session.lines.add_lines([_line(frame, 10, 15, 14, 15)])
@@ -191,6 +201,8 @@ def test_line_statuses(make_napari_viewer, package_dir):
         session.lines.edge_color[[0, 3]],
         _edge_colors("ambiguous", "ambiguous"),
     )
+    assert len(warnings) == 3
+    assert warnings[2].startswith("Line 3 is in box 0, as are lines [0]")
 
 
 def test_table_edits(make_napari_viewer, package_dir):

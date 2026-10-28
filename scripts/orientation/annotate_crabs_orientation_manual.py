@@ -352,7 +352,8 @@ def guess_ids(
     """Guess the ``id`` of drawn or moved lines from their midpoint.
 
     A line whose midpoint is in exactly one box gets that box's ``id``.
-    Otherwise it gets -1, and napari shows a warning.
+    Otherwise it gets -1, and napari shows a warning. napari also warns
+    when the box already has another line on the same frame.
     """
     from napari.utils.notifications import show_warning
 
@@ -371,6 +372,20 @@ def guess_ids(
             show_warning(
                 f"Line {i} is in boxes {[int(box) for box in ids]}: type "
                 "the right id in the features table."
+            )
+
+    # Lines sharing an `id` on the same frame are ambiguous
+    line_frames = shape_frames(layer)
+    for i in indices:
+        if line_ids[i] == UNLINKED_ID:
+            continue
+        same_box = (line_frames == line_frames[i]) & (line_ids == line_ids[i])
+        others = [int(j) for j in np.flatnonzero(same_box) if j != i]
+        if others:
+            show_warning(
+                f"Line {i} is in box {int(line_ids[i])}, as are lines "
+                f"{others}: delete the extra lines, or type the right id "
+                "in the features table."
             )
     # the setter emits events.features, so the features table redraws
     features = layer.features.copy()
@@ -527,8 +542,7 @@ def progress_text(
     return (
         f"Frame {frame_idx + 1} / {len(frames)} "
         f"({dataset}, image_id {image_id})\n"
-        f"{done[on_frame].sum()} / {on_frame.sum()} boxes "
-        "labelled\n"
+        f"{done[on_frame].sum()} / {on_frame.sum()} boxes labelled"
     )
 
 
