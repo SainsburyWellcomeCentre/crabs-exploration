@@ -110,6 +110,10 @@ if TYPE_CHECKING:
 # Colour of a line per status
 STATUS_COLORS = {"linked": "lime", "ambiguous": "yellow", "unlinked": "red"}
 
+# Colour of the boxes: cyan has little contrast with the frames, and
+# orange is too close to the yellow and red of the lines left to fix
+BOX_COLOR = "magenta"
+
 # `id` of a line not linked to a box
 UNLINKED_ID = -1
 
@@ -591,11 +595,11 @@ def build_session(
         box_shapes,
         ndim=3,
         shape_type="rectangle",
-        edge_color="cyan",
+        edge_color=BOX_COLOR,
         face_color="transparent",
         edge_width=3,
         features={"id": box_ids},
-        text={"string": "{id}", "color": "cyan", "anchor": "upper_left"},
+        text={"string": "{id}", "color": BOX_COLOR, "anchor": "upper_left"},
         name="bboxes",
     )
     bboxes.editable = False
