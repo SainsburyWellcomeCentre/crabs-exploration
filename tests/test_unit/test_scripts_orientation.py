@@ -384,10 +384,7 @@ def test_boxes_done():
 
 
 def test_progress_text():
-    """Check the counts of boxes and frames done.
-
-    Frame 1 has no boxes, so it is done.
-    """
+    """Check the frame and its count of boxes with a green line."""
     frames = pd.DataFrame(
         {"dataset": ["aug", "aug", "sep"], "image_id": [3, 4, 5]}
     )
@@ -397,8 +394,4 @@ def test_progress_text():
         box_frames=np.array([0, 0, 2, 2, 2]),
         done=np.array([True, True, True, False, False]),
     )
-    assert text == (
-        "Frame 3 of 3 (sep, image_id 5)\n"
-        "This frame: 1 of 3 boxes have a green line\n"
-        "All frames: 3 of 5 boxes, 2 of 3 frames done"
-    )
+    assert text == "Frame 3 / 3 (sep, image_id 5)\n1 / 3 boxes labelled\n"

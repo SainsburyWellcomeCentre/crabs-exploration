@@ -351,12 +351,7 @@ def test_show_panel_and_progress(make_napari_viewer, package_dir):
             _line(frame, 50, 55, 60, 60),  # red
         ]
     )
-    assert "This frame: 1 of 3 boxes have a green line" in (
-        session.viewer.canvas.overlays.text.text
-    )
-    assert "All frames: 1 of 7 boxes, 0 of 4 frames done" in (
-        session.viewer.canvas.overlays.text.text
-    )
+    assert "1 / 3 boxes labelled" in session.viewer.canvas.overlays.text.text
 
     session.show["linked"].setChecked(False)
     np.testing.assert_array_equal(session.lines.edge_color[:, 3], [0, 1])

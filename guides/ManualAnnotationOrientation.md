@@ -61,7 +61,7 @@ A napari window opens with:
   cannot edit them;
 - an empty `orientation lines` layer, selected and ready to draw lines;
 - your progress, in the top-left corner of the image: how many boxes of
-  this frame, and of all frames, have a green line;
+  this frame have a green line;
 - the **features table**, on the right, listing the lines of the frame you
   are on;
 - the **show** panel, on the right, to hide lines and boxes.
@@ -121,11 +121,10 @@ every line is green.
 
 ### Find the work left
 
-The text in the top-left corner of the image shows, for the frame you are
-on and for all frames, how many boxes have a green line, and how many
-frames are done (all their boxes have a green line). Boxes you leave
-without a line on purpose are counted as not done, so the counts may not
-reach the totals.
+The text in the top-left corner of the image shows the frame you are on,
+and how many of its boxes have a green line ("labelled"). Boxes you leave
+without a line on purpose are not counted as labelled, so the count may
+not reach the total.
 
 To see what is left, untick options in the **show** panel:
 
