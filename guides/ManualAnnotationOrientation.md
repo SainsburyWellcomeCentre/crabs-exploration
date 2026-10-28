@@ -27,7 +27,8 @@ to run `uv self update`. Run it, then try again.
 
 Copy the labelling package folder from ceph to your computer, for example
 into your `Documents` folder. We will tell you its location on ceph. It is
-called `orientation_labelling_<timestamp>` and is about 0.6 GB.
+called `labelling_package_<timestamp>` and is about 0.6 GB. Your labels
+will be saved next to it, in a new `manual_labels_<timestamp>` folder.
 
 It holds two subfolders, `sep2023-full` and `aug2023-full`, each with the
 frames to label and the boxes drawn on them. Do not change anything inside
@@ -112,11 +113,14 @@ they always come back to their original values.
 
 ## 5. Your files
 
-Your work is saved automatically after every change, in a `labels` folder
-inside the package:
+Your work is saved automatically after every change, in a
+`manual_labels_<timestamp>` folder next to the package, with the
+package's timestamp. The `<timestamp>` in the file names is when you
+started labelling:
 
 ```text
-<package>/labels/
+labelling_package_<timestamp>/        (the package: do not change it)
+manual_labels_<timestamp>/
 ├── orientation_lines_<name>_<timestamp>.csv
 ├── orientation_lines_<name>_<timestamp>.csv.bak    (only after a resume)
 ├── sep2023-full/orientation_<name>_<timestamp>.zarr
@@ -147,17 +151,18 @@ To continue later, or after a crash, run the same command as in step 3, with
 `--resume` and the path to your CSV at the end:
 
 ```powershell
-uv run https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/orientation-labelling-v1/scripts/orientation/annotate_crabs_orientation_manual.py <package> --annotator <name> --resume <package>\labels\orientation_lines_<name>_<timestamp>.csv
+uv run https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/orientation-labelling-v1/scripts/orientation/annotate_crabs_orientation_manual.py <package> --annotator <name> --resume <labels folder>\orientation_lines_<name>_<timestamp>.csv
 ```
 
-Your lines come back, and the same files are updated: no new ones are
-made.
+where `<labels folder>` is the path to your `manual_labels_<timestamp>`
+folder. Your lines come back, and the same files are updated: no new ones
+are made.
 
 ## 7. Send back your labels
 
-When every line is green, close the window, and send us the whole `labels`
-folder, CSV included. The CSV keeps the red and yellow lines, which the
-results do not.
+When every line is green, close the window, and send us the whole
+`manual_labels_<timestamp>` folder, CSV included. The CSV keeps the red
+and yellow lines, which the results do not.
 
 ## For the maintainer
 
@@ -181,7 +186,7 @@ uv run scripts/orientation/create_labelling_package.py \
 By default, it samples 2 frames per `Right` video with seed 42
 (`--frames-per-video`, `--camera`, `--seed`): 28 frames from 14 videos in
 `sep2023-full`, and 10 frames from 5 videos in `aug2023-full`. It writes
-`orientation_labelling_<timestamp>/`, with one subfolder per store holding
+`labelling_package_<timestamp>/`, with one subfolder per store holding
 the selected frames and a slice of the store with the boxes only. The
 `labelling_package` attribute of each `bboxes.zarr` records the source
 store and the sampling settings.

@@ -15,13 +15,17 @@ Each input store is a ``bboxes_and_masks_<timestamp>.zarr`` written by
 Output is one subdirectory per input store, named after its data
 directory:
 
-    <output_dir>/orientation_labelling_<timestamp>/
+    <output_dir>/labelling_package_<timestamp>/
     ├── sep2023-full/
     │   ├── frames/          # the selected frames, copied unchanged
     │   └── bboxes.zarr      # slice of the sep2023-full store
     └── aug2023-full/
         ├── frames/
         └── bboxes.zarr
+
+``annotate_crabs_orientation_manual.py`` writes its labels next to the
+package, to ``<output_dir>/manual_labels_<timestamp>/``, with the same
+timestamp.
 
 Each ``bboxes.zarr`` is the input store sliced along ``image_id`` to the
 selected frames, with the bounding box variables only (``position``,
@@ -51,7 +55,7 @@ From the repo root:
         /path/to/sep2023-full/annotations/bboxes_and_masks_<ts>.zarr \
         /path/to/aug2023-full/annotations/bboxes_and_masks_<ts>.zarr \
         --output-dir /path/to/output_dir \
-        --exclude-package /path/to/orientation_labelling_<ts>
+        --exclude-package /path/to/labelling_package_<ts>
 
 Dependencies are auto-installed in an ephemeral environment via uv.
 """
@@ -262,7 +266,7 @@ def main(args: argparse.Namespace) -> None:
         )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    package_dir = args.output_dir / f"orientation_labelling_{timestamp}"
+    package_dir = args.output_dir / f"labelling_package_{timestamp}"
     package_settings = {
         "seed": args.seed,
         "camera": args.camera,
@@ -311,7 +315,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         type=Path,
         default=Path.cwd(),
         help=(
-            "Directory the orientation_labelling_<timestamp> package is "
+            "Directory the labelling_package_<timestamp> package is "
             "written into (default: current directory)."
         ),
     )

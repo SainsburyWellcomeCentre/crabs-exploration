@@ -23,7 +23,9 @@ its status:
 
 Only green lines are saved as results.
 
-Outputs, in ``<package_dir>/labels/``:
+Outputs, in ``manual_labels_<package timestamp>/``, next to the package
+directory ``labelling_package_<package timestamp>/``. ``<timestamp>``
+in the file names is the session's:
 
 * ``orientation_lines_<annotator>_<timestamp>.csv``: every line, in every
   status, autosaved on every edit. Columns: ``dataset``, ``image_id``,
@@ -48,12 +50,12 @@ that session's zarr stores when the window is closed.
 Usage
 From the repo root:
     uv run scripts/orientation/annotate_crabs_orientation_manual.py \
-        /path/to/orientation_labelling_<timestamp> --annotator <name>
+        /path/to/labelling_package_<timestamp> --annotator <name>
 
 To continue a previous session:
     uv run scripts/orientation/annotate_crabs_orientation_manual.py \
-        /path/to/orientation_labelling_<timestamp> --annotator <name> \
-        --resume /path/to/labels/orientation_lines_<name>_<timestamp>.csv
+        /path/to/labelling_package_<timestamp> --annotator <name> \
+        --resume /path/to/manual_labels_<ts>/orientation_lines_<name>_<ts>.csv
 
 Dependencies are auto-installed in an ephemeral environment via uv.
 """
@@ -132,6 +134,10 @@ CSV_COLUMNS = [
 # Annotator names can be split back out of the output filenames
 ANNOTATOR_PATTERN = r"[A-Za-z0-9-]+"
 
+# Name prefixes of a package directory, and of its labels directory
+PACKAGE_PREFIX = "labelling_package_"
+LABELS_PREFIX = "manual_labels_"
+
 
 # ---------- package -----------------
 def _read_image(path: Path) -> np.ndarray:
@@ -199,6 +205,16 @@ def load_package(
         ]
     )
     return packages, frames, images
+
+
+def labels_dir_of(package_dir: Path) -> Path:
+    """Return the labels directory of a package, next to it.
+
+    ``labelling_package_<timestamp>`` gets ``manual_labels_<timestamp>``.
+    A package directory with another name gets ``manual_labels_<name>``.
+    """
+    suffix = package_dir.name.removeprefix(PACKAGE_PREFIX)
+    return package_dir.parent / f"{LABELS_PREFIX}{suffix}"
 
 
 def _box_corners(
@@ -566,7 +582,7 @@ def build_session(
     package_dir = Path(package_dir).resolve()
     packages, frames, images = load_package(package_dir)
 
-    labels_dir = package_dir / "labels"
+    labels_dir = labels_dir_of(package_dir)
     if resume_csv is not None:
         resume_csv = Path(resume_csv).resolve()
         timestamp = _resumed_timestamp(resume_csv, annotator)
@@ -731,9 +747,9 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         "package_dir",
         type=Path,
         help=(
-            "Labelling package directory (orientation_labelling_"
-            "<timestamp>), written by create_labelling_package.py. "
-            "Outputs are written to its labels/ subdirectory."
+            "Labelling package directory (labelling_package_<timestamp>), "
+            "written by create_labelling_package.py. Outputs are written "
+            "to manual_labels_<timestamp>, next to it."
         ),
     )
     parser.add_argument(
