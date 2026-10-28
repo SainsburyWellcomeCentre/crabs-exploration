@@ -8,7 +8,9 @@ from PIL import Image
 
 from scripts.orientation.annotate_crabs_orientation_manual import (
     boxes_containing,
+    boxes_done,
     labels_dir_of,
+    progress_text,
     segment_theta,
     write_orientation_zarrs,
 )
@@ -361,4 +363,42 @@ def test_labels_dir_of(tmp_path, package_name, expected_labels_name):
     """Check the labels directory is next to the package."""
     assert labels_dir_of(tmp_path / package_name) == (
         tmp_path / expected_labels_name
+    )
+
+
+def test_boxes_done():
+    """Check a box is done only with a green line of its id, on its frame.
+
+    Boxes are (frame, id) (0, 0), (0, 1), (1, 0) and (1, 1).
+    """
+    done = boxes_done(
+        box_frames=np.array([0, 0, 1, 1]),
+        box_ids=np.array([0, 1, 0, 1]),
+        line_frames=np.array([0, 0, 1, 1]),
+        line_ids=np.array([0, 1, 1, -1]),
+        status=np.array(
+            ["linked", "ambiguous", "linked", "unlinked"], dtype=object
+        ),
+    )
+    np.testing.assert_array_equal(done, [True, False, False, True])
+
+
+def test_progress_text():
+    """Check the counts of boxes and frames done.
+
+    Frame 1 has no boxes, so it is done.
+    """
+    frames = pd.DataFrame(
+        {"dataset": ["aug", "aug", "sep"], "image_id": [3, 4, 5]}
+    )
+    text = progress_text(
+        frame_idx=2,
+        frames=frames,
+        box_frames=np.array([0, 0, 2, 2, 2]),
+        done=np.array([True, True, True, False, False]),
+    )
+    assert text == (
+        "Frame 3 of 3 (sep, image_id 5)\n"
+        "This frame: 1 of 3 boxes have a green line\n"
+        "All frames: 3 of 5 boxes, 2 of 3 frames done"
     )

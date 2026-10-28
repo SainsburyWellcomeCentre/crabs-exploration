@@ -303,8 +303,65 @@ def test_results_on_close(make_napari_viewer, package_dir):
     assert not aug_store.exists()
 
 
+def _table_ids(session):
+    """Return the ``Index`` values of the rows the features table shows."""
+    proxy = session.table.table.model()
+    return sorted(
+        proxy.data(proxy.index(row, 0)) for row in range(proxy.rowCount())
+    )
+
+
 def test_starts_drawing_lines(make_napari_viewer, package_dir):
     """Check the session starts on the lines layer, in add line mode."""
     session = build_session(package_dir, "alice", viewer=make_napari_viewer())
     assert session.viewer.layers.selection.active is session.lines
     assert session.lines.mode == "add_line"
+
+
+def test_table_shows_current_frame(make_napari_viewer, package_dir):
+    """Check the features table lists the current frame's shapes only."""
+    session = build_session(package_dir, "alice", viewer=make_napari_viewer())
+    sep5, sep7 = _frame(session, "sep2023", 5), _frame(session, "sep2023", 7)
+    session.lines.add_lines(
+        [
+            _line(sep5, 12, 20, 18, 22),
+            _line(sep7, 45, 30, 55, 32),
+            _line(sep5, 66, 40, 74, 40),
+        ]
+    )
+
+    session.viewer.dims.set_current_step(0, sep5)
+    assert _table_ids(session) == [0, 2]
+    session.viewer.dims.set_current_step(0, sep7)
+    assert _table_ids(session) == [1]
+
+    # Boxes are not listed
+    session.viewer.layers.selection.active = session.bboxes
+    assert _table_ids(session) == []
+
+
+def test_show_panel_and_progress(make_napari_viewer, package_dir):
+    """Check unticked lines and boxes are hidden, and progress is shown."""
+    session = build_session(package_dir, "alice", viewer=make_napari_viewer())
+    frame = _frame(session, "sep2023", 5)
+    session.viewer.dims.set_current_step(0, frame)
+    session.lines.add_lines(
+        [
+            _line(frame, 12, 20, 18, 22),  # green, for box 0
+            _line(frame, 50, 55, 60, 60),  # red
+        ]
+    )
+    assert "This frame: 1 of 3 boxes have a green line" in (
+        session.viewer.canvas.overlays.text.text
+    )
+    assert "All frames: 1 of 7 boxes, 0 of 4 frames done" in (
+        session.viewer.canvas.overlays.text.text
+    )
+
+    session.show["linked"].setChecked(False)
+    np.testing.assert_array_equal(session.lines.edge_color[:, 3], [0, 1])
+
+    # Only box 0 of sep2023 image 5 has a green line
+    session.show["to do"].setChecked(False)
+    box_0 = (session.box_frames == frame) & (session.box_ids == 0)
+    np.testing.assert_array_equal(session.bboxes.edge_color[:, 3], box_0)
