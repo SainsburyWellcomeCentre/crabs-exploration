@@ -18,7 +18,7 @@ from PIL import Image
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Groundtruth data
 
-# map dataset to the output store of scripts/generate_masks_from_bboxes.py
+# map dataset to the output store of scripts/orientation/generate_masks_from_bboxes.py
 # (stores named masks_<timestamp>.zarr, written before the bboxes and mask
 # parameters were added, cannot be read here; re-run the script)
 map_month_to_zarr = {

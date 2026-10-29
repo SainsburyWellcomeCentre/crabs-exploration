@@ -8,7 +8,7 @@ import zarr
 from PIL import Image
 from skimage.draw import ellipse
 
-from scripts.generate_masks_from_bboxes import (
+from scripts.orientation.generate_masks_from_bboxes import (
     ImageArrayLazy,
     append_mask_props,
     compute_mask_props_dataset,
