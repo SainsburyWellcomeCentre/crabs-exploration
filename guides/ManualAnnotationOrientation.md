@@ -63,12 +63,12 @@ In PowerShell, run the command below, with:
   spaces or `_`), for example `jane-doe`. **Use the same name every time.**
 
 ```powershell
-uv run https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/orientation-labelling-v1/scripts/orientation/annotate_crabs_orientation_manual.py \
+uv run https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/orientation-labelling-v2/scripts/orientation/annotate_crabs_orientation_manual.py \
 <path/to/labelling/package> \
 --annotator <name>
 ```
 
-The command points to a fixed version of the tool (`orientation-labelling-v1`), so everybody labels with the same code.
+The command points to a fixed version of the tool (`orientation-labelling-v2`), so everybody labels with the same code.
 
 The first run may take a few minutes, while `uv` downloads the dependencies that the tool needs. Later runs start in seconds.
 
@@ -204,7 +204,7 @@ To continue labelling later, or after a crash, run the same command as in step 3
 `--resume` and the path to your CSV file at the end:
 
 ```powershell
-uv run https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/orientation-labelling-v1/scripts/orientation/annotate_crabs_orientation_manual.py \
+uv run https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/orientation-labelling-v2/scripts/orientation/annotate_crabs_orientation_manual.py \
 <path/to/labelling/package> \
 --annotator <name> \
 --resume <manual_labels_<timestamp> folder>\orientation_lines_<name>_<timestamp>.csv
