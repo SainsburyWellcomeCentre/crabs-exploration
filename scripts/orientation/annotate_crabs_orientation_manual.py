@@ -67,7 +67,10 @@ Dependencies are auto-installed in an ephemeral environment via uv.
 """
 
 # /// script
-# requires-python = ">=3.11"
+# # capped at the versions tested in CI: some packages may lack wheels
+# # for newer Python versions (e.g. pyyaml on Windows), and building them
+# # needs a C compiler (which needs explicit installation on Windows)
+# requires-python = ">=3.12,<3.14"
 # dependencies = [
 #   # napari is pinned because the features table's `toggle` and
 #   # `dataChanged` signal used below are internal to napari_builtins, and
