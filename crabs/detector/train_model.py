@@ -315,7 +315,7 @@ def train_parse_args(args):
         "--checkpoint_path",
         type=str,
         default=None,
-        help=("Path to checkpoint to resume training. " "Default: None."),
+        help=("Path to checkpoint to resume training. Default: None."),
     )
     parser.add_argument(
         "--accelerator",
@@ -360,7 +360,7 @@ def train_parse_args(args):
     parser.add_argument(
         "--log_data_augmentation",
         action="store_true",
-        help=("Log data augmentation transforms to " "MLflow as artifacts"),
+        help=("Log data augmentation transforms to MLflow as artifacts"),
     )
     parser.add_argument(
         "--optuna",

@@ -136,8 +136,11 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
 
     ```python
     import xarray as xr
+
     dt = xr.open_datatree(path_to_mask_store, engine="zarr", chunks={})
-    print(f"Total groups: {len(dt)}")  # should match the number of videos processed
+    print(
+        f"Total groups: {len(dt)}"
+    )  # should match the number of videos processed
     ```
 
 ### Some useful SLURM commands

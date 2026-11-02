@@ -76,7 +76,9 @@ ds = xr.open_datatree(store, engine="zarr", chunks={})["<video_id>"]
 
 # Compute region properties for crab with individual="id_0003" in Loop05
 mask_label = int(ds.label_of.sel(individual="id_0003"))
-mask = ds.labels.sel(clip_id="Loop05") == mask_label     # (time, img_h, img_w) bool
+mask = (
+    ds.labels.sel(clip_id="Loop05") == mask_label
+)  # (time, img_h, img_w) bool
 regionprops(ds.labels.sel(clip_id="Loop05").isel(time=t).values)
 ```
 
@@ -85,6 +87,8 @@ To display the labels of all clips in one video in `napari`:
 import napari
 
 viewer = napari.Viewer()
-viewer.add_labels(ds.labels, name="crab masks")  # adds sliders over clip_id and time
+viewer.add_labels(
+    ds.labels, name="crab masks"
+)  # adds sliders over clip_id and time
 napari.run()  # needed when running from a script; not in a notebook or IPython
 ```
