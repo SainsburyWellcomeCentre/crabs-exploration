@@ -1590,6 +1590,117 @@ fig.savefig(
     bbox_inches="tight",
     pad_inches=0,  # no border around the tight bbox
 )
+
+# %%%%%%%%%%%%%%%
+# |rho_dot| and tortuosity of inbound legs, split by the escape they are
+# linked to (see the escape-linking cell: an inbound leg is linked if its peak
+# falls inside an escape window). Outbound legs are kept as a reference.
+# Inbound markers follow the rho-vs-time plot: filled if linked to an escape,
+# hollow if not.
+
+# groups: (x tick label, legs, facecolor, edgecolor)
+escape_groups = [
+    ("outbound", outbound_legs_df, color_outbound, color_outbound),
+    (
+        "inbound\nno escape",
+        inbound_legs_df[inbound_legs_df["escape_type"].isna()],
+        "none",
+        color_inbound,
+    ),
+] + [
+    (
+        f"inbound\n{esc_type}",
+        inbound_legs_df[inbound_legs_df["escape_type"] == esc_type],
+        color_inbound,
+        color_inbound,
+    )
+    for esc_type in escape_style  # spontaneous, triggered
+]
+
+
+def plot_metric_by_escape_group(ax, metric_per_group):
+    """Strip plot of one metric per escape group, with mean bars and n."""
+    rng = np.random.default_rng(0)
+    for xpos, ((_, _, facecolor, edgecolor), values) in enumerate(
+        zip(escape_groups, metric_per_group, strict=True)
+    ):
+        ax.scatter(
+            xpos + rng.uniform(-0.08, 0.08, size=values.size),  # jitter
+            values,
+            facecolors=facecolor,
+            edgecolors=edgecolor,
+            linewidths=1.5,
+            s=25,
+            alpha=0.75,
+            zorder=3,
+        )
+        # mean bar (with n=1 it is just that point)
+        if values.size:
+            ax.hlines(
+                values.mean(),
+                xpos - 0.25,
+                xpos + 0.25,
+                color="k",
+                linewidth=2,
+                zorder=4,
+            )
+    ax.set_xticks(np.arange(len(escape_groups)))
+    ax.set_xticklabels(
+        [
+            f"{label}\n(n={values.size})"
+            for (label, *_), values in zip(
+                escape_groups, metric_per_group, strict=True
+            )
+        ]
+    )
+    ax.set_xlim(-0.5, len(escape_groups) - 0.5)
+    ax.yaxis.label.set_fontsize(18)
+    ax.tick_params(axis="y", labelsize=16)
+    ax.tick_params(axis="x", labelsize=13)
+    ax.spines[["top", "right"]].set_visible(False)
+
+
+# |rho_dot| in BL/s
+fig, ax_rate = plt.subplots(figsize=(7, 4))
+plot_metric_by_escape_group(
+    ax_rate,
+    [
+        np.abs(legs["rho_dot_bl_mean"].dropna().to_numpy()) * fps
+        for _, legs, *_ in escape_groups
+    ],
+)
+ax_rate.set_ylim(bottom=0)
+ax_rate.set_ylabel(r"$|\overset{\bullet}{\rho}|$ (BL/s)")
+fig.tight_layout()
+
+# %%
+fig.savefig(
+    output_figs_dir
+    / f"{video_str}_burrow_ID{b_id}_abs_rho_dot_by_escape_type.svg",
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
+
+# %%
+# tortuosity (path length / beeline), log scale; 1 = perfectly straight
+fig, ax_tort = plt.subplots(figsize=(7, 4))
+plot_metric_by_escape_group(
+    ax_tort,
+    [legs["tortuosity"].dropna().to_numpy() for _, legs, *_ in escape_groups],
+)
+ax_tort.axhline(1, color="k", linewidth=0.5, linestyle="--")
+ax_tort.set_yscale("log")
+ax_tort.set_ylim(bottom=1)
+ax_tort.set_ylabel("tortuosity ratio")
+fig.tight_layout()
+
+# %%
+fig.savefig(
+    output_figs_dir
+    / f"{video_str}_burrow_ID{b_id}_tortuosity_by_escape_type.svg",
+    bbox_inches="tight",
+    pad_inches=0,  # no border around the tight bbox
+)
 # %%
 
 # Plot a pair of consecutive outbound/inbound
