@@ -43,6 +43,13 @@ color_outbound = "#b6e2c8ff"
 color_outbound_traj_plot = "#c1ddcd"
 color_unassigned = "#7FA0B8"  # soft slate blue
 
+# escape styles (neutral greys so they don't clash with the phase colours;
+# linestyle + weight also encode the type, so it survives greyscale printing)
+escape_style = {
+    "spontaneous": {"color": "0.55", "linestyle": "--", "linewidth": 1.2},
+    "triggered": {"color": "k", "linestyle": "-", "linewidth": 2.5},
+}
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Helper functions
@@ -82,7 +89,7 @@ raster_plots_dir = Path(
 )
 
 output_figs_dir = Path(
-    "/Users/sofia/arc/project_Zoo_crabs/ICN poster/figures/Fig-case-study-1"
+    "/Users/sofia/arc/project_Zoo_crabs/tmp-figures/"
 )
 
 
@@ -673,6 +680,46 @@ for b_id, df_trajs_b_id in df_linked_filtered.groupby("burrow_id"):
 
 legs_df = pd.DataFrame(leg_records)
 
+
+# %%%%%%%%%%%%%%%%%%%%%%%
+# Escape events, and link each inbound leg to an escape
+#
+# Each clip ends with exactly one escape, running from its onset
+# (clip_escape_first_frame_0idx) to the last frame of the clip. Both are in
+# video frames. Escapes are video-wide (not per burrow), so they are read
+# from the dataset directly rather than from the trajectory samples.
+escapes_df = pd.DataFrame(
+    {
+        "clip_id": ds_video.clip_id.values.astype(str),
+        "escape_type": ds_video.clip_escape_type.values.astype(str),
+        "frame_start": ds_video.clip_escape_first_frame_0idx.values,
+        "frame_end": ds_video.clip_last_frame_0idx.values,
+    }
+)
+
+# escape windows as closed intervals [frame_start, frame_end]
+escape_windows = pd.IntervalIndex.from_arrays(
+    escapes_df["frame_start"], escapes_df["frame_end"], closed="both"
+)
+assert escape_windows.is_non_overlapping_monotonic
+
+# an inbound leg is linked to an escape if it starts (i.e. its peak falls)
+# inside that escape's window. Outbound legs are never linked.
+# get_indexer returns -1 for frames outside every window.
+escape_pos_per_leg = escape_windows.get_indexer(legs_df["frame_start"])
+is_linked = (legs_df["kind"] == "inbound").to_numpy() & (
+    escape_pos_per_leg >= 0
+)
+# linked escape's clip ID and type per leg (NA if not linked)
+for leg_col, esc_col in [
+    ("escape_clip_id", "clip_id"),
+    ("escape_type", "escape_type"),
+]:
+    legs_df[leg_col] = pd.Series(pd.NA, index=legs_df.index, dtype="string")
+    legs_df.loc[is_linked, leg_col] = escapes_df[esc_col].to_numpy()[
+        escape_pos_per_leg[is_linked]
+    ]
+
 # %%%%%%%%%%%%%%%%%%%%%%%
 # PLOTS
 ###%%%%%%%%%%%%%%%%%%%%%
@@ -1199,6 +1246,20 @@ sample_color_inbound = sample_color.where(
 )
 
 fig, ax = plt.subplots(figsize=(10, 10))
+
+# escape windows, behind the data: a line at the onset and at the end
+# (styled by escape type), with the window between them lightly shaded.
+# Escapes last only ~4-18 s, so on the full time axis the window is a
+# hairline and onset/end overlap; they separate when zooming in.
+for _, esc in escapes_df.iterrows():
+    style = escape_style[esc["escape_type"]]
+    t_start = esc["frame_start"] / fps / 60
+    t_end = (esc["frame_end"] + 1) / fps / 60  # to the end of the last frame
+    ax.axvspan(t_start, t_end, color=style["color"], alpha=0.2, lw=0, zorder=0)
+    ax.axvline(t_start, zorder=0, **style)
+    style_end = {**style, "linewidth": style["linewidth"] / 2}  # thinner
+    ax.axvline(t_end, zorder=0, **style_end)
+
 ax.scatter(
     x=df_trajs_b_id["frame_in_video"] / fps / 60,
     y=df_trajs_b_id["d_burrow_bl"],
@@ -1206,18 +1267,29 @@ ax.scatter(
     s=2.5,
     rasterized=True,
 )
-# mark detected local peaks
-ax.scatter(
-    x=peaks_df["frame_in_video"] / fps / 60,
-    y=peaks_df["d_burrow_bl"],
-    s=50,
-    marker="v",
-    facecolors=color_inbound,
-    edgecolors=color_inbound,
-    linewidths=2.5,
-    zorder=6,
-    label=f"peaks (n={len(peaks_df)})",
+# mark detected local peaks: filled if the inbound leg they start is linked to
+# an escape (peak inside an escape window), hollow otherwise
+peak_is_linked = peaks_df["frame_in_video"].isin(
+    inbound_legs_df.loc[
+        inbound_legs_df["escape_type"].notna(), "frame_start"
+    ]
 )
+for linked, facecolor, label in [
+    (True, color_inbound, "peaks, in escape"),
+    (False, "none", "peaks, no escape"),
+]:
+    peaks_sel = peaks_df[peak_is_linked == linked]
+    ax.scatter(
+        x=peaks_sel["frame_in_video"] / fps / 60,
+        y=peaks_sel["d_burrow_bl"],
+        s=50,
+        marker="v",
+        facecolors=facecolor,
+        edgecolors=color_inbound,
+        linewidths=2.5,
+        zorder=6,
+        label=f"{label} (n={len(peaks_sel)})",
+    )
 # mark detected local minima
 ax.scatter(
     x=mins_df["frame_in_video"] / fps / 60,
@@ -1243,8 +1315,20 @@ inbound_handle = Line2D(
     [], [], marker="o", linestyle="none", color=color_inbound, label="inbound"
 )
 peak_min_handles, _ = ax.get_legend_handles_labels()
+escape_handles = [
+    Line2D(
+        [],
+        [],
+        label=f"{esc_type} escape "
+        f"(n={(escapes_df['escape_type'] == esc_type).sum()})",
+        **style,
+    )
+    for esc_type, style in escape_style.items()
+]
 ax.legend(
-    handles=[inbound_handle] + peak_min_handles, loc="upper right", fontsize=18
+    handles=[inbound_handle] + peak_min_handles + escape_handles,
+    loc="upper right",
+    fontsize=18,
 )
 ax.set_xlabel("time (min)")
 ax.set_ylabel(r"$\rho$ (BL)")
