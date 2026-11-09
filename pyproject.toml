@@ -42,6 +42,7 @@ dependencies = [
     # (>=0.60 is also the first numba release that supports numpy 2).
     "zarr>=3",  # sharding
     "xarray",
+    "scikit-image",  # regionprops for mask and ellipse parameters
 ]
 
 
