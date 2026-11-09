@@ -9,6 +9,7 @@ import xarray as xr
 import zarr
 from zarr.codecs import ZstdCodec
 
+from crabs.mask.mask_props import MASK_PROPS_VARS
 from crabs.mask.mask_video import (
     create_mask_store,
     main,
@@ -16,7 +17,10 @@ from crabs.mask.mask_video import (
     predict_masks_on_device,
     write_clip_masks_to_store,
 )
-from crabs.mask.utils.boxes_from_dataset import extract_bboxes_from_clip
+from crabs.mask.utils.boxes_from_dataset import (
+    BOX_VARS,
+    extract_bboxes_from_clip,
+)
 from crabs.zarr.create_dataset import concat_clips
 
 FRAME_SHAPE = (64, 64)  # height, width
@@ -470,6 +474,23 @@ def test_main(
                 f"store has {sorted(individuals_in_tracks)}"
             )
 
+    # Check the masks group holds the boxes of its video
+    # (both stores have 3 frames here, so no reindexing is needed)
+    for var in BOX_VARS:
+        xr.testing.assert_equal(
+            masks[var].reset_coords(drop=True),
+            tracks[var].reset_coords(drop=True),
+        )
+
+    # Check the 8 variables: each box's mask is its own rectangle, of
+    # 8 x 8 pixels, and there is no mask where there is no box
+    assert set(MASK_PROPS_VARS) <= set(masks.data_vars)
+    has_box = masks.position.notnull().all("space")
+    np.testing.assert_array_equal(
+        masks.mask_area.values,
+        xr.full_like(masks.mask_area, 64.0).where(has_box).values,
+    )
+
 
 @pytest.mark.parametrize(
     ("extra_args", "expected_error", "expected_message"),
@@ -506,20 +527,10 @@ def test_main_output_store_is_shared_across_runs(
     and all runs write to the same `--output_store` in append mode. The
     store must end up holding a group for each video.
     """
-    # Add a second video to the trajectories store, as a copy of the first
-    tracks = xr.open_datatree(trajectories_store_and_clips, engine="zarr")[
-        "video"
-    ].to_dataset()
-    tracks.to_zarr(trajectories_store_and_clips, group="video2")
-
-    # Copy the clip files for the second video
+    # Add a second video to the trajectories store, as a copy of the first,
+    # with its clip files
     # (`main` expects them at `<videos_dir>/<video_id>-<clip_id>.mp4`)
-    clips = trajectories_store_and_clips.parent / "clips"
-    for clip_video in sorted(clips.glob("video-*.mp4")):
-        shutil.copy(
-            clip_video,
-            clips / clip_video.name.replace("video-", "video2-"),
-        )
+    add_second_video(trajectories_store_and_clips)
 
     # Run `main` once per video, all writing to the same output store
     store_path = trajectories_store_and_clips.parent / "CrabMasks-slurm42.zarr"
@@ -551,3 +562,128 @@ def test_main_output_store_is_shared_across_runs(
         masks["video2"].labels.values,
         masks["video"].labels.values,
     )
+
+
+def add_second_video(trajectories_store: Path) -> None:
+    """Add a copy of `video` as `video2`, with its clip videos."""
+    tracks = xr.open_datatree(trajectories_store, engine="zarr")[
+        "video"
+    ].to_dataset()
+    tracks.to_zarr(trajectories_store, group="video2")
+    clips = trajectories_store.parent / "clips"
+    for clip_video in sorted(clips.glob("video-*.mp4")):
+        shutil.copy(
+            clip_video,
+            clips / clip_video.name.replace("video-", "video2-"),
+        )
+
+
+def test_main_consolidates_metadata(
+    trajectories_store_and_clips: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Check the root's consolidated metadata lists every new array.
+
+    Without the final `zarr.consolidate_metadata`, the 8 variables would
+    be missing from it, and readers that use it would not see them.
+    """
+    add_second_video(trajectories_store_and_clips)
+    patch_sam2_loader(monkeypatch, FakePredictor())
+    output_dir = run_main(trajectories_store_and_clips)
+
+    # Read the root's consolidated metadata
+    (store_path,) = output_dir.glob("*_masks_*.zarr")
+    consolidated = zarr.open_group(
+        store_path, mode="r", use_consolidated=True
+    ).metadata.consolidated_metadata
+    assert consolidated is not None
+    flat = consolidated.flattened_metadata
+
+    # Check it lists both groups, their boxes and the 8 variables
+    for video_id in ["video", "video2"]:
+        assert video_id in flat
+        for var in ["labels", "label_of", *BOX_VARS, *MASK_PROPS_VARS]:
+            assert f"{video_id}/{var}" in flat, var
+
+
+def test_main_fails_on_short_clip_video(
+    trajectories_store_and_clips: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Check a clip video shorter than its metadata length raises an error.
+
+    It must raise before the video's masks group is created.
+    """
+    # Overwrite clip "Loop00", 3 frames long, with a 2-frame video
+    clips = trajectories_store_and_clips.parent / "clips"
+    write_blank_video(clips / "video-Loop00.mp4", 2)
+
+    patch_sam2_loader(monkeypatch, FakePredictor())
+    store_path = trajectories_store_and_clips.parent / "masks.zarr"
+    with pytest.raises(ValueError, match="metadata length is 3 frames"):
+        run_main(
+            trajectories_store_and_clips, ["--output_store", str(store_path)]
+        )
+    assert not (store_path / "video").exists()
+
+
+def test_main_records_mask_config(
+    trajectories_store_and_clips: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    """Check the `mask_config` attribute holds the config values of the run.
+
+    The config file sets only `sam2_model_id`, so the other 3 values are
+    the defaults. The attribute must survive the writes of the boxes and
+    the 8 variables, which happen after the group is created.
+    """
+    config_file = tmp_path / "my_mask_config.yaml"
+    config_file.write_text("sam2_model_id: facebook/sam2.1-hiera-tiny\n")
+
+    patch_sam2_loader(monkeypatch, FakePredictor())
+    output_dir = run_main(
+        trajectories_store_and_clips,
+        ["--mask_config_file", str(config_file)],
+    )
+
+    (store_path,) = output_dir.glob("*_masks_*.zarr")
+    masks = xr.open_datatree(store_path, engine="zarr")["video"].to_dataset()
+    assert "mask_area" in masks
+    assert masks.attrs["mask_config"] == {
+        "sam2_model_id": "facebook/sam2.1-hiera-tiny",
+        "max_prompts_per_batch": 32,
+        "n_frames_per_shard": 32,
+        "occlusion_policy": "smallest_wins",
+    }
+    assert masks.attrs["sam2_model"] == "facebook/sam2.1-hiera-tiny"
+
+
+def test_main_with_stale_consolidated_root(
+    trajectories_store_and_clips: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Check `main` works on a store whose root was consolidated earlier.
+
+    The root's consolidated metadata is a snapshot taken before the video
+    group exists, as when another task of an array job consolidated the
+    store first. `main` must still find the group's `labels` and copied
+    `position`, and write the 8 variables.
+    """
+    # Create an output store with another group, and consolidate it
+    store_path = trajectories_store_and_clips.parent / "CrabMasks.zarr"
+    root = zarr.open_group(store_path, mode="w-")
+    root.create_group("other_video")
+    zarr.consolidate_metadata(store_path)
+
+    patch_sam2_loader(monkeypatch, FakePredictor())
+    run_main(
+        trajectories_store_and_clips,
+        [
+            "--output_store",
+            str(store_path),
+            "--zarr_mode_store",
+            "a",
+        ],
+    )
+
+    masks = xr.open_datatree(store_path, engine="zarr")["video"].to_dataset()
+    assert set(MASK_PROPS_VARS) <= set(masks.data_vars)
+    assert masks.mask_area.notnull().any()

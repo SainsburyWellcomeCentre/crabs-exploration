@@ -1,8 +1,15 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 import xarray as xr
 
-from crabs.mask.utils.boxes_from_dataset import extract_bboxes_from_clip
+from crabs.mask.mask_video import create_mask_store
+from crabs.mask.utils.boxes_from_dataset import (
+    BOX_VARS,
+    copy_boxes_to_masks_group,
+    extract_bboxes_from_clip,
+)
 from crabs.zarr.create_dataset import concat_clips
 
 
@@ -142,3 +149,182 @@ def test_extract_bboxes_from_clip_rejects_video_dataset(
     """Test that passing a whole video group, not a clip, throws error."""
     with pytest.raises(ValueError, match="Expected a single clip"):
         extract_bboxes_from_clip(ds_video)
+
+
+MASKS_ATTRS = {"occlusion_policy": "smallest_wins", "boxes": {"file": "t"}}
+
+
+def write_trajectories_group(
+    ds_video: xr.Dataset, store_path: Path, time_chunk: int = 2
+) -> xr.Dataset:
+    """Write `ds_video` as float32 to a trajectories store and read it back.
+
+    The box variables are chunked along `time`, so their chunks are
+    smaller than a clip, as in real stores.
+    """
+    ds_video = ds_video.copy()
+    for var in BOX_VARS:
+        ds_video[var] = ds_video[var].astype(np.float32)
+    ds_video.chunk({"time": time_chunk}).to_zarr(store_path, group="video")
+    return xr.open_zarr(store_path, group="video")
+
+
+def create_masks_group(
+    store_path: Path,
+    n_frames: int,
+    clip_ids: list[str] | None = None,
+    individuals: list[str] | None = None,
+) -> None:
+    """Create an old masks group: labels, label_of and attrs only."""
+    create_mask_store(
+        store_path=store_path,
+        video_id="video",
+        clip_ids=clip_ids or ["Loop00", "Loop01"],
+        n_frames=n_frames,
+        individuals=individuals or ["id_0", "id_1", "id_2"],
+        image_shape=(8, 8),
+        metadata_dict=MASKS_ATTRS,
+        n_frames_per_shard=None,
+        zarr_mode_group="w-",
+    )
+
+
+def open_masks_group(store_path: Path) -> xr.Dataset:
+    """Open the masks group as it is on disk."""
+    return xr.open_zarr(store_path, group="video", consolidated=False)
+
+
+def test_copy_boxes_to_masks_group(ds_video: xr.Dataset, tmp_path: Path):
+    """Check the copied boxes equal the source, with its chunks and dtype.
+
+    The masks group's own arrays and attributes must be unchanged.
+    """
+    # Write trajectories and old masks group
+    ds_tracks = write_trajectories_group(ds_video, tmp_path / "tracks.zarr")
+    masks_path = tmp_path / "masks.zarr"
+    create_masks_group(masks_path, n_frames=ds_tracks.sizes["time"])
+    ds_masks_before = open_masks_group(masks_path).load()
+
+    # Copy boxes
+    copy_boxes_to_masks_group(masks_path, "video", ds_tracks)
+
+    # Check boxes equal the source
+    ds_masks = open_masks_group(masks_path)
+    for var in BOX_VARS:
+        xr.testing.assert_equal(
+            ds_masks[var].reset_coords(drop=True),
+            ds_tracks[var].reset_coords(drop=True),
+        )
+        assert ds_masks[var].dtype == np.float32
+        assert (
+            ds_masks[var].encoding["chunks"]
+            == (ds_tracks[var].encoding["chunks"])
+        )
+
+    # Check no clip coordinates were copied into the masks group
+    assert "clip_first_frame_0idx" not in ds_masks.coords
+
+    # Check the masks group's own data and attrs are unchanged
+    xr.testing.assert_identical(
+        ds_masks[["labels", "label_of"]].load(),
+        ds_masks_before[["labels", "label_of"]],
+    )
+    assert ds_masks.attrs == MASKS_ATTRS
+
+
+def test_copy_boxes_to_masks_group_pads_time(
+    ds_video: xr.Dataset, tmp_path: Path
+):
+    """Check boxes are padded with NaN when the masks `time` is longer."""
+    # Write trajectories store with 4 frames, and masks store with 6
+    ds_tracks = write_trajectories_group(ds_video, tmp_path / "tracks.zarr")
+    masks_path = tmp_path / "masks.zarr"
+    create_masks_group(masks_path, n_frames=6)
+
+    # Copy boxes
+    copy_boxes_to_masks_group(masks_path, "video", ds_tracks)
+
+    # Check
+    ds_masks = open_masks_group(masks_path)
+    assert ds_masks.position.sizes["time"] == 6
+    np.testing.assert_array_equal(
+        ds_masks.position.isel(time=slice(0, 4)).values,
+        ds_tracks.position.values,
+    )
+    assert ds_masks.position.isel(time=slice(4, None)).isnull().all()
+    assert ds_masks.confidence.isel(time=slice(4, None)).isnull().all()
+
+
+def test_copy_boxes_to_masks_group_cuts_time(
+    ds_video: xr.Dataset, tmp_path: Path
+):
+    """Check boxes are cut when the masks `time` is shorter, with no box lost.
+
+    The last frame of the trajectories store has no box, so it can be
+    dropped.
+    """
+    # Remove boxes in last frame (time=3)
+    no_box_at_end = ds_video.time < 3
+    for var in BOX_VARS:
+        ds_video[var] = ds_video[var].where(no_box_at_end)
+    ds_tracks = write_trajectories_group(ds_video, tmp_path / "tracks.zarr")
+
+    # Initialise a masks store with 3 frames only
+    masks_path = tmp_path / "masks.zarr"
+    create_masks_group(masks_path, n_frames=3)
+
+    # Copy boxes
+    copy_boxes_to_masks_group(masks_path, "video", ds_tracks)
+
+    # Check
+    ds_masks = open_masks_group(masks_path)
+    assert ds_masks.position.sizes["time"] == 3
+    np.testing.assert_array_equal(
+        ds_masks.position.values,
+        ds_tracks.position.isel(time=slice(0, 3)).values,
+    )
+
+
+@pytest.mark.parametrize(
+    ("masks_kwargs", "sparse_time", "expected_message"),
+    [
+        ({"n_frames": 3}, False, "past the end"),
+        (
+            {"n_frames": 4, "clip_ids": ["Loop00", "Loop02"]},
+            False,
+            "`clip_id`",
+        ),
+        (
+            {"n_frames": 4, "individuals": ["id_0", "id_1", "id_9"]},
+            False,
+            "`individual`",
+        ),
+        ({"n_frames": 8}, True, "not 0, 1, ..., n - 1"),
+    ],
+)
+def test_copy_boxes_to_masks_group_errors(
+    ds_video: xr.Dataset,
+    tmp_path: Path,
+    masks_kwargs: dict,
+    sparse_time: bool,
+    expected_message: str,
+):
+    """Check errors are raised before anything is written.
+
+    The cases are: a box past the end of the masks `time`, a mismatched
+    `clip_id` or `individual`, and a trajectories `time` that is not the
+    frame index (as in stores built before PR #291).
+    """
+    if sparse_time:
+        ds_video = ds_video.assign_coords(time=ds_video.time * 2)
+    ds_tracks = write_trajectories_group(ds_video, tmp_path / "tracks.zarr")
+    masks_path = tmp_path / "masks.zarr"
+    create_masks_group(masks_path, **masks_kwargs)
+
+    with pytest.raises(ValueError, match=expected_message):
+        copy_boxes_to_masks_group(masks_path, "video", ds_tracks)
+
+    # Check nothing was written
+    ds_masks = open_masks_group(masks_path)
+    assert not set(BOX_VARS) & set(ds_masks.data_vars)
+    assert ds_masks.attrs == MASKS_ATTRS
