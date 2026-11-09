@@ -14,7 +14,11 @@ import xarray as xr
 import yaml  # type: ignore
 import zarr
 
-from crabs.mask.utils.boxes_from_dataset import extract_bboxes_from_clip
+from crabs.mask.mask_props import add_mask_props_to_group
+from crabs.mask.utils.boxes_from_dataset import (
+    copy_boxes_to_masks_group,
+    extract_bboxes_from_clip,
+)
 from crabs.utils.io import (
     get_video_parameters,
     open_video,
@@ -145,15 +149,20 @@ def create_mask_store(
         encoding["labels"]["shards"] = shards
 
     # Write dataset to zarr groups
+    # (the store is consolidated once, at the end of `main`, so neither
+    # this write nor the read below uses consolidated metadata)
     ds.to_zarr(
         store_path,
         group=video_id,
         mode=zarr_mode_group,
         encoding=encoding,
         compute=False,
+        consolidated=False,
     )
 
-    return zarr.open_group(store_path)[f"{video_id}/labels"]
+    return zarr.open_group(store_path, use_consolidated=False)[
+        f"{video_id}/labels"
+    ]
 
 
 def predict_masks_on_device(predictor, boxes: np.ndarray) -> torch.Tensor:
@@ -429,6 +438,35 @@ def _get_frame_shape_and_max_frames_in_video(
     return next(iter(frame_shapes.values())), max_n_frames
 
 
+def _check_clip_lengths(ds_video: xr.Dataset, clip_paths: list[Path]) -> None:
+    """Raise if a clip video has fewer frames than its metadata length.
+
+    Otherwise SAM2 would stop at the video's last frame, and the later
+    boxes would get no mask. Only the video headers are read.
+
+    Raises
+    ------
+    ValueError
+        If any clip video is shorter than its metadata length, computed
+        from `clip_first_frame_0idx` and `clip_last_frame_0idx`.
+
+    """
+    n_frames_metadata = (
+        ds_video.clip_last_frame_0idx.values
+        - ds_video.clip_first_frame_0idx.values
+        + 1
+    )
+    for clip_path, n_frames_clip in zip(
+        clip_paths, n_frames_metadata, strict=True
+    ):
+        n_frames_video = get_video_parameters(str(clip_path))["total_frames"]
+        if n_frames_video < n_frames_clip:
+            raise ValueError(
+                f"Clip video {clip_path} has {n_frames_video} frames, but "
+                f"its metadata length is {int(n_frames_clip)} frames."
+            )
+
+
 def main(args: argparse.Namespace) -> None:
     """Predict masks with SAM2 from tracked boxes."""
     # Get and check bboxes path
@@ -506,6 +544,7 @@ def main(args: argparse.Namespace) -> None:
         image_shape, n_frames = _get_frame_shape_and_max_frames_in_video(
             clip_paths
         )
+        _check_clip_lengths(ds_video, clip_paths)
 
         # Initialise mask store
         labels_array = create_mask_store(
@@ -534,10 +573,14 @@ def main(args: argparse.Namespace) -> None:
             zarr_mode_group=args.zarr_mode_group,
         )
 
+        # Copy the prompt boxes into the masks group
+        copy_boxes_to_masks_group(store_path, video_id, ds_video)
+
         # Read mapping from individual to mask labels
-        label_of = xr.open_datatree(store_path, engine="zarr")[
-            video_id
-        ].label_of
+        # (skipping consolidated metadata, which may be stale during a run)
+        label_of = xr.open_zarr(
+            store_path, group=video_id, consolidated=False
+        ).label_of
 
         # Loop thru clips in video
         for clip_index, clip_id in enumerate(clip_ids):
@@ -564,6 +607,12 @@ def main(args: argparse.Namespace) -> None:
                 max_prompts_per_batch=max_prompts_per_batch,
                 n_frames_per_shard=n_frames_per_shard,
             )
+
+        # Measure the masks and write the mask and ellipse parameters
+        add_mask_props_to_group(store_path, video_id)
+
+    # Consolidate the store's metadata once, after every write of this run
+    zarr.consolidate_metadata(store_path)
 
     logging.info(f"Masks written to {store_path}")
 
