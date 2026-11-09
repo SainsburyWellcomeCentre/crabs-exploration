@@ -568,6 +568,14 @@ def main(args: argparse.Namespace) -> None:
                 "background_label": BACKGROUND_LABEL,
                 "occlusion_policy": occlusion_policy,
                 "prompt_type": "bounding_box",
+                # config values of the run, with defaults for keys the
+                # config file leaves out
+                "mask_config": {
+                    "sam2_model_id": sam2_model_id,
+                    "max_prompts_per_batch": max_prompts_per_batch,
+                    "n_frames_per_shard": n_frames_per_shard,
+                    "occlusion_policy": occlusion_policy,
+                },
             },
             n_frames_per_shard=n_frames_per_shard,
             zarr_mode_group=args.zarr_mode_group,
