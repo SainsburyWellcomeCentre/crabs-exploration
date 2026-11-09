@@ -4,8 +4,13 @@ The boxes are formatted following the dictionary structure of the tracker
 output.
 """
 
+from pathlib import Path
+
 import numpy as np
 import xarray as xr
+
+# Box variables of a trajectories store, copied into the masks store
+BOX_VARS = ["position", "shape", "confidence"]
 
 
 def extract_bboxes_from_clip(ds_clip: xr.Dataset) -> dict:
@@ -102,3 +107,95 @@ def _validate_time_axis_is_dense(
             "predates PR #291; rebuild it with create-zarr-dataset before "
             "predicting masks."
         )
+
+
+def copy_boxes_to_masks_group(
+    store_path: str | Path, video_id: str, ds_video: xr.Dataset
+) -> None:
+    """Copy one video's boxes into its group of the masks store.
+
+    The boxes (`position`, `shape` and `confidence`) are a snapshot of the
+    prompts the masks were predicted from. They keep the dtype and the
+    chunks of the trajectories store, and are reindexed to the masks
+    group's `time`, padded with NaN where that is longer.
+
+    The group's attributes are copied before writing, because
+    `to_zarr(mode="a")` replaces them.
+
+    Parameters
+    ----------
+    store_path : str | Path
+        Path to the masks zarr store.
+    video_id : str
+        Name of the video group, in both stores.
+    ds_video : xr.Dataset
+        The video group of the trajectories store, as read from zarr (its
+        chunks are read from the encoding of `confidence`).
+
+    Raises
+    ------
+    ValueError
+        Before anything is written, if `clip_id` or `individual` differ
+        between the two groups, if the trajectories `time` is not
+        ``0, 1, ..., n - 1``, or if a box falls past the end of the masks
+        group's `time`.
+
+    """
+    # Read the masks group as it is on disk
+    # (the root's consolidated metadata may be stale during a run)
+    ds_masks = xr.open_zarr(store_path, group=video_id, consolidated=False)
+
+    # Check both groups share their clip and individual coordinates
+    for coord in ["clip_id", "individual"]:
+        if not np.array_equal(
+            ds_video[coord].values.astype(str),
+            ds_masks[coord].values.astype(str),
+        ):
+            raise ValueError(
+                f"{video_id}: the `{coord}` coordinate of the trajectories "
+                "store differs from that of the masks store."
+            )
+
+    # Check the trajectories time axis is the clip frame index
+    if not np.array_equal(
+        ds_video.time.values, np.arange(ds_video.sizes["time"])
+    ):
+        raise ValueError(
+            f"{video_id}: the `time` coordinate of the trajectories store "
+            "is not 0, 1, ..., n - 1. This store predates PR #291; rebuild "
+            "it with create-zarr-dataset."
+        )
+
+    # Check no box is dropped by cutting the time axis
+    n_frames_masks = ds_masks.sizes["time"]
+    if bool(
+        ds_video.position.isel(time=slice(n_frames_masks, None))
+        .notnull()
+        .any()
+    ):
+        raise ValueError(
+            f"{video_id}: the trajectories store has boxes at time "
+            f">= {n_frames_masks}, past the end of the masks group's time "
+            "axis."
+        )
+
+    # Copy the boxes, with the chunks of the trajectories store
+    chunks = dict(
+        zip(
+            ds_video.confidence.dims,
+            ds_video.confidence.encoding["chunks"],
+            strict=True,
+        )
+    )
+    ds_boxes = ds_video[BOX_VARS].reindex(time=ds_masks.time.values)
+    ds_boxes = (
+        ds_boxes.drop_encoding()  # chunks are set explicitly
+        .chunk(chunks)
+        # drop all coordinates but the new `space`, so the masks
+        # group's own are not overwritten
+        .drop_vars([c for c in ds_boxes.coords if c != "space"])
+    )
+
+    # Copy the group's attributes, and write
+    ds_boxes.attrs = ds_masks.attrs
+    ds_boxes.to_zarr(store_path, group=video_id, mode="a", consolidated=False)
