@@ -1,4 +1,4 @@
-"""Utils to support the generation of masks zarr stores."""
+"""Bounding boxes of a trajectories store, used as SAM2 prompts."""
 
 from pathlib import Path
 

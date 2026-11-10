@@ -17,7 +17,7 @@ from crabs.mask.mask_video import (
     predict_masks_on_device,
     write_clip_masks_to_store,
 )
-from crabs.mask.utils.boxes_from_dataset import (
+from crabs.mask.utils.bbox_prompts import (
     BBOX_VARS,
     extract_bboxes_from_clip,
 )

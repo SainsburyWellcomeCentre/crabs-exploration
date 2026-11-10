@@ -14,7 +14,7 @@ from crabs.mask.mask_props import (
     frames_with_boxes,
 )
 from crabs.mask.mask_video import create_mask_store
-from crabs.mask.utils.boxes_from_dataset import (
+from crabs.mask.utils.bbox_prompts import (
     BBOX_VARS,
     copy_video_bboxes_to_masks,
     extract_bboxes_from_clip,

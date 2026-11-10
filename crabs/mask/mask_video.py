@@ -15,7 +15,7 @@ import yaml  # type: ignore
 import zarr
 
 from crabs.mask.mask_props import add_mask_props_to_group
-from crabs.mask.utils.boxes_from_dataset import (
+from crabs.mask.utils.bbox_prompts import (
     copy_video_bboxes_to_masks,
     extract_bboxes_from_clip,
 )

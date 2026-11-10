@@ -5,7 +5,7 @@ import pytest
 import xarray as xr
 
 from crabs.mask.mask_video import create_mask_store
-from crabs.mask.utils.boxes_from_dataset import (
+from crabs.mask.utils.bbox_prompts import (
     BBOX_VARS,
     copy_video_bboxes_to_masks,
     extract_bboxes_from_clip,
@@ -195,7 +195,7 @@ def open_masks_group(store_path: Path) -> xr.Dataset:
     return xr.open_zarr(store_path, group="video", consolidated=False)
 
 
-def test_copy_boxes_to_masks_group(ds_video: xr.Dataset, tmp_path: Path):
+def test_copy_video_bboxes_to_masks(ds_video: xr.Dataset, tmp_path: Path):
     """Check the copied boxes equal the source, with its chunks and dtype.
 
     The masks group's own arrays and attributes must be unchanged.
@@ -233,7 +233,7 @@ def test_copy_boxes_to_masks_group(ds_video: xr.Dataset, tmp_path: Path):
     assert ds_masks.attrs == MASKS_ATTRS
 
 
-def test_copy_boxes_to_masks_group_pads_time(
+def test_copy_video_bboxes_to_masks_pads_time(
     ds_video: xr.Dataset, tmp_path: Path
 ):
     """Check boxes are padded with NaN when the masks `time` is longer."""
@@ -256,7 +256,7 @@ def test_copy_boxes_to_masks_group_pads_time(
     assert ds_masks.confidence.isel(time=slice(4, None)).isnull().all()
 
 
-def test_copy_boxes_to_masks_group_cuts_time(
+def test_copy_video_bboxes_to_masks_cuts_time(
     ds_video: xr.Dataset, tmp_path: Path
 ):
     """Check boxes are cut when the masks `time` is shorter, with no box lost.
@@ -303,7 +303,7 @@ def test_copy_boxes_to_masks_group_cuts_time(
         ({"n_frames": 8}, True, "not 0, 1, ..., n - 1"),
     ],
 )
-def test_copy_boxes_to_masks_group_errors(
+def test_copy_video_bboxes_to_masks_errors(
     ds_video: xr.Dataset,
     tmp_path: Path,
     masks_kwargs: dict,

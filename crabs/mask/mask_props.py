@@ -193,7 +193,7 @@ def add_mask_props_to_group(
     """Measure the masks of one masks group and write the 8 variables.
 
     The group must hold the copied boxes (see
-    `copy_boxes_to_masks_group`). Only frames with a finite `position`
+    `copy_video_bboxes_to_masks`). Only frames with a finite `position`
     are measured. The 8 variables (see `compute_clip_mask_props_dataset`)
     are float32, with the chunks of the copied `confidence` (and of
     `position`, for `mask_centroid`).
@@ -235,7 +235,7 @@ def add_mask_props_to_group(
     if "position" not in ds:
         raise ValueError(
             f"{video_id}: the group has no `position`. Copy the boxes with "
-            "copy_boxes_to_masks_group first."
+            "copy_video_bboxes_to_masks first."
         )
     existing = [var for var in MASK_PROPS_VARS if var in ds]
     if existing and not overwrite:
