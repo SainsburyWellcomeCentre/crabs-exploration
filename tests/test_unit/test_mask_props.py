@@ -15,8 +15,8 @@ from crabs.mask.mask_props import (
 )
 from crabs.mask.mask_video import create_mask_store
 from crabs.mask.utils.boxes_from_dataset import (
-    BOX_VARS,
-    copy_boxes_to_masks_group,
+    BBOX_VARS,
+    copy_video_bboxes_to_masks,
     extract_bboxes_from_clip,
 )
 from crabs.zarr.create_dataset import concat_clips
@@ -59,8 +59,9 @@ def ds_tracks(tmp_path: Path, clip_dataset_factory) -> xr.Dataset:
             ),
         ]
     )
-    for var in BOX_VARS:
+    for var in BBOX_VARS:
         ds_video[var] = ds_video[var].astype(np.float32)
+    ds_video.attrs["video_id"] = "video"
     store_path = tmp_path / "tracks.zarr"
     ds_video.chunk({"time": TIME_CHUNK}).to_zarr(store_path, group="video")
     return xr.open_zarr(store_path, group="video")
@@ -123,7 +124,7 @@ def create_masks_group_with_labels(
     labels = paint_labels_at_boxes(ds_tracks, label_of_values, n_frames)
     labels_array[:] = labels
     if copy_boxes:
-        copy_boxes_to_masks_group(store_path, "video", ds_tracks)
+        copy_video_bboxes_to_masks(store_path, ds_tracks)
     return labels
 
 
@@ -319,8 +320,8 @@ def test_add_mask_props_to_group(ds_tracks: xr.Dataset, tmp_path: Path):
 
     # Check other arrays and attrs are unchanged
     xr.testing.assert_identical(
-        ds_masks[["labels", "label_of", *BOX_VARS]].load(),
-        ds_before[["labels", "label_of", *BOX_VARS]],
+        ds_masks[["labels", "label_of", *BBOX_VARS]].load(),
+        ds_before[["labels", "label_of", *BBOX_VARS]],
     )
     assert ds_masks.attrs == ATTRS
 
@@ -421,8 +422,8 @@ def test_snippet_for_old_masks_stores(ds_tracks: xr.Dataset, tmp_path: Path):
     # Run the snippet of crabs/mask/README.md
     dt_tracks = xr.open_datatree(trajectories_store, engine="zarr")
     for video_id in xr.open_datatree(masks_store, engine="zarr").children:
-        copy_boxes_to_masks_group(
-            masks_store, video_id, dt_tracks[video_id].to_dataset()
+        copy_video_bboxes_to_masks(
+            masks_store, dt_tracks[video_id].to_dataset()
         )
         add_mask_props_to_group(masks_store, video_id)
     zarr.consolidate_metadata(masks_store)
@@ -431,6 +432,6 @@ def test_snippet_for_old_masks_stores(ds_tracks: xr.Dataset, tmp_path: Path):
     ds_masks = xr.open_datatree(masks_store, engine="zarr")[
         "video"
     ].to_dataset()
-    assert {*BOX_VARS, *MASK_PROPS_VARS} <= set(ds_masks.data_vars)
+    assert {*BBOX_VARS, *MASK_PROPS_VARS} <= set(ds_masks.data_vars)
     assert ds_masks.mask_area.notnull().any()
     assert ds_masks.attrs == ATTRS

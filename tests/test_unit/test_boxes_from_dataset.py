@@ -6,8 +6,8 @@ import xarray as xr
 
 from crabs.mask.mask_video import create_mask_store
 from crabs.mask.utils.boxes_from_dataset import (
-    BOX_VARS,
-    copy_boxes_to_masks_group,
+    BBOX_VARS,
+    copy_video_bboxes_to_masks,
     extract_bboxes_from_clip,
 )
 from crabs.zarr.create_dataset import concat_clips
@@ -163,8 +163,9 @@ def write_trajectories_group(
     smaller than a clip, as in real stores.
     """
     ds_video = ds_video.copy()
-    for var in BOX_VARS:
+    for var in BBOX_VARS:
         ds_video[var] = ds_video[var].astype(np.float32)
+    ds_video.attrs["video_id"] = "video"
     ds_video.chunk({"time": time_chunk}).to_zarr(store_path, group="video")
     return xr.open_zarr(store_path, group="video")
 
@@ -206,11 +207,11 @@ def test_copy_boxes_to_masks_group(ds_video: xr.Dataset, tmp_path: Path):
     ds_masks_before = open_masks_group(masks_path).load()
 
     # Copy boxes
-    copy_boxes_to_masks_group(masks_path, "video", ds_tracks)
+    copy_video_bboxes_to_masks(masks_path, ds_tracks)
 
     # Check boxes equal the source
     ds_masks = open_masks_group(masks_path)
-    for var in BOX_VARS:
+    for var in BBOX_VARS:
         xr.testing.assert_equal(
             ds_masks[var].reset_coords(drop=True),
             ds_tracks[var].reset_coords(drop=True),
@@ -242,7 +243,7 @@ def test_copy_boxes_to_masks_group_pads_time(
     create_masks_group(masks_path, n_frames=6)
 
     # Copy boxes
-    copy_boxes_to_masks_group(masks_path, "video", ds_tracks)
+    copy_video_bboxes_to_masks(masks_path, ds_tracks)
 
     # Check
     ds_masks = open_masks_group(masks_path)
@@ -265,7 +266,7 @@ def test_copy_boxes_to_masks_group_cuts_time(
     """
     # Remove boxes in last frame (time=3)
     no_box_at_end = ds_video.time < 3
-    for var in BOX_VARS:
+    for var in BBOX_VARS:
         ds_video[var] = ds_video[var].where(no_box_at_end)
     ds_tracks = write_trajectories_group(ds_video, tmp_path / "tracks.zarr")
 
@@ -274,7 +275,7 @@ def test_copy_boxes_to_masks_group_cuts_time(
     create_masks_group(masks_path, n_frames=3)
 
     # Copy boxes
-    copy_boxes_to_masks_group(masks_path, "video", ds_tracks)
+    copy_video_bboxes_to_masks(masks_path, ds_tracks)
 
     # Check
     ds_masks = open_masks_group(masks_path)
@@ -322,9 +323,9 @@ def test_copy_boxes_to_masks_group_errors(
     create_masks_group(masks_path, **masks_kwargs)
 
     with pytest.raises(ValueError, match=expected_message):
-        copy_boxes_to_masks_group(masks_path, "video", ds_tracks)
+        copy_video_bboxes_to_masks(masks_path, ds_tracks)
 
     # Check nothing was written
     ds_masks = open_masks_group(masks_path)
-    assert not set(BOX_VARS) & set(ds_masks.data_vars)
+    assert not set(BBOX_VARS) & set(ds_masks.data_vars)
     assert ds_masks.attrs == MASKS_ATTRS

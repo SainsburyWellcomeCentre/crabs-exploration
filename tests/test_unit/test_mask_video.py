@@ -18,7 +18,7 @@ from crabs.mask.mask_video import (
     write_clip_masks_to_store,
 )
 from crabs.mask.utils.boxes_from_dataset import (
-    BOX_VARS,
+    BBOX_VARS,
     extract_bboxes_from_clip,
 )
 from crabs.zarr.create_dataset import concat_clips
@@ -147,6 +147,7 @@ def trajectories_store_and_clips(tmp_path: Path, clip_dataset_factory) -> Path:
             ),
         ]
     )
+    ds_video.attrs["video_id"] = "video"
     store_path = tmp_path / "CrabTracks.zarr"
     ds_video.to_zarr(store_path, group="video")
 
@@ -476,7 +477,7 @@ def test_main(
 
     # Check the masks group holds the boxes of its video
     # (both stores have 3 frames here, so no reindexing is needed)
-    for var in BOX_VARS:
+    for var in BBOX_VARS:
         xr.testing.assert_equal(
             masks[var].reset_coords(drop=True),
             tracks[var].reset_coords(drop=True),
@@ -569,6 +570,7 @@ def add_second_video(trajectories_store: Path) -> None:
     tracks = xr.open_datatree(trajectories_store, engine="zarr")[
         "video"
     ].to_dataset()
+    tracks.attrs["video_id"] = "video2"
     tracks.to_zarr(trajectories_store, group="video2")
     clips = trajectories_store.parent / "clips"
     for clip_video in sorted(clips.glob("video-*.mp4")):
@@ -601,7 +603,7 @@ def test_main_consolidates_metadata(
     # Check it lists both groups, their boxes and the 8 variables
     for video_id in ["video", "video2"]:
         assert video_id in flat
-        for var in ["labels", "label_of", *BOX_VARS, *MASK_PROPS_VARS]:
+        for var in ["labels", "label_of", *BBOX_VARS, *MASK_PROPS_VARS]:
             assert f"{video_id}/{var}" in flat, var
 
 
