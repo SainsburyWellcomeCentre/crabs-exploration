@@ -16,7 +16,7 @@ import zarr
 
 from crabs.mask.mask_props import add_mask_props_to_group
 from crabs.mask.utils.boxes_from_dataset import (
-    copy_boxes_to_masks_group,
+    copy_video_bboxes_to_masks,
     extract_bboxes_from_clip,
 )
 from crabs.utils.io import (
@@ -582,7 +582,7 @@ def main(args: argparse.Namespace) -> None:
         )
 
         # Copy the prompt boxes into the masks group
-        copy_boxes_to_masks_group(store_path, video_id, ds_video)
+        copy_video_bboxes_to_masks(store_path, ds_video)
 
         # Read mapping from individual to mask labels
         # (skipping consolidated metadata, which may be stale during a run)

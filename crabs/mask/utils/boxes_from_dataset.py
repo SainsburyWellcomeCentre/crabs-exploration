@@ -105,9 +105,8 @@ def _validate_time_axis_is_dense(
         )
 
 
-def copy_boxes_to_masks_group(
+def copy_video_bboxes_to_masks(
     mask_store_path: str | Path,
-    video_id: str,
     ds_video: xr.Dataset,
 ) -> None:
     """Copy one video's boxes into the masks store.
@@ -119,11 +118,8 @@ def copy_boxes_to_masks_group(
     ----------
     mask_store_path : str | Path
         Path to the masks zarr store.
-    video_id : str
-        Name of the video group, in both stores.
     ds_video : xr.Dataset
-        The video group of the trajectories store, as read from zarr (its
-        chunks are read from the encoding of `confidence`).
+        The video group of the trajectories store, as read from zarr.
 
     Raises
     ------
@@ -135,6 +131,7 @@ def copy_boxes_to_masks_group(
 
     """
     # Read masks group
+    video_id = ds_video.attrs["video_id"]
     ds_masks = xr.open_zarr(
         mask_store_path,
         group=video_id,
@@ -196,8 +193,8 @@ def copy_boxes_to_masks_group(
         .drop_vars([c for c in ds_boxes_to_append.coords if c != "space"])
     )
 
-    # to_zarr(mode="a") replaces the group's attrs with the dataset's,
-    # so pass the masks group's own attrs to keep them unchanged
+    # to_zarr(mode="a") replaces the group's attrs with the dataset's;
+    # we pass the masks group's own attrs to keep them unchanged
     ds_boxes_to_append.attrs = ds_masks.attrs
 
     # Append to masks zarr
