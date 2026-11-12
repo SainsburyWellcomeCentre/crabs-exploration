@@ -304,6 +304,11 @@ def write_clip_masks_to_store(
     int
         The number of frames read from the clip video.
 
+    Raises
+    ------
+    RuntimeError
+        If a frame cannot be read before the end of the clip video.
+
     """
     # Map individual name to the pixel value painted for its mask
     map_individual_to_label = {
@@ -336,6 +341,16 @@ def write_clip_masks_to_store(
         ret, frame = input_video_object.read()
         if not ret:
             parse_video_frame_reading_error_and_log(frame_idx, clip_n_frames)
+            # A read can fail before the last frame, e.g. if a slow
+            # filesystem makes OpenCV time out. The frames not read would
+            # be left unwritten, and read back as background, so we stop
+            # rather than leave a partly masked clip that looks complete.
+            if frame_idx < clip_n_frames:
+                input_video_object.release()
+                raise RuntimeError(
+                    f"Failed to read frame {frame_idx} of "
+                    f"{clip_n_frames} from {video_clip_path}."
+                )
             break
 
         # Initialise output mask in buffer;
