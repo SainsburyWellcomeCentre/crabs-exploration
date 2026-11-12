@@ -163,13 +163,6 @@ mask-tracked-crabs  \
 echo "Completed masking of video $VIDEO_ID with task ID = $SLURM_ARRAY_TASK_ID"
 echo "--------------------------------------------------------"
 
-# -------------------------------------------
-# Copy mask config to output store
-# -------------------------------------------
-cp "$MASK_CONFIG_FILE" "$MASK_ZARR_STORE_OUTPUT"/"$VIDEO_ID"_mask_config.yaml
-
-echo "Copied $MASK_CONFIG_FILE to $MASK_ZARR_STORE_OUTPUT"
-
 # ------------------
 # Copy logs to LOG_DIR
 # -------------------

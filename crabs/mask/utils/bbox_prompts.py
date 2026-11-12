@@ -1,11 +1,12 @@
-"""Utils to extract bounding boxes from a trajectories dataset.
+"""Bounding boxes of a trajectories store, used as SAM2 prompts."""
 
-The boxes are formatted following the dictionary structure of the tracker
-output.
-"""
+from pathlib import Path
 
 import numpy as np
 import xarray as xr
+
+# Variables of bboxes store to copy to mask store
+BBOX_VARS = ["position", "shape", "confidence"]
 
 
 def extract_bboxes_from_clip(ds_clip: xr.Dataset) -> dict:
@@ -102,3 +103,104 @@ def _validate_time_axis_is_dense(
             "predates PR #291; rebuild it with create-zarr-dataset before "
             "predicting masks."
         )
+
+
+def copy_video_bboxes_to_masks(
+    mask_store_path: str | Path,
+    ds_video: xr.Dataset,
+) -> None:
+    """Copy one video's boxes into the masks store.
+
+    The boxes (`position`, `shape` and `confidence`) are the prompts
+    used to predict the masks.
+
+    Parameters
+    ----------
+    mask_store_path : str | Path
+        Path to the masks zarr store.
+    ds_video : xr.Dataset
+        The video group of the trajectories store, as read from zarr.
+
+    Raises
+    ------
+    ValueError
+        If `clip_id` or `individual` axes differ
+        between the two groups, if the trajectories `time` is not
+        ``0, 1, ..., n - 1``, or if a box falls past the end of the masks
+        group's `time`.
+
+    """
+    # Read masks group
+    video_id = ds_video.attrs["video_id"]
+    ds_masks = xr.open_zarr(
+        mask_store_path,
+        group=video_id,
+        consolidated=False,
+    )
+
+    # Check both groups share clip and individual coordinates
+    for coord in ["clip_id", "individual"]:
+        if not np.array_equal(
+            ds_video[coord].values.astype(str),
+            ds_masks[coord].values.astype(str),
+        ):
+            raise ValueError(
+                f"{video_id}: the `{coord}` coordinate of the trajectories "
+                "store differs from that of the masks store."
+            )
+
+    # Check the trajectories time axis is the clip frame index
+    if not np.array_equal(
+        ds_video.time.values,
+        np.arange(ds_video.sizes["time"]),
+    ):
+        raise ValueError(
+            f"{video_id}: the `time` coordinate of the trajectories store "
+            "is not 0, 1, ..., n - 1. This store predates PR #291; rebuild "
+            "it with create-zarr-dataset."
+        )
+
+    # Check no boxes exist past the masks time end
+    n_frames_masks = ds_masks.sizes["time"]
+    if bool(
+        ds_video.position.isel(time=slice(n_frames_masks, None))
+        .notnull()
+        .any()
+    ):
+        raise ValueError(
+            f"{video_id}: the trajectories store has boxes at time "
+            f">= {n_frames_masks}, past the end of the masks group's time "
+            "axis."
+        )
+
+    # Define bbox dataset to append
+    ds_boxes_to_append = ds_video[BBOX_VARS].reindex(time=ds_masks.time.values)
+
+    # Reindexing alters the dask chunks, so restore the trajectories' chunks
+    chunks = dict(
+        zip(
+            ds_video.confidence.dims,
+            ds_video.confidence.encoding["chunks"],
+            strict=True,
+        )
+    )
+    ds_boxes_to_append = (
+        ds_boxes_to_append.drop_encoding()
+        .chunk(chunks)
+        # drop all coordinates to not overwrite the masks' ones,
+        # except `space`, which does not exist in the mask store
+        # (coords should be the same but they may vary in dtype etc)
+        .drop_vars([c for c in ds_boxes_to_append.coords if c != "space"])
+    )
+
+    # to_zarr(mode="a") replaces the group's attrs with the dataset's;
+    # we pass the masks group's own attrs to keep them unchanged
+    ds_boxes_to_append.attrs = ds_masks.attrs
+
+    # Append to masks zarr
+    ds_boxes_to_append.to_zarr(
+        mask_store_path,
+        group=video_id,
+        mode="a",
+        consolidated=False,
+    )
