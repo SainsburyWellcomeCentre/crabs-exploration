@@ -56,8 +56,17 @@ MASK_CONFIG_KEYS = {
 ACCELERATOR_TO_DEVICE = {"gpu": "cuda"}
 
 
+def _read_yaml(path: str | Path) -> dict:
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
+
+
 def load_mask_config(config_file: str) -> dict:
-    """Load the masking config file, and check its keys are known.
+    """Load the masking config, with defaults from the default config file.
+
+    The default config file (`DEFAULT_MASK_CONFIG`) is the single source
+    of default values: the given file's values override it, and any key
+    the given file leaves out takes its default value.
 
     Raises
     ------
@@ -66,15 +75,14 @@ def load_mask_config(config_file: str) -> dict:
         misspelled or renamed one, which would otherwise be ignored.
 
     """
-    with open(config_file) as f:
-        config = yaml.safe_load(f) or {}
+    config = _read_yaml(config_file)
     unknown = sorted(set(config) - MASK_CONFIG_KEYS)
     if unknown:
         raise ValueError(
             f"Unknown keys {unknown} in {config_file}. "
             f"Valid keys are {sorted(MASK_CONFIG_KEYS)}."
         )
-    return config
+    return {**_read_yaml(DEFAULT_MASK_CONFIG), **config}
 
 
 def load_sam2_predictor(model_id: str, device: str):
@@ -533,21 +541,19 @@ def main(args: argparse.Namespace) -> None:
             f"'{boxes_path.name}' has suffix '{boxes_path.suffix}'."
         )
 
-    # Get mask config and set default values
+    # Get mask config (keys missing from the file take the defaults
+    # in the default config file)
     mask_config = load_mask_config(args.mask_config_file)
-    sam2_model_id = mask_config.get(
-        "sam2_model_id",
-        "facebook/sam2.1-hiera-base-plus",
-    )
-    max_prompts_per_batch = mask_config.get("max_prompts_per_batch", 32)
-    n_frames_per_chunk = mask_config.get("n_frames_per_chunk", 8)
-    n_frames_per_shard = mask_config.get("n_frames_per_shard", 16)
+    sam2_model_id = mask_config["sam2_model_id"]
+    max_prompts_per_batch = mask_config["max_prompts_per_batch"]
+    n_frames_per_chunk = mask_config["n_frames_per_chunk"]
+    n_frames_per_shard = mask_config["n_frames_per_shard"]
     if n_frames_per_shard and n_frames_per_shard % n_frames_per_chunk:
         raise ValueError(
             f"n_frames_per_shard ({n_frames_per_shard}) must be a multiple "
             f"of n_frames_per_chunk ({n_frames_per_chunk})."
         )
-    occlusion_policy = mask_config.get("occlusion_policy", "smallest_wins")
+    occlusion_policy = mask_config["occlusion_policy"]
     if occlusion_policy != "smallest_wins":
         raise ValueError(
             f"Unknown occlusion_policy '{occlusion_policy}'. The only policy "
