@@ -246,12 +246,20 @@ def add_mask_props_to_group(
             f"{video_id}: the group has no `position`. Copy the boxes with "
             "copy_video_bboxes_to_masks first."
         )
+
+    # If overwrite is False and mask property variables exist: throw error
     existing = [var for var in MASK_PROPS_VARS if var in ds]
     if existing and not overwrite:
         raise ValueError(
             f"{video_id}: the group already holds {existing}. Pass "
             "overwrite=True to replace them."
         )
+
+    # Delete the mask property vars we wish to overwrite in the group
+    # (xarray refuses an encoding argument if the variables already exist)
+    group = zarr.open_group(store_path, path=video_id, use_consolidated=False)
+    for var in existing:
+        del group[var]
 
     # Invert label_of: label -> position along individual
     individual_of_label = _invert_label_of(label_of)
@@ -290,11 +298,6 @@ def add_mask_props_to_group(
         # copy the group's attributes, as to_zarr(mode="a") replaces them
         attrs=ds.attrs,
     )
-    # Delete the variables to overwrite, as xarray refuses an encoding
-    # for variables that already exist
-    group = zarr.open_group(store_path, path=video_id, use_consolidated=False)
-    for var in existing:
-        del group[var]
     ds_template.to_zarr(
         store_path,
         group=video_id,
