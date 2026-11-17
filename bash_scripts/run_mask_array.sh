@@ -32,8 +32,9 @@ BOXES_ZARR_STORE="/ceph/zoo/processed/CrabField/ramalhete_2023/CrabTracks/CrabTr
 # <video-id>-<clip-id>.mp4, as written by extract-loop-clips
 CLIP_VIDEOS_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops"
 
-# Path to the mask config file
-MASK_CONFIG_FILE="/ceph/zoo/users/sminano/cluster_mask_config.yaml"
+# Path to a mask config file, holding only the values to change from
+# the defaults. Leave empty to use the defaults of the installed code.
+MASK_CONFIG_FILE=""
 
 # Output store. Every job in the array appends its own video group to it,
 # so the name must not depend on the task. Naming it after the array job ID
@@ -142,10 +143,14 @@ echo "boxes: $BOXES_ZARR_STORE"
 echo "videos: $CLIP_VIDEOS_DIR"
 echo "output_store: $MASK_ZARR_STORE_OUTPUT"
 echo "match: $VIDEO_ID"
-echo "mask_config_file: $MASK_CONFIG_FILE"
+echo "mask_config_file: ${MASK_CONFIG_FILE:-none, using the defaults}"
 
-# Log config values
-cat "$MASK_CONFIG_FILE"
+# Pass the config file only if set, and log its values
+CONFIG_ARGS=()
+if [[ -n "$MASK_CONFIG_FILE" ]]; then
+    CONFIG_ARGS=(--mask_config_file "$MASK_CONFIG_FILE")
+    cat "$MASK_CONFIG_FILE"
+fi
 
 # --match is an exact video group name here, so this job masks every clip
 # of one video. --output_store names the store rather than letting the
@@ -158,7 +163,7 @@ cat "$MASK_CONFIG_FILE"
     --videos_dir $CLIP_VIDEOS_DIR  \
     --output_store $MASK_ZARR_STORE_OUTPUT  \
     --match "$VIDEO_ID"  \
-    --mask_config_file $MASK_CONFIG_FILE  \
+    "${CONFIG_ARGS[@]}"  \
     --zarr_mode_store $ZARR_MODE_STORE  \
     --zarr_mode_group $ZARR_MODE_GROUP  \
     --accelerator gpu
