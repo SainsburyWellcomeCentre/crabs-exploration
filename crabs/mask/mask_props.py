@@ -283,6 +283,11 @@ def add_mask_props_to_group(
         # copy the group's attributes, as to_zarr(mode="a") replaces them
         attrs=ds.attrs,
     )
+    # Delete the variables to overwrite, as xarray refuses an encoding
+    # for variables that already exist
+    group = zarr.open_group(store_path, path=video_id, use_consolidated=False)
+    for var in existing:
+        del group[var]
     ds_template.to_zarr(
         store_path,
         group=video_id,
