@@ -31,7 +31,7 @@ mask-tracked-crabs \
 To run the masking pipeline over a full trajectories store on the cluster, use the script provided at [`bash_scripts/run_mask_array.sh`](../../bash_scripts/run_mask_array.sh). It will launch a SLURM array job, with each job processing one video and appending its result to the shared store. See [`guides/MaskTrackedCrabsHPC.md`](../../guides/MaskTrackedCrabsHPC.md) for further details.
 
 ## Parameters
-The default masking parameters live in [`crabs/mask/config/mask_config.yaml`](config/mask_config.yaml). To set non-default values, copy that file, edit it, and pass it with `--mask_config_file`. Your file only needs the keys you want to change; the rest take the defaults listed below.
+The default masking parameters live in [`crabs/mask/config/mask_config.yaml`](config/mask_config.yaml). To set non-default values, copy that file, edit it, and pass it with `--mask_config_file`. Your file only needs the keys you want to change; the rest take the defaults listed below. A key that is not listed below, e.g. a misspelled one, raises an error.
 
 - `sam2_model_id`: the SAM2 model to use, as named by Hugging Face. By default, `facebook/sam2.1-hiera-base-plus`. The options are, from fastest to most accurate:
     - `facebook/sam2.1-hiera-tiny`

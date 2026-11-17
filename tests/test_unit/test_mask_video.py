@@ -664,17 +664,33 @@ def test_main_records_mask_config(
     assert masks.attrs["sam2_model"] == "facebook/sam2.1-hiera-tiny"
 
 
-def test_main_fails_if_shard_is_not_whole_chunks(
+@pytest.mark.parametrize(
+    "config_text, expected_message",
+    [
+        (
+            "n_frames_per_chunk: 8\nn_frames_per_shard: 12\n",
+            "must be a multiple",
+        ),
+        ("shard_n_frames: 32\n", r"Unknown keys \['shard_n_frames'\]"),
+    ],
+)
+def test_main_fails_on_bad_config(
     trajectories_store_and_clips: Path,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    config_text: str,
+    expected_message: str,
 ):
-    """Check a shard that is not a whole number of chunks fails early."""
+    """Check a bad config file fails before SAM2 is loaded.
+
+    The cases are a shard that is not a whole number of chunks, and an
+    unknown (here, renamed) key.
+    """
     config_file = tmp_path / "my_mask_config.yaml"
-    config_file.write_text("n_frames_per_chunk: 8\nn_frames_per_shard: 12\n")
+    config_file.write_text(config_text)
 
     patch_sam2_loader(monkeypatch, predictor=None)
-    with pytest.raises(ValueError, match="must be a multiple"):
+    with pytest.raises(ValueError, match=expected_message):
         run_main(
             trajectories_store_and_clips,
             ["--mask_config_file", str(config_file)],

@@ -43,14 +43,38 @@ LABELS_COMPRESSOR = ZstdCodec(level=15)
 # on read.
 LABELS_TIME_LAST = TransposeCodec(order=(0, 2, 3, 1))
 
+# Keys a mask config file may set
+MASK_CONFIG_KEYS = {
+    "sam2_model_id",
+    "max_prompts_per_batch",
+    "n_frames_per_chunk",
+    "n_frames_per_shard",
+    "occlusion_policy",
+}
+
 # Pytorch accelerator names that differ from their torch device name
 ACCELERATOR_TO_DEVICE = {"gpu": "cuda"}
 
 
 def load_mask_config(config_file: str) -> dict:
-    """Load yaml file that contains the masking config parameters."""
+    """Load the masking config file, and check its keys are known.
+
+    Raises
+    ------
+    ValueError
+        If the file sets a key that is not a masking parameter, e.g. a
+        misspelled or renamed one, which would otherwise be ignored.
+
+    """
     with open(config_file) as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f) or {}
+    unknown = sorted(set(config) - MASK_CONFIG_KEYS)
+    if unknown:
+        raise ValueError(
+            f"Unknown keys {unknown} in {config_file}. "
+            f"Valid keys are {sorted(MASK_CONFIG_KEYS)}."
+        )
+    return config
 
 
 def load_sam2_predictor(model_id: str, device: str):
