@@ -43,15 +43,6 @@ LABELS_COMPRESSOR = ZstdCodec(level=15)
 # on read.
 LABELS_TIME_LAST = TransposeCodec(order=(0, 2, 3, 1))
 
-# Keys a mask config file may set
-MASK_CONFIG_KEYS = {
-    "sam2_model_id",
-    "max_prompts_per_batch",
-    "n_frames_per_chunk",
-    "n_frames_per_shard",
-    "occlusion_policy",
-}
-
 # Pytorch accelerator names that differ from their torch device name
 ACCELERATOR_TO_DEVICE = {"gpu": "cuda"}
 
@@ -65,8 +56,8 @@ def load_mask_config(config_file: str) -> dict:
     """Load the masking config, with defaults from the default config file.
 
     The default config file (`DEFAULT_MASK_CONFIG`) is the single source
-    of default values: the given file's values override it, and any key
-    the given file leaves out takes its default value.
+    of default values and of valid keys: the given file's values override
+    it, and any key the given file leaves out takes its default value.
 
     Raises
     ------
@@ -75,14 +66,15 @@ def load_mask_config(config_file: str) -> dict:
         misspelled or renamed one, which would otherwise be ignored.
 
     """
+    defaults = _read_yaml(DEFAULT_MASK_CONFIG)
     config = _read_yaml(config_file)
-    unknown = sorted(set(config) - MASK_CONFIG_KEYS)
+    unknown = sorted(set(config) - set(defaults))
     if unknown:
         raise ValueError(
             f"Unknown keys {unknown} in {config_file}. "
-            f"Valid keys are {sorted(MASK_CONFIG_KEYS)}."
+            f"Valid keys are {sorted(defaults)}."
         )
-    return {**_read_yaml(DEFAULT_MASK_CONFIG), **config}
+    return {**defaults, **config}
 
 
 def load_sam2_predictor(model_id: str, device: str):
