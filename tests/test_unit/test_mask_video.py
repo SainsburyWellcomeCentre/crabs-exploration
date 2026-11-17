@@ -7,7 +7,7 @@ import pytest
 import torch
 import xarray as xr
 import zarr
-from zarr.codecs import ZstdCodec
+from zarr.codecs import TransposeCodec, ZstdCodec
 
 from crabs.mask.mask_props import MASK_PROPS_VARS
 from crabs.mask.mask_video import (
@@ -25,7 +25,8 @@ from crabs.zarr.create_dataset import concat_clips
 
 FRAME_SHAPE = (64, 64)  # height, width
 N_FRAMES = 5
-SHARD_N_FRAMES = 2  # two whole shards plus a one-frame tail
+CHUNK_N_FRAMES = 2
+SHARD_N_FRAMES = 4  # one whole shard plus a one-frame tail
 INDIVIDUALS = ["id_0", "id_1", "id_2"]
 ATTRS = {
     "occlusion_policy": "smallest_wins",
@@ -118,6 +119,7 @@ def masks_store_path_and_array(tmp_path: Path) -> tuple[Path, zarr.Array]:
         individuals=INDIVIDUALS,
         image_shape=FRAME_SHAPE,
         metadata_dict=ATTRS,
+        n_frames_per_chunk=CHUNK_N_FRAMES,
         n_frames_per_shard=SHARD_N_FRAMES,
         zarr_mode_group="w-",
     )
@@ -228,6 +230,7 @@ def test_create_mask_store(tmp_path: Path):
         individuals=INDIVIDUALS,
         image_shape=FRAME_SHAPE,
         metadata_dict=ATTRS,
+        n_frames_per_chunk=CHUNK_N_FRAMES,
         n_frames_per_shard=SHARD_N_FRAMES,
         zarr_mode_group="w-",
     )
@@ -236,10 +239,12 @@ def test_create_mask_store(tmp_path: Path):
     # Check it is as expected
     assert labels_array.shape == (2, N_FRAMES, height, width)
     assert labels_array.dtype == np.uint16
-    assert labels_array.chunks == (1, 1, height, width)
+    assert labels_array.chunks == (1, CHUNK_N_FRAMES, height, width)
     assert labels_array.shards == (1, SHARD_N_FRAMES, height, width)
 
-    # Check the compressor is zstd at level 15, inside each shard
+    # Check each chunk is stored with time last, and compressed with zstd
+    # at level 15
+    assert labels_array.filters == (TransposeCodec(order=(0, 2, 3, 1)),)
     assert labels_array.compressors == (ZstdCodec(level=15),)
 
     # Check metadata exists in store, but not data
@@ -313,7 +318,6 @@ def test_write_clip_masks_to_store(
         label_of=label_of,
         predictor=predictor,
         max_prompts_per_batch=max_prompts_per_batch,
-        n_frames_per_shard=SHARD_N_FRAMES,
     )
 
     # check frames read
@@ -336,9 +340,9 @@ def test_write_clip_masks_to_store(
     assert not labels_clip_0[2].any()
 
     # single-box frames:
-    # - frame 3 is the only frame with id_1, and it shares a shard with
+    # - frame 3 is the only frame with id_1, and it shares a chunk with
     #   empty frame 2
-    # - frame 4 is the part-filled shard tail
+    # - frame 4 is the part-filled shard tail, in a part-filled chunk
     for frame_index, label in [(3, 2), (4, 1)]:  # id_1, id_0
         box = tracked_bboxes_dict[frame_index]["tracked_boxes"][0]
         expected = np.zeros(FRAME_SHAPE, dtype=np.uint16)
@@ -634,7 +638,7 @@ def test_main_records_mask_config(
 ):
     """Check the `mask_config` attribute holds the config values of the run.
 
-    The config file sets only `sam2_model_id`, so the other 3 values are
+    The config file sets only `sam2_model_id`, so the other 4 values are
     the defaults. The attribute must survive the writes of the boxes and
     the 8 variables, which happen after the group is created.
     """
@@ -653,10 +657,28 @@ def test_main_records_mask_config(
     assert masks.attrs["mask_config"] == {
         "sam2_model_id": "facebook/sam2.1-hiera-tiny",
         "max_prompts_per_batch": 32,
-        "n_frames_per_shard": 32,
+        "n_frames_per_chunk": 8,
+        "n_frames_per_shard": 16,
         "occlusion_policy": "smallest_wins",
     }
     assert masks.attrs["sam2_model"] == "facebook/sam2.1-hiera-tiny"
+
+
+def test_main_fails_if_shard_is_not_whole_chunks(
+    trajectories_store_and_clips: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    """Check a shard that is not a whole number of chunks fails early."""
+    config_file = tmp_path / "my_mask_config.yaml"
+    config_file.write_text("n_frames_per_chunk: 8\nn_frames_per_shard: 12\n")
+
+    patch_sam2_loader(monkeypatch, predictor=None)
+    with pytest.raises(ValueError, match="must be a multiple"):
+        run_main(
+            trajectories_store_and_clips,
+            ["--mask_config_file", str(config_file)],
+        )
 
 
 def test_main_with_stale_consolidated_root(

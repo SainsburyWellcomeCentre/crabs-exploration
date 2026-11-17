@@ -43,7 +43,7 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     The parameters are described in the [masking README](../crabs/mask/README.md#parameters). Your file only needs the keys you want to change; the rest take the defaults. On the cluster, the two most likely to need tuning are:
 
     - `max_prompts_per_batch`: lower it if jobs fail with GPU out-of-memory errors.
-    - `n_frames_per_shard`: trades memory per job against the number of files written to `/ceph`.
+    - `n_frames_per_shard`: trades memory per job against the number of files written to `/ceph`. Writing one shard needs about 4 × `n_frames_per_shard` × 17.7 MB at 4096×2160 (~1.1 GB for 16 frames).
 
     > [!CAUTION]
     >

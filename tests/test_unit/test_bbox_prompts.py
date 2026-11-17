@@ -188,6 +188,7 @@ def create_masks_group(
         individuals=individuals or ["id_0", "id_1", "id_2"],
         image_shape=(8, 8),
         metadata_dict=MASKS_ATTRS,
+        n_frames_per_chunk=1,
         n_frames_per_shard=None,
         zarr_mode_group="w-",
     )

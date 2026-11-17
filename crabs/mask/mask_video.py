@@ -13,7 +13,7 @@ import torch
 import xarray as xr
 import yaml  # type: ignore
 import zarr
-from zarr.codecs import ZstdCodec
+from zarr.codecs import TransposeCodec, ZstdCodec
 
 from crabs.mask.mask_props import add_mask_props_to_group
 from crabs.mask.utils.bbox_prompts import (
@@ -37,6 +37,11 @@ BACKGROUND_LABEL = 0
 # (writes are slower for higher levels, so we use the default for the rest
 # of the arrays that are not label images)
 LABELS_COMPRESSOR = ZstdCodec(level=15)
+
+# Store each `labels` chunk with time last, so each pixel's values over
+# the chunk's frames are contiguous and compress better. zarr undoes it
+# on read.
+LABELS_TIME_LAST = TransposeCodec(order=(0, 2, 3, 1))
 
 # Pytorch accelerator names that differ from their torch device name
 ACCELERATOR_TO_DEVICE = {"gpu": "cuda"}
@@ -72,6 +77,7 @@ def create_mask_store(
     individuals: list[str],
     image_shape: tuple[int, int],
     metadata_dict: dict,
+    n_frames_per_chunk: int,
     n_frames_per_shard: int | None,
     zarr_mode_group: str,
 ) -> zarr.Array:
@@ -102,8 +108,11 @@ def create_mask_store(
         Frame height and width, in pixels.
     metadata_dict : dict
         Attributes to write on the group.
+    n_frames_per_chunk : int
+        Number of frames per chunk.
     n_frames_per_shard : int | None
-        Number of frames per shard file. None disables sharding.
+        Number of frames per shard file, a multiple of
+        `n_frames_per_chunk`. None disables sharding.
     zarr_mode_group : str
         Mode to write the zarr group with.
 
@@ -114,7 +123,7 @@ def create_mask_store(
 
     """
     height, width = image_shape
-    chunks = (1, 1, height, width)
+    chunks = (1, n_frames_per_chunk, height, width)
     shards = (
         (1, n_frames_per_shard, height, width) if n_frames_per_shard else None
     )
@@ -150,7 +159,11 @@ def create_mask_store(
 
     # Set encoding params for labels
     encoding: dict = {
-        "labels": {"chunks": chunks, "compressors": [LABELS_COMPRESSOR]}
+        "labels": {
+            "chunks": chunks,
+            "filters": [LABELS_TIME_LAST],
+            "compressors": [LABELS_COMPRESSOR],
+        }
     }
     if shards:
         encoding["labels"]["shards"] = shards
@@ -274,7 +287,6 @@ def write_clip_masks_to_store(
     label_of: xr.DataArray,
     predictor,
     max_prompts_per_batch: int,
-    n_frames_per_shard: int | None,
 ) -> int:
     """Predict label frames for all frames in a clip and write them to store.
 
@@ -303,8 +315,6 @@ def write_clip_masks_to_store(
         The predictor, loaded once by the caller and reused across clips.
     max_prompts_per_batch : int
         Number of box prompts passed to SAM2 at once.
-    n_frames_per_shard : int | None
-        Number of frames per shard file. None disables sharding.
 
     Returns
     -------
@@ -330,9 +340,9 @@ def write_clip_masks_to_store(
     # never has to read, modify and rewrite a shard file. It also keeps
     # memory bounded: only one shard of label frames is held at a time,
     # not the full clip's. With sharding disabled, the buffer is one
-    # frame, i.e. one chunk.
+    # chunk.
     height, width = labels_array.shape[2:]
-    buffer_n_frames = n_frames_per_shard or 1
+    buffer_n_frames = (labels_array.shards or labels_array.chunks)[1]
     buffer = np.zeros((buffer_n_frames, height, width), dtype=np.uint16)
 
     # Get this clip's length
@@ -506,7 +516,13 @@ def main(args: argparse.Namespace) -> None:
         "facebook/sam2.1-hiera-base-plus",
     )
     max_prompts_per_batch = mask_config.get("max_prompts_per_batch", 32)
-    n_frames_per_shard = mask_config.get("n_frames_per_shard", 32)
+    n_frames_per_chunk = mask_config.get("n_frames_per_chunk", 8)
+    n_frames_per_shard = mask_config.get("n_frames_per_shard", 16)
+    if n_frames_per_shard and n_frames_per_shard % n_frames_per_chunk:
+        raise ValueError(
+            f"n_frames_per_shard ({n_frames_per_shard}) must be a multiple "
+            f"of n_frames_per_chunk ({n_frames_per_chunk})."
+        )
     occlusion_policy = mask_config.get("occlusion_policy", "smallest_wins")
     if occlusion_policy != "smallest_wins":
         raise ValueError(
@@ -595,10 +611,12 @@ def main(args: argparse.Namespace) -> None:
                 "mask_config": {
                     "sam2_model_id": sam2_model_id,
                     "max_prompts_per_batch": max_prompts_per_batch,
+                    "n_frames_per_chunk": n_frames_per_chunk,
                     "n_frames_per_shard": n_frames_per_shard,
                     "occlusion_policy": occlusion_policy,
                 },
             },
+            n_frames_per_chunk=n_frames_per_chunk,
             n_frames_per_shard=n_frames_per_shard,
             zarr_mode_group=args.zarr_mode_group,
         )
@@ -635,7 +653,6 @@ def main(args: argparse.Namespace) -> None:
                 label_of=label_of,
                 predictor=predictor,
                 max_prompts_per_batch=max_prompts_per_batch,
-                n_frames_per_shard=n_frames_per_shard,
             )
 
         # Measure the masks and write the mask and ellipse parameters

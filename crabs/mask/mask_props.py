@@ -78,11 +78,11 @@ def compute_clip_mask_props_dataset(
 ) -> xr.Dataset:
     """Measure the masks of one time chunk of one clip.
 
-    The label images ``labels_array[clip_index, t]`` are read one frame at
-    a time, only for the frames ``t`` in `frames` that fall in
-    `time_slice`. The values measured for a label are placed at the
-    position along `individual` given by ``individual_of_label[label]``,
-    the inverse of `label_of`.
+    The label images are read one chunk of frames at a time, only for the
+    chunks holding a frame of `frames` that falls in `time_slice` (reading
+    one frame decodes its whole chunk anyway). The values measured for a
+    label are placed at the position along `individual` given by
+    ``individual_of_label[label]``, the inverse of `label_of`.
 
     The ellipse is the one with the same second moments as the mask, as
     defined by scikit-image. The returned dataset has no coordinates, and
@@ -147,29 +147,36 @@ def compute_clip_mask_props_dataset(
         (n_chunk, 2, n_individuals), np.nan, dtype=np.float32
     )
 
-    # Loop thru frames in the time chunk
+    # Loop thru the label chunks, and their frames, in the time chunk
     frames = np.asarray(frames)
     frames = frames[(frames >= time_slice.start) & (frames < time_slice.stop)]
-    for t in frames:
-        props = measure_label_frame(np.asarray(labels_array[clip_index, t]))
+    n_frames_per_chunk = getattr(labels_array, "chunks", (1, 1))[1]
+    for chunk_index in np.unique(frames // n_frames_per_chunk):
+        # Read the part of this chunk that falls in `time_slice`
+        lo = max(chunk_index * n_frames_per_chunk, time_slice.start)
+        hi = min((chunk_index + 1) * n_frames_per_chunk, time_slice.stop)
+        label_frames = np.asarray(labels_array[clip_index, lo:hi])
 
-        # Get position along `individual` of each label
-        labels = props["label"]
-        unknown = labels >= len(individual_of_label)
-        unknown[~unknown] = individual_of_label[labels[~unknown]] < 0
-        if unknown.any():
-            raise ValueError(
-                f"Clip index {clip_index}, frame {t}: the label image holds "
-                f"labels {labels[unknown].tolist()} that are not in "
-                "`label_of`."
-            )
-        i, k = t - time_slice.start, individual_of_label[labels]
+        for t in frames[(frames >= lo) & (frames < hi)]:
+            props = measure_label_frame(label_frames[t - lo])
 
-        # Fill in arrays (values are rounded to float32 here)
-        for var in SCALAR_VARS:
-            scalar_var_arrays[var][i, k] = props[var]
-        centroid_array[i, 0, k] = props["mask_centroid_x"]
-        centroid_array[i, 1, k] = props["mask_centroid_y"]
+            # Get position along `individual` of each label
+            labels = props["label"]
+            unknown = labels >= len(individual_of_label)
+            unknown[~unknown] = individual_of_label[labels[~unknown]] < 0
+            if unknown.any():
+                raise ValueError(
+                    f"Clip index {clip_index}, frame {t}: the label image "
+                    f"holds labels {labels[unknown].tolist()} that are not "
+                    "in `label_of`."
+                )
+            i, k = t - time_slice.start, individual_of_label[labels]
+
+            # Fill in arrays (values are rounded to float32 here)
+            for var in SCALAR_VARS:
+                scalar_var_arrays[var][i, k] = props[var]
+            centroid_array[i, 0, k] = props["mask_centroid_x"]
+            centroid_array[i, 1, k] = props["mask_centroid_y"]
 
     return xr.Dataset(
         {

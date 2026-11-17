@@ -115,6 +115,7 @@ def create_masks_group_with_labels(
         individuals=INDIVIDUALS,
         image_shape=FRAME_SHAPE,
         metadata_dict=ATTRS,
+        n_frames_per_chunk=2,  # so measuring reads multi-frame chunks
         n_frames_per_shard=None,
         zarr_mode_group="w-",
     )

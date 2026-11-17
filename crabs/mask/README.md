@@ -41,12 +41,13 @@ The default masking parameters live in [`crabs/mask/config/mask_config.yaml`](co
 
     The older `facebook/sam2-hiera-*` checkpoints also work.
 - `max_prompts_per_batch`: how many box prompts are passed to SAM2 in one prediction step (by default 32). It is the main knob for controlling peak GPU memory. A prediction step covers one frame at most. SAM2 upsamples every prompt's mask to the full frame as float32 logits and then thresholds it to a boolean mask, which costs `H × W × 5` bytes per prompt (~44 MB at 4096×2160, so ~1.4 GB for 32 prompts).
-- `n_frames_per_shard`: frames per shard file (by default 32). Finished frames are held in memory until a shard is full, then they are written as one file. Larger values use more memory but produce fewer files. A `null` value disables sharding, which is like `1` but with no shard index. For 32 frames per shard at 4096×2160, the in-memory buffer will be `n_frames_per_shard × H × W × 2` bytes, ~570 MB.
+- `n_frames_per_chunk`: frames per `labels` chunk (by default 8). More frames per chunk compress better, but reading one frame decodes its whole chunk.
+- `n_frames_per_shard`: frames per shard file (by default 16), a multiple of `n_frames_per_chunk`. Finished frames are held in memory until a shard is full, then they are written as one file. Larger values use more memory but produce fewer files. The in-memory buffer is `n_frames_per_shard × H × W × 2` bytes (~280 MB for 16 frames at 4096×2160), and writing a shard needs about 3× that again on top. A `null` value disables sharding, so each chunk is its own file.
 - `occlusion_policy`: which crab keeps a pixel where two masks overlap. By default, `smallest_wins`, which is the only policy implemented.
 
 
 > [!NOTE]
-> **Chunks and shards.** A **chunk** is the unit zarr compresses and reads. To read any pixel, zarr has to decompress the whole chunk that contains it, so the chunk size is chosen to match the most common read pattern (here, by frame, so each `labels` chunk is `(1, 1, img_h, img_w)`). A **shard** is a file on disk that holds many chunks, plus an index saying where each chunk sits in the file. The index allows one chunk to still be read on its own. Sharding is useful to keep the number of files manageable on a filesystem.
+> **Chunks and shards.** A **chunk** is the unit zarr compresses and reads. To read any pixel, zarr has to decompress the whole chunk that contains it, so the chunk size is chosen to match the most common read pattern. Here, each `labels` chunk holds a few consecutive frames, `(1, n_frames_per_chunk, img_h, img_w)`, so reading frames in order one chunk at a time is cheap, as xarray and dask do. A **shard** is a file on disk that holds many chunks, plus an index saying where each chunk sits in the file. The index allows one chunk to still be read on its own. Sharding is useful to keep the number of files manageable on a filesystem.
 
 ## Output store format
 
@@ -66,7 +67,7 @@ The default masking parameters live in [`crabs/mask/config/mask_config.yaml`](co
     └── individual  e.g. ["id_0000", …]  — copied from the trajectories store
 ```
 
-`labels` is compressed with zstd at level 15, which on real masks is ~18% smaller than zarr's default level 3, with no slower reads.
+`labels` is stored with `time` last within each chunk, using a `transpose` codec, and compressed with zstd at level 15. Each pixel's values over the chunk's frames are then contiguous and compress well. On real masks, this is ~57% smaller than zarr's default (zstd level 3, one frame per chunk), and reading frames in order is no slower. zarr undoes the transpose on read, so `labels` keeps its dims.
 
 The float variables (the boxes and the mask and ellipse parameters) are written with two lossless codecs, which make them ~39% smaller on real data, with bit-identical values. A `transpose` codec stores each chunk with `time` last, so each crab's values over time are contiguous on disk, and a blosc byte shuffle groups the bytes that barely change along a track. Both codecs are part of the zarr v3 spec and are undone on read, so the arrays keep their dims. See [`float_encoding.py`](utils/float_encoding.py).
 
