@@ -239,8 +239,8 @@ def test_create_mask_store(tmp_path: Path):
     assert labels_array.chunks == (1, 1, height, width)
     assert labels_array.shards == (1, SHARD_N_FRAMES, height, width)
 
-    # Check zarr's default compressor
-    assert [type(c) for c in labels_array.compressors] == [ZstdCodec]
+    # Check the compressor is zstd at level 15, inside each shard
+    assert labels_array.compressors == (ZstdCodec(level=15),)
 
     # Check metadata exists in store, but not data
     # (each clip fills its own region afterwards)

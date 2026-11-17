@@ -13,6 +13,7 @@ import torch
 import xarray as xr
 import yaml  # type: ignore
 import zarr
+from zarr.codecs import ZstdCodec
 
 from crabs.mask.mask_props import add_mask_props_to_group
 from crabs.mask.utils.bbox_prompts import (
@@ -31,6 +32,11 @@ DEFAULT_MASK_CONFIG = str(
 
 # 0 is background in a label image, so crab labels start at 1
 BACKGROUND_LABEL = 0
+
+# Compressor of the label images.
+# (writes are slower for higher levels, so we use the default for the rest
+# of the arrays that are not label images)
+LABELS_COMPRESSOR = ZstdCodec(level=15)
 
 # Pytorch accelerator names that differ from their torch device name
 ACCELERATOR_TO_DEVICE = {"gpu": "cuda"}
@@ -142,9 +148,10 @@ def create_mask_store(
         attrs=metadata_dict,
     )
 
-    # Set encoding params
-    # (we use zarr's default compressor, zstd)
-    encoding: dict = {"labels": {"chunks": chunks}}
+    # Set encoding params for labels
+    encoding: dict = {
+        "labels": {"chunks": chunks, "compressors": [LABELS_COMPRESSOR]}
+    }
     if shards:
         encoding["labels"]["shards"] = shards
 
