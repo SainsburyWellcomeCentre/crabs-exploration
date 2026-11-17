@@ -150,7 +150,10 @@ cat "$MASK_CONFIG_FILE"
 # --match is an exact video group name here, so this job masks every clip
 # of one video. --output_store names the store rather than letting the
 # command pick a timestamped name, so all jobs write into the same one.
-mask-tracked-crabs  \
+# /usr/bin/time -v logs the peak memory of the run to the .err file
+# ("Maximum resident set size"). Unlike sacct's MaxRSS, it excludes the
+# file cache.
+/usr/bin/time -v mask-tracked-crabs  \
     --boxes $BOXES_ZARR_STORE  \
     --videos_dir $CLIP_VIDEOS_DIR  \
     --output_store $MASK_ZARR_STORE_OUTPUT  \
