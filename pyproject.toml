@@ -40,8 +40,9 @@ dependencies = [
     # numba is not used directly: movement pulls it in via xarray[accel].
     # Pinned to avoid a resolver conflict between movement and sleap-nn
     # (>=0.60 is also the first numba release that supports numpy 2).
-    "zarr>=3",  # sharding
+    "zarr>=3",
     "xarray",
+    "scikit-image",
 ]
 
 

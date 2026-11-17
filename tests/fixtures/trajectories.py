@@ -28,6 +28,13 @@ def clip_dataset_factory():
             {
                 "position": (("time", "space", "individual"), position),
                 "shape": (("time", "space", "individual"), shape),
+                # 1 where an individual has a box, NaN otherwise
+                "confidence": (
+                    ("time", "individual"),
+                    np.where(np.isnan(position[:, 0]), np.nan, 1.0).astype(
+                        position.dtype
+                    ),
+                ),
                 "escape_state": (
                     ("time",),
                     np.zeros(n_stored, dtype=np.float16),
