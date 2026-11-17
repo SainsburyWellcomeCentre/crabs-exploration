@@ -16,6 +16,8 @@ import xarray as xr
 import zarr
 from skimage.measure import regionprops_table
 
+from crabs.mask.utils.float_encoding import float_var_encoding
+
 # Map regionprops_table property to data variable
 PROPS_TO_VARS = {
     "area": "mask_area",
@@ -285,6 +287,10 @@ def add_mask_props_to_group(
         store_path,
         group=video_id,
         mode="a",
+        encoding={
+            var: float_var_encoding(ds_template[var].dims)
+            for var in MASK_PROPS_VARS
+        },
         compute=False,
         consolidated=False,
     )

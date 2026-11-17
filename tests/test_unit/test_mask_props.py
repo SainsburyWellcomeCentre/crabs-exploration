@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 import xarray as xr
 import zarr
+from zarr.codecs import BloscCodec
 
 from crabs.mask.mask_props import (
     MASK_PROPS_VARS,
@@ -19,6 +20,7 @@ from crabs.mask.utils.bbox_prompts import (
     copy_video_bboxes_to_masks,
     extract_bboxes_from_clip,
 )
+from crabs.mask.utils.float_encoding import float_var_encoding
 from crabs.zarr.create_dataset import concat_clips
 from scripts.generate_masks_from_bboxes import compute_mask_props_dataset
 
@@ -289,6 +291,13 @@ def test_add_mask_props_to_group(ds_tracks: xr.Dataset, tmp_path: Path):
         ds_masks.mask_centroid.encoding["chunks"]
         == ds_masks.position.encoding["chunks"]
     )
+
+    # Check the 8 variables are written with the float encoding
+    group = zarr.open_group(store_path / "video", mode="r")
+    for var in MASK_PROPS_VARS:
+        expected = float_var_encoding(ds_masks[var].dims)
+        assert group[var].filters == tuple(expected["filters"])
+        assert [type(c) for c in group[var].compressors] == [BloscCodec]
 
     # Check values equal one call over each whole clip
     labels = ds_masks.labels.values

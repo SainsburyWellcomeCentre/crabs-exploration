@@ -68,6 +68,8 @@ The default masking parameters live in [`crabs/mask/config/mask_config.yaml`](co
 
 `labels` is compressed with zstd at level 15, which on real masks is ~18% smaller than zarr's default level 3, with no slower reads.
 
+The float variables (the boxes and the mask and ellipse parameters) are written with two lossless codecs, which make them ~39% smaller on real data, with bit-identical values. A `transpose` codec stores each chunk with `time` last, so each crab's values over time are contiguous on disk, and a blosc byte shuffle groups the bytes that barely change along a track. Both codecs are part of the zarr v3 spec and are undone on read, so the arrays keep their dims. See [`float_encoding.py`](utils/float_encoding.py).
+
 The `clip_id`, `time` and `individual` coordinates are the trajectories store's own, so masks and trajectories for the same clips align 1:1 with no reindexing. `label_of` maps each `individual` to its pixel value in the label image, and the reverse lookup for a label `lbl` is `ds.individual.values[ds.label_of.values == lbl]`.
 
 **Boxes.** `position`, `shape` and `confidence` are copied from the trajectories store when the group is created. They are a snapshot of the prompts the masks were predicted from, and are not updated if the trajectories store is later rewritten. They are reindexed to the masks group's `time`, which is NaN-padded where it is longer.

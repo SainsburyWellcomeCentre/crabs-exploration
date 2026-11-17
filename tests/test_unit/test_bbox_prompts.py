@@ -3,6 +3,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
+import zarr
+from zarr.codecs import BloscCodec
 
 from crabs.mask.mask_video import create_mask_store
 from crabs.mask.utils.bbox_prompts import (
@@ -10,6 +12,7 @@ from crabs.mask.utils.bbox_prompts import (
     copy_video_bboxes_to_masks,
     extract_bboxes_from_clip,
 )
+from crabs.mask.utils.float_encoding import float_var_encoding
 from crabs.zarr.create_dataset import concat_clips
 
 
@@ -221,6 +224,13 @@ def test_copy_video_bboxes_to_masks(ds_video: xr.Dataset, tmp_path: Path):
             ds_masks[var].encoding["chunks"]
             == (ds_tracks[var].encoding["chunks"])
         )
+
+    # Check the boxes are written with the float encoding
+    group = zarr.open_group(masks_path / "video", mode="r")
+    for var in BBOX_VARS:
+        expected = float_var_encoding(ds_masks[var].dims)
+        assert group[var].filters == tuple(expected["filters"])
+        assert [type(c) for c in group[var].compressors] == [BloscCodec]
 
     # Check no clip coordinates were copied into the masks group
     assert "clip_first_frame_0idx" not in ds_masks.coords

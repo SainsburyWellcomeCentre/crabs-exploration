@@ -5,6 +5,8 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
+from crabs.mask.utils.float_encoding import float_var_encoding
+
 # Variables of bboxes store to copy to mask store
 BBOX_VARS = ["position", "shape", "confidence"]
 
@@ -202,5 +204,9 @@ def copy_video_bboxes_to_masks(
         mask_store_path,
         group=video_id,
         mode="a",
+        encoding={
+            var: float_var_encoding(ds_boxes_to_append[var].dims)
+            for var in BBOX_VARS
+        },
         consolidated=False,
     )
