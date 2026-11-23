@@ -1,4 +1,4 @@
-"""Measure the masks of a masks store and write mask and ellipse parameters.
+"""Measure the masks of a store and write mask and ellipse parameters.
 
 The measuring code is a copy of ``compute_mask_props_dataset`` in
 ``scripts/generate_masks_from_bboxes.py`` (PR #298). The script is
@@ -27,7 +27,7 @@ REGIONPROPS_TO_VARS = {
     "eccentricity": "ellipse_eccentricity",
 }
 
-# Variables with dims (clip_id, time, individual)
+# Variables with dimensions clip_id, time, individual
 SCALAR_VARS = [*REGIONPROPS_TO_VARS.values(), "ellipse_major_axis_theta"]
 
 # All variables written by `compute_mask_props_of_video`
@@ -62,11 +62,7 @@ def measure_label_frame(label_frame: np.ndarray) -> dict[str, np.ndarray]:
 
 
 def get_frames_idcs_with_boxes(ds_clip: xr.Dataset) -> np.ndarray:
-    """Return the `time` indices where any individual has a finite position.
-
-    `mask-tracked-crabs` runs SAM2 only on frames with boxes, so every
-    other frame of the label images is background.
-    """
+    """Return the `time` indices where any individual has non-nan position."""
     any_box = ds_clip.position.notnull().any(dim=["space", "individual"])
     return np.flatnonzero(any_box.values)
 
@@ -89,8 +85,8 @@ def compute_clip_mask_props_dataset(
     ``k`` along `individual`.
 
     The ellipse is the one with the same second moments as the mask, as
-    defined by scikit-image. The returned dataset has no coordinates, and
-    these float32 data variables, with NaN where there is no mask:
+    defined by scikit-image. The returned dataset has these float32 data
+    variables (NaN where there is no mask):
 
     - ``mask_centroid`` (time, space, individual): mean (x, y) of the mask
       pixels, which is also the ellipse centre.
@@ -100,7 +96,7 @@ def compute_clip_mask_props_dataset(
     - ``mask_area_to_mask_bbox_area``: mask area / area of the mask's own
       axis-aligned bounding box (scikit-image's ``extent``). Note this is
       the bounding box of the mask, not the tracked (prompt) bounding
-      box, so it depends on the mask's rotation.
+      box.
     - ``ellipse_major_axis_length``, ``ellipse_minor_axis_length``: full
       axis lengths in pixels, not semi-axes.
     - ``ellipse_major_axis_theta``: angle of the major axis from the image
@@ -183,15 +179,13 @@ def compute_mask_props_of_video(
 ) -> None:
     """Measure the masks of one masks group and write the 8 variables.
 
-    The group must hold the copied boxes (see
-    `copy_video_bboxes_to_masks`). Only frames with a finite `position`
-    are measured. The 8 variables (see `compute_clip_mask_props_dataset`)
-    are float32, with the chunks of the copied `confidence` (and of
-    `position`, for `mask_centroid`).
+    The video's group must hold the prompt boxes (see
+    `copy_video_bboxes_to_masks`). Only frames with a non-nan `position`
+    are measured.
 
     The variables are first created with no data, and then each clip is
-    measured and written with one region write. Only one clip of values
-    (small) and one time chunk of `labels` are held in memory at a time.
+    measured and written with one write. This is to bound memory: only one
+    clip of values and one time chunk of `labels` are held at a time.
 
     Every read and write skips the root's consolidated metadata, which may
     be stale while the store is being written.
