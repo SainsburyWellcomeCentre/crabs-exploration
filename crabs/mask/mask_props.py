@@ -7,7 +7,6 @@ the script, so the code is copied. A unit test checks the two agree.
 """
 
 import logging
-import time
 from pathlib import Path
 
 import numpy as np
@@ -264,8 +263,6 @@ def compute_mask_props_of_video(
 
     # Loop thru clips
     for clip_index, clip_id in enumerate(ds.clip_id.values):
-        start_time = time.perf_counter()
-
         # Measure masks of frames with boxes (`labels` stays lazy)
         ds_clip = ds.isel(clip_id=clip_index)
         ds_props = compute_clip_mask_props_dataset(
@@ -281,7 +278,4 @@ def compute_mask_props_of_video(
             region={"clip_id": slice(clip_index, clip_index + 1)},
             consolidated=False,
         )
-        logging.info(
-            f"Measured masks of {video_id}/{clip_id} in "
-            f"{time.perf_counter() - start_time:.1f} s"
-        )
+        logging.info(f"Measured masks of {video_id}/{clip_id}")
