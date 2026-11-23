@@ -6,6 +6,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import yaml  # type: ignore
 
 from crabs.detector.utils.visualization import draw_bbox
 
@@ -14,6 +15,12 @@ from crabs.detector.utils.visualization import draw_bbox
 # filesystem can exceed.
 VIDEO_OPEN_TIMEOUT_MS = 300_000
 VIDEO_READ_TIMEOUT_MS = 300_000
+
+
+def read_yaml(path: str | Path) -> dict:
+    """Read a yaml file as a dict, empty if the file is empty."""
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
 
 
 def open_video(video_path: str) -> cv2.VideoCapture:

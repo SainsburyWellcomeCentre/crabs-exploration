@@ -11,7 +11,6 @@ import dask.array as da
 import numpy as np
 import torch
 import xarray as xr
-import yaml  # type: ignore
 import zarr
 from zarr.codecs import TransposeCodec, ZstdCodec
 
@@ -24,6 +23,7 @@ from crabs.utils.io import (
     get_video_parameters,
     open_video,
     parse_video_frame_reading_error_and_log,
+    read_yaml,
 )
 
 DEFAULT_MASK_CONFIG = str(
@@ -47,11 +47,6 @@ LABELS_TIME_LAST = TransposeCodec(order=(0, 2, 3, 1))
 ACCELERATOR_TO_DEVICE = {"gpu": "cuda"}
 
 
-def _read_yaml(path: str | Path) -> dict:
-    with open(path) as f:
-        return yaml.safe_load(f) or {}
-
-
 def load_mask_config(config_file: str) -> dict:
     """Load the masking config, with defaults from the default config file.
 
@@ -66,8 +61,8 @@ def load_mask_config(config_file: str) -> dict:
         misspelled or renamed one, which would otherwise be ignored.
 
     """
-    defaults = _read_yaml(DEFAULT_MASK_CONFIG)
-    config = _read_yaml(config_file)
+    defaults = read_yaml(DEFAULT_MASK_CONFIG)
+    config = read_yaml(config_file)
     unknown = sorted(set(config) - set(defaults))
     if unknown:
         raise ValueError(
