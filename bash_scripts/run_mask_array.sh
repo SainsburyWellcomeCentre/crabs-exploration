@@ -32,8 +32,8 @@ BOXES_ZARR_STORE="/ceph/zoo/processed/CrabField/ramalhete_2023/CrabTracks/CrabTr
 # <video-id>-<clip-id>.mp4, as written by extract-loop-clips
 CLIP_VIDEOS_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops"
 
-# Path to a mask config file, holding only the values to change from
-# the defaults. Leave empty to use the defaults of the installed code.
+# Path to a mask config file, holding non-default values only.
+# Leave empty to use all defaults.
 MASK_CONFIG_FILE=""
 
 # Output store. Every job in the array appends its own video group to it,
@@ -181,8 +181,7 @@ fi
 # command pick a timestamped name, so all jobs write into the same one.
 # --no_consolidate leaves consolidating the store to the job submitted above.
 # /usr/bin/time -v logs the peak memory of the run to the .err file
-# ("Maximum resident set size"). Unlike sacct's MaxRSS, it excludes the
-# file cache.
+# ("Maximum resident set size").
 /usr/bin/time -v mask-tracked-crabs  \
     --boxes $BOXES_ZARR_STORE  \
     --videos_dir $CLIP_VIDEOS_DIR  \
