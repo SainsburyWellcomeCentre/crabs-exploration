@@ -540,6 +540,7 @@ def main(args: argparse.Namespace) -> None:
     max_prompts_per_batch = mask_config["max_prompts_per_batch"]
     n_frames_per_chunk = mask_config["n_frames_per_chunk"]
     n_frames_per_shard = mask_config["n_frames_per_shard"]
+    # (zarr would also raise an error, but we want to fail earlier)
     if n_frames_per_shard and n_frames_per_shard % n_frames_per_chunk:
         raise ValueError(
             f"n_frames_per_shard ({n_frames_per_shard}) must be a multiple "

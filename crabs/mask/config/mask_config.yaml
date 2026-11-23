@@ -17,8 +17,8 @@ sam2_model_id: facebook/sam2.1-hiera-base-plus
 max_prompts_per_batch: 32
 
 # Number of frames per chunk, the unit zarr compresses and reads.
-# Chunks are stored with time last, so more frames per chunk compress
-# better, but reading one frame decodes its whole chunk.
+# Chunks are stored with time last, so more frames per chunk leads to
+# better compression. But reading one frame requires decoding its whole chunk.
 n_frames_per_chunk: 8
 
 # Number of frames per shard file, a multiple of n_frames_per_chunk.
@@ -27,7 +27,7 @@ n_frames_per_chunk: 8
 # label image (a uint16 array), so the buffer is
 # n_frames_per_shard x H x W x 2 bytes.
 # For a 4K image: 16 × 4096 × 2160 × 2 ≈ 280 MB.
-# Writing a shard needs about 3x that again on top.
+# Writing a shard needs about 3-4x that again on top.
 # Larger n_frames_per_shard values use more memory but produce fewer files.
 # null disables sharding (one file per chunk, with no index).
 n_frames_per_shard: 16
