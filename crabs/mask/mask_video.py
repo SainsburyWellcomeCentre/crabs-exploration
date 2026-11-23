@@ -296,7 +296,7 @@ def predict_and_flatten_masks_into(
     label_frame[:] = label_frame_on_device.cpu().numpy()
 
 
-def write_clip_masks_to_store(
+def predict_and_write_clip_labels(
     video_clip_path: str,
     tracked_bboxes_dict: dict,
     labels_array: zarr.Array,
@@ -654,7 +654,7 @@ def main(args: argparse.Namespace) -> None:
                 continue
 
             # Predict masks and write to store
-            write_clip_masks_to_store(
+            predict_and_write_clip_labels(
                 video_clip_path=str(clip_paths[clip_index]),
                 tracked_bboxes_dict=tracked_bboxes_dict,
                 labels_array=labels_array,

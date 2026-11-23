@@ -14,8 +14,8 @@ from crabs.mask.mask_video import (
     create_mask_store,
     main,
     mask_parse_args,
+    predict_and_write_clip_labels,
     predict_masks_on_device,
-    write_clip_masks_to_store,
 )
 from crabs.mask.utils.bbox_prompts import (
     BBOX_VARS,
@@ -266,7 +266,7 @@ def test_create_mask_store(tmp_path: Path):
 
 
 @pytest.mark.parametrize("max_prompts_per_batch", [1, 2, 8])
-def test_write_clip_masks_to_store(
+def test_predict_and_write_clip_labels(
     masks_store_path_and_array: tuple[Path, zarr.Array],
     blank_clip_video: str,
     max_prompts_per_batch: int,
@@ -310,7 +310,7 @@ def test_write_clip_masks_to_store(
     predictor = FakePredictor()
 
     # Run prediction on clip 0
-    n_frames_read = write_clip_masks_to_store(
+    n_frames_read = predict_and_write_clip_labels(
         video_clip_path=blank_clip_video,
         tracked_bboxes_dict=tracked_bboxes_dict,
         labels_array=labels_array,
