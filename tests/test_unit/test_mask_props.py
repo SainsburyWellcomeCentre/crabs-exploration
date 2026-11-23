@@ -9,8 +9,8 @@ from zarr.codecs import BloscCodec
 from crabs.mask.mask_props import (
     MASK_PROPS_VARS,
     SCALAR_VARS,
-    add_mask_props_to_group,
     compute_clip_mask_props_dataset,
+    compute_mask_props_of_video,
     get_frames_idcs_with_boxes,
 )
 from crabs.mask.mask_video import create_mask_store
@@ -204,7 +204,7 @@ def test_get_frames_idcs_with_boxes_matches_extract_bboxes_from_clip(
         )
 
 
-def test_add_mask_props_to_group_measures_frames_with_boxes(
+def test_compute_mask_props_of_video_measures_frames_with_boxes(
     ds_tracks: xr.Dataset, tmp_path: Path
 ):
     """Check only frames with a finite position are measured.
@@ -227,7 +227,7 @@ def test_add_mask_props_to_group_measures_frames_with_boxes(
     labels_array[:] = labels
 
     # Measure
-    add_mask_props_to_group(store_path, "video")
+    compute_mask_props_of_video("video", store_path)
 
     # Check values are finite only in frames with boxes
     ds_masks = open_masks_group(store_path)
@@ -238,7 +238,7 @@ def test_add_mask_props_to_group_measures_frames_with_boxes(
     xr.testing.assert_equal(frame_has_mask, frame_has_box)
 
 
-def test_add_mask_props_to_group(ds_tracks: xr.Dataset, tmp_path: Path):
+def test_compute_mask_props_of_video(ds_tracks: xr.Dataset, tmp_path: Path):
     """Check the 8 variables, their layout and their values.
 
     The values must equal those of one `compute_clip_mask_props_dataset`
@@ -252,7 +252,7 @@ def test_add_mask_props_to_group(ds_tracks: xr.Dataset, tmp_path: Path):
     ds_before = open_masks_group(store_path).load()
 
     # Measure
-    add_mask_props_to_group(store_path, "video")
+    compute_mask_props_of_video("video", store_path)
     ds_masks = open_masks_group(store_path)
 
     # Check dims, dtype and chunks
@@ -315,7 +315,7 @@ def test_add_mask_props_to_group(ds_tracks: xr.Dataset, tmp_path: Path):
     assert ds_masks.attrs == ATTRS
 
 
-def test_add_mask_props_to_group_label_of_not_k_plus_1(
+def test_compute_mask_props_of_video_label_of_not_k_plus_1(
     ds_tracks: xr.Dataset, tmp_path: Path
 ):
     """Check each value lands at its own individual, for any `label_of`."""
@@ -324,7 +324,7 @@ def test_add_mask_props_to_group_label_of_not_k_plus_1(
     create_masks_group_with_labels(store_path, ds_tracks, label_of=[3, 1, 2])
 
     # Measure
-    add_mask_props_to_group(store_path, "video")
+    compute_mask_props_of_video("video", store_path)
 
     # Check each individual's area is that of its own square, of half
     # side 2 + k
@@ -348,7 +348,7 @@ def test_add_mask_props_to_group_label_of_not_k_plus_1(
         (None, False, "has no `position`"),
     ],
 )
-def test_add_mask_props_to_group_errors(
+def test_compute_mask_props_of_video_errors(
     ds_tracks: xr.Dataset,
     tmp_path: Path,
     label_of: list[int] | None,
@@ -362,20 +362,20 @@ def test_add_mask_props_to_group_errors(
     )
 
     with pytest.raises(ValueError, match=expected_message):
-        add_mask_props_to_group(store_path, "video")
+        compute_mask_props_of_video("video", store_path)
 
     ds_masks = open_masks_group(store_path)
     assert not set(MASK_PROPS_VARS) & set(ds_masks.data_vars)
 
 
-def test_add_mask_props_to_group_overwrite(
+def test_compute_mask_props_of_video_overwrite(
     ds_tracks: xr.Dataset, tmp_path: Path
 ):
     """Check existing variables raise an error, unless `overwrite` is True."""
     # Create masks group and measure
     store_path = tmp_path / "masks.zarr"
     create_masks_group_with_labels(store_path, ds_tracks)
-    add_mask_props_to_group(store_path, "video")
+    compute_mask_props_of_video("video", store_path)
 
     # Erase all masks
     labels_array = zarr.open_group(store_path, use_consolidated=False)[
@@ -385,11 +385,11 @@ def test_add_mask_props_to_group_overwrite(
 
     # Check measuring again raises an error
     with pytest.raises(ValueError, match="already holds"):
-        add_mask_props_to_group(store_path, "video")
+        compute_mask_props_of_video("video", store_path)
     assert open_masks_group(store_path).mask_area.notnull().any()
 
     # Check overwriting replaces the values
-    add_mask_props_to_group(store_path, "video", overwrite=True)
+    compute_mask_props_of_video("video", store_path, overwrite=True)
     ds_masks = open_masks_group(store_path)
     assert ds_masks.mask_area.isnull().all()
     assert ds_masks.attrs == ATTRS
@@ -414,7 +414,7 @@ def test_snippet_for_old_masks_stores(ds_tracks: xr.Dataset, tmp_path: Path):
         copy_video_bboxes_to_masks(
             dt_tracks[video_id].to_dataset(), masks_store
         )
-        add_mask_props_to_group(masks_store, video_id)
+        compute_mask_props_of_video(video_id, masks_store)
     zarr.consolidate_metadata(masks_store)
 
     # Check the group shows the new variables

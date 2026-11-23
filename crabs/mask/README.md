@@ -121,7 +121,7 @@ A masks store written before the boxes and the mask and ellipse parameters were 
 import xarray as xr
 import zarr
 
-from crabs.mask.mask_props import add_mask_props_to_group
+from crabs.mask.mask_props import compute_mask_props_of_video
 from crabs.mask.utils.bbox_prompts import copy_video_bboxes_to_masks
 
 masks_store = "CrabMasks-slurm<array job ID>.zarr"
@@ -130,11 +130,11 @@ trajectories_store = "CrabTracks-slurm3644250.zarr"  # each group's boxes.file a
 dt_tracks = xr.open_datatree(trajectories_store, engine="zarr")
 for video_id in xr.open_datatree(masks_store, engine="zarr").children:
     copy_video_bboxes_to_masks(dt_tracks[video_id].to_dataset(), masks_store)
-    add_mask_props_to_group(masks_store, video_id)
+    compute_mask_props_of_video(video_id, masks_store)
 zarr.consolidate_metadata(masks_store)
 ```
 
-This calls the same two functions as `mask-tracked-crabs`, so the output is the same. `copy_video_bboxes_to_masks` checks that `clip_id` and `individual` match, so a wrong trajectories store fails before anything is written. To rerun the snippet after a crash, pass `overwrite=True` to `add_mask_props_to_group`.
+This calls the same two functions as `mask-tracked-crabs`, so the output is the same. `copy_video_bboxes_to_masks` checks that `clip_id` and `individual` match, so a wrong trajectories store fails before anything is written. To rerun the snippet after a crash, pass `overwrite=True` to `compute_mask_props_of_video`.
 
 > [!NOTE]
 > The snippet does not add the `mask_config` attribute. An old masks store written by

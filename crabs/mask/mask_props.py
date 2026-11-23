@@ -30,7 +30,7 @@ REGIONPROPS_TO_VARS = {
 # Variables with dims (clip_id, time, individual)
 SCALAR_VARS = [*REGIONPROPS_TO_VARS.values(), "ellipse_major_axis_theta"]
 
-# All variables written by `add_mask_props_to_group`
+# All variables written by `compute_mask_props_of_video`
 MASK_PROPS_VARS = [*SCALAR_VARS, "mask_centroid"]
 
 
@@ -178,8 +178,8 @@ def compute_clip_mask_props_dataset(
     )
 
 
-def add_mask_props_to_group(
-    store_path: str | Path, video_id: str, overwrite: bool = False
+def compute_mask_props_of_video(
+    video_id: str, store_path: str | Path, overwrite: bool = False
 ) -> None:
     """Measure the masks of one masks group and write the 8 variables.
 
@@ -198,10 +198,10 @@ def add_mask_props_to_group(
 
     Parameters
     ----------
-    store_path : str | Path
-        Path to the masks zarr store.
     video_id : str
         Name of the video group.
+    store_path : str | Path
+        Path to the masks zarr store.
     overwrite : bool
         Whether to replace the 8 variables if they already exist.
         Default: False.

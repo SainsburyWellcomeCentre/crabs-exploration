@@ -14,7 +14,7 @@ import xarray as xr
 import zarr
 from zarr.codecs import TransposeCodec, ZstdCodec
 
-from crabs.mask.mask_props import add_mask_props_to_group
+from crabs.mask.mask_props import compute_mask_props_of_video
 from crabs.mask.utils.bbox_prompts import (
     copy_video_bboxes_to_masks,
     extract_bboxes_from_clip,
@@ -666,7 +666,7 @@ def main(args: argparse.Namespace) -> None:
             )
 
         # Measure the masks and write the mask and ellipse parameters
-        add_mask_props_to_group(store_path, video_id)
+        compute_mask_props_of_video(video_id, store_path)
 
     # Consolidate the store's metadata once, after every write of this run
     # (skipped if the caller consolidates the store later, e.g. once after
