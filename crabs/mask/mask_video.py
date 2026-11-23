@@ -624,13 +624,7 @@ def main(args: argparse.Namespace) -> None:
                 "prompt_type": "bounding_box",
                 # config values of the run, with defaults for keys the
                 # config file leaves out
-                "mask_config": {
-                    "sam2_model_id": sam2_model_id,
-                    "max_prompts_per_batch": max_prompts_per_batch,
-                    "n_frames_per_chunk": n_frames_per_chunk,
-                    "n_frames_per_shard": n_frames_per_shard,
-                    "occlusion_policy": occlusion_policy,
-                },
+                "mask_config": mask_config,
             },
             n_frames_per_chunk=n_frames_per_chunk,
             n_frames_per_shard=n_frames_per_shard,
