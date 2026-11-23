@@ -1,20 +1,20 @@
 """Zarr encoding of the float variables of a masks store.
 
-The boxes and the mask and ellipse parameters are float32 arrays with a
-`time` and an `individual` axis, and NaN wherever a crab has no box. Two
-lossless codecs make them ~39% smaller on real data than zarr's default
+The boxes, the mask and ellipse parameters are float32 arrays with a
+`time` and an `individual` axis, and NaN wherever there is no box. We use
+two lossless codecs that make their size ~39% smaller than zarr's default
 (zstd alone), with bit-identical values:
 
 - A transpose, so within each chunk the values of one individual over
-  time are contiguous on disk, not the values of all individuals at one
-  frame. A crab's values change little from frame to frame, and the NaN
-  where it is absent become long runs.
-- A byte shuffle (in blosc, with zstd inside), which groups the 1st,
-  2nd, 3rd and 4th bytes of every float. Along a track the high bytes
-  barely change, so they compress to almost nothing.
+  time are contiguous on disk. Values change little from frame to frame,
+  and the NaN where a crab is absent form long runs, so both compress
+  better.
 
-Both codecs are part of the zarr v3 spec and are undone on read, so the
-arrays keep their dims and are read as before.
+- A byte shuffle (in blosc, with zstd inside), which groups the 1st,
+  2nd, 3rd and 4th bytes of every float. Along a trajectory, the high
+  bytes barely change, so they are also amenable to compression.
+
+Both codecs are undone on read, and the arrays keep their dims.
 """
 
 from zarr.codecs import BloscCodec, TransposeCodec
