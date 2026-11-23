@@ -113,13 +113,10 @@ def copy_video_bboxes_to_masks(
 ) -> None:
     """Copy one video's boxes into the masks store.
 
-    The boxes (`position`, `shape` and `confidence`) are the prompts
-    used to predict the masks.
-
     Parameters
     ----------
     ds_video : xr.Dataset
-        The video group of the trajectories store, as read from zarr.
+        The video group of the trajectories store.
     mask_store_path : str | Path
         Path to the masks zarr store.
 
@@ -132,7 +129,7 @@ def copy_video_bboxes_to_masks(
         group's `time`.
 
     """
-    # Read masks group
+    # Read masks for the selected video
     video_id = ds_video.attrs["video_id"]
     ds_masks = xr.open_zarr(
         mask_store_path,
@@ -151,7 +148,7 @@ def copy_video_bboxes_to_masks(
                 "store differs from that of the masks store."
             )
 
-    # Check the trajectories time axis is the clip frame index
+    # Check the trajectories time axis is the 0-based clip frame index
     if not np.array_equal(
         ds_video.time.values,
         np.arange(ds_video.sizes["time"]),
@@ -175,7 +172,7 @@ def copy_video_bboxes_to_masks(
             "axis."
         )
 
-    # Define bbox dataset to append
+    # Slice bbox variables to append
     ds_boxes_to_append = ds_video[BBOX_VARS].reindex(time=ds_masks.time.values)
 
     # Reindexing alters the dask chunks, so restore the trajectories' chunks
@@ -191,7 +188,9 @@ def copy_video_bboxes_to_masks(
         .chunk(chunks)
         # drop all coordinates to not overwrite the masks' ones,
         # except `space`, which does not exist in the mask store
-        # (coords should be the same but they may vary in dtype etc)
+        # (coords should be the same but they may vary in dtype etc;
+        # zarr would throw an error anyway if dimension sizes differ,
+        # so this is safe)
         .drop_vars([c for c in ds_boxes_to_append.coords if c != "space"])
     )
 
