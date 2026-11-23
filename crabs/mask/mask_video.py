@@ -47,12 +47,11 @@ LABELS_TIME_LAST = TransposeCodec(order=(0, 2, 3, 1))
 ACCELERATOR_TO_DEVICE = {"gpu": "cuda"}
 
 
-def load_mask_config(config_file: str) -> dict:
+def load_full_mask_config(config_file: str) -> dict:
     """Load the masking config, with defaults from the default config file.
 
     The default config file (`DEFAULT_MASK_CONFIG`) is the single source
-    of default values and of valid keys: the given file's values override
-    it, and any key the given file leaves out takes its default value.
+    of default values and of valid keys.
 
     Raises
     ------
@@ -61,15 +60,15 @@ def load_mask_config(config_file: str) -> dict:
         misspelled or renamed one, which would otherwise be ignored.
 
     """
-    defaults = read_yaml(DEFAULT_MASK_CONFIG)
-    config = read_yaml(config_file)
-    unknown = sorted(set(config) - set(defaults))
-    if unknown:
+    default_config = read_yaml(DEFAULT_MASK_CONFIG)
+    input_config = read_yaml(config_file)
+    unrecognised_keys = sorted(set(input_config) - set(default_config))
+    if unrecognised_keys:
         raise ValueError(
-            f"Unknown keys {unknown} in {config_file}. "
-            f"Valid keys are {sorted(defaults)}."
+            f"Unknown keys {unrecognised_keys} in {config_file}. "
+            f"Valid keys are {sorted(default_config)}."
         )
-    return {**defaults, **config}
+    return {**default_config, **input_config}
 
 
 def load_sam2_predictor(model_id: str, device: str):
@@ -528,9 +527,8 @@ def main(args: argparse.Namespace) -> None:
             f"'{boxes_path.name}' has suffix '{boxes_path.suffix}'."
         )
 
-    # Get mask config (keys missing from the file take the defaults
-    # in the default config file)
-    mask_config = load_mask_config(args.mask_config_file)
+    # Get full mask config
+    mask_config = load_full_mask_config(args.mask_config_file)
     sam2_model_id = mask_config["sam2_model_id"]
     max_prompts_per_batch = mask_config["max_prompts_per_batch"]
     n_frames_per_chunk = mask_config["n_frames_per_chunk"]
