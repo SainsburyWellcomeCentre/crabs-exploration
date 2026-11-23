@@ -89,6 +89,10 @@ export UV_CACHE_DIR=/ceph/python_envs/sminano/uv-cache
 # and the other jobs fail with "Timeout when waiting for lock".
 export UV_LOCK_TIMEOUT=3600  # seconds
 
+# replace virtual environment if it exists
+# (relevant if job is requeued)
+export UV_VENV_CLEAR=1
+
 # create virtual environment with uv
 ENV_NAME=crabs-mask-$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID
 ENV_PREFIX=/ceph/python_envs/sminano/$ENV_NAME
