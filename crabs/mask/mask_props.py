@@ -18,7 +18,7 @@ from skimage.measure import regionprops_table
 from crabs.mask.utils.float_encoding import float_var_encoding
 
 # Map regionprops_table property to data variable
-PROPS_TO_VARS = {
+REGIONPROPS_TO_VARS = {
     "area": "mask_area",
     "solidity": "mask_area_to_convex_hull_area",
     "extent": "mask_area_to_mask_bbox_area",
@@ -28,7 +28,7 @@ PROPS_TO_VARS = {
 }
 
 # Variables with dims (clip_id, time, individual)
-SCALAR_VARS = [*PROPS_TO_VARS.values(), "ellipse_major_axis_theta"]
+SCALAR_VARS = [*REGIONPROPS_TO_VARS.values(), "ellipse_major_axis_theta"]
 
 # All variables written by `add_mask_props_to_group`
 MASK_PROPS_VARS = [*SCALAR_VARS, "mask_centroid"]
@@ -44,10 +44,10 @@ def measure_label_frame(label_frame: np.ndarray) -> dict[str, np.ndarray]:
     """
     table = regionprops_table(
         label_frame,
-        properties=["label", "centroid", "orientation", *PROPS_TO_VARS],
+        properties=["label", "centroid", "orientation", *REGIONPROPS_TO_VARS],
     )
     out = {"label": table["label"]}
-    out |= {var: table[prop] for prop, var in PROPS_TO_VARS.items()}
+    out |= {var: table[prop] for prop, var in REGIONPROPS_TO_VARS.items()}
 
     # Convert geometric properties to the x-axis
     # (scikit-image measures from the row axis)
@@ -61,7 +61,7 @@ def measure_label_frame(label_frame: np.ndarray) -> dict[str, np.ndarray]:
     return out
 
 
-def frames_with_boxes(ds_clip: xr.Dataset) -> np.ndarray:
+def get_frames_idcs_with_boxes(ds_clip: xr.Dataset) -> np.ndarray:
     """Return the `time` indices where any individual has a finite position.
 
     `mask-tracked-crabs` runs SAM2 only on frames with boxes, so every
@@ -276,7 +276,7 @@ def add_mask_props_to_group(
         ds_clip = ds.isel(clip_id=clip_index)
         ds_props = compute_clip_mask_props_dataset(
             ds_clip.labels,
-            frames_with_boxes(ds_clip[["position"]]),
+            get_frames_idcs_with_boxes(ds_clip[["position"]]),
             label_of,
         )
 

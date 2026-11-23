@@ -11,7 +11,7 @@ from crabs.mask.mask_props import (
     SCALAR_VARS,
     add_mask_props_to_group,
     compute_clip_mask_props_dataset,
-    frames_with_boxes,
+    get_frames_idcs_with_boxes,
 )
 from crabs.mask.mask_video import create_mask_store
 from crabs.mask.utils.bbox_prompts import (
@@ -193,13 +193,13 @@ def test_compute_clip_mask_props_dataset_known_ellipse(
     )
 
 
-def test_frames_with_boxes_matches_extract_bboxes_from_clip(
+def test_get_frames_idcs_with_boxes_matches_extract_bboxes_from_clip(
     ds_tracks: xr.Dataset,
 ):
     """Check the frames measured are those SAM2 is prompted on."""
     for clip_id in ds_tracks.clip_id.values:
         ds_clip = ds_tracks.sel(clip_id=clip_id)
-        assert frames_with_boxes(ds_clip).tolist() == sorted(
+        assert get_frames_idcs_with_boxes(ds_clip).tolist() == sorted(
             extract_bboxes_from_clip(ds_clip)
         )
 
