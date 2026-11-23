@@ -211,7 +211,7 @@ def test_copy_video_bboxes_to_masks(ds_video: xr.Dataset, tmp_path: Path):
     ds_masks_before = open_masks_group(masks_path).load()
 
     # Copy boxes
-    copy_video_bboxes_to_masks(masks_path, ds_tracks)
+    copy_video_bboxes_to_masks(ds_tracks, masks_path)
 
     # Check boxes equal the source
     ds_masks = open_masks_group(masks_path)
@@ -254,7 +254,7 @@ def test_copy_video_bboxes_to_masks_pads_time(
     create_masks_group(masks_path, n_frames=6)
 
     # Copy boxes
-    copy_video_bboxes_to_masks(masks_path, ds_tracks)
+    copy_video_bboxes_to_masks(ds_tracks, masks_path)
 
     # Check
     ds_masks = open_masks_group(masks_path)
@@ -286,7 +286,7 @@ def test_copy_video_bboxes_to_masks_cuts_time(
     create_masks_group(masks_path, n_frames=3)
 
     # Copy boxes
-    copy_video_bboxes_to_masks(masks_path, ds_tracks)
+    copy_video_bboxes_to_masks(ds_tracks, masks_path)
 
     # Check
     ds_masks = open_masks_group(masks_path)
@@ -334,7 +334,7 @@ def test_copy_video_bboxes_to_masks_errors(
     create_masks_group(masks_path, **masks_kwargs)
 
     with pytest.raises(ValueError, match=expected_message):
-        copy_video_bboxes_to_masks(masks_path, ds_tracks)
+        copy_video_bboxes_to_masks(ds_tracks, masks_path)
 
     # Check nothing was written
     ds_masks = open_masks_group(masks_path)

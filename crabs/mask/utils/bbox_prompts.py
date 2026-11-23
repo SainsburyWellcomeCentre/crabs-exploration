@@ -108,8 +108,8 @@ def _validate_time_axis_is_dense(
 
 
 def copy_video_bboxes_to_masks(
-    mask_store_path: str | Path,
     ds_video: xr.Dataset,
+    mask_store_path: str | Path,
 ) -> None:
     """Copy one video's boxes into the masks store.
 
@@ -118,10 +118,10 @@ def copy_video_bboxes_to_masks(
 
     Parameters
     ----------
-    mask_store_path : str | Path
-        Path to the masks zarr store.
     ds_video : xr.Dataset
         The video group of the trajectories store, as read from zarr.
+    mask_store_path : str | Path
+        Path to the masks zarr store.
 
     Raises
     ------

@@ -632,7 +632,7 @@ def main(args: argparse.Namespace) -> None:
         )
 
         # Copy the prompt boxes into the masks group
-        copy_video_bboxes_to_masks(store_path, ds_video)
+        copy_video_bboxes_to_masks(ds_video, store_path)
 
         # Read mapping from individual to mask labels
         # (skipping consolidated metadata, which may be stale during a run)

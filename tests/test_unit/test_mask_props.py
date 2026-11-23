@@ -127,7 +127,7 @@ def create_masks_group_with_labels(
     labels = paint_labels_at_boxes(ds_tracks, label_of_values, n_frames)
     labels_array[:] = labels
     if copy_boxes:
-        copy_video_bboxes_to_masks(store_path, ds_tracks)
+        copy_video_bboxes_to_masks(ds_tracks, store_path)
     return labels
 
 
@@ -412,7 +412,7 @@ def test_snippet_for_old_masks_stores(ds_tracks: xr.Dataset, tmp_path: Path):
     dt_tracks = xr.open_datatree(trajectories_store, engine="zarr")
     for video_id in xr.open_datatree(masks_store, engine="zarr").children:
         copy_video_bboxes_to_masks(
-            masks_store, dt_tracks[video_id].to_dataset()
+            dt_tracks[video_id].to_dataset(), masks_store
         )
         add_mask_props_to_group(masks_store, video_id)
     zarr.consolidate_metadata(masks_store)

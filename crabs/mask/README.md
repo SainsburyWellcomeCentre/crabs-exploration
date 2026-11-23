@@ -129,7 +129,7 @@ trajectories_store = "CrabTracks-slurm3644250.zarr"  # each group's boxes.file a
 
 dt_tracks = xr.open_datatree(trajectories_store, engine="zarr")
 for video_id in xr.open_datatree(masks_store, engine="zarr").children:
-    copy_video_bboxes_to_masks(masks_store, dt_tracks[video_id].to_dataset())
+    copy_video_bboxes_to_masks(dt_tracks[video_id].to_dataset(), masks_store)
     add_mask_props_to_group(masks_store, video_id)
 zarr.consolidate_metadata(masks_store)
 ```
