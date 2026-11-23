@@ -31,7 +31,7 @@ mask-tracked-crabs \
 To run the masking pipeline over a full trajectories store on the cluster, use the script provided at [`bash_scripts/run_mask_array.sh`](../../bash_scripts/run_mask_array.sh). It will launch a SLURM array job, with each job processing one video and appending its result to the shared store. See [`guides/MaskTrackedCrabsHPC.md`](../../guides/MaskTrackedCrabsHPC.md) for further details.
 
 ## Parameters
-The default masking parameters live in [`crabs/mask/config/mask_config.yaml`](config/mask_config.yaml). To set non-default values, copy that file, edit it, and pass it with `--mask_config_file`. Your file only needs the keys you want to change; the rest take the defaults listed below. A key that is not listed below, e.g. a misspelled one, raises an error.
+The default masking parameters live in [`crabs/mask/config/mask_config.yaml`](config/mask_config.yaml). To set non-default values, create a yaml file with the desired values and pass it with `--mask_config_file`. Your file only needs the keys you want to change; the rest take the defaults. A key that is not listed below, e.g. a misspelled one, raises an error.
 
 - `sam2_model_id`: the SAM2 model to use, as named by Hugging Face. By default, `facebook/sam2.1-hiera-base-plus`. The options are, from fastest to most accurate:
     - `facebook/sam2.1-hiera-tiny`
@@ -41,8 +41,8 @@ The default masking parameters live in [`crabs/mask/config/mask_config.yaml`](co
 
     The older `facebook/sam2-hiera-*` checkpoints also work.
 - `max_prompts_per_batch`: how many box prompts are passed to SAM2 in one prediction step (by default 32). It is the main knob for controlling peak GPU memory. A prediction step covers one frame at most. SAM2 upsamples every prompt's mask to the full frame as float32 logits and then thresholds it to a boolean mask, which costs `H × W × 5` bytes per prompt (~44 MB at 4096×2160, so ~1.4 GB for 32 prompts).
-- `n_frames_per_chunk`: frames per `labels` chunk (by default 8). More frames per chunk compress better, but reading one frame decodes its whole chunk.
-- `n_frames_per_shard`: frames per shard file (by default 16), a multiple of `n_frames_per_chunk`. Finished frames are held in memory until a shard is full, then they are written as one file. Larger values use more memory but produce fewer files. The in-memory buffer is `n_frames_per_shard × H × W × 2` bytes (~280 MB for 16 frames at 4096×2160), and writing a shard needs about 3× that again on top. A `null` value disables sharding, so each chunk is its own file.
+- `n_frames_per_chunk`: frames contained in a chunk of `labels` (by default 8). More frames per chunk compress better, but reading one frame decodes its whole chunk.
+- `n_frames_per_shard`: frames per shard file (by default 16), a multiple of `n_frames_per_chunk`. Computed frames are held in memory until a shard is full, then they are written as one file. Larger values use more memory but produce fewer files. The in-memory buffer is `n_frames_per_shard × H × W × 2` bytes (~280 MB for 16 frames at 4096×2160), and writing a shard needs about 3× that on top. A `null` value disables sharding, so each chunk is its own file.
 - `occlusion_policy`: which crab keeps a pixel where two masks overlap. By default, `smallest_wins`, which is the only policy implemented.
 
 
