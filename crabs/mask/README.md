@@ -67,15 +67,11 @@ The default masking parameters live in [`crabs/mask/config/mask_config.yaml`](co
     └── individual  e.g. ["id_0000", …]  — copied from the trajectories store
 ```
 
-`labels` is stored with `time` last within each chunk, using a `transpose` codec, and compressed with zstd at level 15. Each pixel's values over the chunk's frames are then contiguous and compress well. On real masks, this is ~57% smaller than zarr's default (zstd level 3, one frame per chunk), and reading frames in order is no slower. zarr undoes the transpose on read, so `labels` keeps its dims.
-
-The float variables (the boxes and the mask and ellipse parameters) are written with two lossless codecs, which make them ~39% smaller on real data, with bit-identical values. A `transpose` codec stores each chunk with `time` last, so each crab's values over time are contiguous on disk, and a blosc byte shuffle groups the bytes that barely change along a track. Both codecs are part of the zarr v3 spec and are undone on read, so the arrays keep their dims. See [`float_encoding.py`](utils/float_encoding.py).
-
 The `clip_id`, `time` and `individual` coordinates are the trajectories store's own, so masks and trajectories for the same clips align 1:1 with no reindexing. `label_of` maps each `individual` to its pixel value in the label image, and the reverse lookup for a label `lbl` is `ds.individual.values[ds.label_of.values == lbl]`.
 
 **Boxes.** `position`, `shape` and `confidence` are copied from the trajectories store when the group is created. They are a snapshot of the prompts the masks were predicted from, and are not updated if the trajectories store is later rewritten. They are reindexed to the masks group's `time`, which is NaN-padded where it is longer.
 
-**Mask and ellipse parameters.** After the last clip of a video is masked, its stored masks are measured with `scikit-image`'s `regionprops_table`, and 8 variables are written next to the boxes, at the same `(clip_id, time, individual)`. They are NaN where there is no mask. Their definitions are in the docstring of `compute_clip_mask_props_dataset` in [`mask_props.py`](mask_props.py). In short:
+**Mask and ellipse parameters.** Each clip's masks are stored in `labels` as one `uint16` image per frame, where each pixel holds the label of the crab covering it (see `label_of`), or 0 for background. After the last clip of a video is masked, these masks are measured with `scikit-image`'s `regionprops_table`, and 8 variables are written next to the boxes, at the same `(clip_id, time, individual)`. They are NaN where there is no mask. Their definitions are in the docstring of `compute_clip_mask_props_dataset` in [`mask_props.py`](mask_props.py). In short:
 
 - `mask_centroid`: mean (x, y) of the mask pixels, in pixels.
 - `mask_area`: number of mask pixels.
@@ -113,6 +109,11 @@ viewer = napari.Viewer()
 viewer.add_labels(ds.labels, name="crab masks")  # adds sliders over clip_id and time
 napari.run()  # needed when running from a script; not in a notebook or IPython
 ```
+
+## Compression
+`labels` is stored with `time` last within each chunk, using a `transpose` codec, and compressed with zstd at level 15. Each pixel's values over the chunk's frames are then contiguous and compress well. On real masks, this is ~57% smaller than zarr's default (zstd level 3, one frame per chunk), and reading frames in order is no slower. zarr undoes the transpose on read, so `labels` keeps its dims.
+
+The float variables (the boxes and the mask and ellipse parameters) are written with two lossless codecs, which make them ~39% smaller on real data, with bit-identical values. A `transpose` codec stores each chunk with `time` last, so each crab's values over time are contiguous on disk, and a blosc byte shuffle groups the bytes that barely change along a track. Both codecs are part of the zarr v3 spec and are undone on read, so the arrays keep their dims. See [`float_encoding.py`](utils/float_encoding.py).
 
 ## Old masks stores
 A masks store written before the boxes and the mask and ellipse parameters were added holds only `labels` and `label_of`. To add them, without running SAM2 again, run on CPU:
