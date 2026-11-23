@@ -611,6 +611,24 @@ def test_main_consolidates_metadata(
             assert f"{video_id}/{var}" in flat, var
 
 
+def test_main_no_consolidate(
+    trajectories_store_and_clips: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Check `--no_consolidate` leaves the root without consolidated metadata.
+
+    Concurrent runs writing to the same store would otherwise overwrite
+    each other's consolidated metadata with stale snapshots.
+    """
+    patch_sam2_loader(monkeypatch, FakePredictor())
+    output_dir = run_main(
+        trajectories_store_and_clips, extra_args=["--no_consolidate"]
+    )
+
+    (store_path,) = output_dir.glob("*_masks_*.zarr")
+    root = zarr.open_group(store_path, mode="r", use_consolidated=False)
+    assert root.metadata.consolidated_metadata is None
+
+
 def test_main_fails_on_short_clip_video(
     trajectories_store_and_clips: Path, monkeypatch: pytest.MonkeyPatch
 ):

@@ -681,7 +681,10 @@ def main(args: argparse.Namespace) -> None:
         add_mask_props_to_group(store_path, video_id)
 
     # Consolidate the store's metadata once, after every write of this run
-    zarr.consolidate_metadata(store_path)
+    # (skipped if the caller consolidates the store later, e.g. once after
+    # every task of an array job writing to the same store has finished)
+    if not args.no_consolidate:
+        zarr.consolidate_metadata(store_path)
 
     logging.info(f"Masks written to {store_path}")
 
@@ -779,6 +782,16 @@ def mask_parse_args(args: list[str]) -> argparse.Namespace:
             "'w-' fails if that video's group already exists; "
             "'w' overwrites only that video's group, leaving other videos in "
             "the store untouched (e.g. to re-mask one video). Default: 'w-'."
+        ),
+    )
+    parser.add_argument(
+        "--no_consolidate",
+        action="store_true",
+        help=(
+            "Skip consolidating the output store's metadata at the end of "
+            "the run. Use it when several runs write to the same store at "
+            "once (e.g. a cluster array job), and consolidate the store "
+            "once after all of them finish. Default: consolidate."
         ),
     )
     return parser.parse_args(args)

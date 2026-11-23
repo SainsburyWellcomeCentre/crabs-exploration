@@ -69,6 +69,26 @@ if [[ $SLURM_ARRAY_TASK_COUNT -ne $N_VIDEOS ]]; then
     exit 1
 fi
 
+# ------------------------------------
+# Submit job to consolidate the store
+# ------------------------------------
+# Every task writes to the same store, so consolidating the store's metadata
+# at the end of each task would race: a task's stale snapshot of the store
+# could overwrite a later, complete one. Instead, the tasks skip it
+# (--no_consolidate below) and task 0 submits a job that consolidates the
+# store once, after every task in the array has ended (afterany: even if
+# some failed). If task 0 is requeued, it submits that job again, which is
+# harmless.
+if [[ $SLURM_ARRAY_TASK_ID -eq 0 ]]; then
+    sbatch \
+        --dependency=afterany:$SLURM_ARRAY_JOB_ID \
+        -p cpu -N 1 --mem 4G -t 0-01:00 \
+        -o $LOG_DIR/slurm_consolidate.%j.%N.out \
+        -e $LOG_DIR/slurm_consolidate.%j.%N.err \
+        --wrap "module load uv && uv run --no-project --with 'zarr>=3' \
+            python -c 'import zarr; zarr.consolidate_metadata(\"$MASK_ZARR_STORE_OUTPUT\")'"
+fi
+
 # ---------------------------
 # Create virtual environment
 # ---------------------------
@@ -159,6 +179,7 @@ fi
 # --match is an exact video group name here, so this job masks every clip
 # of one video. --output_store names the store rather than letting the
 # command pick a timestamped name, so all jobs write into the same one.
+# --no_consolidate leaves consolidating the store to the job submitted above.
 # /usr/bin/time -v logs the peak memory of the run to the .err file
 # ("Maximum resident set size"). Unlike sacct's MaxRSS, it excludes the
 # file cache.
@@ -170,6 +191,7 @@ fi
     "${CONFIG_ARGS[@]}"  \
     --zarr_mode_store $ZARR_MODE_STORE  \
     --zarr_mode_group $ZARR_MODE_GROUP  \
+    --no_consolidate  \
     --accelerator gpu
 
 echo "Completed masking of video $VIDEO_ID with task ID = $SLURM_ARRAY_TASK_ID"
