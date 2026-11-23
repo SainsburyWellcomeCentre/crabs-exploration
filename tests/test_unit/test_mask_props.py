@@ -9,7 +9,6 @@ from zarr.codecs import BloscCodec
 from crabs.mask.mask_props import (
     MASK_PROPS_VARS,
     SCALAR_VARS,
-    _invert_label_of,
     add_mask_props_to_group,
     compute_clip_mask_props_dataset,
     frames_with_boxes,
@@ -35,6 +34,7 @@ FRAME_SHAPE = (32, 32)  # height, width
 INDIVIDUALS = ["id_0", "id_1", "id_2"]
 ATTRS = {"occlusion_policy": "smallest_wins", "boxes": {"file": "t.zarr"}}
 TIME_CHUNK = 2  # shorter than a clip
+LABELS_DIMS = ("time", "img_h", "img_w")
 
 
 @pytest.fixture()
@@ -152,11 +152,9 @@ def test_compute_clip_mask_props_dataset_agrees_with_script(
 
     # Measure with crabs
     ds_props = compute_clip_mask_props_dataset(
-        label_images[np.newaxis],  # (1, n_frames, h, w)
-        clip_index=0,
-        time_slice=slice(0, n_frames),
-        frames=np.arange(n_frames),
-        individual_of_label=_invert_label_of(np.array([1, 2, 3])),
+        xr.DataArray(label_images, dims=LABELS_DIMS),
+        frames_with_boxes=np.arange(n_frames),
+        label_of=np.array([1, 2, 3]),
     )
 
     xr.testing.assert_allclose(
@@ -174,12 +172,10 @@ def test_compute_clip_mask_props_dataset_known_ellipse(
     """Check the parameters of an ellipse rotated by pi / 4."""
     # Measure frame 1, which holds a rotated ellipse of label 3
     ds_props = compute_clip_mask_props_dataset(
-        ellipse_labels.label_images[np.newaxis],
-        clip_index=0,
-        time_slice=slice(1, 2),
-        frames=np.array([1]),
-        individual_of_label=_invert_label_of(np.array([1, 2, 3])),
-    ).isel(time=0, individual=2)
+        xr.DataArray(ellipse_labels.label_images, dims=LABELS_DIMS),
+        frames_with_boxes=np.array([1]),
+        label_of=np.array([1, 2, 3]),
+    ).isel(time=1, individual=2)
 
     assert float(ds_props.ellipse_major_axis_theta) == pytest.approx(
         np.pi / 4, abs=0.02
@@ -195,21 +191,6 @@ def test_compute_clip_mask_props_dataset_known_ellipse(
         [ellipse_labels.centre_x, ellipse_labels.centre_y],
         atol=0.01,
     )
-
-
-def test_compute_clip_mask_props_dataset_unknown_label():
-    """Check a label that is not in `label_of` raises an error."""
-    labels = np.zeros((1, 1, *FRAME_SHAPE), dtype=np.uint16)
-    paint_square(labels[0, 0], 10, 3, 9)  # 9 is not a crab's label
-
-    with pytest.raises(ValueError, match=r"labels \[9\] that are not in"):
-        compute_clip_mask_props_dataset(
-            labels,
-            clip_index=0,
-            time_slice=slice(0, 1),
-            frames=np.array([0]),
-            individual_of_label=_invert_label_of(np.array([1, 2, 3])),
-        )
 
 
 def test_frames_with_boxes_matches_extract_bboxes_from_clip(
@@ -301,15 +282,12 @@ def test_add_mask_props_to_group(ds_tracks: xr.Dataset, tmp_path: Path):
         assert [type(c) for c in group[var].compressors] == [BloscCodec]
 
     # Check values equal one call over each whole clip
-    labels = ds_masks.labels.values
     n_frames = ds_masks.sizes["time"]
     for clip_index in range(ds_masks.sizes["clip_id"]):
         expected = compute_clip_mask_props_dataset(
-            labels,
-            clip_index,
-            slice(0, n_frames),
+            ds_masks.labels.isel(clip_id=clip_index).load(),
             np.arange(n_frames),
-            _invert_label_of(np.array([1, 2, 3])),
+            np.array([1, 2, 3]),
         )
         xr.testing.assert_equal(
             ds_masks[MASK_PROPS_VARS]
