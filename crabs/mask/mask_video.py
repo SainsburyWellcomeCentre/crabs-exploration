@@ -187,8 +187,7 @@ def create_mask_store(
         encoding["labels"]["shards"] = shards
 
     # Write dataset to zarr groups
-    # (the store is consolidated once, at the end of `main`, so neither
-    # this write nor the read below uses consolidated metadata)
+    # (the store is consolidated once, at the end of `main`)
     ds.to_zarr(
         store_path,
         group=video_id,
