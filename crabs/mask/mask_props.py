@@ -10,7 +10,6 @@ import logging
 import time
 from pathlib import Path
 
-import dask.array as da
 import numpy as np
 import xarray as xr
 import zarr
@@ -39,8 +38,9 @@ def measure_label_frame(label_frame: np.ndarray) -> dict[str, np.ndarray]:
     """Measure every mask in one label image.
 
     Returns one array per property, with one value per label found in
-    the image (``"label"`` holds the labels themselves). Label 0, the
-    background, is skipped by scikit-image.
+    the image along the first axis (``"label"`` holds the labels
+    themselves). ``"mask_centroid"`` has shape (n_labels, 2), for (x, y).
+    Label 0, the background, is skipped by scikit-image.
     """
     table = regionprops_table(
         label_frame,
@@ -54,8 +54,10 @@ def measure_label_frame(label_frame: np.ndarray) -> dict[str, np.ndarray]:
     out["ellipse_major_axis_theta"] = np.mod(
         np.pi / 2 - table["orientation"], np.pi
     )
-    out["mask_centroid_x"] = table["centroid-1"]  # x = column
-    out["mask_centroid_y"] = table["centroid-0"]  # y = row
+    # (x, y) = (column, row)
+    out["mask_centroid"] = np.stack(
+        [table["centroid-1"], table["centroid-0"]], axis=-1
+    )
     return out
 
 
@@ -74,15 +76,14 @@ def compute_clip_mask_props_dataset(
     frames_with_boxes: np.ndarray,
     label_of: np.ndarray,
 ) -> xr.Dataset:
-    """Measure the masks of one time chunk of one clip.
+    """Measure the masks of one clip.
 
-    `labels` is read one chunk of frames at a time, only for the chunks
-    holding a frame included in `frames_with_boxes` (reading one frame decodes
-    ts whole chunk anyway).
+    `labels` is read one time chunk at a time, and only the frames in
+    `frames_with_boxes` are read, so chunks with none are skipped.
 
-    Pass `labels` lazily, e.g. ``ds.labels.isel(clip_id=c, time=s)``
-    of a dataset opened with `xr.open_zarr`: loading a whole clip of 4K
-    label images would take several GB.
+    Pass `labels` lazily, e.g. ``ds.labels.isel(clip_id=c)`` of a dataset
+    opened with `xr.open_zarr`: loading a whole clip of 4K label images
+    would take several GB.
 
     The values measured for label ``label_of[k]`` are placed at position
     ``k`` along `individual`.
@@ -114,7 +115,7 @@ def compute_clip_mask_props_dataset(
     Parameters
     ----------
     labels : xr.DataArray
-        The (time, img_h, img_w) label images of the time chunk.
+        The (time, img_h, img_w) label images of the clip.
     frames_with_boxes : np.ndarray
         Positions along the `time` of `labels` to measure, e.g. the
         frames with boxes. The other frames are left NaN.
@@ -124,78 +125,57 @@ def compute_clip_mask_props_dataset(
     Returns
     -------
     xr.Dataset
-        The 8 mask and ellipse parameters for the time chunk.
+        The 8 mask and ellipse parameters for the clip.
 
     """
-    n_total_frames, n_individuals = labels.sizes["time"], len(label_of)
-    individual_of_label = _invert_label_of(label_of)
+    n_frames, n_individuals = labels.sizes["time"], len(label_of)
+
+    # Map each label to its position along `individual` (-1 if none)
+    individual_of_label = np.full(int(label_of.max()) + 1, -1)
+    individual_of_label[label_of] = np.arange(n_individuals)
 
     # Initialise one (time, individual) array per scalar variable, and a
-    # (time, space, individual) array for the centroid; NaN where no mask
-    scalar_var_arrays = {
-        var: np.full((n_total_frames, n_individuals), np.nan, dtype=np.float32)
-        for var in SCALAR_VARS
-    }
-    centroid_array = np.full(
-        (n_total_frames, 2, n_individuals), np.nan, dtype=np.float32
-    )
+    # (time, individual, space) array for the centroid; NaN where no mask
+    shape = (n_frames, n_individuals)
+    arrays = {var: np.full(shape, np.nan, np.float32) for var in SCALAR_VARS}
+    arrays["mask_centroid"] = np.full((*shape, 2), np.nan, np.float32)
 
-    # Get the bounds along time of each chunk (one chunk if not lazy)
-    time_chunks = labels.chunksizes.get("time", (n_total_frames,))
-    chunk_bounds = np.cumsum([0, *time_chunks])
-
-    # Loop thru the chunks holding a frame to measure, and their frames
+    # Loop thru the time chunks of `labels` (one chunk if not lazy)
     frames_with_boxes = np.asarray(frames_with_boxes)
-    for chunk_index in np.unique(
-        np.searchsorted(chunk_bounds, frames_with_boxes, side="right") - 1
-    ):
-        # Get chunk boundaries
-        chunk_start, chunk_end = (
-            chunk_bounds[chunk_index],
-            chunk_bounds[chunk_index + 1],
-        )
+    time_chunks = labels.chunksizes.get("time", (n_frames,))
+    chunk_ends = np.cumsum(time_chunks)
+    chunk_starts = chunk_ends - time_chunks
+    for start, end in zip(chunk_starts, chunk_ends, strict=True):
+        # Read only the frames to measure, so chunks without any are
+        # skipped (reading one frame decodes its whole chunk anyway)
+        frames = frames_with_boxes[
+            (frames_with_boxes >= start) & (frames_with_boxes < end)
+        ]
+        if not len(frames):
+            continue
 
-        # Get label frames in this chunk
-        label_frames = labels.isel(time=slice(chunk_start, chunk_end)).values
+        # Label images
+        label_frames = labels.isel(time=frames).values
 
-        # Loop thru frames with boxes in the chunk
-        for frame_idx in frames_with_boxes[
-            (frames_with_boxes >= chunk_start)
-            & (frames_with_boxes < chunk_end)
-        ]:
-            # Measure frame
-            props = measure_label_frame(label_frames[frame_idx - chunk_start])
+        for frame_idx, label_frame in zip(frames, label_frames, strict=True):
+            props = measure_label_frame(label_frame)
 
-            # Get position along `individual` of each label
-            label_IDs_one_frame = props["label"]
-            individual_idcs = individual_of_label[label_IDs_one_frame]
+            # Fill in arrays at each label's individual
+            # (values are rounded to float32 here)
+            individual_idcs = individual_of_label[props["label"]]
+            for var, arr in arrays.items():
+                arr[frame_idx, individual_idcs] = props[var]
 
-            # Fill in arrays (values are rounded to float32 here)
-            for var in SCALAR_VARS:
-                scalar_var_arrays[var][frame_idx, individual_idcs] = props[var]
-            centroid_array[frame_idx, 0, individual_idcs] = props[
-                "mask_centroid_x"
-            ]
-            centroid_array[frame_idx, 1, individual_idcs] = props[
-                "mask_centroid_y"
-            ]
-
+    centroid = arrays.pop("mask_centroid")
     return xr.Dataset(
-        {
-            **{
-                var: (("time", "individual"), arr)
-                for var, arr in scalar_var_arrays.items()
-            },
-            "mask_centroid": (("time", "space", "individual"), centroid_array),
+        {var: (("time", "individual"), arr) for var, arr in arrays.items()}
+        | {
+            "mask_centroid": (
+                ("time", "space", "individual"),
+                centroid.transpose(0, 2, 1),
+            )
         }
     )
-
-
-def _invert_label_of(label_of: np.ndarray) -> np.ndarray:
-    """Map each label to its position along `individual`, -1 if none."""
-    individual_of_label = np.full(int(label_of.max()) + 1, -1)
-    individual_of_label[label_of] = np.arange(len(label_of))
-    return individual_of_label
 
 
 def add_mask_props_to_group(
@@ -209,9 +189,9 @@ def add_mask_props_to_group(
     are float32, with the chunks of the copied `confidence` (and of
     `position`, for `mask_centroid`).
 
-    The variables are first created with no data, and then each time chunk
-    of each clip is measured and written with one region write, so only one
-    time chunk of values is held in memory at a time.
+    The variables are first created with no data, and then each clip is
+    measured and written with one region write. Only one clip of values
+    (small) and one time chunk of `labels` are held in memory at a time.
 
     Every read and write skips the root's consolidated metadata, which may
     be stale while the store is being written.
@@ -262,37 +242,17 @@ def add_mask_props_to_group(
     for var in existing:
         del group[var]
 
-    # Get chunks of the copied boxes
-    scalar_chunks = ds.confidence.encoding["chunks"]  # (clip, time, ind)
-    centroid_chunks = ds.position.encoding["chunks"]  # (clip, time, sp, ind)
-    n_clips, n_frames = ds.sizes["clip_id"], ds.sizes["time"]
-    n_individuals, n_space = ds.sizes["individual"], ds.sizes["space"]
+    # Create the 8 variables, writing metadata only. They take the dims
+    # and chunks of the copied `confidence` (scalars) and `position`
+    # (centroid). `.variable` leaves out coords, which already exist.
+    def nan_like(data_array: xr.DataArray) -> xr.Variable:
+        var = xr.full_like(data_array.variable, np.nan, dtype=np.float32)
+        var.attrs = {}
+        return var
 
-    # Create the 8 variables, writing metadata only
     ds_template = xr.Dataset(
-        {
-            **{
-                var: (
-                    ("clip_id", "time", "individual"),
-                    da.full(
-                        (n_clips, n_frames, n_individuals),
-                        np.nan,
-                        dtype=np.float32,
-                        chunks=scalar_chunks,
-                    ),
-                )
-                for var in SCALAR_VARS
-            },
-            "mask_centroid": (
-                ("clip_id", "time", "space", "individual"),
-                da.full(
-                    (n_clips, n_frames, n_space, n_individuals),
-                    np.nan,
-                    dtype=np.float32,
-                    chunks=centroid_chunks,
-                ),
-            ),
-        },
+        {var: nan_like(ds.confidence) for var in SCALAR_VARS}
+        | {"mask_centroid": nan_like(ds.position)},
         # copy the group's attributes, as to_zarr(mode="a") replaces them
         attrs=ds.attrs,
     )
@@ -308,34 +268,25 @@ def add_mask_props_to_group(
         consolidated=False,
     )
 
-    # Get time chunks
-    time_chunk = scalar_chunks[1]
-    time_starts = range(0, n_frames, time_chunk)
-
-    # Loop thru clips and time chunks
+    # Loop thru clips
     for clip_index, clip_id in enumerate(ds.clip_id.values):
         start_time = time.perf_counter()
-        for start in time_starts:
-            time_slice = slice(start, min(start + time_chunk, n_frames))
 
-            # Measure masks of frames with boxes (`labels` stays lazy)
-            ds_chunk = ds.isel(clip_id=clip_index, time=time_slice)
-            ds_props = compute_clip_mask_props_dataset(
-                ds_chunk.labels,
-                frames_with_boxes(ds_chunk[["position"]]),
-                label_of,
-            )
+        # Measure masks of frames with boxes (`labels` stays lazy)
+        ds_clip = ds.isel(clip_id=clip_index)
+        ds_props = compute_clip_mask_props_dataset(
+            ds_clip.labels,
+            frames_with_boxes(ds_clip[["position"]]),
+            label_of,
+        )
 
-            # Write one chunk along clip_id and time
-            ds_props.expand_dims("clip_id").to_zarr(
-                store_path,
-                group=video_id,
-                region={
-                    "clip_id": slice(clip_index, clip_index + 1),
-                    "time": time_slice,
-                },
-                consolidated=False,
-            )
+        # Write the clip's values
+        ds_props.expand_dims("clip_id").to_zarr(
+            store_path,
+            group=video_id,
+            region={"clip_id": slice(clip_index, clip_index + 1)},
+            consolidated=False,
+        )
         logging.info(
             f"Measured masks of {video_id}/{clip_id} in "
             f"{time.perf_counter() - start_time:.1f} s"

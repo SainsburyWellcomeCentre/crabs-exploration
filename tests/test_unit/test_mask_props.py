@@ -242,8 +242,9 @@ def test_add_mask_props_to_group(ds_tracks: xr.Dataset, tmp_path: Path):
     """Check the 8 variables, their layout and their values.
 
     The values must equal those of one `compute_clip_mask_props_dataset`
-    call over a whole clip, although the group is measured one time chunk
-    at a time. The other arrays and the attrs must be unchanged.
+    call over each whole clip, loaded in memory, although the group's
+    `labels` are read lazily, one time chunk at a time. The other arrays
+    and the attrs must be unchanged.
     """
     # Create masks group
     store_path = tmp_path / "masks.zarr"
