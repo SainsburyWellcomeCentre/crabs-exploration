@@ -40,7 +40,7 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     max_prompts_per_batch: 16
     ```
 
-    Keys left out take the defaults, so they follow any change to the defaults in the code. This is why it is best not to copy the whole default file. An unknown key, e.g. a misspelled one, makes the job fail.
+    Keys left out take the defaults, so they follow any change to the defaults in the code. An unknown key, e.g. a misspelled one, makes the job fail.
 
     The parameters are described in the [masking README](../crabs/mask/README.md#parameters). On the cluster, the two most likely to need tuning are:
 
@@ -126,12 +126,19 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     ├── <video_id>/                                  # one group per video
     │   ├── labels    (clip_id, time, img_h, img_w)  uint16
     │   ├── label_of  (individual,)                  uint16
+    │   ├── position, shape  (clip_id, time, space, individual)  float32  — copied boxes
+    │   ├── confidence       (clip_id, time, individual)         float32  — copied boxes
+    │   ├── mask_area, mask_area_to_convex_hull_area, mask_area_to_mask_bbox_area,
+    │   │   ellipse_major_axis_length, ellipse_minor_axis_length,
+    │   │   ellipse_major_axis_theta, ellipse_eccentricity
+    │   │                    (clip_id, time, individual)         float32
+    │   ├── mask_centroid    (clip_id, time, space, individual)  float32
     │   ├── clip_id     e.g. ["Loop00", "Loop05"]
     │   └── individual  e.g. ["id_0000", …]  — copied from the trajectories store
     └── logs/
     ```
 
-    `labels` holds **one label image per frame**: a single integer array where `0` is background and every other value identifies one crab. The `clip_id`, `time` and `individual` coordinates are the trajectories store's own, so the mask store and the trajectories store align 1:1 with no reindexing. Each group's `mask_config` attribute records the config values its job ran with, including the defaults.
+    `labels` holds **one label image per frame**: a single integer array where `0` is background and every other value identifies one crab. The `clip_id`, `time` and `individual` coordinates are the trajectories store's own, so the mask store and the trajectories store align 1:1 with no reindexing. Each group's `mask_config` attribute records the config values its job ran with, including the defaults. The copied boxes and the mask and ellipse parameters are described in the [masking README](../crabs/mask/README.md#output-store-format).
 
     To check the store holds every video you expected:
 
