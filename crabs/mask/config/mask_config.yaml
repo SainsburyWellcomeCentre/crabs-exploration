@@ -27,7 +27,7 @@ n_frames_per_chunk: 8
 # label image (a uint16 array), so the buffer is
 # n_frames_per_shard x H x W x 2 bytes.
 # For a 4K image: 16 × 4096 × 2160 × 2 ≈ 280 MB.
-# Writing a shard needs about 3-4x that again on top.
+# Writing a shard needs about 3x that again on top (about 4x in total).
 # Larger n_frames_per_shard values use more memory but produce fewer files.
 # null disables sharding (one file per chunk, with no index).
 n_frames_per_shard: 16
