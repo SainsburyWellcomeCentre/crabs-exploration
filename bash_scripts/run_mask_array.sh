@@ -70,7 +70,7 @@ if [[ $SLURM_ARRAY_TASK_COUNT -ne $N_VIDEOS ]]; then
 fi
 
 # ------------------------------------
-# Submit job to consolidate the store
+# Submit final job to consolidate the store
 # ------------------------------------
 # Every task writes to the same store, so consolidating the store's metadata
 # at the end of each task would race: a task's stale snapshot of the store
@@ -179,7 +179,7 @@ fi
 # --match is an exact video group name here, so this job masks every clip
 # of one video. --output_store names the store rather than letting the
 # command pick a timestamped name, so all jobs write into the same one.
-# --no_consolidate leaves consolidating the store to the job submitted above.
+# --no_consolidate leaves consolidating the store to the final job submitted above.
 # /usr/bin/time -v logs the peak memory of the run to the .err file
 # ("Maximum resident set size").
 /usr/bin/time -v mask-tracked-crabs  \

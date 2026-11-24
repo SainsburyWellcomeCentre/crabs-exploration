@@ -668,8 +668,7 @@ def main(args: argparse.Namespace) -> None:
         compute_mask_props_of_video(video_id, store_path)
 
     # Consolidate the store's metadata once, after every write of this run
-    # (skipped if the caller consolidates the store later, e.g. once after
-    # every task of an array job writing to the same store has finished)
+    # (skipped if part of an array job, to avoid a race)
     if not args.no_consolidate:
         zarr.consolidate_metadata(store_path)
 
@@ -777,8 +776,9 @@ def mask_parse_args(args: list[str]) -> argparse.Namespace:
         help=(
             "Skip consolidating the output store's metadata at the end of "
             "the run. Use it when several runs write to the same store at "
-            "once (e.g. a cluster array job), and consolidate the store "
-            "once after all of them finish. Default: consolidate."
+            "once (e.g. a cluster array job) to avoid a race. Instead, "
+            "consolidate the store once after all jobs finish. "
+            "Default: consolidate."
         ),
     )
     return parser.parse_args(args)

@@ -34,15 +34,11 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
 
 4.  **Write a mask config file (optional)**
 
-    By default, the jobs use the masking parameters of the code they install (see [`mask_config.yaml`](../crabs/mask/config/mask_config.yaml)). To change some of them, write a YAML file with only those keys, for example `/ceph/zoo/users/sminano/cluster_mask_config.yaml`:
+    By default, the jobs use the masking parameters of the config that ships with the `crabs` package (see [`mask_config.yaml`](../crabs/mask/config/mask_config.yaml)).
 
-    ```yaml
-    max_prompts_per_batch: 16
-    ```
+    To change some of those parameters, write a YAML file with only the keys to change. Omitted keys take the default values. An unknown key, e.g. a misspelled one, makes the job fail.
 
-    Keys left out take the defaults, so they follow any change to the defaults in the code. An unknown key, e.g. a misspelled one, makes the job fail.
-
-    The parameters are described in the [masking README](../crabs/mask/README.md#parameters). On the cluster, the two most likely to need tuning are:
+    The full set of parameters is described in the [masking README](../crabs/mask/README.md#parameters). On the cluster, the two most likely to change are:
 
     - `max_prompts_per_batch`: lower it if jobs fail with GPU out-of-memory errors.
     - `n_frames_per_shard`: trades memory per job against the number of files written to `/ceph`. Writing one shard needs about 3× the in-memory buffer again on top, so about 4 × `n_frames_per_shard` × 17.7 MB in total at 4096×2160 (~1.1 GB for 16 frames).
