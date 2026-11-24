@@ -117,7 +117,7 @@ BoxesAndLabelIDs = dict[int, tuple[np.ndarray, np.ndarray]]
 LABEL_OFFSET = 1
 
 # Map regionprops_table property to data variable
-PROPS_TO_VARS = {
+REGIONPROPS_TO_VARS = {
     "area": "mask_area",
     "solidity": "mask_area_to_convex_hull_area",
     "extent": "mask_area_to_mask_bbox_area",
@@ -473,7 +473,10 @@ def compute_mask_props_dataset(
 
     # Initialise one (image_id, id) array per scalar variable, and an
     # (image_id, space, id) array for the centroid; NaN where no mask
-    scalar_var_names = [*PROPS_TO_VARS.values(), "ellipse_major_axis_theta"]
+    scalar_var_names = [
+        *REGIONPROPS_TO_VARS.values(),
+        "ellipse_major_axis_theta",
+    ]
     scalar_var_arrays = {
         name: np.full((n_images, n_ids), np.nan) for name in scalar_var_names
     }
@@ -484,12 +487,17 @@ def compute_mask_props_dataset(
         # Compute geom properties
         table = regionprops_table(
             np.asarray(labels_zarr[f]),
-            properties=["label", "centroid", "orientation", *PROPS_TO_VARS],
+            properties=[
+                "label",
+                "centroid",
+                "orientation",
+                *REGIONPROPS_TO_VARS,
+            ],
         )
 
         # Fill in scalar variable arrays
         idx = table["label"] - LABEL_OFFSET
-        for prop_name, var_name in PROPS_TO_VARS.items():
+        for prop_name, var_name in REGIONPROPS_TO_VARS.items():
             scalar_var_arrays[var_name][f, idx] = table[prop_name]
 
         # Convert geometric properties to the x-axis
