@@ -56,8 +56,8 @@ The default masking parameters live in [`crabs/mask/config/mask_config.yaml`](co
 └── <video_id>/                                  # one group per video
     ├── labels    (clip_id, time, img_h, img_w)  uint16
     ├── label_of  (individual,)                  uint16
-    ├── position, shape  (clip_id, time, space, individual)  float32  — copied boxes
-    ├── confidence       (clip_id, time, individual)         float32  — copied boxes
+    ├── position, shape  (clip_id, time, space, individual)  float32  — prompt boxes
+    ├── confidence       (clip_id, time, individual)         float32  — prompt boxes
     ├── mask_area, mask_area_to_convex_hull_area, mask_area_to_mask_bbox_area,
     │   ellipse_major_axis_length, ellipse_minor_axis_length,
     │   ellipse_major_axis_theta, ellipse_eccentricity
@@ -97,7 +97,9 @@ ds = xr.open_datatree(store, engine="zarr", chunks={})["<video_id>"]
 
 # Compute region properties for crab with individual="id_0003" in Loop05
 mask_label = int(ds.label_of.sel(individual="id_0003"))
-mask = ds.labels.sel(clip_id="Loop05") == mask_label     # (time, img_h, img_w) bool
+mask = (
+    ds.labels.sel(clip_id="Loop05") == mask_label
+)  # (time, img_h, img_w) bool
 regionprops(ds.labels.sel(clip_id="Loop05").isel(time=t).values)
 ```
 
@@ -106,7 +108,9 @@ To display the labels of all clips in one video in `napari`:
 import napari
 
 viewer = napari.Viewer()
-viewer.add_labels(ds.labels, name="crab masks")  # adds sliders over clip_id and time
+viewer.add_labels(
+    ds.labels, name="crab masks"
+)  # adds sliders over clip_id and time
 napari.run()  # needed when running from a script; not in a notebook or IPython
 ```
 
@@ -126,7 +130,9 @@ from crabs.mask.mask_props import compute_mask_props_of_video
 from crabs.mask.utils.bbox_prompts import copy_video_bboxes_to_masks
 
 masks_store = "CrabMasks-slurm<array job ID>.zarr"
-trajectories_store = "CrabTracks-slurm3644250.zarr"  # each group's boxes.file attribute
+trajectories_store = (
+    "CrabTracks-slurm3644250.zarr"  # each group's boxes.file attribute
+)
 
 dt_tracks = xr.open_datatree(trajectories_store, engine="zarr")
 for video_id in xr.open_datatree(masks_store, engine="zarr").children:
