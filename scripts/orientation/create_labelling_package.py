@@ -210,32 +210,28 @@ def select_frames(
     return np.sort(np.array(selected_frames, dtype=int))
 
 
-def write_package_subdir(
-    ds: xr.Dataset,
+def create_labelling_subdirectory(
+    ds_bboxes: xr.Dataset,
     image_ids: np.ndarray,
-    store_path: Path,
-    package_dir: Path,
-    package_settings: dict[str, Any],
+    annotations_zarr: Path,
+    labelling_package_dir: Path,
+    labelling_package_settings: dict[str, Any],
 ) -> Path:
-    """Write selected frames and bboxes for one dataset.
+    """Create the labelling package subdirectory for one dataset.
 
-    The subdirectory is named after the store's data directory,
-    ``store_path.parent.parent``, and the frames are copied from its
-    ``frames/`` folder. ``package_settings`` are the sampling settings,
-    saved with the store's path in the ``labelling_package`` attribute.
+    The labelling package has one subdirectory per dataset.
+    The subdirectory is named after the annotations_zarr's grandparent
+    directory (sep2023-full, aug2023-full), and the frames are copied from its
+    ``frames/`` folder.
 
     Returns the path of the subdirectory.
     """
-    data_dir = Path(store_path).parent.parent
-    dataset_package_subdir = package_dir / data_dir.name
-
-    frame_filenames = _filenames(ds)
-    selected_image_ids = image_ids.tolist()
-
-    # Slice the annotations store
+    # Slice the annotations store for the selected frames;
     # bounding box variables and ethology attributes only
     # (no masks, ellipses or SAM2 metadata should reach the labeller)
-    ds_slice = ds.sel(image_id=selected_image_ids)[BBOX_VARS].load()
+    frame_filenames = _filenames(ds_bboxes)
+    selected_image_ids = image_ids.tolist()
+    ds_slice = ds_bboxes.sel(image_id=selected_image_ids)[BBOX_VARS].load()
 
     if set(ds_slice.dims) != BBOX_DIMS:
         raise ValueError(
@@ -248,32 +244,41 @@ def write_package_subdir(
 
     # Add relevant metadata to slice
     ds_slice.attrs = {
-        **{key: ds.attrs[key] for key in ETHOLOGY_ATTRS},
+        **{key: ds_bboxes.attrs[key] for key in ETHOLOGY_ATTRS},
         # overrides the full map from ds: selected frames only
         "map_image_id_to_filename": {
             str(i): frame_filenames[i] for i in selected_image_ids
         },
         "labelling_package": {
-            "source_store": str(Path(store_path).resolve()),
-            **package_settings,
+            "source_store": str(Path(annotations_zarr).resolve()),
+            **labelling_package_settings,
         },
     }
 
-    # write with zarr's default chunks rather than the input store's
+    # Encode with zarr's default chunks rather than the input store's
     for variable in ds_slice.variables.values():
         variable.encoding = {}
-    ds_slice.to_zarr(dataset_package_subdir / "bboxes.zarr", mode="w-")
+
+    # Write to zarr
+    # (annotations_zarr is usually
+    # CrabLabels/sep2023-full/annotations/bboxes_and_masks_....zarr)
+    annotations_dataset_dir = Path(annotations_zarr).parent.parent
+    labelling_package_dataset_dir = (
+        labelling_package_dir / annotations_dataset_dir.name
+    )
+    ds_slice.to_zarr(labelling_package_dataset_dir / "bboxes.zarr", mode="w-")
 
     # Copy the selected frames unchanged
-    frames_dir = dataset_package_subdir / "frames"
-    frames_dir.mkdir(parents=True)
+    annotation_frames_dir = annotations_dataset_dir / "frames"
+    labelling_package_frames_dir = labelling_package_dataset_dir / "frames"
+    labelling_package_frames_dir.mkdir(parents=True)
     for image_id in selected_image_ids:
         shutil.copy2(
-            data_dir / "frames" / frame_filenames[image_id],
-            frames_dir,
+            annotation_frames_dir / frame_filenames[image_id],
+            labelling_package_frames_dir,
         )
 
-    return dataset_package_subdir
+    return labelling_package_dataset_dir
 
 
 def main(args: argparse.Namespace) -> None:
@@ -299,7 +304,7 @@ def main(args: argparse.Namespace) -> None:
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     labelling_package_dir = args.output_dir / f"labelling_package_{timestamp}"
-    package_settings = {
+    labelling_package_settings = {
         "seed": args.seed,
         "camera": args.camera,
         "frames_per_video": args.frames_per_video,
@@ -308,25 +313,37 @@ def main(args: argparse.Namespace) -> None:
         ],
     }
 
-    for store_path, dataset_name in zip(
+    for bboxes_store_path, dataset_name in zip(
         args.stores, dataset_names, strict=True
     ):
-        print(f"{dataset_name}: sampling frames from {store_path}")
+        print(f"{dataset_name}: sampling frames from {bboxes_store_path}")
 
-        ds = load_store(store_path)
-        exclude = excluded_image_ids(args.exclude_package, ds, dataset_name)
+        ds_bboxes = load_store(bboxes_store_path)
+        image_ids_to_exclude = excluded_image_ids(
+            args.exclude_package,
+            ds_bboxes,
+            dataset_name,
+        )
 
         image_ids = select_frames(
-            ds, args.camera, args.frames_per_video, args.seed, exclude
+            ds_bboxes,
+            args.camera,
+            args.frames_per_video,
+            args.seed,
+            image_ids_to_exclude,
         )
-        subdir = write_package_subdir(
-            ds,
+
+        labelling_package_subdir = create_labelling_subdirectory(
+            ds_bboxes,
             image_ids,
-            store_path,
+            bboxes_store_path,
             labelling_package_dir,
-            package_settings,
+            labelling_package_settings,
         )
-        print(f"{dataset_name}: wrote {len(image_ids)} frames to {subdir}")
+        print(
+            f"{dataset_name}: wrote {len(image_ids)} "
+            f"frames to {labelling_package_subdir}"
+        )
 
     print(f"Labelling package written to {labelling_package_dir}")
 

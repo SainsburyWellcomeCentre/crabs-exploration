@@ -19,12 +19,12 @@ from scripts.orientation.annotate_crabs_orientation_manual import (
 from scripts.orientation.create_labelling_package import (
     BBOX_VARS,
     ETHOLOGY_ATTRS,
+    create_labelling_subdirectory,
     excluded_image_ids,
     load_store,
     main,
     parse_args,
     select_frames,
-    write_package_subdir,
 )
 
 # -------- tests for create_labelling_package --------------
@@ -120,7 +120,7 @@ def _build_package(
     ds = load_store(store_path)
     exclude = excluded_image_ids(exclude_packages, ds, "jan2023-full")
     image_ids = select_frames(ds, "Right", frames_per_video, 42, exclude)
-    write_package_subdir(ds, image_ids, store_path, package_dir, {})
+    create_labelling_subdirectory(ds, image_ids, store_path, package_dir, {})
     return image_ids
 
 
@@ -148,7 +148,7 @@ def test_select_frames_and_write_package(input_store, tmp_path):
 
     # Write the package subdirectory
     settings = {"seed": 42, "camera": "Right", "frames_per_video": 2}
-    subdir = write_package_subdir(
+    subdir = create_labelling_subdirectory(
         ds, image_ids, input_store, tmp_path / "package", settings
     )
     assert subdir == tmp_path / "package" / "jan2023-full"
