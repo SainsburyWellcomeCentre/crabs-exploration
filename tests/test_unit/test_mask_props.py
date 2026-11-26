@@ -9,11 +9,11 @@ from zarr.codecs import BloscCodec
 from crabs.mask.mask_props import (
     MASK_PROPS_VARS,
     SCALAR_VARS,
-    compute_clip_mask_props_dataset,
-    compute_mask_props_of_video,
+    compute_mask_props_dataset_one_clip,
+    compute_mask_props_dataset_one_video,
     get_frames_idcs_with_boxes,
 )
-from crabs.mask.mask_video import create_mask_store
+from crabs.mask.mask_video import _create_mask_store
 from crabs.mask.utils.bbox_prompts import (
     BBOX_VARS,
     copy_video_bboxes_to_masks,
@@ -107,7 +107,7 @@ def create_masks_group_with_labels(
     Returns the painted label images.
     """
     n_frames = n_frames or ds_tracks.sizes["time"]
-    labels_array = create_mask_store(
+    labels_array = _create_mask_store(
         store_path=store_path,
         video_id="video",
         clip_ids=[str(c) for c in ds_tracks.clip_id.values],
@@ -136,7 +136,7 @@ def open_masks_group(store_path: Path) -> xr.Dataset:
     return xr.open_zarr(store_path, group="video", consolidated=False)
 
 
-def test_compute_clip_mask_props_dataset_agrees_with_script(
+def test_compute_mask_props_dataset_one_clip_agrees_with_script(
     ellipse_labels: EllipseLabels,  # noqa: F811
     ds_bboxes_annotations: xr.Dataset,  # noqa: F811
 ):
@@ -151,7 +151,7 @@ def test_compute_clip_mask_props_dataset_agrees_with_script(
     expected = compute_mask_props_dataset(label_images, ds_bboxes_annotations)
 
     # Measure with crabs
-    ds_props = compute_clip_mask_props_dataset(
+    ds_props = compute_mask_props_dataset_one_clip(
         xr.DataArray(label_images, dims=LABELS_DIMS),
         frames_with_boxes=np.arange(n_frames),
         label_of=np.array([1, 2, 3]),
@@ -166,12 +166,12 @@ def test_compute_clip_mask_props_dataset_agrees_with_script(
     assert all(ds_props[var].dtype == np.float32 for var in ds_props)
 
 
-def test_compute_clip_mask_props_dataset_known_ellipse(
+def test_compute_mask_props_dataset_one_clip_known_ellipse(
     ellipse_labels: EllipseLabels,  # noqa: F811
 ):
     """Check the parameters of an ellipse rotated by pi / 4."""
     # Measure frame 1, which holds a rotated ellipse of label 3
-    ds_props = compute_clip_mask_props_dataset(
+    ds_props = compute_mask_props_dataset_one_clip(
         xr.DataArray(ellipse_labels.label_images, dims=LABELS_DIMS),
         frames_with_boxes=np.array([1]),
         label_of=np.array([1, 2, 3]),
@@ -204,7 +204,7 @@ def test_get_frames_idcs_with_boxes_matches_extract_bboxes_from_clip(
         )
 
 
-def test_compute_mask_props_of_video_measures_frames_with_boxes(
+def test_compute_mask_props_dataset_one_video_measures_frames_with_boxes(
     ds_tracks: xr.Dataset, tmp_path: Path
 ):
     """Check only frames with a finite position are measured.
@@ -227,7 +227,7 @@ def test_compute_mask_props_of_video_measures_frames_with_boxes(
     labels_array[:] = labels
 
     # Measure
-    compute_mask_props_of_video("video", store_path)
+    compute_mask_props_dataset_one_video("video", store_path)
 
     # Check values are finite only in frames with boxes
     ds_masks = open_masks_group(store_path)
@@ -238,10 +238,12 @@ def test_compute_mask_props_of_video_measures_frames_with_boxes(
     xr.testing.assert_equal(frame_has_mask, frame_has_box)
 
 
-def test_compute_mask_props_of_video(ds_tracks: xr.Dataset, tmp_path: Path):
+def test_compute_mask_props_dataset_one_video(
+    ds_tracks: xr.Dataset, tmp_path: Path
+):
     """Check the 8 variables, their layout and their values.
 
-    The values must equal those of one `compute_clip_mask_props_dataset`
+    The values must equal those of one `compute_mask_props_dataset_one_clip`
     call over each whole clip, loaded in memory, although the group's
     `labels` are read lazily, one time chunk at a time. The other arrays
     and the attrs must be unchanged.
@@ -252,7 +254,7 @@ def test_compute_mask_props_of_video(ds_tracks: xr.Dataset, tmp_path: Path):
     ds_before = open_masks_group(store_path).load()
 
     # Measure
-    compute_mask_props_of_video("video", store_path)
+    compute_mask_props_dataset_one_video("video", store_path)
     ds_masks = open_masks_group(store_path)
 
     # Check dims, dtype and chunks
@@ -285,7 +287,7 @@ def test_compute_mask_props_of_video(ds_tracks: xr.Dataset, tmp_path: Path):
     # Check values equal one call over each whole clip
     n_frames = ds_masks.sizes["time"]
     for clip_index in range(ds_masks.sizes["clip_id"]):
-        expected = compute_clip_mask_props_dataset(
+        expected = compute_mask_props_dataset_one_clip(
             ds_masks.labels.isel(clip_id=clip_index).load(),
             np.arange(n_frames),
             np.array([1, 2, 3]),
@@ -315,7 +317,7 @@ def test_compute_mask_props_of_video(ds_tracks: xr.Dataset, tmp_path: Path):
     assert ds_masks.attrs == ATTRS
 
 
-def test_compute_mask_props_of_video_label_of_not_k_plus_1(
+def test_compute_mask_props_dataset_one_video_label_of_not_k_plus_1(
     ds_tracks: xr.Dataset, tmp_path: Path
 ):
     """Check each value lands at its own individual, for any `label_of`."""
@@ -324,7 +326,7 @@ def test_compute_mask_props_of_video_label_of_not_k_plus_1(
     create_masks_group_with_labels(store_path, ds_tracks, label_of=[3, 1, 2])
 
     # Measure
-    compute_mask_props_of_video("video", store_path)
+    compute_mask_props_dataset_one_video("video", store_path)
 
     # Check each individual's area is that of its own square, of half
     # side 2 + k
@@ -348,7 +350,7 @@ def test_compute_mask_props_of_video_label_of_not_k_plus_1(
         (None, False, "has no `position`"),
     ],
 )
-def test_compute_mask_props_of_video_errors(
+def test_compute_mask_props_dataset_one_video_errors(
     ds_tracks: xr.Dataset,
     tmp_path: Path,
     label_of: list[int] | None,
@@ -362,20 +364,20 @@ def test_compute_mask_props_of_video_errors(
     )
 
     with pytest.raises(ValueError, match=expected_message):
-        compute_mask_props_of_video("video", store_path)
+        compute_mask_props_dataset_one_video("video", store_path)
 
     ds_masks = open_masks_group(store_path)
     assert not set(MASK_PROPS_VARS) & set(ds_masks.data_vars)
 
 
-def test_compute_mask_props_of_video_overwrite(
+def test_compute_mask_props_dataset_one_video_overwrite(
     ds_tracks: xr.Dataset, tmp_path: Path
 ):
     """Check existing variables raise an error, unless `overwrite` is True."""
     # Create masks group and measure
     store_path = tmp_path / "masks.zarr"
     create_masks_group_with_labels(store_path, ds_tracks)
-    compute_mask_props_of_video("video", store_path)
+    compute_mask_props_dataset_one_video("video", store_path)
 
     # Erase all masks
     labels_array = zarr.open_group(store_path, use_consolidated=False)[
@@ -385,11 +387,11 @@ def test_compute_mask_props_of_video_overwrite(
 
     # Check measuring again raises an error
     with pytest.raises(ValueError, match="already holds"):
-        compute_mask_props_of_video("video", store_path)
+        compute_mask_props_dataset_one_video("video", store_path)
     assert open_masks_group(store_path).mask_area.notnull().any()
 
     # Check overwriting replaces the values
-    compute_mask_props_of_video("video", store_path, overwrite=True)
+    compute_mask_props_dataset_one_video("video", store_path, overwrite=True)
     ds_masks = open_masks_group(store_path)
     assert ds_masks.mask_area.isnull().all()
     assert ds_masks.attrs == ATTRS
@@ -414,7 +416,7 @@ def test_snippet_for_old_masks_stores(ds_tracks: xr.Dataset, tmp_path: Path):
         copy_video_bboxes_to_masks(
             dt_tracks[video_id].to_dataset(), masks_store
         )
-        compute_mask_props_of_video(video_id, masks_store)
+        compute_mask_props_dataset_one_video(video_id, masks_store)
     zarr.consolidate_metadata(masks_store)
 
     # Check the group shows the new variables

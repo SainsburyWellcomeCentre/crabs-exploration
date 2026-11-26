@@ -6,7 +6,7 @@ import xarray as xr
 import zarr
 from zarr.codecs import BloscCodec
 
-from crabs.mask.mask_video import create_mask_store
+from crabs.mask.mask_video import _create_mask_store
 from crabs.mask.utils.bbox_prompts import (
     BBOX_VARS,
     copy_video_bboxes_to_masks,
@@ -180,7 +180,7 @@ def create_masks_group(
     individuals: list[str] | None = None,
 ) -> None:
     """Create an old masks group: labels, label_of and attrs only."""
-    create_mask_store(
+    _create_mask_store(
         store_path=store_path,
         video_id="video",
         clip_ids=clip_ids or ["Loop00", "Loop01"],

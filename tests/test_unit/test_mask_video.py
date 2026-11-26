@@ -11,11 +11,11 @@ from zarr.codecs import TransposeCodec, ZstdCodec
 
 from crabs.mask.mask_props import MASK_PROPS_VARS
 from crabs.mask.mask_video import (
-    create_mask_store,
+    _create_mask_store,
+    _predict_and_write_clip_labels,
+    _predict_masks_on_device,
     main,
     mask_parse_args,
-    predict_and_write_clip_labels,
-    predict_masks_on_device,
 )
 from crabs.mask.utils.bbox_prompts import (
     BBOX_VARS,
@@ -39,7 +39,7 @@ class FakePredictor:
     """A predictor returning each box's own rectangle as its mask.
 
     It implements the two private `SAM2ImagePredictor` methods that
-    `predict_masks_on_device` calls, with the same return shapes. `_predict`
+    `_predict_masks_on_device` calls, with the same return shapes. `_predict`
     returns (N, 1, H, W) boolean masks, for any N.
 
     We use it instead of a real SAM2 because its masks are known in advance,
@@ -111,7 +111,7 @@ def blank_clip_video(tmp_path: Path) -> str:
 def masks_store_path_and_array(tmp_path: Path) -> tuple[Path, zarr.Array]:
     """Return the path of a two-clip mask store and its labels array."""
     store_path = tmp_path / "masks.zarr"
-    labels_array = create_mask_store(
+    labels_array = _create_mask_store(
         store_path=store_path,
         video_id="video",
         clip_ids=["Loop00", "Loop01"],
@@ -165,7 +165,7 @@ def trajectories_store_and_clips(tmp_path: Path, clip_dataset_factory) -> Path:
 def test_predict_masks_on_device_matches_sam2_predict(n_boxes: int):
     """Check SAM2's public `predict` matches the private-API path.
 
-    We wrap the private-API path in predict_masks_on_device to keep
+    We wrap the private-API path in _predict_masks_on_device to keep
     the predicted masks on the GPU,
 
     The test runs a randomly initialised SAM2, so no checkpoint is downloaded:
@@ -204,7 +204,7 @@ def test_predict_masks_on_device_matches_sam2_predict(n_boxes: int):
     masks_public, _, _ = predictor.predict(box=boxes, multimask_output=False)
 
     # Predict masks using our wrapper
-    masks_on_device = predict_masks_on_device(predictor, boxes)
+    masks_on_device = _predict_masks_on_device(predictor, boxes)
 
     # Check shape is as expected
     assert masks_on_device.shape == (n_boxes, 48, 80)
@@ -222,7 +222,7 @@ def test_create_mask_store(tmp_path: Path):
     """Check the initialised mask store, with no data written yet."""
     # Initialise mask store
     store_path = tmp_path / "masks.zarr"
-    labels_array = create_mask_store(
+    labels_array = _create_mask_store(
         store_path=store_path,
         video_id="video",
         clip_ids=["Loop00", "Loop01"],
@@ -310,7 +310,7 @@ def test_predict_and_write_clip_labels(
     predictor = FakePredictor()
 
     # Run prediction on clip 0
-    n_frames_read = predict_and_write_clip_labels(
+    n_frames_read = _predict_and_write_clip_labels(
         video_clip_path=blank_clip_video,
         tracked_bboxes_dict=tracked_bboxes_dict,
         labels_array=labels_array,
