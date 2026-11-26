@@ -21,7 +21,9 @@ from crabs.mask.utils.bbox_prompts import (
 )
 from crabs.mask.utils.float_encoding import float_var_encoding
 from crabs.zarr.create_dataset import concat_clips
-from scripts.generate_masks_from_bboxes import compute_mask_props_dataset
+from scripts.orientation.generate_masks_from_bboxes import (
+    compute_mask_props_dataset,
+)
 
 # Fixtures of the script's tests, reused for the agreement test
 from tests.test_unit.test_generate_masks_from_bboxes import (  # noqa: F401

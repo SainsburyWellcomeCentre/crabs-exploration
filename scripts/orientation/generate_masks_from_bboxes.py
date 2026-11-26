@@ -58,11 +58,11 @@ The ellipse is the one with the same second moments as the mask:
 
 Usage
 From the repo root:
-    uv run scripts/generate_masks_from_bboxes.py /path/to/data_dir
-    uv run scripts/generate_masks_from_bboxes.py /path/to/data_dir \
-        --batch-size 8
-    uv run scripts/generate_masks_from_bboxes.py /path/to/data_dir \
-        --model facebook/sam2.1-hiera-large
+    uv run scripts/orientation/generate_masks_from_bboxes.py /path/to/data_dir
+    uv run scripts/orientation/generate_masks_from_bboxes.py \
+        /path/to/data_dir --batch-size 8
+    uv run scripts/orientation/generate_masks_from_bboxes.py \
+        /path/to/data_dir --model facebook/sam2.1-hiera-large
 
 Dependencies are auto-installed in an ephemeral environment via uv.
 torch is installed from the CUDA 12.8 index (Linux/Windows).
