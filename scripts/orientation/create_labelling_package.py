@@ -160,38 +160,47 @@ def select_frames(
     seed: int,
     exclude: Iterable[int] = frozenset(),
 ) -> np.ndarray:
-    """Sample ``frames_per_video`` frames per video of one camera.
+    """Sample a subset of frames per video for one camera.
 
-    A frame's video is the part of its filename before ``_frame``, and a
+    A frame's video is the part of its filename before ``_frame``. A
     video belongs to ``camera`` if its name contains ``-<camera>``. Frames
     whose ``image_id`` is in ``exclude`` are not sampled. A video with
-    fewer frames left than ``frames_per_video`` gives what is left, and is
-    reported.
+    fewer frames left than ``frames_per_video`` gives all frames that it has
+    left, and this is reported.
 
     Returns the selected ``image_id`` values, sorted.
     """
-    frames = pd.DataFrame(
+    # build helper dataframe for frames
+    df_frames = pd.DataFrame(
         sorted(_filenames(ds).items()), columns=["image_id", "filename"]
     )
-    frames["video"] = frames["filename"].str.split("_frame").str[0]
-    frames = frames[frames["video"].str.contains(f"-{camera}", regex=False)]
-    videos = sorted(frames["video"].unique())
-    frames = frames[~frames["image_id"].isin(set(exclude))]
+    df_frames["video"] = df_frames["filename"].str.split("_frame").str[0]
 
-    selected = []
-    for video in videos:
-        frames_left = frames[frames["video"] == video]
-        n_frames = min(frames_per_video, len(frames_left))
-        if n_frames < frames_per_video:
+    # select only rows from the relevant camera
+    df_frames = df_frames[
+        df_frames["video"].str.contains(f"-{camera}", regex=False)
+    ]
+
+    # exclude relevant image_ids
+    df_frames = df_frames[~df_frames["image_id"].isin(set(exclude))]
+
+    # loop thru videos
+    selected_frames: list = []
+    for video, frames_in_video in df_frames.groupby("video"):
+        # if less frames remain than requested, take all available
+        # and notify
+        if len(frames_in_video) < frames_per_video:
             print(
-                f"{video}: {len(frames_left)} frames left, "
+                f"{video}: {len(frames_in_video)} frames left, "
                 f"{frames_per_video} requested"
-                + (" (skipped)" if n_frames == 0 else "")
             )
-        selected.extend(
-            frames_left.sample(n_frames, random_state=seed)["image_id"]
+        n_frames = min(frames_per_video, len(frames_in_video))
+
+        # add to list
+        selected_frames.extend(
+            frames_in_video.sample(n_frames, random_state=seed)["image_id"]
         )
-    return np.sort(np.array(selected, dtype=int))
+    return np.sort(np.array(selected_frames, dtype=int))
 
 
 def write_package_subdir(
