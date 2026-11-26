@@ -6,13 +6,35 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import yaml  # type: ignore
 
 from crabs.detector.utils.visualization import draw_bbox
+
+# Time OpenCV waits for a video to open, and for each frame read, before
+# giving up. OpenCV's default is 30 s, which reads on a busy network
+# filesystem can exceed.
+VIDEO_OPEN_TIMEOUT_MS = 300_000
+VIDEO_READ_TIMEOUT_MS = 300_000
+
+
+def read_yaml(path: str | Path) -> dict:
+    """Read a yaml file as a dict, empty if the file is empty."""
+    with open(path) as f:
+        return yaml.safe_load(f) or {}
 
 
 def open_video(video_path: str) -> cv2.VideoCapture:
     """Open video file."""
-    video_object = cv2.VideoCapture(video_path)
+    video_object = cv2.VideoCapture(
+        video_path,
+        cv2.CAP_ANY,
+        [
+            cv2.CAP_PROP_OPEN_TIMEOUT_MSEC,
+            VIDEO_OPEN_TIMEOUT_MS,
+            cv2.CAP_PROP_READ_TIMEOUT_MSEC,
+            VIDEO_READ_TIMEOUT_MS,
+        ],
+    )
     if not video_object.isOpened():
         raise Exception("Error opening video file")
     return video_object
@@ -189,7 +211,6 @@ def generate_tracked_video(
     # Release video objects
     input_video_object.release()
     output_video_writer.release()
-    cv2.destroyAllWindows()
 
 
 def write_frame_as_image(frame: np.ndarray, frame_path: str):
@@ -249,4 +270,3 @@ def write_all_video_frames_as_images(
 
     # Release video objects
     input_video_object.release()
-    cv2.destroyAllWindows()

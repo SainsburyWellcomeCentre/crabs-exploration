@@ -32,8 +32,9 @@ BOXES_ZARR_STORE="/ceph/zoo/processed/CrabField/ramalhete_2023/CrabTracks/CrabTr
 # <video-id>-<clip-id>.mp4, as written by extract-loop-clips
 CLIP_VIDEOS_DIR="/ceph/zoo/processed/CrabField/ramalhete_2023/Loops"
 
-# Path to the mask config file
-MASK_CONFIG_FILE="/ceph/zoo/users/sminano/cluster_mask_config.yaml"
+# Path to a mask config file, holding non-default values only.
+# Leave empty to use all defaults.
+MASK_CONFIG_FILE=""
 
 # Output store. Every job in the array appends its own video group to it,
 # so the name must not depend on the task. Naming it after the array job ID
@@ -68,6 +69,26 @@ if [[ $SLURM_ARRAY_TASK_COUNT -ne $N_VIDEOS ]]; then
     exit 1
 fi
 
+# ------------------------------------
+# Submit final job to consolidate the store
+# ------------------------------------
+# Every task writes to the same store, so consolidating the store's metadata
+# at the end of each task would race: a task's stale snapshot of the store
+# could overwrite a later, complete one. Instead, the tasks skip it
+# (--no_consolidate below) and task 0 submits a job that consolidates the
+# store once, after every task in the array has ended (afterany: even if
+# some failed). If task 0 is requeued, it submits that job again, which is
+# harmless.
+if [[ $SLURM_ARRAY_TASK_ID -eq 0 ]]; then
+    sbatch \
+        --dependency=afterany:$SLURM_ARRAY_JOB_ID \
+        -p cpu -N 1 --mem 4G -t 0-01:00 \
+        -o $LOG_DIR/slurm_consolidate.%j.%N.out \
+        -e $LOG_DIR/slurm_consolidate.%j.%N.err \
+        --wrap "module load uv && uv run --no-project --with 'zarr>=3' \
+            python -c 'import zarr; zarr.consolidate_metadata(\"$MASK_ZARR_STORE_OUTPUT\")'"
+fi
+
 # ---------------------------
 # Create virtual environment
 # ---------------------------
@@ -87,6 +108,10 @@ export UV_CACHE_DIR=/ceph/python_envs/sminano/uv-cache
 # slow shared filesystem, the default 300 s wait for that lock is not enough
 # and the other jobs fail with "Timeout when waiting for lock".
 export UV_LOCK_TIMEOUT=3600  # seconds
+
+# replace virtual environment if it exists
+# (relevant if job is requeued)
+export UV_VENV_CLEAR=1
 
 # create virtual environment with uv
 ENV_NAME=crabs-mask-$SLURM_ARRAY_JOB_ID-$SLURM_ARRAY_TASK_ID
@@ -142,33 +167,34 @@ echo "boxes: $BOXES_ZARR_STORE"
 echo "videos: $CLIP_VIDEOS_DIR"
 echo "output_store: $MASK_ZARR_STORE_OUTPUT"
 echo "match: $VIDEO_ID"
-echo "mask_config_file: $MASK_CONFIG_FILE"
+echo "mask_config_file: ${MASK_CONFIG_FILE:-none, using the defaults}"
 
-# Log config values
-cat "$MASK_CONFIG_FILE"
+# Pass the config file only if set, and log its values
+CONFIG_ARGS=()
+if [[ -n "$MASK_CONFIG_FILE" ]]; then
+    CONFIG_ARGS=(--mask_config_file "$MASK_CONFIG_FILE")
+    cat "$MASK_CONFIG_FILE"
+fi
 
 # --match is an exact video group name here, so this job masks every clip
 # of one video. --output_store names the store rather than letting the
 # command pick a timestamped name, so all jobs write into the same one.
-mask-tracked-crabs  \
+# --no_consolidate leaves consolidating the store to the final job submitted above.
+# /usr/bin/time -v logs the peak memory of the run to the .err file
+# ("Maximum resident set size").
+/usr/bin/time -v mask-tracked-crabs  \
     --boxes $BOXES_ZARR_STORE  \
     --videos_dir $CLIP_VIDEOS_DIR  \
     --output_store $MASK_ZARR_STORE_OUTPUT  \
     --match "$VIDEO_ID"  \
-    --mask_config_file $MASK_CONFIG_FILE  \
+    "${CONFIG_ARGS[@]}"  \
     --zarr_mode_store $ZARR_MODE_STORE  \
     --zarr_mode_group $ZARR_MODE_GROUP  \
+    --no_consolidate  \
     --accelerator gpu
 
 echo "Completed masking of video $VIDEO_ID with task ID = $SLURM_ARRAY_TASK_ID"
 echo "--------------------------------------------------------"
-
-# -------------------------------------------
-# Copy mask config to output store
-# -------------------------------------------
-cp "$MASK_CONFIG_FILE" "$MASK_ZARR_STORE_OUTPUT"/"$VIDEO_ID"_mask_config.yaml
-
-echo "Copied $MASK_CONFIG_FILE to $MASK_ZARR_STORE_OUTPUT"
 
 # ------------------
 # Copy logs to LOG_DIR

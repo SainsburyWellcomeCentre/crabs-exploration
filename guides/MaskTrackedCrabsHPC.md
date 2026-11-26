@@ -32,18 +32,16 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
 
     This mirrors the equivalent check in the bash script. The bash script will launch an array job, and each job in the array will deal with one video.
 
-4.  **Get the mask config file**
+4.  **Write a mask config file (optional)**
 
-    The masking parameters live in their own config file. To get it locally (required), copy the default from the 🦀 repository to a location you can edit, for example `/ceph/zoo/users/sminano/cluster_mask_config.yaml`:
+    By default, the jobs use the masking parameters of the config that ships with the `crabs` package (see [`mask_config.yaml`](../crabs/mask/config/mask_config.yaml)).
 
-    ```
-    curl https://raw.githubusercontent.com/SainsburyWellcomeCentre/crabs-exploration/main/crabs/mask/config/mask_config.yaml > /ceph/zoo/users/sminano/cluster_mask_config.yaml
-    ```
+    To change some of those parameters, write a YAML file with only the keys to change. Omitted keys take the default values. An unknown key, e.g. a misspelled one, makes the job fail.
 
-    The parameters are described in the [masking README](../crabs/mask/README.md#parameters). Your file only needs the keys you want to change; the rest take the defaults. On the cluster, the two most likely to need tuning are:
+    The full set of parameters is described in the [masking README](../crabs/mask/README.md#parameters). On the cluster, the two most likely to change are:
 
     - `max_prompts_per_batch`: lower it if jobs fail with GPU out-of-memory errors.
-    - `n_frames_per_shard`: trades memory per job against the number of files written to `/ceph`.
+    - `n_frames_per_shard`: trades memory per job against the number of files written to `/ceph`. Writing one shard needs about 3× the in-memory buffer again on top, so about 4 × `n_frames_per_shard` × 17.7 MB in total at 4096×2160 (~1.1 GB for 16 frames).
 
     > [!CAUTION]
     >
@@ -75,7 +73,7 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
     Review the bash script to ensure the following variables are set correctly:
     - `BOXES_ZARR_STORE`: path to the input trajectories zarr store, from Step 3.
     - `CLIP_VIDEOS_DIR`: path to the directory with the clip videos, from Step 3.
-    - `MASK_CONFIG_FILE`: path to the mask config file, from Step 4.
+    - `MASK_CONFIG_FILE`: path to the mask config file from Step 4, or empty to use the defaults.
 
     Remember that the number of video groups in the input store needs to match the number of jobs in the array. To change the number of jobs, edit the line that starts with `#SBATCH --array=0-n%m` and set `n` to the total number of video groups minus 1. The variable `m` refers to the number of jobs that can run at a time.
 
@@ -117,27 +115,17 @@ The job is a SLURM array with **one task per video**, so all videos are masked i
 
 9. **Expected output**
 
-    If the array job runs successfully, a zarr store named `CrabMasks-slurm<SLURM_ARRAY_JOB_ID>.zarr` will be generated at the location specified by `MASK_ZARR_STORE_OUTPUT`, with one group per video:
-
-    ```
-    CrabMasks-slurm<SLURM_ARRAY_JOB_ID>.zarr/
-    ├── <video_id>/                                  # one group per video
-    │   ├── labels    (clip_id, time, img_h, img_w)  uint16
-    │   ├── label_of  (individual,)                  uint16
-    │   ├── clip_id     e.g. ["Loop00", "Loop05"]
-    │   └── individual  e.g. ["id_0000", …]  — copied from the trajectories store
-    ├── <video_id>_mask_config.yaml                  # the config each job ran with
-    └── logs/
-    ```
-
-    `labels` holds **one label image per frame**: a single integer array where `0` is background and every other value identifies one crab. The `clip_id`, `time` and `individual` coordinates are the trajectories store's own, so the mask store and the trajectories store align 1:1 with no reindexing.
+    If the array job runs successfully, a zarr store named `CrabMasks-slurm<SLURM_ARRAY_JOB_ID>.zarr` will be generated at the location specified by `MASK_ZARR_STORE_OUTPUT`, with one group per video. The output structure is described in the [masking README](../crabs/mask/README.md#output-store-format).
 
     To check the store holds every video you expected:
 
     ```python
     import xarray as xr
+
     dt = xr.open_datatree(path_to_mask_store, engine="zarr", chunks={})
-    print(f"Total groups: {len(dt)}")  # should match the number of videos processed
+    print(
+        f"Total groups: {len(dt)}"
+    )  # should match the number of videos processed
     ```
 
 ### Some useful SLURM commands
