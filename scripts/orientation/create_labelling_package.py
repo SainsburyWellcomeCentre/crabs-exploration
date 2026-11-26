@@ -125,28 +125,31 @@ def _filenames(ds: xr.Dataset) -> dict[int, str]:
 
 
 def excluded_image_ids(
-    exclude_packages: Iterable[Path], ds: xr.Dataset, dataset: str
+    packages_to_exclude: Iterable[Path], ds: xr.Dataset, dataset_name: str
 ) -> set[int]:
-    """Return the ``image_id`` values used by earlier labelling packages.
-
-    ``dataset`` is the name of the package subdirectory for ``ds``. An
-    earlier package without that subdirectory had no frames of this
-    dataset. An earlier package built from another annotations file
-    raises an error, since its ``image_id`` values may name other frames.
-    """
+    """Return the ``image_id`` values used by earlier labelling packages."""
     excluded: set[int] = set()
-    for old_package in exclude_packages:
-        store = Path(old_package) / dataset / "bboxes.zarr"
+    for previous_package in packages_to_exclude:
+        # Check if the previous package has labels for this dataset
+        store = Path(previous_package) / dataset_name / "bboxes.zarr"
         if not store.exists():
             continue
-        old_pkg = xr.open_zarr(store)
-        if old_pkg.attrs["annotation_files"] != ds.attrs["annotation_files"]:
+
+        # Check if image_ids are comparable across packages
+        ds_previous_package = xr.open_zarr(store)
+        if (
+            ds_previous_package.attrs["annotation_files"]
+            != ds.attrs["annotation_files"]
+        ):
             raise ValueError(
-                f"{store} was built from {old_pkg.attrs['annotation_files']}"
-                f", not {ds.attrs['annotation_files']}, so its image_id "
-                "values may name other frames."
+                f"{store} was built from "
+                f"{ds_previous_package.attrs['annotation_files']}, "
+                f"not {ds.attrs['annotation_files']}, so its image_id "
+                "values may refer to a different set of frames."
             )
-        excluded |= {int(i) for i in old_pkg.image_id.values}
+
+        # Add to unique set of image_ids
+        excluded |= {int(i) for i in ds_previous_package.image_id.values}
     return excluded
 
 
@@ -258,11 +261,12 @@ def main(args: argparse.Namespace) -> None:
             f"Not zarr stores: {not_stores}. Pass the output directory "
             "with --output-dir."
         )
-    datasets = [Path(store).parent.parent.name for store in args.stores]
-    if len(set(datasets)) < len(datasets):
+    # dataset_names will usually be ['sep2023-full' and 'aug2023-full']
+    dataset_names = [Path(store).parent.parent.name for store in args.stores]
+    if len(set(dataset_names)) < len(dataset_names):
         raise ValueError(
             f"The stores' data directories must have distinct names, "
-            f"got {datasets}"
+            f"got {dataset_names}"
         )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -276,17 +280,21 @@ def main(args: argparse.Namespace) -> None:
         ],
     }
 
-    for store_path, dataset in zip(args.stores, datasets, strict=True):
-        print(f"{dataset}: sampling frames from {store_path}")
+    for store_path, dataset_name in zip(
+        args.stores, dataset_names, strict=True
+    ):
+        print(f"{dataset_name}: sampling frames from {store_path}")
+
         ds = load_store(store_path)
-        exclude = excluded_image_ids(args.exclude_package, ds, dataset)
+        exclude = excluded_image_ids(args.exclude_package, ds, dataset_name)
+
         image_ids = select_frames(
             ds, args.camera, args.frames_per_video, args.seed, exclude
         )
         subdir = write_package_subdir(
             ds, image_ids, store_path, package_dir, package_settings
         )
-        print(f"{dataset}: wrote {len(image_ids)} frames to {subdir}")
+        print(f"{dataset_name}: wrote {len(image_ids)} frames to {subdir}")
 
     print(f"Labelling package written to {package_dir}")
 
@@ -306,8 +314,7 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         nargs="+",
         help=(
             "Input bboxes_and_masks_*.zarr stores, written by "
-            "generate_masks_from_bboxes.py. Each store's frames are read "
-            "from <store>/../../frames."
+            "generate_masks_from_bboxes.py."
         ),
     )
     parser.add_argument(
@@ -343,8 +350,8 @@ def parse_args(list_args: list[str]) -> argparse.Namespace:
         action="append",
         default=[],
         help=(
-            "Earlier labelling package whose frames are not sampled again. "
-            "Can be passed several times."
+            "Earlier labelling package whose frames should not be sampled "
+            "again. Can be passed several times."
         ),
     )
     return parser.parse_args(list_args)
