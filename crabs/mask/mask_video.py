@@ -48,7 +48,7 @@ ACCELERATOR_TO_DEVICE = {"gpu": "cuda"}
 
 
 def load_full_mask_config(config_file: str) -> dict:
-    """Load the masking config, with defaults from the default config file.
+    """Load and check the masking config, with defaults for missing keys.
 
     The default config file (`DEFAULT_MASK_CONFIG`) is the single source
     of default values and of valid keys.
@@ -56,8 +56,10 @@ def load_full_mask_config(config_file: str) -> dict:
     Raises
     ------
     ValueError
-        If the file sets a key that is not a masking parameter, e.g. a
-        misspelled or renamed one, which would otherwise be ignored.
+        If the file sets a key that is not a masking parameter (e.g. a
+        misspelled or renamed one, which would otherwise be ignored), if
+        `n_frames_per_shard` is not a multiple of `n_frames_per_chunk`,
+        or if `occlusion_policy` is not one that is implemented.
 
     """
     default_config = read_yaml(DEFAULT_MASK_CONFIG)
@@ -68,7 +70,25 @@ def load_full_mask_config(config_file: str) -> dict:
             f"Unknown keys {unrecognised_keys} in {config_file}. "
             f"Valid keys are {sorted(default_config)}."
         )
-    return {**default_config, **input_config}
+    config = {**default_config, **input_config}
+
+    # Check n_frames_per_shard is a multiple of n_frames_per_chunk
+    # (zarr would also raise an error, but we want to fail earlier)
+    n_frames_per_chunk = config["n_frames_per_chunk"]
+    n_frames_per_shard = config["n_frames_per_shard"]
+    if n_frames_per_shard and n_frames_per_shard % n_frames_per_chunk:
+        raise ValueError(
+            f"n_frames_per_shard ({n_frames_per_shard}) must be a multiple "
+            f"of n_frames_per_chunk ({n_frames_per_chunk})."
+        )
+
+    # Check occlusion policy
+    if config["occlusion_policy"] != "smallest_wins":
+        raise ValueError(
+            f"Unknown occlusion_policy '{config['occlusion_policy']}'. The "
+            "only policy implemented is 'smallest_wins'."
+        )
+    return config
 
 
 def load_sam2_predictor(model_id: str, device: str):
@@ -496,6 +516,85 @@ def predict_and_write_video_labels(
         )
 
 
+def _select_video_nodes(
+    trajectories_store: Path, match: str
+) -> list[xr.DataTree]:
+    """Return the matching video groups from the trajectories store.
+
+    Raises
+    ------
+    ValueError
+        If `trajectories_store` is not a zarr store, or if `match` selects no
+        video group.
+
+    """
+    if trajectories_store.suffix != ".zarr":
+        raise ValueError(
+            f"--boxes must be a trajectories zarr store (.zarr), but "
+            f"'{trajectories_store.name}' has suffix "
+            f"'{trajectories_store.suffix}'."
+        )
+
+    # Read trajectories data as a datatree
+    dt_trajs = xr.open_datatree(trajectories_store, engine="zarr", chunks={})
+
+    # Select relevant subset of videos.
+    # (a pattern that matches nothing leaves only the root node behind)
+    video_nodes = [
+        node for node in dt_trajs.match(match).leaves if node.path != "/"
+    ]
+    if not video_nodes:
+        raise ValueError(
+            f"--match '{match}' selected no video group of "
+            f"{trajectories_store}."
+        )
+    return video_nodes
+
+
+def _get_store_path(
+    args: argparse.Namespace, boxes_path: Path, timestamp: str
+) -> Path:
+    """Return the path to the output store, creating its parent directory.
+
+    It is `--output_store` if given, or else a timestamped store under
+    `--output_dir`.
+    """
+    if args.output_store:
+        store_path = Path(args.output_store)
+    else:
+        store_path = (
+            Path(args.output_dir) / f"{boxes_path.stem}_masks_{timestamp}.zarr"
+        )
+    store_path.parent.mkdir(parents=True, exist_ok=True)
+    return store_path
+
+
+def _get_store_metadata(
+    timestamp: str, device: str, boxes_path: Path, mask_config: dict
+) -> dict:
+    """Return the attributes shared by every video group of a store.
+
+    Each group also gets its own `source_video`, added in
+    `setup_video_mask_group`.
+    """
+    return {
+        "timestamp": timestamp,
+        "sam2_model": mask_config["sam2_model_id"],
+        "device": device,
+        "boxes": {
+            "file": str(boxes_path),
+            "source": "trajectories_zarr",
+            "ids": "trajectories_store_individual",
+        },
+        "background_label": BACKGROUND_LABEL,
+        "occlusion_policy": mask_config["occlusion_policy"],
+        "prompt_type": "bounding_box",
+        # config values of the run, with defaults for keys the
+        # config file leaves out
+        "mask_config": mask_config,
+    }
+
+
 def _check_clips_paths(
     videos_dir: str, video_id: str, clip_ids: list[str]
 ) -> list[Path]:
@@ -659,46 +758,10 @@ def setup_video_mask_group(
 
 def main(args: argparse.Namespace) -> None:
     """Predict masks with SAM2 from tracked boxes."""
-    # Get and check bboxes path
+    # Load and check inputs
     boxes_path = Path(args.boxes)
-    if boxes_path.suffix != ".zarr":
-        raise ValueError(
-            f"--boxes must be a trajectories zarr store (.zarr), but "
-            f"'{boxes_path.name}' has suffix '{boxes_path.suffix}'."
-        )
-
-    # Get full mask config
     mask_config = load_full_mask_config(args.mask_config_file)
-    sam2_model_id = mask_config["sam2_model_id"]
-    max_prompts_per_batch = mask_config["max_prompts_per_batch"]
-    n_frames_per_chunk = mask_config["n_frames_per_chunk"]
-    n_frames_per_shard = mask_config["n_frames_per_shard"]
-
-    # (zarr would also raise an error, but we want to fail earlier)
-    if n_frames_per_shard and n_frames_per_shard % n_frames_per_chunk:
-        raise ValueError(
-            f"n_frames_per_shard ({n_frames_per_shard}) must be a multiple "
-            f"of n_frames_per_chunk ({n_frames_per_chunk})."
-        )
-    occlusion_policy = mask_config["occlusion_policy"]
-    if occlusion_policy != "smallest_wins":
-        raise ValueError(
-            f"Unknown occlusion_policy '{occlusion_policy}'. The only policy "
-            "implemented is 'smallest_wins'."
-        )
-
-    # Read trajectories data as a datatree
-    dt_trajs = xr.open_datatree(args.boxes, engine="zarr", chunks={})
-
-    # Select relevant subset of videos.
-    # (a pattern that matches nothing leaves only the root node behind)
-    video_nodes = [
-        node for node in dt_trajs.match(args.match).leaves if node.path != "/"
-    ]
-    if not video_nodes:
-        raise ValueError(
-            f"--match '{args.match}' selected no video group of {args.boxes}."
-        )
+    video_nodes = _select_video_nodes(boxes_path, args.match)
 
     # Check every clip video exists before loading SAM2,
     # so a wrong --videos_dir fails in seconds, not after a model download
@@ -713,38 +776,15 @@ def main(args: argparse.Namespace) -> None:
 
     # Initialise SAM2 predictor
     device = ACCELERATOR_TO_DEVICE.get(args.accelerator, args.accelerator)
-    predictor = load_sam2_predictor(sam2_model_id, device)
+    predictor = load_sam2_predictor(mask_config["sam2_model_id"], device)
 
     # Initialise output store
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    if args.output_store:
-        store_path = Path(args.output_store)
-    else:
-        # if not provided, the default name is timestamped
-        store_path = (
-            Path(args.output_dir) / f"{boxes_path.stem}_masks_{timestamp}.zarr"
-        )
-    store_path.parent.mkdir(parents=True, exist_ok=True)
+    store_path = _get_store_path(args, boxes_path, timestamp)
     zarr.open_group(store_path, mode=args.zarr_mode_store)
-
-    # Attributes shared by every video group of this run
-    # (each group also gets its own `source_video`)
-    run_metadata = {
-        "timestamp": timestamp,
-        "sam2_model": sam2_model_id,
-        "device": device,
-        "boxes": {
-            "file": str(boxes_path),
-            "source": "trajectories_zarr",
-            "ids": "trajectories_store_individual",
-        },
-        "background_label": BACKGROUND_LABEL,
-        "occlusion_policy": occlusion_policy,
-        "prompt_type": "bounding_box",
-        # config values of the run, with defaults for keys the
-        # config file leaves out
-        "mask_config": mask_config,
-    }
+    run_metadata = _get_store_metadata(
+        timestamp, device, boxes_path, mask_config
+    )
 
     # Loop thru video nodes
     for node in video_nodes:
@@ -771,7 +811,7 @@ def main(args: argparse.Namespace) -> None:
             labels_array=labels_array,
             label_of=label_of,
             predictor=predictor,
-            max_prompts_per_batch=max_prompts_per_batch,
+            max_prompts_per_batch=mask_config["max_prompts_per_batch"],
         )
 
         # Measure the masks and write the mask and ellipse parameters
