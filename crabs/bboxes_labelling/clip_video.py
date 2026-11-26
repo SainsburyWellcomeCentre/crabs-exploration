@@ -76,7 +76,6 @@ def create_clip(
 
     cap.release()
     out.release()
-    cv2.destroyAllWindows()
 
 
 def argument_parser() -> argparse.Namespace:

@@ -211,7 +211,6 @@ def generate_tracked_video(
     # Release video objects
     input_video_object.release()
     output_video_writer.release()
-    cv2.destroyAllWindows()
 
 
 def write_frame_as_image(frame: np.ndarray, frame_path: str):
@@ -271,4 +270,3 @@ def write_all_video_frames_as_images(
 
     # Release video objects
     input_video_object.release()
-    cv2.destroyAllWindows()
