@@ -1,7 +1,7 @@
 """Measure the masks of a store and write mask and ellipse parameters.
 
 The measuring code is a copy of ``compute_mask_props_dataset`` in
-``scripts/generate_masks_from_bboxes.py`` (PR #298). The script is
+``scripts/orientation/generate_masks_from_bboxes.py`` (PR #298). The script is
 standalone and does not depend on ``crabs``, and ``crabs`` cannot import
 the script, so the code is copied. A unit test checks the two agree.
 """
