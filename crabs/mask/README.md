@@ -71,7 +71,7 @@ The `clip_id`, `time` and `individual` coordinates are the trajectories store's 
 
 **Boxes.** `position`, `shape` and `confidence` are copied from the trajectories store when the group is created, and they are a snapshot of the prompts the masks were predicted from. They are reindexed to the masks group's `time`, which is NaN-padded where it is longer.
 
-**Mask and ellipse parameters.** Each clip's masks are stored in `labels` as one `uint16` image per frame, where each pixel holds the label of the crab covering it (see `label_of`), or 0 for background. After the last clip of a video is masked, these masks are measured with `scikit-image`'s `regionprops_table`, and 8 variables are written next to the boxes, at the same `(clip_id, time, individual)`. They are NaN where there is no mask. Their definitions are in the docstring of `compute_clip_mask_props_dataset` in [`mask_props.py`](mask_props.py). In short:
+**Mask and ellipse parameters.** Each clip's masks are stored in `labels` as one `uint16` image per frame, where each pixel holds the label of the crab covering it (see `label_of`), or 0 for background. After the last clip of a video is masked, these masks are measured with `scikit-image`'s `regionprops_table`, and 8 variables are written next to the boxes, at the same `(clip_id, time, individual)`. They are NaN where there is no mask. Their definitions are in the docstring of `compute_mask_props_dataset_one_clip` in [`mask_props.py`](mask_props.py). In short:
 
 - `mask_centroid`: mean (x, y) of the mask pixels, in pixels.
 - `mask_area`: number of mask pixels.
@@ -126,7 +126,7 @@ A masks store written before the boxes and the mask and ellipse parameters were 
 import xarray as xr
 import zarr
 
-from crabs.mask.mask_props import compute_mask_props_of_video
+from crabs.mask.mask_props import compute_mask_props_dataset_one_video
 from crabs.mask.utils.bbox_prompts import copy_video_bboxes_to_masks
 
 masks_store = "CrabMasks-slurm<array job ID>.zarr"
@@ -137,11 +137,11 @@ trajectories_store = (
 dt_tracks = xr.open_datatree(trajectories_store, engine="zarr")
 for video_id in xr.open_datatree(masks_store, engine="zarr").children:
     copy_video_bboxes_to_masks(dt_tracks[video_id].to_dataset(), masks_store)
-    compute_mask_props_of_video(video_id, masks_store)
+    compute_mask_props_dataset_one_video(video_id, masks_store)
 zarr.consolidate_metadata(masks_store)
 ```
 
-This calls the same two functions as `mask-tracked-crabs`, so the output is the same. `copy_video_bboxes_to_masks` checks that `clip_id` and `individual` match, so a wrong trajectories store fails before anything is written. To rerun the snippet after a crash, pass `overwrite=True` to `compute_mask_props_of_video`.
+This calls the same two functions as `mask-tracked-crabs`, so the output is the same. `copy_video_bboxes_to_masks` checks that `clip_id` and `individual` match, so a wrong trajectories store fails before anything is written. To rerun the snippet after a crash, pass `overwrite=True` to `compute_mask_props_dataset_one_video`.
 
 > [!NOTE]
 > The snippet does not add the `mask_config` attribute. An old masks store written by

@@ -29,7 +29,7 @@ REGIONPROPS_TO_VARS = {
 # Variables with dimensions clip_id, time, individual
 SCALAR_VARS = [*REGIONPROPS_TO_VARS.values(), "ellipse_major_axis_theta"]
 
-# All variables written by `compute_mask_props_of_video`
+# All variables written by `compute_mask_props_dataset_one_video`
 MASK_PROPS_VARS = [*SCALAR_VARS, "mask_centroid"]
 
 
@@ -66,12 +66,12 @@ def get_frames_idcs_with_boxes(ds_clip: xr.Dataset) -> np.ndarray:
     return np.flatnonzero(any_box.values)
 
 
-def compute_clip_mask_props_dataset(
+def compute_mask_props_dataset_one_clip(
     labels: xr.DataArray,
     frames_with_boxes: np.ndarray,
     label_of: np.ndarray,
 ) -> xr.Dataset:
-    """Measure the masks of one clip.
+    """Compute the mask properties dataset for one clip.
 
     `labels` is read one time chunk at a time, and only the frames in
     `frames_with_boxes` are read, so chunks with none are skipped.
@@ -173,14 +173,13 @@ def compute_clip_mask_props_dataset(
     )
 
 
-def compute_mask_props_of_video(
+def compute_mask_props_dataset_one_video(
     video_id: str, store_path: str | Path, overwrite: bool = False
 ) -> None:
-    """Measure the masks of one masks group and write the 8 variables.
+    """Compute the mask properties of a video group and write to store.
 
-    The video's group must hold the prompt boxes (see
-    `copy_video_bboxes_to_masks`). Only frames with a non-nan `position`
-    are measured.
+    The video's group must hold the prompt boxes. Only frames with a
+    non-nan box `position` are measured.
 
     The variables are first created with no data, and then each clip is
     measured and written with one write. This is to bound memory: only one
@@ -265,7 +264,7 @@ def compute_mask_props_of_video(
     for clip_index, clip_id in enumerate(ds.clip_id.values):
         # Measure masks of frames with boxes (`labels` stays lazy)
         ds_clip = ds.isel(clip_id=clip_index)
-        ds_props = compute_clip_mask_props_dataset(
+        ds_props = compute_mask_props_dataset_one_clip(
             ds_clip.labels,
             get_frames_idcs_with_boxes(ds_clip[["position"]]),
             label_of,
