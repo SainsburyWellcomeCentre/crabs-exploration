@@ -210,7 +210,7 @@ def write_package_subdir(
     package_dir: Path,
     package_settings: dict[str, Any],
 ) -> Path:
-    """Write one package subdirectory: the selected frames and a slice.
+    """Write selected frames and bboxes for one dataset.
 
     The subdirectory is named after the store's data directory,
     ``store_path.parent.parent``, and the frames are copied from its
@@ -220,41 +220,53 @@ def write_package_subdir(
     Returns the path of the subdirectory.
     """
     data_dir = Path(store_path).parent.parent
-    subdir = package_dir / data_dir.name
-    filenames = _filenames(ds)
-    selected = [int(i) for i in image_ids]
+    dataset_package_subdir = package_dir / data_dir.name
 
-    # Slice the store: bounding box variables and ethology's attributes
-    # only, so no masks, ellipses or SAM2 metadata reach the labeller
-    pkg = ds.sel(image_id=selected)[BBOX_VARS].load()
+    frame_filenames = _filenames(ds)
+    selected_image_ids = image_ids.tolist()
+
+    # Slice the annotations store
+    # bounding box variables and ethology attributes only
+    # (no masks, ellipses or SAM2 metadata should reach the labeller)
+    ds_slice = ds.sel(image_id=selected_image_ids)[BBOX_VARS].load()
+
+    if set(ds_slice.dims) != BBOX_DIMS:
+        raise ValueError(
+            f"Expected dimensions {BBOX_DIMS}, got {list(ds_slice.dims)}"
+        )
+
     # zarr 3 has no stable format for numpy's fixed-width strings, so store
-    # the `space` coordinate as an object (as create_dataset_store does)
-    pkg = pkg.assign_coords(space=pkg.space.astype(object))
-    pkg.attrs = {
+    # the `space` coordinate as an object
+    ds_slice = ds_slice.assign_coords(space=ds_slice.space.astype(object))
+
+    # Add relevant metadata to slice
+    ds_slice.attrs = {
         **{key: ds.attrs[key] for key in ETHOLOGY_ATTRS},
-        "map_image_id_to_filename": {str(i): filenames[i] for i in selected},
+        # overrides the full map from ds: selected frames only
+        "map_image_id_to_filename": {
+            str(i): frame_filenames[i] for i in selected_image_ids
+        },
         "labelling_package": {
             "source_store": str(Path(store_path).resolve()),
             **package_settings,
         },
     }
-    if set(pkg.data_vars) != set(BBOX_VARS) or set(pkg.dims) != BBOX_DIMS:
-        raise ValueError(
-            f"Expected variables {BBOX_VARS} and dimensions {BBOX_DIMS}, "
-            f"got {list(pkg.data_vars)} and {list(pkg.dims)}"
-        )
+
     # write with zarr's default chunks rather than the input store's
-    for variable in pkg.variables.values():
+    for variable in ds_slice.variables.values():
         variable.encoding = {}
+    ds_slice.to_zarr(dataset_package_subdir / "bboxes.zarr", mode="w-")
 
     # Copy the selected frames unchanged
-    frames_dir = subdir / "frames"
+    frames_dir = dataset_package_subdir / "frames"
     frames_dir.mkdir(parents=True)
-    for image_id in selected:
-        shutil.copy2(data_dir / "frames" / filenames[image_id], frames_dir)
+    for image_id in selected_image_ids:
+        shutil.copy2(
+            data_dir / "frames" / frame_filenames[image_id],
+            frames_dir,
+        )
 
-    pkg.to_zarr(subdir / "bboxes.zarr", mode="w-")
-    return subdir
+    return dataset_package_subdir
 
 
 def main(args: argparse.Namespace) -> None:
@@ -279,7 +291,7 @@ def main(args: argparse.Namespace) -> None:
         )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    package_dir = args.output_dir / f"labelling_package_{timestamp}"
+    labelling_package_dir = args.output_dir / f"labelling_package_{timestamp}"
     package_settings = {
         "seed": args.seed,
         "camera": args.camera,
@@ -301,11 +313,15 @@ def main(args: argparse.Namespace) -> None:
             ds, args.camera, args.frames_per_video, args.seed, exclude
         )
         subdir = write_package_subdir(
-            ds, image_ids, store_path, package_dir, package_settings
+            ds,
+            image_ids,
+            store_path,
+            labelling_package_dir,
+            package_settings,
         )
         print(f"{dataset_name}: wrote {len(image_ids)} frames to {subdir}")
 
-    print(f"Labelling package written to {package_dir}")
+    print(f"Labelling package written to {labelling_package_dir}")
 
 
 def parse_args(list_args: list[str]) -> argparse.Namespace:
