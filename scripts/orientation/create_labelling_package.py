@@ -43,6 +43,10 @@ Frames are sampled per video, after keeping only the videos of one camera
 fewer frames left than ``--frames-per-video`` gives what is left, and is
 reported.
 
+Frames are selected for every store, and checked to exist, before anything
+is written. The package is written to ``labelling_package_<timestamp>.partial``
+and renamed when complete, so a failed run leaves no package behind.
+
 Usage
 From the repo root:
     uv run scripts/orientation/create_labelling_package.py \
@@ -210,6 +214,24 @@ def select_frames(
     return np.sort(np.array(selected_frames, dtype=int))
 
 
+def check_frames_exist(
+    ds_bboxes: xr.Dataset, image_ids: np.ndarray, annotations_zarr: Path
+) -> None:
+    """Check the selected frames are in the data directory's ``frames/``."""
+    frames_dir = Path(annotations_zarr).parent.parent / "frames"
+    frame_filenames = _filenames(ds_bboxes)
+    missing = [
+        frame_filenames[i]
+        for i in image_ids.tolist()
+        if not (frames_dir / frame_filenames[i]).is_file()
+    ]
+    if missing:
+        raise FileNotFoundError(
+            f"{len(missing)} selected frames not found in {frames_dir}, "
+            f"e.g. {missing[:3]}"
+        )
+
+
 def create_labelling_subdirectory(
     ds_bboxes: xr.Dataset,
     image_ids: np.ndarray,
@@ -313,6 +335,8 @@ def main(args: argparse.Namespace) -> None:
         ],
     }
 
+    # Select the frames of every store before writing
+    selections = []
     for bboxes_store_path, dataset_name in zip(
         args.stores, dataset_names, strict=True
     ):
@@ -332,18 +356,32 @@ def main(args: argparse.Namespace) -> None:
             args.seed,
             image_ids_to_exclude,
         )
+        check_frames_exist(ds_bboxes, image_ids, bboxes_store_path)
+        selections.append((ds_bboxes, image_ids, bboxes_store_path))
 
-        labelling_package_subdir = create_labelling_subdirectory(
-            ds_bboxes,
-            image_ids,
-            bboxes_store_path,
-            labelling_package_dir,
-            labelling_package_settings,
-        )
-        print(
-            f"{dataset_name}: wrote {len(image_ids)} "
-            f"frames to {labelling_package_subdir}"
-        )
+    # Write to a temporary directory, and rename it once every
+    # subdirectory is written. This way a package under its final name is
+    # complete
+    partial_package_dir = labelling_package_dir.with_name(
+        f"{labelling_package_dir.name}.partial"
+    )
+    try:
+        for ds_bboxes, image_ids, bboxes_store_path in selections:
+            labelling_package_subdir = create_labelling_subdirectory(
+                ds_bboxes,
+                image_ids,
+                bboxes_store_path,
+                partial_package_dir,
+                labelling_package_settings,
+            )
+            print(
+                f"{labelling_package_subdir.name}: wrote "
+                f"{len(image_ids)} frames"
+            )
+        partial_package_dir.rename(labelling_package_dir)
+    except BaseException:
+        shutil.rmtree(partial_package_dir, ignore_errors=True)
+        raise
 
     print(f"Labelling package written to {labelling_package_dir}")
 

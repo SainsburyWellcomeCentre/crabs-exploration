@@ -1,4 +1,5 @@
 import hashlib
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +8,7 @@ import pytest
 import xarray as xr
 from PIL import Image
 
+from scripts.orientation import create_labelling_package
 from scripts.orientation.annotate_crabs_orientation_manual import (
     boxes_containing,
     boxes_done,
@@ -201,6 +203,39 @@ def test_main_rejects_non_store_paths(input_store, tmp_path, not_store):
     with pytest.raises(ValueError, match="Not zarr stores"):
         main(args)
     assert not output_dir.exists()
+
+
+def test_main_failure_leaves_no_package(input_store, tmp_path, monkeypatch):
+    """Check a failure writing the second store's subdirectory leaves nothing.
+
+    The first store's subdirectory is already written when the second
+    fails, so the partial package directory must be removed.
+    """
+    second_data_dir = tmp_path / "feb2023-full"
+    shutil.copytree(input_store.parent.parent, second_data_dir)
+    stores = [input_store, second_data_dir / "annotations" / input_store.name]
+
+    calls = []
+
+    def fail_on_second_call(*args, **kwargs):
+        calls.append(args)
+        if len(calls) == 2:
+            raise OSError("disk full")
+        return create_labelling_subdirectory(*args, **kwargs)
+
+    monkeypatch.setattr(
+        create_labelling_package,
+        "create_labelling_subdirectory",
+        fail_on_second_call,
+    )
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    args = parse_args([*map(str, stores), "--output-dir", str(output_dir)])
+    with pytest.raises(OSError, match="disk full"):
+        main(args)
+    assert len(calls) == 2
+    assert list(output_dir.iterdir()) == []
 
 
 def test_exclude_earlier_packages(input_store, tmp_path, capsys):
