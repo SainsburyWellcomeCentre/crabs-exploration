@@ -572,7 +572,7 @@ def _get_store_path(
 def _get_store_metadata(
     timestamp: str, device: str, boxes_path: Path, mask_config: dict
 ) -> dict:
-    """Return the attributes shared by every video group of a store.
+    """Return the attributes shared by every video group this run writes.
 
     Each group also gets its own `source_video`, added in
     `setup_video_mask_group`.
@@ -678,7 +678,7 @@ def setup_video_mask_group(
     ds_video: xr.Dataset,
     clip_paths: list[Path],
     store_path: Path,
-    run_metadata: dict,
+    store_metadata: dict,
     mask_config: dict,
     zarr_mode_group: str,
 ) -> tuple[zarr.Array, xr.DataArray]:
@@ -698,8 +698,8 @@ def setup_video_mask_group(
         Path to each clip video, in the order of `ds_video.clip_id`.
     store_path : Path
         Path to the mask zarr store.
-    run_metadata : dict
-        Attributes shared by every video group of the run. The group's
+    store_metadata : dict
+        Attributes shared by every video group this run writes. The group's
         `source_video` attribute is added to them.
     mask_config : dict
         The full masking config, for the chunk and shard sizes.
@@ -734,7 +734,7 @@ def setup_video_mask_group(
         individuals=[str(i) for i in ds_video.individual.values],
         image_shape=image_shape,
         metadata_dict={
-            **run_metadata,
+            **store_metadata,
             "source_video": [str(p) for p in clip_paths],
         },
         n_frames_per_chunk=mask_config["n_frames_per_chunk"],
@@ -782,7 +782,7 @@ def main(args: argparse.Namespace) -> None:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     store_path = _get_store_path(args, boxes_path, timestamp)
     zarr.open_group(store_path, mode=args.zarr_mode_store)
-    run_metadata = _get_store_metadata(
+    store_metadata = _get_store_metadata(
         timestamp, device, boxes_path, mask_config
     )
 
@@ -799,7 +799,7 @@ def main(args: argparse.Namespace) -> None:
             ds_video=ds_video,
             clip_paths=clip_paths,
             store_path=store_path,
-            run_metadata=run_metadata,
+            store_metadata=store_metadata,
             mask_config=mask_config,
             zarr_mode_group=args.zarr_mode_group,
         )
