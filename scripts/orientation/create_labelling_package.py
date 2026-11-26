@@ -181,18 +181,25 @@ def select_frames(
         df_frames["video"].str.contains(f"-{camera}", regex=False)
     ]
 
+    # list the videos before excluding frames, so that a video with no
+    # frames left is still reported
+    videos = sorted(df_frames["video"].unique())
+
     # exclude relevant image_ids
     df_frames = df_frames[~df_frames["image_id"].isin(set(exclude))]
 
     # loop thru videos
     selected_frames: list = []
-    for video, frames_in_video in df_frames.groupby("video"):
+    for video in videos:
+        frames_in_video = df_frames[df_frames["video"] == video]
+
         # if less frames remain than requested, take all available
         # and notify
         if len(frames_in_video) < frames_per_video:
             print(
                 f"{video}: {len(frames_in_video)} frames left, "
                 f"{frames_per_video} requested"
+                + (" (skipped)" if len(frames_in_video) == 0 else "")
             )
         n_frames = min(frames_per_video, len(frames_in_video))
 

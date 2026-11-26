@@ -240,7 +240,9 @@ def test_exclude_earlier_packages(input_store, tmp_path, capsys):
 
     # An earlier package from another annotations file raises an error
     ds.attrs["annotation_files"] = "/another/coco.json"
-    with pytest.raises(ValueError, match="may name other frames"):
+    with pytest.raises(
+        ValueError, match="may refer to a different set of frames"
+    ):
         excluded_image_ids([first], ds, "jan2023-full")
 
 
